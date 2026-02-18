@@ -8,7 +8,8 @@ namespace reloco {
 enum class error : int {
   allocation_failed = 1,
   in_place_growth_failed,
-  unsupported_operation
+  unsupported_operation,
+  out_of_range
 };
 
 template <typename T> using result = std::expected<T, error>;
