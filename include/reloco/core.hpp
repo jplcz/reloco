@@ -10,7 +10,8 @@ enum class error : int {
   in_place_growth_failed,
   unsupported_operation,
   out_of_range,
-  invalid_argument
+  invalid_argument,
+  already_exists
 };
 
 template <typename T> using result = std::expected<T, error>;

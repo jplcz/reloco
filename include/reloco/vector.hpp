@@ -250,6 +250,12 @@ public:
     size_++;
     return ptr;
   }
+
+  [[nodiscard]] result<T *> try_at(const size_t index) noexcept {
+    if (index >= size_)
+      return std::unexpected(error::out_of_range);
+    return &data_[index];
+  }
 };
 
 template <typename T, typename A>

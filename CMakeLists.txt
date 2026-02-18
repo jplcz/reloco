@@ -70,7 +70,8 @@ if(RELOCO_BUILD_TESTS)
 
     if(Boost_FOUND)
         target_sources(reloco_tests PRIVATE
-            tests/test_intrusive_ptr.cpp)
+            tests/test_intrusive_ptr.cpp
+            tests/test_map.cpp)
         target_link_libraries(reloco_tests PRIVATE Boost::boost)
     else()
         message(STATUS "Boost library not found")
