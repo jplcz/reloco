@@ -78,6 +78,7 @@ if(RELOCO_BUILD_TESTS)
     endif()
 
     target_link_libraries(reloco_tests PRIVATE reloco::reloco GTest::gtest_main)
+    target_compile_features(reloco_tests INTERFACE cxx_std_23)
 
     include(GoogleTest)
     gtest_discover_tests(reloco_tests)
