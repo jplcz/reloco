@@ -1,5 +1,5 @@
 #pragma once
-#include <boost/intrusive/bs_set.hpp>
+#include <boost/intrusive/set.hpp>
 #include <reloco/vector.hpp>
 
 namespace reloco {
@@ -7,7 +7,7 @@ namespace reloco {
 template <typename K, typename V, typename Compare = std::less<K>,
           typename Alloc = core_allocator>
 class map {
-  struct MapNode : public boost::intrusive::bs_set_base_hook<> {
+  struct MapNode : public boost::intrusive::set_base_hook<> {
     K key;
     V value;
 
@@ -80,9 +80,12 @@ class map {
   };
 
   Alloc *alloc_;
-  boost::intrusive::bs_set<MapNode, boost::intrusive::key_of_value<KeyOfNode>,
-                           boost::intrusive::compare<Compare>>
-      set_;
+
+  using set_t =
+      boost::intrusive::set<MapNode, boost::intrusive::key_of_value<KeyOfNode>,
+                            boost::intrusive::compare<Compare>>;
+
+  set_t set_;
 
 public:
   using key_type = K;
@@ -94,13 +97,10 @@ public:
   using const_reference = const value_type &;
 
   // Iterator types from boost::intrusive
-  using iterator = typename boost::intrusive::bs_set<MapNode>::iterator;
-  using const_iterator =
-      typename boost::intrusive::bs_set<MapNode>::const_iterator;
-  using reverse_iterator =
-      typename boost::intrusive::bs_set<MapNode>::reverse_iterator;
-  using const_reverse_iterator =
-      typename boost::intrusive::bs_set<MapNode>::const_reverse_iterator;
+  using iterator = typename set_t::iterator;
+  using const_iterator = typename set_t::const_iterator;
+  using reverse_iterator = typename set_t::reverse_iterator;
+  using const_reverse_iterator = typename set_t::const_reverse_iterator;
 
   map() noexcept : alloc_(&get_default_allocator()) {}
 
@@ -272,7 +272,7 @@ public:
 
       if (success) {
         // Effectively unlinks from 'other' and links into 'this'
-       it = other.set_.erase(it);
+        it = other.set_.erase(it);
       } else {
         ++it;
       }
