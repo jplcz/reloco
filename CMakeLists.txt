@@ -62,7 +62,8 @@ if(RELOCO_BUILD_TESTS)
     add_executable(reloco_tests
         tests/test_posix_allocator.cpp
         tests/test_make_unique.cpp
-        tests/test_stl_bridge_allocator.cpp)
+        tests/test_stl_bridge_allocator.cpp
+        tests/test_string.cpp)
     target_link_libraries(reloco_tests PRIVATE reloco::reloco GTest::gtest_main)
 
     include(GoogleTest)

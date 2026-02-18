@@ -47,11 +47,6 @@ public:
     if (new_size <= old_size)
       return mem_block{ptr, old_size};
 
-    // Attempt O(1) in-place growth (guarantees alignment preservation)
-    if (auto res = expand_in_place(ptr, old_size, new_size); res) {
-      return mem_block{ptr, *res};
-    }
-
     // If alignment is standard, try standard realloc
     if (alignment <= alignof(std::max_align_t)) {
       void *new_ptr = ::realloc(ptr, new_size);
