@@ -37,6 +37,7 @@ install(
 
 if(RELOCO_BUILD_TESTS)
     find_package(GTest QUIET)
+    find_package(Boost 1.65 CONFIG)
 
     if(NOT GTest_FOUND)
         message(STATUS "GTest not found on host. Fetching from GitHub...")
@@ -64,7 +65,17 @@ if(RELOCO_BUILD_TESTS)
         tests/test_make_unique.cpp
         tests/test_stl_bridge_allocator.cpp
         tests/test_string.cpp
-        tests/test_vector.cpp)
+        tests/test_vector.cpp
+    )
+
+    if(Boost_FOUND)
+        target_sources(reloco_tests PRIVATE
+            tests/test_intrusive_ptr.cpp)
+        target_link_libraries(reloco_tests PRIVATE Boost::boost)
+    else()
+        message(STATUS "Boost library not found")
+    endif()
+
     target_link_libraries(reloco_tests PRIVATE reloco::reloco GTest::gtest_main)
 
     include(GoogleTest)
