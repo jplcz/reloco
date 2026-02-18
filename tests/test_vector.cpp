@@ -12,8 +12,23 @@ struct HeavyType {
   }
 };
 
+struct MockClonable {
+  int value;
+  bool fail_on_clone = false;
+
+  [[nodiscard]] reloco::result<MockClonable> try_clone() const noexcept {
+    if (fail_on_clone) {
+      return std::unexpected(reloco::error::allocation_failed);
+    }
+    return MockClonable{value, false};
+  }
+};
+
 static_assert(!reloco::is_relocatable<HeavyType>::value,
               "HeavyType should not be relocatable");
+
+static_assert(reloco::has_try_clone<MockClonable>,
+              "Trait should detect try_clone method");
 
 TEST(RelocoVectorTest, EmplaceAndIterate) {
   auto vec = reloco::vector<int>::try_create(2).value();
@@ -126,4 +141,54 @@ TEST(RelocoVectorTest, TriggersReallocation) {
   EXPECT_EQ(vec[0], 1);
   EXPECT_EQ(vec[1], 100);
   EXPECT_EQ(vec[2], 2);
+}
+
+TEST(RelocoVectorTest, SuccessStandardTypeForCline) {
+  reloco::vector<std::string> original;
+  ASSERT_TRUE(original.try_push_back("hello"));
+  ASSERT_TRUE(original.try_push_back("world"));
+
+  auto clone_res = original.try_clone();
+  ASSERT_TRUE(clone_res) << "Clone failed for standard types";
+
+  auto &clone = *clone_res;
+  EXPECT_EQ(clone.size(), 2);
+  EXPECT_EQ(clone[0], "hello");
+  EXPECT_EQ(clone[1], "world");
+
+  // Verify it's a deep copy of the container (different addresses)
+  EXPECT_NE(&original[0], &clone[0]);
+}
+
+TEST(RelocoVectorTest, SuccessRecursiveClone) {
+  reloco::vector<MockClonable> original;
+  ASSERT_TRUE(original.try_push_back({42, false}));
+  ASSERT_TRUE(original.try_push_back({100, false}));
+
+  auto clone_res = original.try_clone();
+  ASSERT_TRUE(clone_res);
+  EXPECT_EQ((*clone_res)[0].value, 42);
+  EXPECT_EQ((*clone_res)[1].value, 100);
+}
+
+TEST(RelocoVectorTest, FailsWhenElementCloneFails) {
+  reloco::vector<MockClonable> original;
+  ASSERT_TRUE(original.try_push_back({1, false}));
+  ASSERT_TRUE(
+      original.try_push_back({2, true})); // This one will trigger an error
+
+  auto clone_res = original.try_clone();
+
+  // The entire vector clone should fail because the second element failed
+  EXPECT_FALSE(clone_res);
+  EXPECT_EQ(clone_res.error(), reloco::error::allocation_failed);
+}
+
+TEST(RelocoVectorTest, CloneEmptyVector) {
+  reloco::vector<int> original;
+  auto clone_res = original.try_clone();
+
+  ASSERT_TRUE(clone_res);
+  EXPECT_EQ(clone_res->size(), 0);
+  EXPECT_EQ(clone_res->capacity(), 0);
 }

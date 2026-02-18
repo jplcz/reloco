@@ -148,7 +148,9 @@ public:
         auto item_res = data_[i].try_clone();
         if (!item_res)
           return std::unexpected(item_res.error());
-        clone.try_push_back(std::move(*item_res));
+        auto item_res_push = clone.try_push_back(std::move(*item_res));
+        if (!item_res_push)
+          return std::unexpected(item_res.error());
       } else {
         auto item_res = clone.try_push_back(T(data_[i]));
         if (!item_res)
