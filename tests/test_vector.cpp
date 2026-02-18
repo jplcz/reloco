@@ -192,3 +192,28 @@ TEST(RelocoVectorTest, CloneEmptyVector) {
   EXPECT_EQ(clone_res->size(), 0);
   EXPECT_EQ(clone_res->capacity(), 0);
 }
+
+TEST(RelocoVectorEmplace, HandlesTryCreate) {
+  struct FallibleWidget {
+    int id;
+    static reloco::result<FallibleWidget> try_create(int id) noexcept {
+      if (id < 0)
+        return std::unexpected(reloco::error::invalid_argument);
+      return FallibleWidget{id};
+    }
+  };
+
+  reloco::vector<FallibleWidget> v;
+
+  // Test Success
+  auto res_ok = v.try_emplace_back(42);
+  ASSERT_TRUE(res_ok);
+  EXPECT_EQ(v.size(), 1);
+  EXPECT_EQ(v[0].id, 42);
+
+  // Test Failure propagation
+  auto res_fail = v.try_emplace_back(-1);
+  EXPECT_FALSE(res_fail);
+  EXPECT_EQ(res_fail.error(), reloco::error::invalid_argument);
+  EXPECT_EQ(v.size(), 1); // Size should not have incremented
+}

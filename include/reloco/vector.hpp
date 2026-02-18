@@ -75,7 +75,7 @@ public:
   const_reverse_iterator rend() const noexcept {
     return const_reverse_iterator(begin());
   }
-  
+
   [[nodiscard]] result<void> try_reserve(size_type new_cap) noexcept {
     if (new_cap <= cap_)
       return {};
@@ -126,13 +126,33 @@ public:
         return std::unexpected(res.error());
     }
 
-    T *ptr = new (data_ + size_) T(std::forward<Args>(args)...);
+    T *ptr = data_ + size_;
+
+    if constexpr (has_try_create<T, Args...>) {
+      auto res = T::try_create(std::forward<Args>(args)...);
+      if (!res) {
+        return std::unexpected(res.error());
+      }
+
+      new (ptr) T(std::move(*res));
+    } else {
+      new (ptr) T(std::forward<Args>(args)...);
+    }
+
     size_++;
     return ptr;
   }
 
   [[nodiscard]] result<T *> try_push_back(T &&val) noexcept {
-    return try_emplace_back(std::move(val));
+    if (size_ == cap_) {
+      auto res = try_reserve(cap_ == 0 ? 8 : cap_ * 2);
+      if (!res)
+        return std::unexpected(res.error());
+    }
+
+    T *ptr = new (data_ + size_) T(std::move(val));
+    size_++;
+    return ptr;
   }
 
   [[nodiscard]] result<void> try_pop_back() noexcept {
