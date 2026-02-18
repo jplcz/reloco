@@ -1,5 +1,6 @@
 #pragma once
 #include <initializer_list>
+#include <iterator>
 #include <reloco/allocator.hpp>
 #include <reloco/concepts.hpp>
 #include <span>
@@ -23,6 +24,8 @@ public:
   using const_pointer = const T *;
   using iterator = T *;
   using const_iterator = const T *;
+  using reverse_iterator = std::reverse_iterator<iterator>;
+  using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
   vector() noexcept : alloc_(&get_default_allocator()) {}
   explicit vector(Alloc &a) noexcept : alloc_(&a) {}
@@ -64,7 +67,15 @@ public:
   bool empty() const noexcept { return size_ == 0; }
   reference operator[](size_type pos) { return data_[pos]; }
   const_reference operator[](size_type pos) const { return data_[pos]; }
-
+  reverse_iterator rbegin() noexcept { return reverse_iterator(end()); }
+  reverse_iterator rend() noexcept { return reverse_iterator(begin()); }
+  const_reverse_iterator rbegin() const noexcept {
+    return const_reverse_iterator(end());
+  }
+  const_reverse_iterator rend() const noexcept {
+    return const_reverse_iterator(begin());
+  }
+  
   [[nodiscard]] result<void> try_reserve(size_type new_cap) noexcept {
     if (new_cap <= cap_)
       return {};
