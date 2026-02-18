@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <reloco/map.hpp>
 
-TEST(RelocoMapSTL, RangeBasedLoop) {
+TEST(RelocoMapTest, RangeBasedLoop) {
   reloco::map<int, int> m;
   ASSERT_TRUE(m.try_insert(1, 10));
   ASSERT_TRUE(m.try_insert(2, 20));
@@ -13,7 +13,7 @@ TEST(RelocoMapSTL, RangeBasedLoop) {
   EXPECT_EQ(sum_keys, 3);
 }
 
-TEST(RelocoMapSTL, LowerBound) {
+TEST(RelocoMapTest, LowerBound) {
   reloco::map<int, int> m;
   ASSERT_TRUE(m.try_insert(10, 1));
   ASSERT_TRUE(m.try_insert(20, 2));
