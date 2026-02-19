@@ -1,4 +1,5 @@
 #pragma once
+#include <memory>
 #include <reloco/core.hpp>
 
 namespace reloco {

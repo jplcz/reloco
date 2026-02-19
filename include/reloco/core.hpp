@@ -11,7 +11,9 @@ enum class error : int {
   unsupported_operation,
   out_of_range,
   invalid_argument,
-  already_exists
+  already_exists,
+  empty_pointer,
+  pointer_expired
 };
 
 template <typename T> using result = std::expected<T, error>;
