@@ -114,3 +114,5 @@ target_link_libraries(my_app PRIVATE reloco::reloco)
 
 * Standard Library
 
+Technically there would be nothing preventing use of the library with
+older C++ standards if components like std::expected were ported.
