@@ -257,3 +257,186 @@ TEST_F(SmartPointerTest, HandlesRecursiveAllocation) {
   ASSERT_TRUE(res.has_value());
   EXPECT_TRUE((*res)->inner);
 }
+
+TEST_F(SmartPointerTest, ThreadSafeReferenceCounting) {
+  auto res = reloco::try_allocate_combined_shared<TrackedNode>(alloc, 1);
+  auto main_ptr = std::move(*res);
+
+  const int kThreadCount = 8;
+  const int kCopiesPerThread = 1000;
+  std::vector<std::thread> threads;
+
+  for (int i = 0; i < kThreadCount; ++i) {
+    threads.emplace_back([main_ptr, kCopiesPerThread]() {
+      for (int j = 0; j < kCopiesPerThread; ++j) {
+        // Creating and destroying local copies
+        reloco::shared_ptr<TrackedNode> local_copy = main_ptr;
+        (void)local_copy;
+      }
+    });
+  }
+
+  for (auto &t : threads)
+    t.join();
+
+  EXPECT_EQ(main_ptr.use_count(), 1);
+  EXPECT_EQ(TrackedNode::instances, 1);
+}
+
+TEST_F(SmartPointerTest, ThreadSafeWeakLocking) {
+  for (int trial = 0; trial < 100;
+       ++trial) { // Repeat to catch intermittent races
+    auto s = reloco::try_allocate_combined_shared<TrackedNode>(
+                 reloco::get_default_allocator(), trial)
+                 .value();
+    reloco::weak_ptr w = s;
+    std::atomic start{false};
+
+    std::thread t1([&]() {
+      while (!start)
+        std::this_thread::yield();
+      s.reset(); // Thread 1 tries to kill the object
+    });
+
+    std::thread t2([&]() {
+      while (!start)
+        std::this_thread::yield();
+      auto locked = w.lock(); // Thread 2 tries to save the object
+      if (locked) {
+        EXPECT_EQ((*locked)->id, trial);
+      }
+    });
+
+    start = true;
+    t1.join();
+    t2.join();
+
+    EXPECT_EQ(TrackedNode::instances, 0);
+  }
+}
+
+namespace CastTests {
+
+struct Base : public reloco::enable_shared_from_this<Base> {
+  virtual ~Base() = default;
+  int base_val = 1;
+};
+
+struct Derived : public Base {
+  int derived_val = 2;
+  static reloco::result<Derived> try_create() { return Derived{}; }
+};
+
+struct Other : public reloco::enable_shared_from_this<Other> {
+  virtual ~Other() = default;
+};
+
+} // namespace CastTests
+
+TEST_F(SmartPointerTest, CombinedStaticPointerCast) {
+  auto d_res = reloco::try_allocate_combined_shared<CastTests::Derived>(alloc);
+  auto d_ptr = std::move(*d_res);
+
+  // Cast Derived -> Base
+  reloco::shared_ptr<CastTests::Base> b_ptr =
+      reloco::static_pointer_cast<CastTests::Base>(d_ptr);
+
+  EXPECT_EQ(b_ptr.get(), static_cast<CastTests::Base *>(d_ptr.get()));
+  EXPECT_EQ(b_ptr.use_count(), 2);
+  EXPECT_EQ(b_ptr->base_val, 1);
+
+  // Verify cleanup
+  d_ptr.reset();
+  EXPECT_EQ(b_ptr.use_count(), 1);
+  b_ptr.reset();
+  // Combined block should be freed here
+}
+
+TEST_F(SmartPointerTest, StaticPointerCast) {
+  auto d_res = reloco::try_allocate_shared<CastTests::Derived>(alloc);
+  auto d_ptr = std::move(*d_res);
+
+  // Cast Derived -> Base
+  reloco::shared_ptr<CastTests::Base> b_ptr =
+      reloco::static_pointer_cast<CastTests::Base>(d_ptr);
+
+  EXPECT_EQ(b_ptr.get(), static_cast<CastTests::Base *>(d_ptr.get()));
+  EXPECT_EQ(b_ptr.use_count(), 2);
+  EXPECT_EQ(b_ptr->base_val, 1);
+
+  // Verify cleanup
+  d_ptr.reset();
+  EXPECT_EQ(b_ptr.use_count(), 1);
+  b_ptr.reset();
+  // Combined block should be freed here
+}
+
+TEST_F(SmartPointerTest, ConstPointerCast) {
+  auto res = reloco::try_allocate_shared<CastTests::Derived>(alloc);
+  auto ptr = std::move(*res);
+
+  // Cast Derived -> const Derived
+  reloco::shared_ptr<const CastTests::Derived> c_ptr =
+      reloco::const_pointer_cast<const CastTests::Derived>(ptr);
+
+  EXPECT_EQ(c_ptr.get(), ptr.get());
+  EXPECT_EQ(c_ptr.use_count(), 2);
+
+  // Verify we can cast back
+  auto nc_ptr = reloco::const_pointer_cast<CastTests::Derived>(c_ptr);
+  EXPECT_EQ(nc_ptr.use_count(), 3);
+}
+
+TEST_F(SmartPointerTest, CombinedConstPointerCast) {
+  auto res = reloco::try_allocate_combined_shared<CastTests::Derived>(alloc);
+  auto ptr = std::move(*res);
+
+  // Cast Derived -> const Derived
+  reloco::shared_ptr<const CastTests::Derived> c_ptr =
+      reloco::const_pointer_cast<const CastTests::Derived>(ptr);
+
+  EXPECT_EQ(c_ptr.get(), ptr.get());
+  EXPECT_EQ(c_ptr.use_count(), 2);
+
+  // Verify we can cast back
+  auto nc_ptr = reloco::const_pointer_cast<CastTests::Derived>(c_ptr);
+  EXPECT_EQ(nc_ptr.use_count(), 3);
+}
+
+TEST_F(SmartPointerTest, DynamicPointerCast) {
+  auto d_res = reloco::try_allocate_shared<CastTests::Derived>(alloc);
+  auto d_ptr = std::move(*d_res);
+
+  // Upcast to Base
+  reloco::shared_ptr<CastTests::Base> b_ptr = d_ptr;
+
+  // Success Case: Dynamic cast Base -> Derived
+  auto d_ptr_2 = reloco::dynamic_pointer_cast<CastTests::Derived>(b_ptr);
+  ASSERT_TRUE(d_ptr_2);
+  EXPECT_EQ(d_ptr_2.get(), d_ptr.get());
+  EXPECT_EQ(d_ptr_2->derived_val, 2);
+
+  // Failure Case: Dynamic cast Base -> Other
+  auto o_ptr = reloco::dynamic_pointer_cast<CastTests::Other>(b_ptr);
+  EXPECT_FALSE(o_ptr);
+  EXPECT_EQ(o_ptr.get(), nullptr);
+}
+
+TEST_F(SmartPointerTest, CombinedDynamicPointerCast) {
+  auto d_res = reloco::try_allocate_combined_shared<CastTests::Derived>(alloc);
+  auto d_ptr = std::move(*d_res);
+
+  // Upcast to Base
+  reloco::shared_ptr<CastTests::Base> b_ptr = d_ptr;
+
+  // Success Case: Dynamic cast Base -> Derived
+  auto d_ptr_2 = reloco::dynamic_pointer_cast<CastTests::Derived>(b_ptr);
+  ASSERT_TRUE(d_ptr_2);
+  EXPECT_EQ(d_ptr_2.get(), d_ptr.get());
+  EXPECT_EQ(d_ptr_2->derived_val, 2);
+
+  // Failure Case: Dynamic cast Base -> Other
+  auto o_ptr = reloco::dynamic_pointer_cast<CastTests::Other>(b_ptr);
+  EXPECT_FALSE(o_ptr);
+  EXPECT_EQ(o_ptr.get(), nullptr);
+}

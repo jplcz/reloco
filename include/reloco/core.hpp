@@ -13,7 +13,8 @@ enum class error : int {
   invalid_argument,
   already_exists,
   empty_pointer,
-  pointer_expired
+  pointer_expired,
+  no_owner
 };
 
 template <typename T> using result = std::expected<T, error>;
