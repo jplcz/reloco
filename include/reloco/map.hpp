@@ -281,7 +281,7 @@ public:
 };
 
 template <typename K, typename V, typename Compare, typename Alloc>
-struct is_relocatable<map<K, V, Compare, Alloc>> : std::true_type {};
+struct is_relocatable<map<K, V, Compare, Alloc>> : std::false_type {};
 
 template <typename K, typename V, typename Compare, typename Alloc>
 struct is_fallible_type<map<K, V, Compare, Alloc>> : std::true_type {};
