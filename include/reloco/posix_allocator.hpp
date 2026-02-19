@@ -25,18 +25,7 @@ public:
 
   result<std::size_t> expand_in_place(void *ptr, std::size_t old_size,
                                       std::size_t new_size) noexcept override {
-#if defined(__linux__)
-    // Try growing without moving the pointer
-    void *res = ::mremap(ptr, old_size, new_size, 0);
-    if (res == MAP_FAILED) {
-      return std::unexpected(error::in_place_growth_failed);
-    }
-    return new_size;
-#else
-    // Most other POSIX systems don't have a direct mremap(0) equivalent for
-    // heap
-    return std::unexpected(error::unsupported_operation);
-#endif
+    return std::unexpected(error::in_place_growth_failed);
   }
 
   result<mem_block> reallocate(void *ptr, std::size_t old_size,
@@ -68,8 +57,58 @@ public:
   }
 
   void deallocate(void *ptr, std::size_t) noexcept override { ::free(ptr); }
+};
 
-  void advise(void *ptr, std::size_t bytes, usage_hint hint) noexcept override {
+class mmap_allocator final : public fallible_allocator {
+public:
+  [[nodiscard]] result<mem_block>
+  allocate(std::size_t const bytes,
+           std::size_t const alignment) noexcept override {
+    if (const auto page_size = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
+        alignment > page_size) {
+      return std::unexpected(error::invalid_argument);
+    }
+    void *ptr = ::mmap(nullptr, bytes, PROT_READ | PROT_WRITE,
+                       MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (ptr == MAP_FAILED) {
+      return std::unexpected(error::allocation_failed);
+    }
+
+    return mem_block{ptr, bytes};
+  }
+
+  [[nodiscard]] result<std::size_t>
+  expand_in_place(void *ptr, const std::size_t old_size,
+                  const std::size_t new_size) noexcept override {
+    const auto res =
+        ::mremap(ptr, old_size, new_size, MREMAP_FIXED); // 0 means do not move
+    if (res == MAP_FAILED) {
+      return std::unexpected(error::in_place_growth_failed);
+    }
+    return new_size;
+  }
+
+  [[nodiscard]] result<mem_block> reallocate(void *ptr,
+                                             const std::size_t old_size,
+                                             const std::size_t new_size,
+                                             std::size_t) noexcept override {
+    void *new_ptr = ::mremap(ptr, old_size, new_size, MREMAP_MAYMOVE);
+
+    if (new_ptr == MAP_FAILED) {
+      return std::unexpected(error::allocation_failed);
+    }
+
+    return mem_block{new_ptr, new_size};
+  }
+
+  void deallocate(void *ptr, const std::size_t bytes) noexcept override {
+    if (ptr) {
+      ::munmap(ptr, bytes);
+    }
+  }
+
+  void advise(void *ptr, const std::size_t bytes,
+              const usage_hint hint) noexcept override {
     int posix_hint = 0;
 
     switch (hint) {
