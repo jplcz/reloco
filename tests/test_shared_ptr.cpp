@@ -185,7 +185,7 @@ TEST_F(SmartPointerTest, SeparateAllocationFailsCleanly) {
   EXPECT_EQ(TrackedNode::instances, 0);
 }
 
-TEST_F(SmartPointerTest, DefaultAllocatorIntegration) {
+TEST_F(SmartPointerTest, DefaultAllocatorCombinedIntegration) {
   // This test verifies the bridge to the system allocator
   auto res = reloco::try_make_combined_shared<TrackedNode>(99);
 
@@ -195,4 +195,65 @@ TEST_F(SmartPointerTest, DefaultAllocatorIntegration) {
 
   res->reset();
   EXPECT_EQ(TrackedNode::instances, 0);
+}
+
+TEST_F(SmartPointerTest, DefaultAllocatorIntegration) {
+  // This test verifies the bridge to the system allocator
+  auto res = reloco::try_make_shared<TrackedNode>(99);
+
+  ASSERT_TRUE(res.has_value());
+  EXPECT_EQ((*res)->id, 99);
+  EXPECT_EQ(TrackedNode::instances, 1);
+
+  res->reset();
+  EXPECT_EQ(TrackedNode::instances, 0);
+}
+
+TEST_F(SmartPointerTest, CombinedRespectsStrictAlignment) {
+  struct alignas(64) AlignedType {
+    float data[16];
+    static reloco::result<AlignedType> try_create() { return AlignedType{}; }
+  };
+
+  auto res = reloco::try_allocate_combined_shared<AlignedType>(alloc);
+
+  ASSERT_TRUE(res.has_value());
+  uintptr_t addr = reinterpret_cast<uintptr_t>(res->get());
+  EXPECT_EQ(addr % 64, 0) << "Object in combined block not aligned to 64 bytes";
+}
+
+TEST_F(SmartPointerTest, PlainRespectsStrictAlignment) {
+  struct alignas(64) AlignedType {
+    float data[16];
+    static reloco::result<AlignedType> try_create() { return AlignedType{}; }
+  };
+
+  auto res = reloco::try_allocate_shared<AlignedType>(alloc);
+
+  ASSERT_TRUE(res.has_value());
+  uintptr_t addr = reinterpret_cast<uintptr_t>(res->get());
+  EXPECT_EQ(addr % 64, 0) << "Object in combined block not aligned to 64 bytes";
+}
+
+struct RecursiveNode : public reloco::enable_shared_from_this<RecursiveNode> {
+  reloco::shared_ptr<RecursiveNode> inner;
+
+  static reloco::result<RecursiveNode> try_create(reloco::fallible_allocator &a,
+                                                  bool recurse) {
+    RecursiveNode node;
+    if (recurse) {
+      auto res =
+          reloco::try_allocate_combined_shared<RecursiveNode>(a, a, false);
+      if (res)
+        node.inner = std::move(*res);
+    }
+    return node;
+  }
+};
+
+TEST_F(SmartPointerTest, HandlesRecursiveAllocation) {
+  auto res =
+      reloco::try_allocate_combined_shared<RecursiveNode>(alloc, alloc, true);
+  ASSERT_TRUE(res.has_value());
+  EXPECT_TRUE((*res)->inner);
 }
