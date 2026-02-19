@@ -424,6 +424,11 @@ shared_ptr<T> const_pointer_cast(const shared_ptr<U> &r) noexcept {
   return shared_ptr<T>(r, const_cast<T *>(r.get()));
 }
 
+template <typename T, typename U>
+shared_ptr<T> reinterpret_pointer_cast(const shared_ptr<U> &r) noexcept {
+  return shared_ptr<T>(r, reinterpret_cast<T *>(r.get()));
+}
+
 } // namespace reloco
 
 namespace std {

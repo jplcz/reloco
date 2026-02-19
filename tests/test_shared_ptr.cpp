@@ -440,3 +440,25 @@ TEST_F(SmartPointerTest, CombinedDynamicPointerCast) {
   EXPECT_FALSE(o_ptr);
   EXPECT_EQ(o_ptr.get(), nullptr);
 }
+
+TEST_F(SmartPointerTest, ReinterpretPointerCast) {
+  auto res = reloco::try_allocate_shared<CastTests::Derived>(alloc);
+  auto d_ptr = std::move(*res);
+
+  // View the object as a byte array
+  auto b_ptr = reloco::reinterpret_pointer_cast<std::byte>(d_ptr);
+
+  EXPECT_EQ(static_cast<void *>(b_ptr.get()), static_cast<void *>(d_ptr.get()));
+  EXPECT_EQ(b_ptr.use_count(), 2);
+}
+
+TEST_F(SmartPointerTest, CombinedReinterpretPointerCast) {
+  auto res = reloco::try_allocate_combined_shared<CastTests::Derived>(alloc);
+  auto d_ptr = std::move(*res);
+
+  // View the object as a byte array
+  auto b_ptr = reloco::reinterpret_pointer_cast<std::byte>(d_ptr);
+
+  EXPECT_EQ(static_cast<void *>(b_ptr.get()), static_cast<void *>(d_ptr.get()));
+  EXPECT_EQ(b_ptr.use_count(), 2);
+}
