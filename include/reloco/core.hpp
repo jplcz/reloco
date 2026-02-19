@@ -14,7 +14,8 @@ enum class error : int {
   already_exists,
   empty_pointer,
   pointer_expired,
-  no_owner
+  no_owner,
+  out_of_bounds
 };
 
 template <typename T> using result = std::expected<T, error>;
