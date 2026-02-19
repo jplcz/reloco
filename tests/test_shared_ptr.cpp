@@ -462,3 +462,35 @@ TEST_F(SmartPointerTest, CombinedReinterpretPointerCast) {
   EXPECT_EQ(static_cast<void *>(b_ptr.get()), static_cast<void *>(d_ptr.get()));
   EXPECT_EQ(b_ptr.use_count(), 2);
 }
+
+TEST_F(SmartPointerTest, WeakFromThisLifecycle) {
+  auto res = reloco::try_allocate_shared<TrackedNode>(alloc, 1);
+  auto s_ptr = std::move(*res);
+
+  // Get weak reference
+  reloco::weak_ptr<TrackedNode> w_ptr = s_ptr->weak_from_this();
+
+  EXPECT_FALSE(w_ptr.expired());
+  EXPECT_EQ(w_ptr.lock().value().get(), s_ptr.get());
+
+  s_ptr.reset();
+
+  // Now that s_ptr is gone, weak_from_this should be expired
+  EXPECT_TRUE(w_ptr.expired());
+}
+
+TEST_F(SmartPointerTest, CombinedWeakFromThisLifecycle) {
+  auto res = reloco::try_allocate_combined_shared<TrackedNode>(alloc, 1);
+  auto s_ptr = std::move(*res);
+
+  // Get weak reference
+  reloco::weak_ptr<TrackedNode> w_ptr = s_ptr->weak_from_this();
+
+  EXPECT_FALSE(w_ptr.expired());
+  EXPECT_EQ(w_ptr.lock().value().get(), s_ptr.get());
+
+  s_ptr.reset();
+
+  // Now that s_ptr is gone, weak_from_this should be expired
+  EXPECT_TRUE(w_ptr.expired());
+}

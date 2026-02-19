@@ -305,6 +305,10 @@ public:
     return weak_this_.lock();
   }
 
+  [[nodiscard]] weak_ptr<T> weak_from_this() const noexcept {
+    return weak_this_;
+  }
+
   template <typename Tp, typename Alloc, typename... Args>
   friend result<shared_ptr<Tp>> try_allocate_shared(Alloc &alloc,
                                                     Args &&...args) noexcept;
