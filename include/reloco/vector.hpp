@@ -190,7 +190,7 @@ public:
     if (!res)
       return std::unexpected(res.error());
 
-    if constexpr (std::is_trivially_copyable_v<T>) {
+    if constexpr (!has_try_clone<T> && std::is_trivially_copyable_v<T>) {
       // FAST PATH: Single memcpy for the entire range
       if (size_ > 0) {
         std::memcpy(clone.data_, data_, size_ * sizeof(T));

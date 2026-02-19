@@ -1,0 +1,8 @@
+//
+// Created by jarek on 19.02.2026.
+//
+
+#ifndef RELOCO_STACK_ALLOCATOR_HPP
+#define RELOCO_STACK_ALLOCATOR_HPP
+
+#endif // RELOCO_STACK_ALLOCATOR_HPP
