@@ -1,4 +1,6 @@
 #pragma once
+#include "assert.hpp"
+
 #include <cassert>
 #include <compare>
 #include <cstdarg>
@@ -176,7 +178,7 @@ public:
   char &at(size_type pos) noexcept {
     // In reloco, we prefer assertions over throwing exceptions for
     // out-of-bounds
-    assert(pos < size_);
+    RELOCO_ASSERT(pos < size_);
     return data_[pos];
   }
 
@@ -289,7 +291,7 @@ public:
   }
 
   void pop_back() noexcept {
-    assert(size_ > 0);
+    RELOCO_ASSERT(size_ > 0);
     --size_;
     data_[size_] = '\0';
   }
@@ -346,7 +348,7 @@ public:
   }
 
   void erase(size_type pos = 0, size_type count = npos) noexcept {
-    assert(pos <= size_);
+    RELOCO_ASSERT(pos <= size_);
 
     // Adjust count if it exceeds remaining string length
     size_type actual_count = std::min(count, size_ - pos);
