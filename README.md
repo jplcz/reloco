@@ -23,7 +23,7 @@ handled explicitly through ``result<T>`` patterns.
     (object and control block in one slab) and Fallible Factories.
     
     ```cpp
-    auto res = reloco::try_allocate_combined_shared(allocator, "Data");
+    auto res = reloco::try_allocate_combined_shared<Node>(allocator, "Data");
     if (res) {
         auto node = std::move(*res);
         // Use node...
