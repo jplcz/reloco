@@ -43,9 +43,13 @@ public:
   }
 
   ~vector() {
-    clear();
-    if (data_)
+    if (data_) {
+      if constexpr (!std::is_trivially_destructible_v<T>) {
+        for (size_type i = 0; i < size_; ++i)
+          data_[i].~T();
+      }
       alloc_->deallocate(data_, cap_ * sizeof(T));
+    }
   }
 
   static result<vector> try_create(std::size_t initial_cap = 0) noexcept {
@@ -158,14 +162,26 @@ public:
   [[nodiscard]] result<void> try_pop_back() noexcept {
     if (size_ == 0)
       return std::unexpected(error::out_of_range);
-    data_[--size_].~T();
+    --size_;
+    if constexpr (!std::is_trivially_destructible_v<T>) {
+      data_[size_].~T();
+    }
     return {};
   }
 
   void clear() noexcept {
-    for (size_type i = 0; i < size_; ++i)
-      data_[i].~T();
+    if constexpr (!std::is_trivially_destructible_v<T>) {
+      for (size_type i = 0; i < size_; ++i)
+        data_[i].~T();
+    }
     size_ = 0;
+
+    const std::size_t bytes = cap_ * sizeof(T);
+    constexpr std::size_t DISCARD_THRESHOLD = 64 * 1024;
+
+    if (bytes >= DISCARD_THRESHOLD) {
+      alloc_->advise(data_, bytes, usage_hint::dont_need);
+    }
   }
 
   [[nodiscard]] result<vector> try_clone() const noexcept {
@@ -195,7 +211,9 @@ public:
     if (pos >= size_)
       return std::unexpected(error::out_of_range);
 
-    data_[pos].~T();
+    if constexpr (!std::is_trivially_destructible_v<T>) {
+      data_[pos].~T();
+    }
     size_type move_count = size_ - pos - 1;
 
     if (move_count > 0) {
@@ -240,7 +258,9 @@ public:
           data_[i] = std::move(data_[i - 1]);
         }
 
-        data_[pos].~T();
+        if constexpr (!std::is_trivially_destructible_v<T>) {
+          data_[pos].~T();
+        }
       }
     }
 
