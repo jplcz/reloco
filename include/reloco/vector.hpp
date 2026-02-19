@@ -66,9 +66,9 @@ public:
   iterator end() noexcept { return data_ + size_; }
   const_iterator begin() const noexcept { return data_; }
   const_iterator end() const noexcept { return data_ + size_; }
-  size_type size() const noexcept { return size_; }
-  size_type capacity() const noexcept { return cap_; }
-  bool empty() const noexcept { return size_ == 0; }
+  [[nodiscard]] size_type size() const noexcept { return size_; }
+  [[nodiscard]] size_type capacity() const noexcept { return cap_; }
+  [[nodiscard]] bool empty() const noexcept { return size_ == 0; }
   reference operator[](size_type pos) { return data_[pos]; }
   const_reference operator[](size_type pos) const { return data_[pos]; }
   reverse_iterator rbegin() noexcept { return reverse_iterator(end()); }
@@ -80,7 +80,7 @@ public:
     return const_reverse_iterator(begin());
   }
 
-  [[nodiscard]] result<void> try_reserve(size_type new_cap) noexcept {
+  [[nodiscard]] result<void> try_reserve(const size_type new_cap) noexcept {
     if (new_cap <= cap_)
       return {};
 
@@ -190,18 +190,26 @@ public:
     if (!res)
       return std::unexpected(res.error());
 
-    for (size_type i = 0; i < size_; ++i) {
-      if constexpr (has_try_clone<T>) {
-        auto item_res = data_[i].try_clone();
-        if (!item_res)
-          return std::unexpected(item_res.error());
-        auto item_res_push = clone.try_push_back(std::move(*item_res));
-        if (!item_res_push)
-          return std::unexpected(item_res.error());
-      } else {
-        auto item_res = clone.try_push_back(T(data_[i]));
-        if (!item_res)
-          return std::unexpected(item_res.error());
+    if constexpr (std::is_trivially_copyable_v<T>) {
+      // FAST PATH: Single memcpy for the entire range
+      if (size_ > 0) {
+        std::memcpy(clone.data_, data_, size_ * sizeof(T));
+        clone.size_ = size_;
+      }
+    } else {
+      for (size_type i = 0; i < size_; ++i) {
+        if constexpr (has_try_clone<T>) {
+          auto item_res = data_[i].try_clone();
+          if (!item_res)
+            return std::unexpected(item_res.error());
+          auto item_res_push = clone.try_push_back(std::move(*item_res));
+          if (!item_res_push)
+            return std::unexpected(item_res.error());
+        } else {
+          auto item_res = clone.try_push_back(T(data_[i]));
+          if (!item_res)
+            return std::unexpected(item_res.error());
+        }
       }
     }
     return clone;
