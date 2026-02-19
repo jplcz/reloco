@@ -66,6 +66,7 @@ if(RELOCO_BUILD_TESTS)
         tests/test_stl_bridge_allocator.cpp
         tests/test_string.cpp
         tests/test_vector.cpp
+        tests/test_stack_allocator.cpp
     )
 
     if(Boost_FOUND)
