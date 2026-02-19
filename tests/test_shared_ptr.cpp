@@ -163,3 +163,36 @@ TEST_F(SmartPointerTest, EnableSharedFromThisFailure) {
   // In reloco, this returns a result error instead of throwing
   EXPECT_FALSE(sft_res.has_value());
 }
+
+TEST_F(SmartPointerTest, SeparateAllocationFailsCleanly) {
+  struct MockFailAlloc : public reloco::stack_allocator {
+    int call_count = 0;
+    using stack_allocator::stack_allocator;
+
+    reloco::result<reloco::mem_block> allocate(size_t b,
+                                               size_t a) noexcept override {
+      if (++call_count == 2)
+        return std::unexpected(reloco::error::allocation_failed);
+      return stack_allocator::allocate(b, a);
+    }
+  } fail_alloc{buffer, sizeof(buffer)};
+
+  // Attempt separate allocation
+  auto res = reloco::try_allocate_shared<TrackedNode>(fail_alloc, 1);
+  ASSERT_FALSE(res.has_value());
+  // Instances should be 0 because the object was destroyed
+  // when the control block allocation failed.
+  EXPECT_EQ(TrackedNode::instances, 0);
+}
+
+TEST_F(SmartPointerTest, DefaultAllocatorIntegration) {
+  // This test verifies the bridge to the system allocator
+  auto res = reloco::try_make_combined_shared<TrackedNode>(99);
+
+  ASSERT_TRUE(res.has_value());
+  EXPECT_EQ((*res)->id, 99);
+  EXPECT_EQ(TrackedNode::instances, 1);
+
+  res->reset();
+  EXPECT_EQ(TrackedNode::instances, 0);
+}

@@ -143,23 +143,16 @@ public:
   friend result<shared_ptr<Tp>> try_allocate_shared(AllocP &alloc,
                                                     Args &&...args) noexcept;
 
-  template <typename... Args>
-  [[nodiscard]] friend result<shared_ptr>
-  try_make_shared(Args &&...args) noexcept {
-    return try_allocate_shared(get_default_allocator(),
-                               std::forward<Args>(args)...);
-  }
+  template <typename Tp, typename... Args>
+  friend result<shared_ptr<Tp>> try_make_shared(Args &&...args) noexcept;
 
   template <typename Tp, typename Alloc, typename... Args>
   friend result<shared_ptr<Tp>>
   try_allocate_combined_shared(Alloc &alloc, Args &&...args) noexcept;
 
-  template <typename... Args>
-  [[nodiscard]] friend result<shared_ptr>
-  try_make_combined_shared(Args &&...args) noexcept {
-    return try_allocate_combined_shared(get_default_allocator(),
-                                        std::forward<Args>(args)...);
-  }
+  template <typename Tp, typename... Args>
+  friend result<shared_ptr<Tp>>
+  try_make_combined_shared(Args &&...args) noexcept;
 };
 
 template <typename T>
@@ -353,6 +346,19 @@ result<shared_ptr<T>> try_allocate_combined_shared(Alloc &alloc,
   }
 
   return shared_ptr(combined);
+}
+
+template <typename Tp, typename... Args>
+[[nodiscard]] result<shared_ptr<Tp>>
+try_make_combined_shared(Args &&...args) noexcept {
+  return try_allocate_combined_shared<Tp>(get_default_allocator(),
+                                          std::forward<Args>(args)...);
+}
+
+template <typename Tp, typename... Args>
+[[nodiscard]] result<shared_ptr<Tp>> try_make_shared(Args &&...args) noexcept {
+  return try_allocate_shared<Tp>(get_default_allocator(),
+                                 std::forward<Args>(args)...);
 }
 
 } // namespace reloco

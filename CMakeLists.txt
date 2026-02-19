@@ -67,6 +67,7 @@ if(RELOCO_BUILD_TESTS)
         tests/test_string.cpp
         tests/test_vector.cpp
         tests/test_stack_allocator.cpp
+        tests/test_shared_ptr.cpp
     )
 
     if(Boost_FOUND)

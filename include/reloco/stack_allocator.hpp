@@ -4,7 +4,7 @@
 
 namespace reloco {
 
-class stack_allocator final : public fallible_allocator {
+class stack_allocator : public fallible_allocator {
 public:
   stack_allocator(void *ptr, const std::size_t size) noexcept
       : buffer_(static_cast<std::byte *>(ptr)), capacity_(size) {}
