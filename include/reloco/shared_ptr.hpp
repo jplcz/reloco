@@ -433,6 +433,11 @@ shared_ptr<T> reinterpret_pointer_cast(const shared_ptr<U> &r) noexcept {
   return shared_ptr<T>(r, reinterpret_cast<T *>(r.get()));
 }
 
+template <typename T>
+struct is_relocatable<shared_ptr<T>> : is_relocatable<T> {};
+
+template <typename T> struct is_relocatable<weak_ptr<T>> : is_relocatable<T> {};
+
 } // namespace reloco
 
 namespace std {
