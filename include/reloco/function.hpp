@@ -239,4 +239,36 @@ private:
   function() = default; // Private to force try_create
 };
 
+template <typename R, typename... Args>
+class [[nodiscard]] function<R (*)(Args...)> {
+  using FuncPtr = R (*)(Args...);
+  FuncPtr m_ptr = nullptr;
+
+public:
+  static constexpr result<function>
+  try_allocate(FuncPtr fp, fallible_allocator &) noexcept {
+    return function(fp);
+  }
+
+  static constexpr result<function> try_create(FuncPtr fp) noexcept {
+    return function(fp);
+  }
+
+  result<function> try_clone() const noexcept { return *this; }
+
+  R operator()(Args... args) const {
+    RELOCO_ASSERT(m_ptr, "Call to null function pointer");
+    return m_ptr(std::forward<Args>(args)...);
+  }
+
+  function(const function &other) noexcept : m_ptr(other.m_ptr) {}
+
+  function(function &&other) noexcept : m_ptr(other.m_ptr) {
+    other.m_ptr = nullptr;
+  }
+
+private:
+  explicit function(FuncPtr fp) : m_ptr(fp) {}
+};
+
 } // namespace reloco
