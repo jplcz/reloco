@@ -15,7 +15,14 @@ enum class error : int {
   empty_pointer,
   pointer_expired,
   no_owner,
-  out_of_bounds
+  out_of_bounds,
+  deadlock,
+  invalid_owner,
+  still_locked,
+  not_locked,
+  timed_out,
+  try_again,
+  not_initialized
 };
 
 template <typename T> using result = std::expected<T, error>;

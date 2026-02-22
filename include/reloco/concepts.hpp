@@ -20,4 +20,10 @@ concept has_try_clone = requires(const T &obj) {
 template <typename T>
 struct is_fallible_type : std::bool_constant<has_try_clone<T>> {};
 
+// Concept for types that support the reloco fallible pattern
+template <typename T>
+concept is_fallible_initializable = requires(T &t) {
+  { t.try_init() } -> std::same_as<result<void>>;
+};
+
 } // namespace reloco

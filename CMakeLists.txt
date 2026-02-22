@@ -38,6 +38,7 @@ install(
 if(RELOCO_BUILD_TESTS)
     find_package(GTest QUIET)
     find_package(Boost 1.65 CONFIG)
+    find_package(Threads REQUIRED)
 
     if(NOT GTest_FOUND)
         message(STATUS "GTest not found on host. Fetching from GitHub...")
@@ -70,6 +71,7 @@ if(RELOCO_BUILD_TESTS)
         tests/test_shared_ptr.cpp
         tests/test_span.cpp
         tests/test_array.cpp
+        tests/test_mutex.cpp
     )
 
     if(Boost_FOUND)
@@ -81,7 +83,7 @@ if(RELOCO_BUILD_TESTS)
         message(STATUS "Boost library not found")
     endif()
 
-    target_link_libraries(reloco_tests PRIVATE reloco::reloco GTest::gtest_main)
+    target_link_libraries(reloco_tests PRIVATE reloco::reloco GTest::gtest_main Threads::Threads)
     target_compile_features(reloco_tests INTERFACE cxx_std_23)
 
     include(GoogleTest)
