@@ -7,6 +7,7 @@ namespace reloco {
 
 template <is_fallible_initializable T> class fallible_constructed;
 template <is_fallible_initializable T> class fallible_allocated;
+template <is_fallible_initializable T> class static_fallible_constructed;
 
 namespace detail {
 template <typename T> class constructor_key {
@@ -15,6 +16,8 @@ template <typename T> class constructor_key {
   friend class reloco::fallible_constructed;
   template <is_fallible_initializable U>
   friend class reloco::fallible_allocated;
+  template <is_fallible_initializable U>
+  friend class reloco::static_fallible_constructed;
   constexpr constructor_key() noexcept = default;
 };
 } // namespace detail
@@ -266,48 +269,52 @@ public:
     return {};
   }
 
-  [[nodiscard]] T *unsafe_get() noexcept { return &m_storage; }
+  [[nodiscard]] T *unsafe_get() noexcept {
+    return reinterpret_cast<T *>(&m_storage);
+  }
 
-  [[nodiscard]] const T *unsafe_get() const noexcept { return &m_storage; }
+  [[nodiscard]] const T *unsafe_get() const noexcept {
+    return reinterpret_cast<const T *>(&m_storage);
+  }
 
   [[nodiscard]] T *get() noexcept {
     RELOCO_ASSERT(m_initialized,
                   "Accessing static_fallible_constructed before try_init()");
-    return &m_storage;
+    return reinterpret_cast<T *>(&m_storage);
   }
 
   [[nodiscard]] const T *get() const noexcept {
     RELOCO_ASSERT(m_initialized,
                   "Accessing static_fallible_constructed before try_init()");
-    return &m_storage;
+    return reinterpret_cast<const T *>(&m_storage);
   }
 
   [[nodiscard]] T &operator*() noexcept {
     RELOCO_ASSERT(
         m_initialized,
         "Dereferencing static_fallible_constructed before try_init()");
-    return m_storage;
+    return *reinterpret_cast<T *>(&m_storage);
   }
 
   [[nodiscard]] const T &operator*() const noexcept {
     RELOCO_ASSERT(
         m_initialized,
         "Dereferencing static_fallible_constructed before try_init()");
-    return m_storage;
+    return *reinterpret_cast<const T *>(&m_storage);
   }
 
   [[nodiscard]] T *operator->() noexcept {
     RELOCO_ASSERT(
         m_initialized,
         "Accessing member of static_fallible_constructed before try_init()");
-    return &m_storage;
+    return reinterpret_cast<T *>(&m_storage);
   }
 
   [[nodiscard]] const T *operator->() const noexcept {
     RELOCO_ASSERT(
         m_initialized,
         "Accessing member of static_fallible_constructed before try_init()");
-    return &m_storage;
+    return reinterpret_cast<const T *>(&m_storage);
   }
 
   [[nodiscard]] explicit operator bool() const noexcept {
@@ -318,14 +325,14 @@ public:
     if (!m_initialized) [[unlikely]] {
       return std::unexpected(error::not_initialized);
     }
-    return &m_storage;
+    return reinterpret_cast<T *>(&m_storage);
   }
 
   [[nodiscard]] result<const T *> try_get() const noexcept {
     if (!m_initialized) [[unlikely]] {
       return std::unexpected(error::not_initialized);
     }
-    return &m_storage;
+    return reinterpret_cast<const T *>(&m_storage);
   }
 
 private:

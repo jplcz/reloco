@@ -46,6 +46,45 @@ public:
 
   int val = 0;
 };
+class StaticSpy {
+public:
+  using reloco_fallible_t = void;
+
+  // Static counters to track global state across the test
+  static inline int constructor_calls = 0;
+  static inline int destructor_calls = 0;
+  static inline int init_calls = 0;
+
+  static void reset() {
+    constructor_calls = 0;
+    destructor_calls = 0;
+    init_calls = 0;
+  }
+
+  StaticSpy(reloco::detail::constructor_key<StaticSpy>) { constructor_calls++; }
+
+  ~StaticSpy() { destructor_calls++; }
+
+  reloco::result<void> try_init(reloco::detail::constructor_key<StaticSpy>) {
+    init_calls++;
+    return {};
+  }
+
+protected:
+  StaticSpy() {}
+};
+
+class FailingStaticSpy : public StaticSpy {
+public:
+  using reloco_fallible_t = void;
+  FailingStaticSpy(reloco::detail::constructor_key<FailingStaticSpy> k)
+      : StaticSpy() {}
+
+  reloco::result<void>
+  try_init(reloco::detail::constructor_key<FailingStaticSpy>) {
+    return std::unexpected(reloco::error::already_exists);
+  }
+};
 
 } // namespace
 
@@ -108,4 +147,53 @@ TEST(FallibleConstructedTest, AccessUninitializedConstructed) {
   EXPECT_EQ(res.error(), reloco::error::not_initialized);
 
   EXPECT_DEATH({ (void)wrapper->init_called; }, "");
+}
+
+TEST(StaticFallibleTest, DestructorIsNeverCalled) {
+  StaticSpy::reset();
+
+  {
+    reloco::static_fallible_constructed<StaticSpy> wrapper;
+    ASSERT_TRUE(wrapper.try_init().has_value());
+
+    EXPECT_EQ(StaticSpy::constructor_calls, 1);
+    EXPECT_EQ(StaticSpy::init_calls, 1);
+    EXPECT_EQ(StaticSpy::destructor_calls, 0);
+  } // Wrapper goes out of scope here
+
+  EXPECT_EQ(StaticSpy::destructor_calls, 0)
+      << "Destructor was called, but static_fallible_constructed must "
+         "eliminate it!";
+}
+
+TEST(StaticFallibleTest, CleansUpOnlyOnFailure) {
+  StaticSpy::reset();
+
+  {
+    reloco::static_fallible_constructed<FailingStaticSpy> wrapper;
+    auto res = wrapper.try_init();
+    EXPECT_FALSE(res.has_value());
+
+    // On failure, it SHOULD call the destructor to avoid leaving garbage
+    EXPECT_EQ(StaticSpy::destructor_calls, 1);
+  }
+  EXPECT_EQ(StaticSpy::destructor_calls, 1);
+}
+
+TEST(StaticFallibleTest, AlignmentAndBufferSafety) {
+  struct alignas(64) AlignedType {
+    using reloco_fallible_t = void;
+    char data[64];
+    AlignedType(reloco::detail::constructor_key<AlignedType>) {}
+    reloco::result<void>
+    try_init(reloco::detail::constructor_key<AlignedType>) {
+      return {};
+    }
+  };
+
+  reloco::static_fallible_constructed<AlignedType> wrapper;
+  ASSERT_TRUE(wrapper.try_init().has_value());
+
+  uintptr_t addr = reinterpret_cast<uintptr_t>(wrapper.get());
+  EXPECT_EQ(addr % 64, 0) << "Buffer was not aligned to 64 bytes!";
 }
