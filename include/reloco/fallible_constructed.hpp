@@ -11,8 +11,10 @@ template <is_fallible_initializable T> class fallible_allocated;
 namespace detail {
 template <typename T> class constructor_key {
   // Only these two classes can construct a key
-  template <is_fallible_initializable U> friend class reloco::fallible_constructed;
-  template <is_fallible_initializable U> friend class reloco::fallible_allocated;
+  template <is_fallible_initializable U>
+  friend class reloco::fallible_constructed;
+  template <is_fallible_initializable U>
+  friend class reloco::fallible_allocated;
   constexpr constructor_key() noexcept = default;
 };
 } // namespace detail
@@ -79,6 +81,10 @@ public:
     m_initialized = true;
     return {};
   }
+
+  [[nodiscard]] T *unsafe_get() noexcept { return &m_storage; }
+
+  [[nodiscard]] const T *unsafe_get() const noexcept { return &m_storage; }
 
   [[nodiscard]] T *get() noexcept {
     RELOCO_ASSERT(m_initialized,
@@ -210,6 +216,8 @@ public:
     return m_ptr;
   }
 
+  [[nodiscard]] T *unsafe_get() const noexcept { return m_ptr; }
+
   [[nodiscard]] T *get() const noexcept {
     RELOCO_ASSERT(m_ptr, "Accessing fallible_allocated before try_init()");
     return m_ptr;
@@ -229,6 +237,105 @@ public:
 private:
   fallible_allocator *m_alloc;
   T *m_ptr;
+};
+
+template <is_fallible_initializable T> class static_fallible_constructed {
+public:
+  constexpr static_fallible_constructed() noexcept
+      : m_dummy{}, m_initialized(false) {}
+
+  static_fallible_constructed(const static_fallible_constructed &) = delete;
+  static_fallible_constructed &
+  operator=(const static_fallible_constructed &) = delete;
+
+  result<void> try_init() noexcept {
+    if (m_initialized)
+      return {};
+
+    T *obj = new (&m_storage) T(detail::constructor_key<T>{});
+
+    auto res = obj->try_init(detail::constructor_key<T>{});
+    if (!res) {
+      // If init fails, we destroy it once here.
+      // After successful init, it lives forever.
+      obj->~T();
+      return res;
+    }
+
+    m_initialized = true;
+    return {};
+  }
+
+  [[nodiscard]] T *unsafe_get() noexcept { return &m_storage; }
+
+  [[nodiscard]] const T *unsafe_get() const noexcept { return &m_storage; }
+
+  [[nodiscard]] T *get() noexcept {
+    RELOCO_ASSERT(m_initialized,
+                  "Accessing static_fallible_constructed before try_init()");
+    return &m_storage;
+  }
+
+  [[nodiscard]] const T *get() const noexcept {
+    RELOCO_ASSERT(m_initialized,
+                  "Accessing static_fallible_constructed before try_init()");
+    return &m_storage;
+  }
+
+  [[nodiscard]] T &operator*() noexcept {
+    RELOCO_ASSERT(
+        m_initialized,
+        "Dereferencing static_fallible_constructed before try_init()");
+    return m_storage;
+  }
+
+  [[nodiscard]] const T &operator*() const noexcept {
+    RELOCO_ASSERT(
+        m_initialized,
+        "Dereferencing static_fallible_constructed before try_init()");
+    return m_storage;
+  }
+
+  [[nodiscard]] T *operator->() noexcept {
+    RELOCO_ASSERT(
+        m_initialized,
+        "Accessing member of static_fallible_constructed before try_init()");
+    return &m_storage;
+  }
+
+  [[nodiscard]] const T *operator->() const noexcept {
+    RELOCO_ASSERT(
+        m_initialized,
+        "Accessing member of static_fallible_constructed before try_init()");
+    return &m_storage;
+  }
+
+  [[nodiscard]] explicit operator bool() const noexcept {
+    return m_initialized;
+  }
+
+  [[nodiscard]] result<T *> try_get() noexcept {
+    if (!m_initialized) [[unlikely]] {
+      return std::unexpected(error::not_initialized);
+    }
+    return &m_storage;
+  }
+
+  [[nodiscard]] result<const T *> try_get() const noexcept {
+    if (!m_initialized) [[unlikely]] {
+      return std::unexpected(error::not_initialized);
+    }
+    return &m_storage;
+  }
+
+private:
+  struct dummy {};
+  union {
+    dummy m_dummy;
+    // alignas ensures the buffer is correctly positioned for T
+    alignas(T) char m_storage[sizeof(T)];
+  };
+  bool m_initialized;
 };
 
 template <typename T>
