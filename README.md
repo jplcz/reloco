@@ -1,6 +1,9 @@
 # Reloco (Reliable Components)
 
-Reloco is a hardened, zero-exception, C++23 systems programming library designed for 
+> [!CAUTION]
+> Some interfaces are still subject to change as library is in early development phase
+
+Reloco is a hardened, zero-exception, C++20 systems programming library designed for 
 environments where reliability is primary concern. 
 
 It provides "Safety by Default" alternatives to the C++ Standard Library (STL), 
