@@ -17,6 +17,11 @@ public:
 template <typename E> unexpected(E) -> unexpected<E>;
 
 template <typename T, typename E> class [[nodiscard]] expected {
+  static_assert(std::is_nothrow_move_constructible_v<T>,
+                "T must be nothrow move constructible");
+  static_assert(std::is_nothrow_move_constructible_v<E>,
+                "E must be nothrow move constructible");
+
   union {
     T m_value;
     E m_error;
@@ -28,14 +33,16 @@ public:
   using error_type = E;
 
   template <typename U = T>
-    requires std::is_default_constructible_v<U>
-  constexpr expected() noexcept(std::is_nothrow_default_constructible_v<T>)
-      : m_has_value(true) {
+    requires std::is_nothrow_default_constructible_v<U>
+  constexpr expected() : m_has_value(true) {
     new (&m_value) T();
   }
 
   constexpr expected(T &&val) : m_value(std::move(val)), m_has_value(true) {}
-  constexpr expected(const T &val) : m_value(val), m_has_value(true) {}
+
+  template <typename U = T>
+    requires std::is_nothrow_copy_constructible_v<U>
+  constexpr expected(const U &val) : m_value(val), m_has_value(true) {}
 
   template <typename U>
     requires std::is_constructible_v<T, U &&>
@@ -44,8 +51,8 @@ public:
   }
 
   template <typename U, typename G>
-    requires std::is_constructible_v<T, U &&> &&
-             std::is_constructible_v<E, G &&>
+    requires std::is_nothrow_constructible_v<T, U &&> &&
+             std::is_nothrow_constructible_v<E, G &&>
   constexpr expected(expected<U, G> &&other) : m_has_value(other.has_value()) {
     if (m_has_value) {
       new (&m_value) T(std::move(other.value()));
