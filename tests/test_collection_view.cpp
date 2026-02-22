@@ -98,3 +98,98 @@ TEST_F(CollectionViewTest, NonOwningPointerView) {
   // vec is still valid here because view didn't own it
   EXPECT_EQ(vec.at(0), 55);
 }
+
+class AnyViewTest : public ::testing::Test {
+protected:
+  reloco::core_allocator alloc;
+
+  auto create_populated_vec(size_t size) {
+    auto vec_res = reloco::vector<int>::try_create(size);
+    RELOCO_ASSERT(vec_res.has_value());
+    auto &vec = *vec_res;
+    for (int i = 0; i < size; ++i) {
+      std::ignore = vec.try_push_back(i * 10);
+    }
+    return std::move(vec);
+  }
+};
+
+TEST_F(AnyViewTest, TypeErasureMaintainsDataIntegrity) {
+  auto vec = create_populated_vec(3); // [0, 10, 20]
+  reloco::collection_view<reloco::vector<int>, reloco::policy::move_owner>
+      concrete_view(std::move(vec));
+
+  // Create erased view
+  auto erased_res =
+      reloco::any_view<int>::try_create(std::move(concrete_view), alloc);
+  ASSERT_TRUE(erased_res.has_value());
+  auto erased = std::move(*erased_res);
+
+  EXPECT_EQ(erased.size(), 3);
+  EXPECT_FALSE(erased.empty());
+
+  auto val = erased.try_at(1);
+  ASSERT_TRUE(val.has_value());
+  EXPECT_EQ(val->get(), 10);
+}
+
+TEST_F(AnyViewTest, MoveConstructionZerosSource) {
+  auto vec = create_populated_vec(1);
+  auto erased_res = reloco::any_view<int>::try_create(
+      reloco::collection_view<reloco::vector<int>, reloco::policy::move_owner>(
+          std::move(vec)),
+      alloc);
+
+  auto source = std::move(*erased_res);
+  auto destination = std::move(source);
+
+  // Destination should be valid
+  EXPECT_EQ(destination.size(), 1);
+  EXPECT_TRUE(source.empty());
+}
+TEST_F(AnyViewTest, MoveAssignmentCleansUpExistingContext) {
+  auto vec1 = create_populated_vec(1);
+  auto vec2 = create_populated_vec(5);
+
+  auto v1 = std::move(*reloco::any_view<int>::try_create(
+      reloco::collection_view<reloco::vector<int>, reloco::policy::move_owner>(
+          std::move(vec1)),
+      alloc));
+  auto v2 = std::move(*reloco::any_view<int>::try_create(
+      reloco::collection_view<reloco::vector<int>, reloco::policy::move_owner>(
+          std::move(vec2)),
+      alloc));
+
+  v1 = std::move(v2); // Should trigger destroy on v1's original context
+
+  EXPECT_EQ(v1.size(), 5);
+}
+
+TEST_F(AnyViewTest, NonOwningPointerErasesCorrectly) {
+  auto vec = create_populated_vec(2);
+  {
+    // View that points to local stack vec
+    reloco::collection_view<reloco::vector<int>, reloco::policy::non_owner>
+        pointer_view(&vec);
+    auto erased_res =
+        reloco::any_view<int>::try_create(std::move(pointer_view), alloc);
+
+    ASSERT_TRUE(erased_res.has_value());
+    EXPECT_EQ((*erased_res).at(0), 0);
+  }
+  // vec is still alive here; any_view destructor shouldn't have affected it
+  EXPECT_EQ(vec.at(1), 10);
+}
+
+TEST_F(AnyViewTest, DeepCloneSupportedForMoveOwner) {
+  auto vec = create_populated_vec(5);
+  auto erased = std::move(*reloco::any_view<int>::try_create(
+      reloco::collection_view<reloco::vector<int>, reloco::policy::move_owner>(
+          std::move(vec)),
+      alloc));
+
+  auto cloned_res = erased.try_clone();
+  ASSERT_TRUE(cloned_res.has_value()) << "Error is " << (int)cloned_res.error();
+  EXPECT_NE(&erased.try_at(0).value().get(),
+            &(*cloned_res).try_at(0).value().get());
+}
