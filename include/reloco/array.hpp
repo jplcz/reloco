@@ -16,7 +16,7 @@ template <typename T, std::size_t N> struct array {
   [[nodiscard]] constexpr result<std::reference_wrapper<T>>
   try_at(size_type index) noexcept {
     if (index >= N) [[unlikely]] {
-      return std::unexpected(error::out_of_bounds);
+      return unexpected(error::out_of_bounds);
     }
     return std::ref(data_[index]);
   }

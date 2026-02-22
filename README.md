@@ -77,7 +77,7 @@ public:
 
     // Gated Initialization
     result<void> try_init(reloco::detail::constructor_key<MyResource>) {
-        if (/* hardware fail */) return std::unexpected(reloco::error::unsupported_operation);
+        if (/* hardware fail */) return unexpected(reloco::error::unsupported_operation);
         return {};
     }
 };

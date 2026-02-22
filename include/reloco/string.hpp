@@ -62,7 +62,7 @@ public:
     if (s) {
       auto res = str.try_append(s);
       if (!res)
-        return std::unexpected(res.error());
+        return unexpected(res.error());
     }
     return str;
   }
@@ -72,7 +72,7 @@ public:
     if (!sv.empty()) {
       auto res = str.try_append(sv);
       if (!res)
-        return std::unexpected(res.error());
+        return unexpected(res.error());
     }
     return str;
   }
@@ -84,7 +84,7 @@ public:
     if (size_ > 0) {
       auto res = clone.try_assign(this->view());
       if (!res)
-        return std::unexpected(res.error());
+        return unexpected(res.error());
     }
 
     return clone;
@@ -110,7 +110,7 @@ public:
     auto res =
         alloc_->reallocate(old_ptr, cap_ + 1, required_bytes, alignof(char));
     if (!res)
-      return std::unexpected(error::allocation_failed);
+      return unexpected(error::allocation_failed);
 
     data_ = static_cast<char *>(res->ptr);
     cap_ = new_cap;
@@ -199,7 +199,7 @@ public:
     // Use reallocate to potentially release memory back to OS
     auto res = alloc_->reallocate(data_, cap_ + 1, size_ + 1, alignof(char));
     if (!res)
-      return std::unexpected(error::allocation_failed);
+      return unexpected(error::allocation_failed);
 
     data_ = static_cast<char *>(res->ptr);
     cap_ = size_;
@@ -246,7 +246,7 @@ public:
     basic_string str;
     auto res = str.try_reserve(sv.size());
     if (!res)
-      return std::unexpected(res.error());
+      return unexpected(res.error());
 
     std::memcpy(str.data_, sv.data(), sv.size());
     str.size_ = sv.size();
@@ -266,7 +266,7 @@ public:
 
     if (needed < 0) {
       va_end(args);
-      return std::unexpected(error::unsupported_operation);
+      return unexpected(error::unsupported_operation);
     }
 
     std::size_t len = static_cast<std::size_t>(needed);
@@ -298,7 +298,7 @@ public:
 
   [[nodiscard]] result<void> try_pop_back() noexcept {
     if (size_ == 0) {
-      return std::unexpected(error::out_of_range);
+      return unexpected(error::out_of_range);
     }
     --size_;
     data_[size_] = '\0';
@@ -327,7 +327,7 @@ public:
   [[nodiscard]] result<void> try_insert(size_type pos,
                                         std::string_view sv) noexcept {
     if (pos > size_)
-      return std::unexpected(error::out_of_range);
+      return unexpected(error::out_of_range);
 
     if (sv.empty())
       return {};
@@ -366,7 +366,7 @@ public:
   [[nodiscard]] result<void> try_erase(size_type pos = 0,
                                        size_type count = npos) noexcept {
     if (pos > size_) {
-      return std::unexpected(error::out_of_range);
+      return unexpected(error::out_of_range);
     }
 
     size_type actual_count = std::min(count, size_ - pos);
@@ -394,7 +394,7 @@ public:
 
     auto res = alloc_->allocate(sv.size() + 1, alignof(char));
     if (!res)
-      return std::unexpected(error::allocation_failed);
+      return unexpected(error::allocation_failed);
 
     if (cap_ > 0 && data_ != &empty_char) {
       alloc_->deallocate(data_, cap_ + 1);

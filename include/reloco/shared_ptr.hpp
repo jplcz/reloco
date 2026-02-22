@@ -162,7 +162,7 @@ public:
 
   result<T *> try_get() const noexcept {
     if (!ptr_)
-      return std::unexpected(error::empty_pointer);
+      return unexpected(error::empty_pointer);
     return ptr_;
   }
 
@@ -295,7 +295,7 @@ public:
 
   [[nodiscard]] result<shared_ptr<T>> lock() const noexcept {
     if (!block_)
-      return std::unexpected(error::empty_pointer);
+      return unexpected(error::empty_pointer);
 
     auto count = block_->shared_count_.load(std::memory_order_relaxed);
     while (count != 0) {
@@ -305,7 +305,7 @@ public:
         return shared_ptr<T>(block_, ptr_);
       }
     }
-    return std::unexpected(error::pointer_expired);
+    return unexpected(error::pointer_expired);
   }
 
   template <typename U>
@@ -344,14 +344,14 @@ template <typename T, typename Alloc, typename... Args>
 try_allocate_shared(Alloc &alloc, Args &&...args) noexcept {
   auto block_t = alloc.allocate(sizeof(T), alignof(T));
   if (!block_t)
-    return std::unexpected(block_t.error());
+    return unexpected(block_t.error());
 
   T *raw_ptr = nullptr;
   if constexpr (has_try_create<T, Args...>) {
     auto res = T::try_create(std::forward<Args>(args)...);
     if (!res) {
       alloc.deallocate(block_t->ptr, sizeof(T));
-      return std::unexpected(res.error());
+      return unexpected(res.error());
     }
     raw_ptr = new (block_t->ptr) T(std::move(*res));
   } else {
@@ -364,7 +364,7 @@ try_allocate_shared(Alloc &alloc, Args &&...args) noexcept {
   if (!block_cb) {
     raw_ptr->~T();
     alloc.deallocate(block_t->ptr, sizeof(T));
-    return std::unexpected(block_cb.error());
+    return unexpected(block_cb.error());
   }
 
   auto *cb = new (block_cb->ptr)
@@ -386,7 +386,7 @@ result<shared_ptr<T>> try_allocate_combined_shared(Alloc &alloc,
 
   auto block_t = alloc.allocate(sizeof(CombinedType), alignof(CombinedType));
   if (!block_t)
-    return std::unexpected(block_t.error());
+    return unexpected(block_t.error());
 
   CombinedType *combined = static_cast<CombinedType *>(block_t->ptr);
 
@@ -398,7 +398,7 @@ result<shared_ptr<T>> try_allocate_combined_shared(Alloc &alloc,
     auto res = T::try_create(std::forward<Args>(args)...);
     if (!res) {
       alloc.deallocate(combined, sizeof(CombinedType));
-      return std::unexpected(res.error());
+      return unexpected(res.error());
     }
     new (raw_ptr) T(std::move(*res));
   } else {

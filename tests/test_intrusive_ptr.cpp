@@ -12,7 +12,7 @@ public:
   allocate(std::size_t bytes, std::size_t alignment) noexcept override {
     void *ptr = std::aligned_alloc(alignment, bytes);
     if (!ptr)
-      return std::unexpected(reloco::error::allocation_failed);
+      return reloco::unexpected(reloco::error::allocation_failed);
     allocated_map[ptr] = bytes;
     return reloco::mem_block{ptr, bytes};
   }
@@ -34,7 +34,7 @@ public:
 
   reloco::result<reloco::mem_block> reallocate(void *, std::size_t, std::size_t,
                                                std::size_t) noexcept override {
-    return std::unexpected(reloco::error::allocation_failed);
+    return reloco::unexpected(reloco::error::allocation_failed);
   }
 };
 
@@ -89,7 +89,7 @@ TEST_F(UnifiedFactoryTest, DynamicSizeAllocationAndCleanup) {
 struct FailResource : public reloco::intrusive_base<FailResource> {
   static reloco::result<FailResource> try_create(bool should_fail) {
     if (should_fail)
-      return std::unexpected(reloco::error::invalid_argument);
+      return reloco::unexpected(reloco::error::invalid_argument);
     return FailResource();
   }
 };

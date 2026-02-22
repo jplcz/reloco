@@ -16,7 +16,7 @@ public:
     std::size_t space = capacity_ - offset_;
     void *aligned_ptr = std::align(alignment, bytes, current_ptr, space);
     if (!aligned_ptr) {
-      return std::unexpected(error::allocation_failed);
+      return unexpected(error::allocation_failed);
     }
     offset_ = static_cast<std::byte *>(aligned_ptr) + bytes - buffer_;
     return mem_block{aligned_ptr, bytes};
@@ -34,12 +34,12 @@ public:
         return new_size;
       }
     }
-    return std::unexpected(error::in_place_growth_failed);
+    return unexpected(error::in_place_growth_failed);
   }
 
   [[nodiscard]] result<mem_block> reallocate(void *, std::size_t, std::size_t,
                                              std::size_t) noexcept override {
-    return std::unexpected(error::allocation_failed);
+    return unexpected(error::allocation_failed);
   }
 
   void deallocate(void *, std::size_t) noexcept override {}

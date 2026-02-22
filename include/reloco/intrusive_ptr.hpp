@@ -102,7 +102,7 @@ template <typename T, typename... Args>
 try_allocate_intrusive(fallible_allocator &alloc, Args &&...args) noexcept {
   auto block = alloc.allocate(sizeof(T), alignof(T));
   if (!block)
-    return std::unexpected(block.error());
+    return unexpected(block.error());
 
   T *ptr = static_cast<T *>(block->ptr);
 
@@ -111,7 +111,7 @@ try_allocate_intrusive(fallible_allocator &alloc, Args &&...args) noexcept {
     auto res = T::try_create(std::forward<Args>(args)...);
     if (!res) {
       alloc.deallocate(ptr, sizeof(T));
-      return std::unexpected(res.error());
+      return unexpected(res.error());
     }
     new (ptr) T(std::move(*res));
   } else {
@@ -140,7 +140,7 @@ try_allocate_intrusive_dynamic(fallible_allocator &alloc,
 
   auto block = alloc.allocate(actual_size, alignof(T));
   if (!block)
-    return std::unexpected(block.error());
+    return unexpected(block.error());
 
   T *ptr = static_cast<T *>(block->ptr);
 
@@ -149,7 +149,7 @@ try_allocate_intrusive_dynamic(fallible_allocator &alloc,
     auto res = T::try_create(std::forward<Args>(args)...);
     if (!res) {
       alloc.deallocate(ptr, actual_size);
-      return std::unexpected(res.error());
+      return unexpected(res.error());
     }
     new (ptr) T(std::move(*res));
   } else {

@@ -18,7 +18,7 @@ struct MockClonable {
 
   [[nodiscard]] reloco::result<MockClonable> try_clone() const noexcept {
     if (fail_on_clone) {
-      return std::unexpected(reloco::error::allocation_failed);
+      return reloco::unexpected(reloco::error::allocation_failed);
     }
     return MockClonable{value, false};
   }
@@ -198,7 +198,7 @@ TEST(RelocoVectorEmplace, HandlesTryCreate) {
     int id;
     static reloco::result<FallibleWidget> try_create(int id) noexcept {
       if (id < 0)
-        return std::unexpected(reloco::error::invalid_argument);
+        return reloco::unexpected(reloco::error::invalid_argument);
       return FallibleWidget{id};
     }
   };

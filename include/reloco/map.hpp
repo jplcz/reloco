@@ -19,12 +19,12 @@ class map {
       result<K> k_res = create_component<K>(
           std::move(k_args), std::make_index_sequence<sizeof...(KArgs)>{});
       if (!k_res)
-        return std::unexpected(k_res.error());
+        return unexpected(k_res.error());
 
       result<V> v_res = create_component<V>(
           std::move(v_args), std::make_index_sequence<sizeof...(VArgs)>{});
       if (!v_res)
-        return std::unexpected(v_res.error());
+        return unexpected(v_res.error());
 
       return MapNode(std::move(*k_res), std::move(*v_res));
     }
@@ -32,11 +32,11 @@ class map {
     [[nodiscard]] result<MapNode> try_clone() const noexcept {
       auto k_res = clone_component(key);
       if (!k_res)
-        return std::unexpected(k_res.error());
+        return unexpected(k_res.error());
 
       auto v_res = clone_component(value);
       if (!v_res)
-        return std::unexpected(v_res.error());
+        return unexpected(v_res.error());
 
       return MapNode(std::move(*k_res), std::move(*v_res));
     }
@@ -138,13 +138,13 @@ public:
     for (const auto &node : set_) {
       auto block = alloc_->allocate(sizeof(MapNode), alignof(MapNode));
       if (!block)
-        return std::unexpected(block.error());
+        return unexpected(block.error());
       MapNode *ptr = static_cast<MapNode *>(block->ptr);
 
       auto node_res = node.try_clone();
       if (!node_res) {
         alloc_->deallocate(ptr, sizeof(MapNode));
-        return std::unexpected(node_res.error());
+        return unexpected(node_res.error());
       }
 
       new (ptr) MapNode(std::move(*node_res));
@@ -158,12 +158,12 @@ public:
     // Search for existing
     auto it = set_.find(key);
     if (it != set_.end()) {
-      return std::unexpected(error::already_exists);
+      return unexpected(error::already_exists);
     }
 
     auto block = alloc_->allocate(sizeof(MapNode), alignof(MapNode));
     if (!block)
-      return std::unexpected(block.error());
+      return unexpected(block.error());
 
     MapNode *node = new (block->ptr) MapNode(std::move(key), std::move(value));
 
@@ -175,7 +175,7 @@ public:
   [[nodiscard]] result<void> try_erase(const K &key) noexcept {
     auto it = set_.find(key);
     if (it == set_.end()) {
-      return std::unexpected(error::out_of_range);
+      return unexpected(error::out_of_range);
     }
 
     // Unlink from tree and deallocate
@@ -200,7 +200,7 @@ public:
   [[nodiscard]] result<V *> try_at(const K &key) noexcept {
     auto it = find(key);
     if (it == end()) {
-      return std::unexpected(error::out_of_range);
+      return unexpected(error::out_of_range);
     }
     return &(it->value);
   }
@@ -231,7 +231,7 @@ public:
 
     auto block = alloc_->allocate(sizeof(MapNode), alignof(MapNode));
     if (!block)
-      return std::unexpected(error::allocation_failed);
+      return unexpected(error::allocation_failed);
     MapNode *ptr = static_cast<MapNode *>(block->ptr);
 
     auto res = MapNode::try_create(
@@ -239,7 +239,7 @@ public:
 
     if (!res) {
       alloc_->deallocate(ptr, sizeof(MapNode));
-      return std::unexpected(res.error());
+      return unexpected(res.error());
     }
 
     new (ptr) MapNode(std::move(*res));

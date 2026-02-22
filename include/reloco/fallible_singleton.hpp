@@ -18,7 +18,7 @@ public:
     if (!m_internal_storage) {
       auto res = m_internal_storage.try_init();
       if (!res)
-        return std::unexpected(res.error());
+        return unexpected(res.error());
     }
     return m_internal_storage.get();
   }
@@ -56,7 +56,7 @@ public:
     if (m_state.load(std::memory_order_relaxed) == UNINITIALIZED) {
       auto init_res = m_storage.try_init();
       if (!init_res) {
-        res = std::unexpected(init_res.error());
+        res = unexpected(init_res.error());
       } else {
         m_state.store(READY, std::memory_order_release);
         res = m_storage.get();

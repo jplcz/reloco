@@ -49,7 +49,7 @@ protected:
     int result = pthread_mutex_lock(m);
     if (result == 0)
       return {};
-    return std::unexpected(from_posix_errno(result));
+    return unexpected(from_posix_errno(result));
   }
 
   static result<void> do_timed_lock(pthread_mutex_t *m,
@@ -57,35 +57,35 @@ protected:
     int result = pthread_mutex_timedlock(m, abs_timeout);
     if (result == 0)
       return {};
-    return std::unexpected(from_posix_errno(result));
+    return unexpected(from_posix_errno(result));
   }
 
   static result<void> do_unlock(pthread_mutex_t *m) noexcept {
     int result = pthread_mutex_unlock(m);
     if (result == 0)
       return {};
-    return std::unexpected(from_posix_errno(result));
+    return unexpected(from_posix_errno(result));
   }
 
   static result<void> do_lock(pthread_rwlock_t *m) noexcept {
     int result = pthread_rwlock_wrlock(m);
     if (result == 0)
       return {};
-    return std::unexpected(from_posix_errno(result));
+    return unexpected(from_posix_errno(result));
   }
 
   static result<void> do_rlock(pthread_rwlock_t *m) noexcept {
     int result = pthread_rwlock_rdlock(m);
     if (result == 0)
       return {};
-    return std::unexpected(from_posix_errno(result));
+    return unexpected(from_posix_errno(result));
   }
 
   static result<void> do_unlock(pthread_rwlock_t *m) noexcept {
     int result = pthread_rwlock_unlock(m);
     if (result == 0)
       return {};
-    return std::unexpected(from_posix_errno(result));
+    return unexpected(from_posix_errno(result));
   }
 };
 
@@ -215,7 +215,7 @@ public:
 
   result<void> wait(std::unique_lock<mutex> &locker) noexcept {
     if (!locker.owns_lock())
-      return std::unexpected(error::not_locked);
+      return unexpected(error::not_locked);
     pthread_cond_wait(&m_cond, locker.mutex()->native_handle());
     return {};
   }
@@ -223,7 +223,7 @@ public:
   template <class Predicate>
   result<void> wait(std::unique_lock<mutex> &locker, Predicate pred) {
     if (!locker.owns_lock())
-      return std::unexpected(error::not_locked);
+      return unexpected(error::not_locked);
     while (!pred()) {
       pthread_cond_wait(&m_cond, locker.mutex()->native_handle());
     }

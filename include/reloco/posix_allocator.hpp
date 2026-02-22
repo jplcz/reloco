@@ -18,14 +18,14 @@ public:
 
     void *ptr = nullptr;
     if (::posix_memalign(&ptr, alignment, bytes) != 0) {
-      return std::unexpected(error::allocation_failed);
+      return unexpected(error::allocation_failed);
     }
     return mem_block{ptr, bytes};
   }
 
   result<std::size_t> expand_in_place(void *ptr, std::size_t old_size,
                                       std::size_t new_size) noexcept override {
-    return std::unexpected(error::in_place_growth_failed);
+    return unexpected(error::in_place_growth_failed);
   }
 
   result<mem_block> reallocate(void *ptr, std::size_t old_size,
@@ -40,14 +40,14 @@ public:
     if (alignment <= alignof(std::max_align_t)) {
       void *new_ptr = ::realloc(ptr, new_size);
       if (!new_ptr)
-        return std::unexpected(error::allocation_failed);
+        return unexpected(error::allocation_failed);
       return mem_block{new_ptr, new_size};
     }
 
     // We can't trust realloc for 64-byte or 4096-byte alignment.
     auto new_block_res = allocate(new_size, alignment);
     if (!new_block_res)
-      return std::unexpected(error::allocation_failed);
+      return unexpected(error::allocation_failed);
 
     void *new_ptr = new_block_res->ptr;
     std::memcpy(new_ptr, ptr, old_size);
@@ -66,12 +66,12 @@ public:
            std::size_t const alignment) noexcept override {
     if (const auto page_size = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
         alignment > page_size) {
-      return std::unexpected(error::invalid_argument);
+      return unexpected(error::invalid_argument);
     }
     void *ptr = ::mmap(nullptr, bytes, PROT_READ | PROT_WRITE,
                        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (ptr == MAP_FAILED) {
-      return std::unexpected(error::allocation_failed);
+      return unexpected(error::allocation_failed);
     }
 
     return mem_block{ptr, bytes};
@@ -83,7 +83,7 @@ public:
     const auto res =
         ::mremap(ptr, old_size, new_size, MREMAP_FIXED); // 0 means do not move
     if (res == MAP_FAILED) {
-      return std::unexpected(error::in_place_growth_failed);
+      return unexpected(error::in_place_growth_failed);
     }
     return new_size;
   }
@@ -95,7 +95,7 @@ public:
     void *new_ptr = ::mremap(ptr, old_size, new_size, MREMAP_MAYMOVE);
 
     if (new_ptr == MAP_FAILED) {
-      return std::unexpected(error::allocation_failed);
+      return unexpected(error::allocation_failed);
     }
 
     return mem_block{new_ptr, new_size};

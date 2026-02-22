@@ -29,7 +29,7 @@ make_unique_fallible(fallible_allocator &alloc, Args &&...args) noexcept {
   if constexpr (has_try_create<T, Args...>) {
     auto res = T::try_create(std::forward<Args>(args)...);
     if (!res)
-      return std::unexpected(res.error());
+      return unexpected(res.error());
 
     // We still need to move the result into a managed unique_ptr.
     // Since T was created by its own factory, it might already manage memory.
@@ -37,7 +37,7 @@ make_unique_fallible(fallible_allocator &alloc, Args &&...args) noexcept {
     // We allocate space for the object wrapper itself
     auto block = alloc.allocate(sizeof(T), alignof(T));
     if (!block)
-      return std::unexpected(error::allocation_failed);
+      return unexpected(error::allocation_failed);
 
     T *ptr = new (block->ptr) T(std::move(*res));
     return unique_ptr<T>(ptr, allocator_deleter<T>(&alloc));
@@ -46,7 +46,7 @@ make_unique_fallible(fallible_allocator &alloc, Args &&...args) noexcept {
   else {
     auto block = alloc.allocate(sizeof(T), alignof(T));
     if (!block)
-      return std::unexpected(error::allocation_failed);
+      return unexpected(error::allocation_failed);
 
     // Standard C++ constructor call
     T *ptr = new (block->ptr) T(std::forward<Args>(args)...);

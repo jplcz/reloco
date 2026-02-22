@@ -13,18 +13,18 @@ TEST_F(MutexTest, BasicLockUnlock) {
   res = m.unlock();
   EXPECT_TRUE(res.has_value());
   EXPECT_TRUE(m.try_lock()); // Should succeed now
-  m.unlock();
+  std::ignore = m.unlock();
 }
 
 TEST_F(MutexTest, ErrorCheckingDeadlock) {
   reloco::error_checking_mutex m;
-  m.lock();
+  std::ignore = m.lock();
 
   auto res = m.lock(); // Double lock on error-checking mutex
   ASSERT_FALSE(res.has_value());
   EXPECT_EQ(res.error(), reloco::error::deadlock);
 
-  m.unlock();
+  std::ignore = m.unlock();
 }
 
 TEST_F(MutexTest, RecursiveLocking) {
@@ -47,18 +47,18 @@ TEST_F(MutexTest, SharedMutexMultipleReaders) {
 
   EXPECT_FALSE(sm.try_lock()); // Writer should fail
 
-  sm.unlock_shared();
-  sm.unlock_shared();
+  std::ignore = sm.unlock_shared();
+  std::ignore = sm.unlock_shared();
 }
 
 TEST_F(MutexTest, SharedMutexWriterExclusion) {
   reloco::shared_mutex sm;
-  sm.lock(); // Exclusive lock
+  std::ignore = sm.lock(); // Exclusive lock
 
   EXPECT_FALSE(sm.try_lock_shared());
   EXPECT_FALSE(sm.try_lock());
 
-  sm.unlock();
+  std::ignore = sm.unlock();
 }
 
 TEST_F(MutexTest, ConditionVariableNotify) {
@@ -69,7 +69,7 @@ TEST_F(MutexTest, ConditionVariableNotify) {
 
   std::thread worker([&]() {
     std::unique_lock<reloco::mutex> lk(m);
-    cv.wait(lk, [&] { return ready; }); // Wait for main thread
+    std::ignore = cv.wait(lk, [&] { return ready; }); // Wait for main thread
     processed = true;
     lk.unlock();
     cv.notify_one();

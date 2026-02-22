@@ -131,14 +131,14 @@ public:
 
   [[nodiscard]] result<T *> try_get() noexcept {
     if (!m_initialized) [[unlikely]] {
-      return std::unexpected(error::not_initialized);
+      return unexpected(error::not_initialized);
     }
     return &m_storage;
   }
 
   [[nodiscard]] result<const T *> try_get() const noexcept {
     if (!m_initialized) [[unlikely]] {
-      return std::unexpected(error::not_initialized);
+      return unexpected(error::not_initialized);
     }
     return &m_storage;
   }
@@ -195,7 +195,7 @@ public:
 
     auto alloc_res = m_alloc->allocate(sizeof(T), alignof(T));
     if (!alloc_res)
-      return std::unexpected(alloc_res.error());
+      return unexpected(alloc_res.error());
 
     m_ptr = reinterpret_cast<T *>(alloc_res->ptr);
 
@@ -214,7 +214,7 @@ public:
 
   [[nodiscard]] result<T *> try_get() const noexcept {
     if (!m_ptr) [[unlikely]] {
-      return std::unexpected(error::not_initialized);
+      return unexpected(error::not_initialized);
     }
     return m_ptr;
   }
@@ -323,14 +323,14 @@ public:
 
   [[nodiscard]] result<T *> try_get() noexcept {
     if (!m_initialized) [[unlikely]] {
-      return std::unexpected(error::not_initialized);
+      return unexpected(error::not_initialized);
     }
     return reinterpret_cast<T *>(&m_storage);
   }
 
   [[nodiscard]] result<const T *> try_get() const noexcept {
     if (!m_initialized) [[unlikely]] {
-      return std::unexpected(error::not_initialized);
+      return unexpected(error::not_initialized);
     }
     return reinterpret_cast<const T *>(&m_storage);
   }

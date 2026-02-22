@@ -57,7 +57,7 @@ public:
     const auto &container = Policy<Container>::get(m_storage);
     auto cloned_container_res = container.try_clone();
     if (!cloned_container_res) {
-      return std::unexpected(cloned_container_res.error());
+      return unexpected(cloned_container_res.error());
     }
     return collection_view<Container, policy::move_owner>(
         std::move(*cloned_container_res));
@@ -160,15 +160,15 @@ struct any_view_vtable_factory {
         if constexpr (has_try_clone<ViewType>) {
           auto res = alloc.allocate(sizeof(ViewType), alignof(ViewType));
           if (!res)
-            return std::unexpected(error::allocation_failed);
+            return unexpected(error::allocation_failed);
           auto cloned = static_cast<const ViewType *>(ctx)->try_clone();
           if (!cloned.has_value()) {
             alloc.deallocate(res->ptr, res->size);
-            return std::unexpected(cloned.error());
+            return unexpected(cloned.error());
           }
           return new (res->ptr) ViewType(std::move(cloned.value()));
         } else {
-          return std::unexpected(error::unsupported_operation);
+          return unexpected(error::unsupported_operation);
         }
       }};
 };
@@ -194,7 +194,7 @@ public:
     // Fallible allocation of the erased context
     auto ctx_res = alloc.allocate(sizeof(ViewType), alignof(ViewType));
     if (!ctx_res)
-      return std::unexpected(error::allocation_failed);
+      return unexpected(error::allocation_failed);
 
     new (ctx_res->ptr) ViewType(std::move(view));
 
@@ -211,11 +211,11 @@ public:
 
   result<any_view> try_clone() const {
     if (!m_ctx || !m_vtable)
-      return std::unexpected(error::not_initialized);
+      return unexpected(error::not_initialized);
 
     auto res = m_vtable->try_clone(m_ctx, *m_alloc);
     if (!res)
-      return std::unexpected(res.error());
+      return unexpected(res.error());
 
     return any_view(*res, m_vtable, m_alloc);
   }
@@ -248,7 +248,7 @@ public:
   result<std::reference_wrapper<const Element>>
   try_at(size_t i) const noexcept {
     if (!m_ctx)
-      return std::unexpected(error::not_initialized);
+      return unexpected(error::not_initialized);
     return m_vtable->try_at(m_ctx, i);
   }
 

@@ -82,7 +82,7 @@ public:
 
   reloco::result<void>
   try_init(reloco::detail::constructor_key<FailingStaticSpy>) {
-    return std::unexpected(reloco::error::already_exists);
+    return reloco::unexpected(reloco::error::already_exists);
   }
 };
 

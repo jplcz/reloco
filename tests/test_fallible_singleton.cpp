@@ -37,8 +37,8 @@ struct InternalMutexTrait {
   using lock_type = reloco::mutex;
   static inline lock_type mtx;
 
-  static void lock(lock_type &l) { l.lock(); }
-  static void unlock(lock_type &l) { l.unlock(); }
+  static void lock(lock_type &l) { std::ignore = l.lock(); }
+  static void unlock(lock_type &l) { std::ignore = l.unlock(); }
 };
 
 } // namespace

@@ -39,7 +39,7 @@ public:
   [[nodiscard]] constexpr result<std::reference_wrapper<T>>
   try_at(size_type index) const noexcept {
     if (index >= span_.size()) [[unlikely]] {
-      return std::unexpected(error::out_of_bounds);
+      return unexpected(error::out_of_bounds);
     }
     return std::ref(span_[index]);
   }
@@ -57,12 +57,12 @@ public:
   try_subspan(size_type offset,
               size_type count = std::dynamic_extent) const noexcept {
     if (offset > span_.size())
-      return std::unexpected(error::out_of_bounds);
+      return unexpected(error::out_of_bounds);
 
     size_type actual_count =
         (count == std::dynamic_extent) ? (span_.size() - offset) : count;
     if (offset + actual_count > span_.size())
-      return std::unexpected(error::out_of_bounds);
+      return unexpected(error::out_of_bounds);
 
     return span<T>(span_.data() + offset, actual_count);
   }
@@ -93,14 +93,14 @@ public:
   [[nodiscard]] constexpr result<std::reference_wrapper<T>>
   try_front() const noexcept {
     if (empty()) [[unlikely]]
-      return std::unexpected(error::out_of_bounds);
+      return unexpected(error::out_of_bounds);
     return std::ref(span_.front());
   }
 
   [[nodiscard]] constexpr result<std::reference_wrapper<T>>
   try_back() const noexcept {
     if (empty()) [[unlikely]]
-      return std::unexpected(error::out_of_bounds);
+      return unexpected(error::out_of_bounds);
     return std::ref(span_.back());
   }
 
@@ -114,13 +114,13 @@ public:
   [[nodiscard]] constexpr result<span<T>>
   try_first(size_type n) const noexcept {
     if (n > size())
-      return std::unexpected(error::out_of_bounds);
+      return unexpected(error::out_of_bounds);
     return span<T>(span_.data(), n);
   }
 
   [[nodiscard]] constexpr result<span<T>> try_last(size_type n) const noexcept {
     if (n > size())
-      return std::unexpected(error::out_of_bounds);
+      return unexpected(error::out_of_bounds);
     return hardened_span<T>(span_.data() + (size() - n), n);
   }
 

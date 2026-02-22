@@ -172,7 +172,7 @@ TEST_F(SmartPointerTest, SeparateAllocationFailsCleanly) {
     reloco::result<reloco::mem_block> allocate(size_t b,
                                                size_t a) noexcept override {
       if (++call_count == 2)
-        return std::unexpected(reloco::error::allocation_failed);
+        return reloco::unexpected(reloco::error::allocation_failed);
       return stack_allocator::allocate(b, a);
     }
   } fail_alloc{buffer, sizeof(buffer)};

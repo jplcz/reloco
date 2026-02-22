@@ -58,7 +58,7 @@ public:
     if (initial_cap > 0) {
       auto res = v.try_reserve(initial_cap);
       if (!res)
-        return std::unexpected(res.error());
+        return unexpected(res.error());
     }
     return v;
   }
@@ -100,7 +100,7 @@ public:
       auto res = alloc_->reallocate(data_, cap_ * sizeof(T),
                                     new_cap * sizeof(T), alignof(T));
       if (!res)
-        return std::unexpected(error::allocation_failed);
+        return unexpected(error::allocation_failed);
       data_ = static_cast<T *>(res->ptr);
       cap_ = new_cap;
     }
@@ -108,7 +108,7 @@ public:
     else {
       auto res = alloc_->allocate(new_cap * sizeof(T), alignof(T));
       if (!res)
-        return std::unexpected(error::allocation_failed);
+        return unexpected(error::allocation_failed);
 
       T *new_ptr = static_cast<T *>(res->ptr);
       for (size_type i = 0; i < size_; ++i) {
@@ -128,7 +128,7 @@ public:
     if (size_ == cap_) {
       auto res = try_reserve(cap_ == 0 ? 8 : cap_ * 2);
       if (!res)
-        return std::unexpected(res.error());
+        return unexpected(res.error());
     }
 
     T *ptr = data_ + size_;
@@ -136,7 +136,7 @@ public:
     if constexpr (has_try_create<T, Args...>) {
       auto res = T::try_create(std::forward<Args>(args)...);
       if (!res) {
-        return std::unexpected(res.error());
+        return unexpected(res.error());
       }
 
       new (ptr) T(std::move(*res));
@@ -152,7 +152,7 @@ public:
     if (size_ == cap_) {
       auto res = try_reserve(cap_ == 0 ? 8 : cap_ * 2);
       if (!res)
-        return std::unexpected(res.error());
+        return unexpected(res.error());
     }
 
     T *ptr = new (data_ + size_) T(std::move(val));
@@ -162,7 +162,7 @@ public:
 
   [[nodiscard]] result<void> try_pop_back() noexcept {
     if (size_ == 0)
-      return std::unexpected(error::out_of_range);
+      return unexpected(error::out_of_range);
     --size_;
     if constexpr (!std::is_trivially_destructible_v<T>) {
       data_[size_].~T();
@@ -189,7 +189,7 @@ public:
     vector clone(*alloc_);
     auto res = clone.try_reserve(size_);
     if (!res)
-      return std::unexpected(res.error());
+      return unexpected(res.error());
 
     if constexpr (!has_try_clone<T> && std::is_trivially_copyable_v<T>) {
       // FAST PATH: Single memcpy for the entire range
@@ -202,14 +202,14 @@ public:
         if constexpr (has_try_clone<T>) {
           auto item_res = data_[i].try_clone();
           if (!item_res)
-            return std::unexpected(item_res.error());
+            return unexpected(item_res.error());
           auto item_res_push = clone.try_push_back(std::move(*item_res));
           if (!item_res_push)
-            return std::unexpected(item_res.error());
+            return unexpected(item_res.error());
         } else {
           auto item_res = clone.try_push_back(T(data_[i]));
           if (!item_res)
-            return std::unexpected(item_res.error());
+            return unexpected(item_res.error());
         }
       }
     }
@@ -218,7 +218,7 @@ public:
 
   [[nodiscard]] result<void> try_erase(size_type pos) noexcept {
     if (pos >= size_)
-      return std::unexpected(error::out_of_range);
+      return unexpected(error::out_of_range);
 
     if constexpr (!std::is_trivially_destructible_v<T>) {
       data_[pos].~T();
@@ -243,14 +243,14 @@ public:
   template <typename... Args>
   [[nodiscard]] result<T *> try_insert(size_type pos, Args &&...args) noexcept {
     if (pos > size_) {
-      return std::unexpected(error::out_of_range);
+      return unexpected(error::out_of_range);
     }
 
     // Ensure capacity
     if (size_ == cap_) {
       auto res = try_reserve(cap_ == 0 ? 8 : cap_ * 2);
       if (!res) {
-        return std::unexpected(res.error());
+        return unexpected(res.error());
       }
     }
 
@@ -282,27 +282,27 @@ public:
 
   result<const value_type *> try_data() const noexcept {
     if (empty())
-      return std::unexpected(error::container_empty);
+      return unexpected(error::container_empty);
     return data_;
   }
 
   result<value_type *> try_data() noexcept {
     if (empty())
-      return std::unexpected(error::container_empty);
+      return unexpected(error::container_empty);
     return data_;
   }
 
   [[nodiscard]] result<std::reference_wrapper<const T>>
   try_at(const size_t index) const noexcept {
     if (index >= size_)
-      return std::unexpected(error::out_of_range);
+      return unexpected(error::out_of_range);
     return std::ref(data_[index]);
   }
 
   [[nodiscard]] result<std::reference_wrapper<T>>
   try_at(const size_t index) noexcept {
     if (index >= size_)
-      return std::unexpected(error::out_of_range);
+      return unexpected(error::out_of_range);
     return std::ref(data_[index]);
   }
 

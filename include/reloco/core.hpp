@@ -1,6 +1,6 @@
 #pragma once
 #include <cstddef>
-#include <expected>
+#include <reloco/expected.hpp>
 #include <system_error>
 
 namespace reloco {
@@ -26,7 +26,7 @@ enum class error : int {
   container_empty
 };
 
-template <typename T> using result = std::expected<T, error>;
+template <typename T> using result = expected<T, error>;
 
 struct mem_block {
   void *ptr;

@@ -20,7 +20,7 @@ struct FallibleType {
   static reloco::result<FallibleType> try_create(int val) noexcept {
     try_create_called = true;
     if (val < 0)
-      return std::unexpected(reloco::error::allocation_failed);
+      return reloco::unexpected(reloco::error::allocation_failed);
     return FallibleType{val};
   }
 };
