@@ -22,7 +22,8 @@ enum class error : int {
   not_locked,
   timed_out,
   try_again,
-  not_initialized
+  not_initialized,
+  container_empty
 };
 
 template <typename T> using result = std::expected<T, error>;

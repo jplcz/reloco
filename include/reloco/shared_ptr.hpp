@@ -1,5 +1,6 @@
 #pragma once
 #include <reloco/allocator.hpp>
+#include <reloco/assert.hpp>
 #include <reloco/concepts.hpp>
 #include <reloco/core.hpp>
 
@@ -145,9 +146,26 @@ public:
     return *this;
   }
 
-  T *operator->() const noexcept { return ptr_; }
-  T &operator*() const noexcept { return *(ptr_); }
+  T *operator->() const noexcept {
+    RELOCO_ASSERT(ptr_);
+    return ptr_;
+  }
+
+  T &operator*() const noexcept {
+    RELOCO_ASSERT(ptr_);
+    return *(ptr_);
+  }
+
   T *get() const noexcept { return ptr_; }
+
+  T *unsafe_get() const noexcept { return ptr_; }
+
+  result<T *> try_get() const noexcept {
+    if (!ptr_)
+      return std::unexpected(error::empty_pointer);
+    return ptr_;
+  }
+
   explicit operator bool() const noexcept { return ptr_ != nullptr; }
 
   std::size_t use_count() const noexcept {

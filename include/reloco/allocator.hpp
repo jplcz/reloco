@@ -1,3 +1,4 @@
+#pragma once
 #include <reloco/posix_allocator.hpp>
 
 namespace reloco {

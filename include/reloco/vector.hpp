@@ -2,6 +2,7 @@
 #include <initializer_list>
 #include <iterator>
 #include <reloco/allocator.hpp>
+#include <reloco/assert.hpp>
 #include <reloco/concepts.hpp>
 #include <span>
 
@@ -279,11 +280,63 @@ public:
     return ptr;
   }
 
-  [[nodiscard]] result<T *> try_at(const size_t index) noexcept {
+  result<const value_type *> try_data() const noexcept {
+    if (empty())
+      return std::unexpected(error::container_empty);
+    return data_;
+  }
+
+  result<value_type *> try_data() noexcept {
+    if (empty())
+      return std::unexpected(error::container_empty);
+    return data_;
+  }
+
+  [[nodiscard]] result<std::reference_wrapper<const T>>
+  try_at(const size_t index) const noexcept {
     if (index >= size_)
       return std::unexpected(error::out_of_range);
-    return &data_[index];
+    return std::ref(data_[index]);
   }
+
+  [[nodiscard]] result<std::reference_wrapper<T>>
+  try_at(const size_t index) noexcept {
+    if (index >= size_)
+      return std::unexpected(error::out_of_range);
+    return std::ref(data_[index]);
+  }
+
+  [[nodiscard]] const T &at(const size_t index) const noexcept {
+    RELOCO_ASSERT(index < size_, "Vector index out of bounds");
+    return data_[index];
+  }
+
+  [[nodiscard]] T &at(const size_t index) noexcept {
+    RELOCO_ASSERT(index < size_, "Vector index out of bounds");
+    return data_[index];
+  }
+
+  [[nodiscard]] const T &unsafe_at(const size_t index) const noexcept {
+    return data_[index];
+  }
+
+  [[nodiscard]] T &unsafe_at(const size_t index) noexcept {
+    return data_[index];
+  }
+
+  value_type *data() noexcept {
+    RELOCO_ASSERT(!empty());
+    return data_;
+  }
+
+  const value_type *data() const noexcept {
+    RELOCO_ASSERT(!empty());
+    return data_;
+  }
+
+  value_type *unsafe_data() noexcept { return data_; }
+
+  const value_type *unsafe_data() const noexcept { return data_; }
 };
 
 template <typename T, typename A>
