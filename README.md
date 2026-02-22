@@ -168,7 +168,6 @@ include(FetchContent)
 FetchContent_Declare(
 reloco
 GIT_REPOSITORY https://github.com/jplcz/reloco.git
-GIT_TAG        master
 )
 
 FetchContent_MakeAvailable(reloco)
