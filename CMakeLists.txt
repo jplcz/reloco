@@ -73,6 +73,7 @@ if(RELOCO_BUILD_TESTS)
         tests/test_array.cpp
         tests/test_mutex.cpp
         tests/test_fallible_constructed.cpp
+        tests/test_fallible_singleton.cpp
     )
 
     if(Boost_FOUND)

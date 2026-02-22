@@ -98,6 +98,10 @@ There are 3 variants:
   except destructor is not generated to bypass ``__cxa_atexit`` dependency. This class
   must be used only for e.g. global statics where destructors don't matter
 
+5. Fallible singletons
+
+[Fallible singletons](docs/fallible_singleton.md)
+
 ### Important Note on Movable Objects
 
 When working with movable types, keep the following lifecycle rules in mind:
