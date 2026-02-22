@@ -72,6 +72,7 @@ if(RELOCO_BUILD_TESTS)
         tests/test_span.cpp
         tests/test_array.cpp
         tests/test_mutex.cpp
+        tests/test_fallible_constructed.cpp
     )
 
     if(Boost_FOUND)

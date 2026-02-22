@@ -11,8 +11,8 @@ template <is_fallible_initializable T> class fallible_allocated;
 namespace detail {
 template <typename T> class constructor_key {
   // Only these two classes can construct a key
-  template <is_fallible_initializable U> friend class fallible_constructed;
-  template <is_fallible_initializable U> friend class fallible_allocated;
+  template <is_fallible_initializable U> friend class reloco::fallible_constructed;
+  template <is_fallible_initializable U> friend class reloco::fallible_allocated;
   constexpr constructor_key() noexcept = default;
 };
 } // namespace detail
@@ -70,7 +70,7 @@ public:
 
     T *obj = new (&m_storage) T(detail::constructor_key<T>{});
 
-    auto res = obj->try_init();
+    auto res = obj->try_init(detail::constructor_key<T>{});
     if (!res) {
       obj->~T();
       return res;
@@ -192,7 +192,7 @@ public:
 
     new (m_ptr) T(detail::constructor_key<T>{});
 
-    auto init_res = m_ptr->try_init();
+    auto init_res = m_ptr->try_init(detail::constructor_key<T>{});
     if (!init_res) {
       m_ptr->~T();
       m_alloc->deallocate(m_ptr, sizeof(T));
