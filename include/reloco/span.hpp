@@ -17,7 +17,9 @@ public:
   using size_type = base_t::size_type;
   using difference_type = base_t::difference_type;
   using pointer = base_t::pointer;
+#if __cplusplus > 202002L
   using const_pointer = base_t::const_iterator;
+#endif
   using reference = base_t::reference;
   using const_reference = base_t::const_reference;
   using iterator = base_t::iterator;
@@ -57,12 +59,12 @@ public:
   try_subspan(size_type offset,
               size_type count = std::dynamic_extent) const noexcept {
     if (offset > span_.size())
-      return unexpected(error::out_of_bounds);
+      return reloco::unexpected(error::out_of_bounds);
 
     size_type actual_count =
         (count == std::dynamic_extent) ? (span_.size() - offset) : count;
     if (offset + actual_count > span_.size())
-      return unexpected(error::out_of_bounds);
+      return reloco::unexpected(error::out_of_bounds);
 
     return span<T>(span_.data() + offset, actual_count);
   }
@@ -78,12 +80,14 @@ public:
 
   [[nodiscard]] constexpr iterator begin() noexcept { return span_.begin(); }
   [[nodiscard]] constexpr iterator end() noexcept { return span_.end(); }
+#if __cplusplus > 202002L
   [[nodiscard]] constexpr const_iterator begin() const noexcept {
     return span_.begin();
   }
   [[nodiscard]] constexpr const_iterator end() const noexcept {
     return span_.end();
   }
+#endif
   [[nodiscard]] constexpr reverse_iterator rbegin() noexcept {
     return span_.rbegin();
   }

@@ -9,7 +9,7 @@ option(RELOCO_ENABLE_INSTALL "Enable project install" ON)
 add_library(reloco INTERFACE)
 add_library(reloco::reloco ALIAS reloco)
 
-target_compile_features(reloco INTERFACE cxx_std_23)
+target_compile_features(reloco INTERFACE cxx_std_20)
 
 target_include_directories(reloco INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -87,7 +87,7 @@ if(RELOCO_BUILD_TESTS)
     endif()
 
     target_link_libraries(reloco_tests PRIVATE reloco::reloco GTest::gtest_main Threads::Threads)
-    target_compile_features(reloco_tests INTERFACE cxx_std_23)
+    target_compile_features(reloco_tests INTERFACE cxx_std_20)
 
     include(GoogleTest)
     gtest_discover_tests(reloco_tests)

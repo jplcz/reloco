@@ -146,7 +146,7 @@ target_include_directories(my_project PRIVATE path/to/reloco/include)
 
 Reloco exports a modern CMake target named ``reloco::reloco``. 
 Using this target automatically handles header include paths and 
-required C++23 compiler features.
+required C++20 compiler features.
 
 1. Basic Integration (Find Package)
 
@@ -177,7 +177,7 @@ target_link_libraries(my_app PRIVATE reloco::reloco)
 
 ## Requirements
 
-* Compiler: C++23 compliant
+* Compiler: C++20 compliant
 
 * Standard Library
 
