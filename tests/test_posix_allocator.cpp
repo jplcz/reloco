@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 #include <reloco/posix_allocator.hpp>
 
+#ifndef _WIN32
 class PosixAllocatorTest : public ::testing::Test {
 protected:
   reloco::posix_allocator alloc;
@@ -73,3 +74,4 @@ TEST_F(PosixAllocatorTest, AdviseDoesNotCrash) {
 
   alloc.deallocate(block->ptr, 4096);
 }
+#endif

@@ -3,7 +3,7 @@
 #include <vector>
 
 TEST(StlBridgeTest, ThrowsOnOOM) {
-  reloco::posix_allocator pa;
+  reloco::core_allocator pa;
   reloco::stl_bridge_allocator<int> bridge(pa);
 
   // Attempt an impossible allocation through the bridge
@@ -13,7 +13,7 @@ TEST(StlBridgeTest, ThrowsOnOOM) {
 }
 
 TEST(StlBridgeTest, CompatibleWithStdVector) {
-  reloco::posix_allocator pa;
+  reloco::core_allocator pa;
   std::vector<int, reloco::stl_bridge_allocator<int>> vec(
       (reloco::stl_bridge_allocator<int>(pa)));
 
