@@ -76,6 +76,7 @@ if(RELOCO_BUILD_TESTS)
         tests/test_fallible_singleton.cpp
         tests/test_collection_view.cpp
         tests/test_function.cpp
+        tests/test_flat_set.cpp
     )
 
     if(Boost_FOUND)

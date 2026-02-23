@@ -23,7 +23,8 @@ enum class error : int {
   timed_out,
   try_again,
   not_initialized,
-  container_empty
+  container_empty,
+  not_found
 };
 
 template <typename T> using result = expected<T, error>;

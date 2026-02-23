@@ -4,66 +4,82 @@
 
 namespace reloco {
 
-template <typename T> class allocator_deleter {
-  fallible_allocator *alloc_;
+template <typename T> class [[nodiscard]] unique_ptr {
+  T *m_ptr = nullptr;
+  fallible_allocator *m_alloc = nullptr;
 
 public:
-  constexpr explicit allocator_deleter(fallible_allocator *a) noexcept
-      : alloc_(a) {}
+  template <typename... Args>
+  static auto try_allocate(fallible_allocator &alloc, Args &&...args) noexcept
+      -> result<unique_ptr<T>> {
+    if constexpr (has_try_create<T, Args...>) {
+      auto created_res = T::try_create(std::forward<Args>(args)...);
+      if (!created_res)
+        return unexpected(created_res.error());
+      auto res = alloc.allocate(sizeof(T), alignof(T));
+      if (!res)
+        return unexpected(res.error());
+      return unique_ptr<T>(new (res->ptr) T(std::move(*created_res)), &alloc);
+    } else {
+      auto res = alloc.allocate(sizeof(T), alignof(T));
+      if (!res)
+        return unexpected(res.error());
 
-  void operator()(T *ptr) const noexcept {
-    if (ptr && alloc_) {
-      std::destroy_at(ptr);
-      alloc_->deallocate(ptr, sizeof(T));
+      return unique_ptr<T>(new (res->ptr) T(std::forward<Args>(args)...),
+                           &alloc);
     }
   }
+
+  template <typename... Args>
+  static auto try_create(Args &&...args) noexcept -> result<unique_ptr<T>> {
+    return try_allocate(get_default_allocator(), std::forward<Args>(args)...);
+  }
+
+  constexpr unique_ptr() noexcept = default;
+
+  constexpr unique_ptr(unique_ptr &&other) noexcept
+      : m_ptr(other.m_ptr), m_alloc(other.m_alloc) {
+    other.m_ptr = nullptr;
+  }
+
+  unique_ptr &operator=(unique_ptr &&other) noexcept {
+    if (this != &other) {
+      reset();
+      m_ptr = other.m_ptr;
+      m_alloc = other.m_alloc;
+      other.m_ptr = nullptr;
+    }
+    return *this;
+  }
+
+  ~unique_ptr() noexcept { reset(); }
+
+  T &operator*() const noexcept {
+    RELOCO_ASSERT(m_ptr, "Dereference of null unique_ptr");
+    return *m_ptr;
+  }
+
+  T *operator->() const noexcept {
+    RELOCO_ASSERT(m_ptr, "Access of null unique_ptr");
+    return m_ptr;
+  }
+
+  explicit operator bool() const noexcept { return m_ptr != nullptr; }
+  T *get() const noexcept { return m_ptr; }
+
+  void reset() noexcept {
+    if (m_ptr) {
+      m_ptr->~T();
+      m_alloc->deallocate(m_ptr, sizeof(T));
+      m_ptr = nullptr;
+    }
+  }
+
+private:
+  constexpr unique_ptr(T *ptr, fallible_allocator *alloc) noexcept
+      : m_ptr(ptr), m_alloc(alloc) {}
 };
 
-template <typename T>
-using unique_ptr = std::unique_ptr<T, allocator_deleter<T>>;
-
-template <typename T, typename... Args>
-[[nodiscard]] result<unique_ptr<T>>
-make_unique_fallible(fallible_allocator &alloc, Args &&...args) noexcept {
-  // The object provides its own fallible factory
-  if constexpr (has_try_create<T, Args...>) {
-    auto res = T::try_create(std::forward<Args>(args)...);
-    if (!res)
-      return unexpected(res.error());
-
-    // We still need to move the result into a managed unique_ptr.
-    // Since T was created by its own factory, it might already manage memory.
-
-    // We allocate space for the object wrapper itself
-    auto block = alloc.allocate(sizeof(T), alignof(T));
-    if (!block)
-      return unexpected(error::allocation_failed);
-
-    T *ptr = new (block->ptr) T(std::move(*res));
-    return unique_ptr<T>(ptr, allocator_deleter<T>(&alloc));
-  }
-  // Standard fallible allocation + Placement New
-  else {
-    auto block = alloc.allocate(sizeof(T), alignof(T));
-    if (!block)
-      return unexpected(error::allocation_failed);
-
-    // Standard C++ constructor call
-    T *ptr = new (block->ptr) T(std::forward<Args>(args)...);
-    return unique_ptr<T>(ptr, allocator_deleter<T>(&alloc));
-  }
-}
-
-template <typename T, typename... Args>
-[[nodiscard]] result<unique_ptr<T>> make_unique(Args &&...args) noexcept {
-  return make_unique_fallible<T>(get_default_allocator(),
-                                 std::forward<Args>(args)...);
-}
-
-template <typename T, typename D>
-struct is_relocatable<std::unique_ptr<T, D>> : std::true_type {};
-
-template <typename T>
-struct is_relocatable<reloco::unique_ptr<T>> : std::true_type {};
+template <typename T> struct is_relocatable<unique_ptr<T>> : std::true_type {};
 
 } // namespace reloco

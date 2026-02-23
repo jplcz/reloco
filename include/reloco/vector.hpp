@@ -3,20 +3,21 @@
 #include <iterator>
 #include <reloco/allocator.hpp>
 #include <reloco/assert.hpp>
+#include <reloco/collection_view.hpp>
 #include <reloco/concepts.hpp>
 #include <span>
 
 namespace reloco {
 
-template <typename T, typename Alloc = core_allocator> class vector {
-  Alloc *alloc_;
+template <typename T> class vector {
+  fallible_allocator *alloc_;
   T *data_ = nullptr;
   std::size_t size_ = 0;
   std::size_t cap_ = 0;
 
 public:
   using value_type = T;
-  using allocator_type = Alloc;
+  using allocator_type = fallible_allocator;
   using size_type = std::size_t;
   using difference_type = std::ptrdiff_t;
   using reference = T &;
@@ -29,7 +30,7 @@ public:
   using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
   vector() noexcept : alloc_(&get_default_allocator()) {}
-  explicit vector(Alloc &a) noexcept : alloc_(&a) {}
+  explicit vector(fallible_allocator &a) noexcept : alloc_(&a) {}
 
   // Move-only
   vector(const vector &) = delete;
@@ -53,14 +54,19 @@ public:
     }
   }
 
-  static result<vector> try_create(std::size_t initial_cap = 0) noexcept {
-    vector v;
+  static result<vector> try_allocate(fallible_allocator &alloc,
+                                     ::size_t initial_cap = 0) noexcept {
+    vector v{alloc};
     if (initial_cap > 0) {
       auto res = v.try_reserve(initial_cap);
       if (!res)
         return unexpected(res.error());
     }
     return v;
+  }
+
+  static result<vector> try_create(std::size_t initial_cap = 0) noexcept {
+    return try_allocate(get_default_allocator(), initial_cap);
   }
 
   iterator begin() noexcept { return data_; }
@@ -80,6 +86,7 @@ public:
   const_reverse_iterator rend() const noexcept {
     return const_reverse_iterator(begin());
   }
+  fallible_allocator *get_allocator() const noexcept { return alloc_; }
 
   [[nodiscard]] result<void> try_reserve(const size_type new_cap) noexcept {
     if (new_cap <= cap_)
@@ -337,12 +344,18 @@ public:
   value_type *unsafe_data() noexcept { return data_; }
 
   const value_type *unsafe_data() const noexcept { return data_; }
+
+  /**
+   * Construct non-owning view of this vector
+   */
+  result<any_view<T>> as_view() noexcept {
+    return any_view<T>::try_create(
+        collection_view<vector<T>, policy::non_owner>(this), *alloc_);
+  }
 };
 
-template <typename T, typename A>
-struct is_relocatable<vector<T, A>> : is_relocatable<T> {};
+template <typename T> struct is_relocatable<vector<T>> : std::true_type {};
 
-template <typename T, typename A>
-struct is_fallible_type<vector<T, A>> : std::true_type {};
+template <typename T> struct is_fallible_type<vector<T>> : std::true_type {};
 
 } // namespace reloco

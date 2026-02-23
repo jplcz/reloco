@@ -271,4 +271,10 @@ private:
   explicit function(FuncPtr fp) : m_ptr(fp) {}
 };
 
+template <typename R, typename... Args>
+struct is_relocatable<function<R (*)(Args...)>> : std::true_type {};
+
+template <typename R, typename... Args>
+class is_relocatable<function<R(Args...)>> : std::false_type {};
+
 } // namespace reloco

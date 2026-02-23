@@ -7,14 +7,14 @@ protected:
 };
 
 TEST_F(MakeUniqueTest, StandardTypeCreation) {
-  auto res = reloco::make_unique<int>(42);
+  auto res = reloco::unique_ptr<int>::try_create(42);
   ASSERT_TRUE(res.has_value());
   EXPECT_EQ(**res, 42);
 }
 
 struct FallibleType {
   int value;
-  static bool try_create_called;
+  static inline thread_local bool try_create_called = false;
 
   // The Fallible Protocol
   static reloco::result<FallibleType> try_create(int val) noexcept {
@@ -25,12 +25,10 @@ struct FallibleType {
   }
 };
 
-bool FallibleType::try_create_called = false;
-
 TEST_F(MakeUniqueTest, DispatchesToTryCreate) {
   FallibleType::try_create_called = false;
 
-  auto res = reloco::make_unique<FallibleType>(100);
+  auto res = reloco::unique_ptr<FallibleType>::try_create(100);
 
   ASSERT_TRUE(res.has_value());
   EXPECT_TRUE(FallibleType::try_create_called);
@@ -38,7 +36,10 @@ TEST_F(MakeUniqueTest, DispatchesToTryCreate) {
 }
 
 TEST_F(MakeUniqueTest, HandlesTryCreateFailure) {
-  auto res = reloco::make_unique<FallibleType>(-1); // Should trigger failure
+  FallibleType::try_create_called = false;
+
+  auto res = reloco::unique_ptr<FallibleType>::try_create(
+      -1); // Should trigger failure
 
   EXPECT_FALSE(res.has_value());
 }
@@ -49,7 +50,7 @@ TEST_F(MakeUniqueTest, RespectsExtendedAlignment) {
     float data[16];
   };
 
-  auto res = reloco::make_unique<AlignedType>();
+  auto res = reloco::unique_ptr<AlignedType>::try_create();
 
   ASSERT_TRUE(res.has_value());
   auto ptr_val = reinterpret_cast<std::uintptr_t>(res->get());
@@ -64,7 +65,7 @@ TEST_F(MakeUniqueTest, DestructorAndDeallocatorCalled) {
   };
 
   {
-    auto res = reloco::make_unique<Tracker>();
+    auto res = reloco::unique_ptr<Tracker>::try_create();
     ASSERT_TRUE(res.has_value());
     destructor_called = false;
   } // unique_ptr goes out of scope here
@@ -72,26 +73,7 @@ TEST_F(MakeUniqueTest, DestructorAndDeallocatorCalled) {
   EXPECT_TRUE(destructor_called);
 }
 
-TEST_F(MakeUniqueTest, UsesCoreAllocatorByDefault) {
-  auto res = reloco::make_unique<double>(3.14);
-
-  ASSERT_TRUE(res.has_value());
-  EXPECT_EQ(**res, 3.14);
-
-  // Check if the type of the deleter matches our core_allocator
-  static_assert(
-      std::is_same_v<typename reloco::unique_ptr<double>::deleter_type,
-                     reloco::allocator_deleter<double>>);
-}
-
 TEST_F(MakeUniqueTest, UniquePtrIsRelocatable) {
-  // Verify our alias
   EXPECT_TRUE(reloco::is_relocatable<reloco::unique_ptr<int>>::value);
-
-  // Verify standard unique_ptr
-  EXPECT_TRUE(reloco::is_relocatable<std::unique_ptr<int>>::value);
-
-  // Counter-test: std::string might not be (depending on implementation)
-  // but a raw int always is.
   EXPECT_TRUE(reloco::is_relocatable<int>::value);
 }
