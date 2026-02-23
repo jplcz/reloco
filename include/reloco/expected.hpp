@@ -73,13 +73,6 @@ public:
   constexpr expected(const unexpected<E> &err) noexcept
       : m_error(err.value()), m_has_value(false) {}
 
-  template <typename U = T>
-    requires (std::is_nothrow_copy_constructible_v<U> &&
-                 !std::is_base_of_v<expected_tag_t, U>)
-             constexpr expected(const U &val) noexcept
-      : m_value(val),
-  m_has_value(true) {}
-
   ~expected() noexcept {
     if (m_has_value)
       m_value.~T();
