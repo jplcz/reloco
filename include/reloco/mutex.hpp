@@ -1,14 +1,20 @@
 #pragma once
 #include <chrono>
 #include <mutex>
-#include <pthread.h>
 #include <reloco/config.hpp>
 #include <reloco/core.hpp>
 #include <reloco/fallible_constructed.hpp>
+
+#if defined(_WIN32)
+#include <windows.h>
+#else
+#include <pthread.h>
 #include <time.h>
+#endif
 
 namespace reloco {
 
+#if !defined(_WIN32)
 class mutex_base {
 protected:
   struct defer_init_t {};
@@ -239,5 +245,67 @@ public:
 private:
   pthread_cond_t m_cond = PTHREAD_COND_INITIALIZER;
 };
+#else
+class mutex {
+public:
+  using native_handle_type = SRWLOCK *;
+
+  constexpr mutex() noexcept : m_mutex(SRWLOCK_INIT) {}
+
+  mutex(const mutex &) = delete;
+  mutex &operator=(const mutex &) = delete;
+
+  result<void> lock() noexcept {
+    AcquireSRWLockExclusive(&m_lock);
+    return {};
+  }
+
+  result<void> unlock() noexcept {
+    ReleaseSRWLockExclusive(&m_lock);
+    return {};
+  }
+
+  [[nodiscard]] bool try_lock() noexcept {
+    return TryAcquireSRWLockExclusive(&m_lock) != 0;
+  }
+
+  native_handle_type native_handle() noexcept { return &m_mutex; }
+
+protected:
+  mutex(defer_init_t) noexcept {}
+
+  SRWLOCK m_mutex;
+};
+
+class condition_variable {
+  CONDITION_VARIABLE m_cv = CONDITION_VARIABLE_INIT;
+
+public:
+  condition_variable() noexcept = default;
+
+  void notify_one() noexcept { WakeConditionVariable(&m_cv); }
+
+  void notify_all() noexcept { WakeAllConditionVariable(&m_cv); }
+
+  result<void> wait(std::unique_lock<mutex> &locker) noexcept {
+    if (!locker.owns_lock())
+      return unexpected(error::not_locked);
+    SleepConditionVariableSRW(&m_cv, locker.mutex()->native_handle(), INFINITE,
+                              0);
+    return {};
+  }
+
+  template <class Predicate>
+  result<void> wait(std::unique_lock<mutex> &locker, Predicate pred) {
+    if (!locker.owns_lock())
+      return unexpected(error::not_locked);
+    while (!pred()) {
+      SleepConditionVariableSRW(&m_cv, locker.mutex()->native_handle(),
+                                INFINITE, 0);
+    }
+    return {};
+  }
+};
+#endif
 
 } // namespace reloco
