@@ -14,8 +14,8 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - { name: "Linux GCC 13", os: ubuntu-latest, cc: gcc-13, cxx: g++-13 }
-          - { name: "Linux Clang 19", os: ubuntu-latest, cc: clang-20, cxx: clang++-20 }
+          - { name: "Linux GCC 14", os: ubuntu-latest, cc: gcc-14, cxx: g++-14 }
+          - { name: "Linux Clang 20", os: ubuntu-latest, cc: clang-20, cxx: clang++-20 }
           - { name: "Windows MSVC 2022", os: windows-2022, cc: cl, cxx: cl }
 
     steps:
@@ -26,8 +26,8 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          if [ "${{ matrix.config.cc }}" = "gcc-13" ]; then
-            sudo apt-get install -y gcc-13 g++-13
+          if [ "${{ matrix.config.cc }}" = "gcc-14" ]; then
+            sudo apt-get install -y gcc-14 g++-14
           else
             # Install Clang 20
             wget https://apt.llvm.org/llvm.sh
@@ -37,12 +37,9 @@ jobs:
           fi
 
       - name: Configure CMake
-        # Enforce C++20 and build tests
         run: >
           cmake -S . -B build \
           -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_CXX_STANDARD=20 \
-          -DCMAKE_CXX_STANDARD_REQUIRED=ON \
           -DRELOCO_BUILD_TESTS=ON \
           -G Ninja
         env:
