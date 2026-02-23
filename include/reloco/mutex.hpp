@@ -246,7 +246,12 @@ private:
   pthread_cond_t m_cond = PTHREAD_COND_INITIALIZER;
 };
 #else
-class mutex {
+class mutex_base {
+protected:
+  struct defer_init_t {};
+};
+
+class mutex : public mutex_base {
 public:
   using native_handle_type = SRWLOCK *;
 

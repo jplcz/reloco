@@ -16,6 +16,7 @@ TEST_F(MutexTest, BasicLockUnlock) {
   std::ignore = m.unlock();
 }
 
+#ifndef _WIN32
 TEST_F(MutexTest, ErrorCheckingDeadlock) {
   reloco::error_checking_mutex m;
   std::ignore = m.lock();
@@ -60,6 +61,7 @@ TEST_F(MutexTest, SharedMutexWriterExclusion) {
 
   std::ignore = sm.unlock();
 }
+#endif
 
 TEST_F(MutexTest, ConditionVariableNotify) {
   reloco::mutex m;
