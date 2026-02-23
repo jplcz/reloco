@@ -255,7 +255,7 @@ class mutex : public mutex_base {
 public:
   using native_handle_type = SRWLOCK *;
 
-  constexpr mutex() noexcept : m_mutex(SRWLOCK_INIT) {}
+  constexpr mutex() noexcept : m_lock(SRWLOCK_INIT) {}
 
   mutex(const mutex &) = delete;
   mutex &operator=(const mutex &) = delete;
@@ -274,12 +274,12 @@ public:
     return TryAcquireSRWLockExclusive(&m_lock) != 0;
   }
 
-  native_handle_type native_handle() noexcept { return &m_mutex; }
+  native_handle_type native_handle() noexcept { return &m_lock; }
 
 protected:
   mutex(defer_init_t) noexcept {}
 
-  SRWLOCK m_mutex;
+  SRWLOCK m_lock;
 };
 
 class condition_variable {
@@ -310,6 +310,26 @@ public:
     }
     return {};
   }
+};
+
+class recursive_mutex {
+  CRITICAL_SECTION m_cs;
+
+public:
+  recursive_mutex() noexcept { InitializeCriticalSectionEx(&m_cs, 4000, 0); }
+
+  ~recursive_mutex() noexcept { DeleteCriticalSection(&m_cs); }
+
+  recursive_mutex(const recursive_mutex &) = delete;
+  recursive_mutex &operator=(const recursive_mutex &) = delete;
+
+  void lock() noexcept { EnterCriticalSection(&m_cs); }
+
+  bool try_lock() noexcept { return TryEnterCriticalSection(&m_cs) != 0; }
+
+  void unlock() noexcept { LeaveCriticalSection(&m_cs); }
+
+  CRITICAL_SECTION *native_handle() noexcept { return &m_cs; }
 };
 #endif
 
