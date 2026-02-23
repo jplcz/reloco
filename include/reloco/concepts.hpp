@@ -11,7 +11,7 @@ concept has_try_create = requires(Args &&...args) {
 };
 
 template <typename T, typename... Args>
-concept can_try_allocate = requires(fallible_allocator &alloc, Args &&...args) {
+concept has_try_allocate = requires(fallible_allocator &alloc, Args &&...args) {
   {
     T::try_allocate(alloc, std::forward<Args>(args)...)
   } -> std::same_as<result<T>>;

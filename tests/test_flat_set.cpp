@@ -24,7 +24,7 @@ TEST(FlatSetTest, SortingAndUniqueness) {
 TEST(FlatSetTest, FlatSetSatisfiesCreationPatterns) {
   using SetType = reloco::flat_set<int>;
 
-  static_assert(reloco::can_try_allocate<SetType, size_t>);
+  static_assert(reloco::has_try_allocate<SetType, size_t>);
   static_assert(reloco::has_try_create<SetType, size_t>);
 
   // Test Allocate
