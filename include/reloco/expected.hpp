@@ -16,7 +16,10 @@ public:
 
 template <typename E> unexpected(E) -> unexpected<E>;
 
-template <typename T, typename E> class [[nodiscard]] expected {
+struct expected_tag_t {};
+
+template <typename T, typename E>
+class [[nodiscard]] expected : expected_tag_t {
   static_assert(std::is_nothrow_move_constructible_v<T>,
                 "T must be nothrow move constructible");
   static_assert(std::is_nothrow_move_constructible_v<E>,
@@ -40,10 +43,6 @@ public:
 
   constexpr expected(T &&val) noexcept
       : m_value(std::move(val)), m_has_value(true) {}
-
-  template <typename U = T>
-    requires std::is_nothrow_copy_constructible_v<U>
-  constexpr expected(const U &val) noexcept : m_value(val), m_has_value(true) {}
 
   template <typename U>
     requires std::is_constructible_v<T, U &&>
@@ -73,6 +72,13 @@ public:
       : m_error(std::move(err.value())), m_has_value(false) {}
   constexpr expected(const unexpected<E> &err) noexcept
       : m_error(err.value()), m_has_value(false) {}
+
+  template <typename U = T>
+    requires (std::is_nothrow_copy_constructible_v<U> &&
+                 !std::is_base_of_v<expected_tag_t, U>)
+             constexpr expected(const U &val) noexcept
+      : m_value(val),
+  m_has_value(true) {}
 
   ~expected() noexcept {
     if (m_has_value)
