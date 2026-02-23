@@ -187,6 +187,9 @@ public:
 
   ~shared_mutex() noexcept { pthread_rwlock_destroy(&m_lock); }
 
+  shared_mutex(const shared_mutex &) = delete;
+  shared_mutex &operator=(const shared_mutex &) = delete;
+
   native_handle_type native_handle() noexcept { return &m_lock; }
 
   result<void> lock() noexcept { return this->do_lock(&m_lock); }
@@ -323,13 +326,57 @@ public:
   recursive_mutex(const recursive_mutex &) = delete;
   recursive_mutex &operator=(const recursive_mutex &) = delete;
 
-  void lock() noexcept { EnterCriticalSection(&m_cs); }
+  result<void> lock() noexcept {
+    EnterCriticalSection(&m_cs);
+    return {};
+  }
 
   bool try_lock() noexcept { return TryEnterCriticalSection(&m_cs) != 0; }
 
-  void unlock() noexcept { LeaveCriticalSection(&m_cs); }
+  result<void> unlock() noexcept {
+    LeaveCriticalSection(&m_cs);
+    return {};
+  }
 
   CRITICAL_SECTION *native_handle() noexcept { return &m_cs; }
+};
+
+class shared_mutex {
+  SRWLOCK m_lock = SRWLOCK_INIT;
+
+public:
+  shared_mutex() noexcept = default;
+
+  shared_mutex(const shared_mutex &) = delete;
+  shared_mutex &operator=(const shared_mutex &) = delete;
+
+  result<void> lock() noexcept {
+    AcquireSRWLockExclusive(&m_lock);
+    return {};
+  }
+
+  bool try_lock() noexcept { return TryAcquireSRWLockExclusive(&m_lock) != 0; }
+
+  result<void> unlock() noexcept {
+    ReleaseSRWLockExclusive(&m_lock);
+    return {};
+  }
+
+  result<void> lock_shared() noexcept {
+    AcquireSRWLockShared(&m_lock);
+    return {};
+  }
+
+  bool try_lock_shared() noexcept {
+    return TryAcquireSRWLockShared(&m_lock) != 0;
+  }
+
+  result<void> unlock_shared() noexcept {
+    ReleaseSRWLockShared(&m_lock);
+    return {};
+  }
+
+  SRWLOCK *native_handle() noexcept { return &m_lock; }
 };
 #endif
 
