@@ -207,7 +207,7 @@ protected:
 
 class condition_variable : mutex_base {
 public:
-  using native_handle_type = pthread_rwlock_t *;
+  using native_handle_type = pthread_cond_t *;
 
   constexpr condition_variable() noexcept = default;
 
@@ -233,6 +233,8 @@ public:
   void notify_one() noexcept { pthread_cond_signal(&m_cond); }
 
   void notify_all() noexcept { pthread_cond_broadcast(&m_cond); }
+
+  native_handle_type native_handle() noexcept { return &m_cond; }
 
 private:
   pthread_cond_t m_cond = PTHREAD_COND_INITIALIZER;

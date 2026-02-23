@@ -33,8 +33,6 @@ public:
                                std::size_t alignment) noexcept override {
     if (!ptr)
       return allocate(new_size, alignment);
-    if (new_size <= old_size)
-      return mem_block{ptr, old_size};
 
     // If alignment is standard, try standard realloc
     if (alignment <= alignof(std::max_align_t)) {
