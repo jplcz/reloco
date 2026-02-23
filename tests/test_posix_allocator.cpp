@@ -1,11 +1,10 @@
 #include <cstdint>
 #include <gtest/gtest.h>
-#include <reloco/posix_allocator.hpp>
+#include <reloco/allocator.hpp>
 
-#ifndef _WIN32
 class PosixAllocatorTest : public ::testing::Test {
 protected:
-  reloco::posix_allocator alloc;
+  reloco::core_allocator alloc;
 };
 
 // Verify that allocation actually respects the alignment boundary
@@ -74,4 +73,3 @@ TEST_F(PosixAllocatorTest, AdviseDoesNotCrash) {
 
   alloc.deallocate(block->ptr, 4096);
 }
-#endif

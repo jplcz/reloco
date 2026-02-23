@@ -3,7 +3,7 @@
 
 class MakeUniqueTest : public ::testing::Test {
 protected:
-  reloco::posix_allocator alloc;
+  reloco::core_allocator alloc;
 };
 
 TEST_F(MakeUniqueTest, StandardTypeCreation) {
