@@ -5,6 +5,7 @@
 #include <reloco/assert.hpp>
 #include <reloco/collection_view.hpp>
 #include <reloco/concepts.hpp>
+#include <reloco/construction_helpers.hpp>
 #include <span>
 
 namespace reloco {
@@ -140,15 +141,10 @@ public:
 
     T *ptr = data_ + size_;
 
-    if constexpr (has_try_create<T, Args...>) {
-      auto res = T::try_create(std::forward<Args>(args)...);
-      if (!res) {
-        return unexpected(res.error());
-      }
-
-      new (ptr) T(std::move(*res));
-    } else {
-      new (ptr) T(std::forward<Args>(args)...);
+    auto res = construction_helpers::try_construct<T>(
+        *alloc_, ptr, std::forward<Args>(args)...);
+    if (!res) {
+      return unexpected(res.error());
     }
 
     size_++;
@@ -162,7 +158,14 @@ public:
         return unexpected(res.error());
     }
 
-    T *ptr = new (data_ + size_) T(std::move(val));
+    T *ptr = data_ + size_;
+
+    auto res =
+        construction_helpers::try_construct<T>(*alloc_, ptr, std::move(val));
+    if (!res) {
+      return unexpected(res.error());
+    }
+
     size_++;
     return ptr;
   }
@@ -192,8 +195,9 @@ public:
     }
   }
 
-  [[nodiscard]] result<vector> try_clone() const noexcept {
-    vector clone(*alloc_);
+  [[nodiscard]] result<vector>
+  try_clone(fallible_allocator &clone_alloc) const noexcept {
+    vector clone(clone_alloc);
     auto res = clone.try_reserve(size_);
     if (!res)
       return unexpected(res.error());
@@ -206,21 +210,18 @@ public:
       }
     } else {
       for (size_type i = 0; i < size_; ++i) {
-        if constexpr (has_try_clone<T>) {
-          auto item_res = data_[i].try_clone();
-          if (!item_res)
-            return unexpected(item_res.error());
-          auto item_res_push = clone.try_push_back(std::move(*item_res));
-          if (!item_res_push)
-            return unexpected(item_res.error());
-        } else {
-          auto item_res = clone.try_push_back(T(data_[i]));
-          if (!item_res)
-            return unexpected(item_res.error());
-        }
+        auto item_res = construction_helpers::try_clone_at<T>(
+            clone_alloc, clone.data_ + i, data_[i]);
+        if (!item_res)
+          return unexpected(item_res.error());
+        ++clone.size_;
       }
     }
     return clone;
+  }
+
+  [[nodiscard]] result<vector> try_clone() const noexcept {
+    return try_clone(*alloc_);
   }
 
   [[nodiscard]] result<void> try_erase(size_type pos) noexcept {
@@ -261,6 +262,12 @@ public:
       }
     }
 
+    auto obj_to_insert = construction_helpers::try_allocate<T>(
+        *alloc_, std::forward<Args>(args)...);
+    if (!obj_to_insert) {
+      return unexpected(obj_to_insert.error());
+    }
+
     size_type move_count = size_ - pos;
 
     if (move_count > 0) {
@@ -281,7 +288,7 @@ public:
     }
 
     // Construct the new element in the hole
-    T *ptr = new (data_ + pos) T(std::forward<Args>(args)...);
+    T *ptr = new (data_ + pos) T(std::move(*obj_to_insert));
 
     size_++;
     return ptr;

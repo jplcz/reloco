@@ -29,7 +29,7 @@ enum class error : int {
 
 template <typename T> using result = expected<T, error>;
 
-struct mem_block {
+struct [[nodiscard]] mem_block {
   void *ptr;
   std::size_t size;
 };

@@ -1,9 +1,10 @@
 #include <gtest/gtest.h>
+#include <reloco/string.hpp>
 #include <reloco/vector.hpp>
 
 struct HeavyType {
   std::string data;
-  HeavyType(std::string s) : data(std::move(s)) {}
+  HeavyType(std::string s) noexcept : data(std::move(s)) {}
   HeavyType(const HeavyType &) = delete;
   HeavyType(HeavyType &&other) noexcept : data(std::move(other.data)) {}
   HeavyType &operator=(HeavyType &&other) noexcept {
@@ -50,7 +51,7 @@ TEST(RelocoVectorTest, FalliblePop) {
 }
 
 TEST(RelocoVectorTest, EmplaceBackReturnsPointer) {
-  auto vec = reloco::vector<std::string>::try_create(1).value();
+  auto vec = reloco::vector<reloco::string>::try_create(1).value();
 
   auto res = vec.try_emplace_back("hello hardware");
   ASSERT_TRUE(res.has_value());
@@ -59,7 +60,7 @@ TEST(RelocoVectorTest, EmplaceBackReturnsPointer) {
   auto ptr = *res;
   EXPECT_EQ(*ptr, "hello hardware");
 
-  ptr->append(" honest");
+  EXPECT_TRUE(ptr->try_append(" honest"));
   EXPECT_EQ(vec[0], "hello hardware honest");
 }
 
@@ -110,11 +111,11 @@ TEST(RelocoVectorComplexTest, RelocatableTypeShifting) {
 
 TEST(RelocoVectorComplexTest, NonRelocatableTypeShifting) {
   reloco::vector<HeavyType> v;
-  std::ignore = v.try_emplace_back("first");
-  std::ignore = v.try_emplace_back("third");
+  std::ignore = v.try_emplace_back(std::string("first"));
+  std::ignore = v.try_emplace_back(std::string("third"));
 
   // Insert "second" in the middle
-  auto res = v.try_insert(1, "second");
+  auto res = v.try_insert(1, std::string("second"));
   ASSERT_TRUE(res);
 
   ASSERT_EQ(v.size(), 3);
@@ -144,9 +145,9 @@ TEST(RelocoVectorTest, TriggersReallocation) {
 }
 
 TEST(RelocoVectorTest, SuccessStandardTypeForCline) {
-  reloco::vector<std::string> original;
-  ASSERT_TRUE(original.try_push_back("hello"));
-  ASSERT_TRUE(original.try_push_back("world"));
+  reloco::vector<reloco::string> original;
+  ASSERT_TRUE(original.try_push_back(*reloco::string::try_create("hello")));
+  ASSERT_TRUE(original.try_push_back(*reloco::string::try_create("world")));
 
   auto clone_res = original.try_clone();
   ASSERT_TRUE(clone_res) << "Clone failed for standard types";

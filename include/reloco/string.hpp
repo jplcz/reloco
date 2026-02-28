@@ -14,8 +14,8 @@
 
 namespace reloco {
 
-template <typename Alloc = core_allocator> class basic_string {
-  Alloc *alloc_;
+class basic_string {
+  fallible_allocator *alloc_;
   char *data_ = nullptr;
   std::size_t size_ = 0;
   std::size_t cap_ = 0;
@@ -30,7 +30,7 @@ public:
   using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
   using value_type = char;
-  using allocator_type = Alloc;
+  using allocator_type = fallible_allocator;
   using size_type = std::size_t;
   using difference_type = std::ptrdiff_t;
   using reference = char &;
@@ -43,7 +43,8 @@ public:
   basic_string() noexcept
       : alloc_(&get_default_allocator()), data_(&empty_char) {}
 
-  explicit basic_string(Alloc &a) noexcept : alloc_(&a), data_(&empty_char) {}
+  explicit basic_string(fallible_allocator &a) noexcept
+      : alloc_(&a), data_(&empty_char) {}
 
   // Move-only
   basic_string(const basic_string &) = delete;
@@ -55,6 +56,23 @@ public:
     other.data_ = &empty_char;
     other.size_ = 0;
     other.cap_ = 0;
+  }
+
+  result<void> try_construct(basic_string *storage, const char *s) noexcept {
+    if (s) {
+      auto res = storage->try_append(s);
+      if (!res)
+        return unexpected(res.error());
+    }
+    return {};
+  }
+
+  result<void> try_construct(basic_string *storage,
+                             std::string_view sv) noexcept {
+    auto res = storage->try_append(sv);
+    if (!res)
+      return unexpected(res.error());
+    return {};
   }
 
   static result<basic_string> try_create(const char *s) noexcept {
@@ -77,9 +95,9 @@ public:
     return str;
   }
 
-  [[nodiscard]] result<basic_string> try_clone() const noexcept {
-    // Create an empty string using the same allocator
-    basic_string clone(*alloc_);
+  [[nodiscard]] result<basic_string>
+  try_clone(fallible_allocator &clone_alloc) const noexcept {
+    basic_string clone(clone_alloc);
 
     if (size_ > 0) {
       auto res = clone.try_assign(this->view());
@@ -88,6 +106,10 @@ public:
     }
 
     return clone;
+  }
+
+  [[nodiscard]] result<basic_string> try_clone() const noexcept {
+    return try_clone(*alloc_);
   }
 
   [[nodiscard]] result<void> try_reserve(std::size_t new_cap) noexcept {
@@ -172,8 +194,14 @@ public:
     return const_reverse_iterator(begin());
   }
 
-  char &operator[](size_type pos) noexcept { return data_[pos]; }
-  const char &operator[](size_type pos) const noexcept { return data_[pos]; }
+  char &operator[](size_type pos) noexcept {
+    RELOCO_ASSERT(pos < size_);
+    return data_[pos];
+  }
+  const char &operator[](size_type pos) const noexcept {
+    RELOCO_ASSERT(pos < size_);
+    return data_[pos];
+  }
 
   char &at(size_type pos) noexcept {
     // In reloco, we prefer assertions over throwing exceptions for
@@ -182,14 +210,36 @@ public:
     return data_[pos];
   }
 
-  char &back() noexcept { return data_[size_ - 1]; }
-  char &front() noexcept { return data_[0]; }
+  char &unsafe_at(size_type pos) noexcept { return data_[pos]; }
+
+  char &back() noexcept {
+    RELOCO_ASSERT(!empty());
+    return data_[size_ - 1];
+  }
+
+  char &unsafe_back() noexcept { return data_[size_ - 1]; }
+
+  char &front() noexcept {
+    RELOCO_ASSERT(!empty());
+    return data_[0];
+  }
+
+  char &unsafe_front() noexcept { return data_[0]; }
 
   bool empty() const noexcept { return size_ == 0; }
+
   void clear() noexcept {
     size_ = 0;
-    if (cap_ > 0)
+    if (cap_ > 0) {
+      const std::size_t bytes = cap_;
+      constexpr std::size_t DISCARD_THRESHOLD = 64 * 1024;
+
+      if (bytes >= DISCARD_THRESHOLD) {
+        alloc_->advise(data_, bytes, usage_hint::dont_need);
+      }
+
       data_[0] = '\0';
+    }
   }
 
   [[nodiscard]] result<void> shrink_to_fit() noexcept {
@@ -326,6 +376,9 @@ public:
 
   [[nodiscard]] result<void> try_insert(size_type pos,
                                         std::string_view sv) noexcept {
+    if (sv.empty())
+      return {};
+
     if (pos > size_)
       return unexpected(error::out_of_range);
 
@@ -384,6 +437,9 @@ public:
   }
 
   [[nodiscard]] result<void> try_assign(std::string_view sv) noexcept {
+    if (sv.empty())
+      return {};
+
     if (sv.size() <= cap_) {
       // Fast path: reuse existing block
       std::memcpy(data_, sv.data(), sv.size());
@@ -437,13 +493,11 @@ public:
   allocator_type &get_allocator() const noexcept { return *alloc_; }
 };
 
-using string = basic_string<>;
+using string = basic_string;
 
-template <typename Alloc>
-struct is_relocatable<basic_string<Alloc>> : std::true_type {};
+template <> struct is_relocatable<basic_string> : std::true_type {};
 
-template <typename Alloc>
-std::ostream &operator<<(std::ostream &os, const basic_string<Alloc> &str) {
+inline std::ostream &operator<<(std::ostream &os, const basic_string &str) {
   return os << str.view();
 }
 

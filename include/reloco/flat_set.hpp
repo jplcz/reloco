@@ -56,6 +56,24 @@ public:
    */
   result<any_view<T>> as_view() noexcept { return m_data.as_view(); }
 
+  /**
+   * @brief Performs a deep copy of the set using a specific allocator.
+   */
+  result<flat_set> try_clone(fallible_allocator &alloc) const noexcept {
+    flat_set result;
+
+    auto cloned_data = m_data.try_clone(alloc);
+    if (!cloned_data)
+      return unexpected(cloned_data.error());
+
+    result.m_data = std::move(*cloned_data);
+    return result;
+  }
+
+  result<flat_set> try_clone() const noexcept {
+    return try_clone(*m_data.get_allocator());
+  }
+
 private:
   template <typename Key> auto find_pos(const Key &value) const noexcept {
     return std::lower_bound(m_data.begin(), m_data.end(), value, m_comp);
