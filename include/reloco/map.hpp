@@ -1,12 +1,11 @@
 #pragma once
 #include <boost/intrusive/set.hpp>
+#include <reloco/construction_helpers.hpp>
 #include <reloco/vector.hpp>
 
 namespace reloco {
 
-template <typename K, typename V, typename Compare = std::less<K>,
-          typename Alloc = core_allocator>
-class map {
+template <typename K, typename V, typename Compare = std::less<K>> class map {
   struct MapNode : public boost::intrusive::set_base_hook<> {
     K key;
     V value;
@@ -14,27 +13,31 @@ class map {
     MapNode(K &&k, V &&v) : key(std::move(k)), value(std::move(v)) {}
 
     template <typename... KArgs, typename... VArgs>
-    static result<MapNode> try_create(std::tuple<KArgs...> k_args,
+    static result<MapNode> try_create(fallible_allocator &alloc,
+                                      std::tuple<KArgs...> k_args,
                                       std::tuple<VArgs...> v_args) noexcept {
-      result<K> k_res = create_component<K>(
-          std::move(k_args), std::make_index_sequence<sizeof...(KArgs)>{});
+      result<K> k_res =
+          create_component<K>(alloc, std::move(k_args),
+                              std::make_index_sequence<sizeof...(KArgs)>{});
       if (!k_res)
         return unexpected(k_res.error());
 
-      result<V> v_res = create_component<V>(
-          std::move(v_args), std::make_index_sequence<sizeof...(VArgs)>{});
+      result<V> v_res =
+          create_component<V>(alloc, std::move(v_args),
+                              std::make_index_sequence<sizeof...(VArgs)>{});
       if (!v_res)
         return unexpected(v_res.error());
 
       return MapNode(std::move(*k_res), std::move(*v_res));
     }
 
-    [[nodiscard]] result<MapNode> try_clone() const noexcept {
-      auto k_res = clone_component(key);
+    [[nodiscard]] result<MapNode>
+    try_clone(fallible_allocator &alloc) const noexcept {
+      auto k_res = construction_helpers::try_clone<K>(alloc, key);
       if (!k_res)
         return unexpected(k_res.error());
 
-      auto v_res = clone_component(value);
+      auto v_res = construction_helpers::try_clone<V>(alloc, value);
       if (!v_res)
         return unexpected(v_res.error());
 
@@ -44,23 +47,10 @@ class map {
   private:
     // Helper to detect and call try_create vs Constructor
     template <typename T, typename Tuple, size_t... I>
-    static result<T> create_component(Tuple &&args,
+    static result<T> create_component(fallible_allocator &alloc, Tuple &&args,
                                       std::index_sequence<I...>) noexcept {
-      if constexpr (has_try_create<T, decltype(std::get<I>(args))...>) {
-        return T::try_create(std::get<I>(std::forward<Tuple>(args))...);
-      } else {
-        return T(std::get<I>(std::forward<Tuple>(args))...);
-      }
-    }
-
-    // Helper to detect and call try_clone vs Copy Constructor
-    template <typename T>
-    static result<T> clone_component(const T &obj) noexcept {
-      if constexpr (has_try_clone<T>) {
-        return obj.try_clone();
-      } else {
-        return T(obj);
-      }
+      return construction_helpers::try_allocate<T>(
+          alloc, std::get<I>(std::forward<Tuple>(args))...);
     }
   };
 
@@ -72,14 +62,14 @@ class map {
 
   // Helper to destroy and deallocate a node
   struct NodeDisposer {
-    Alloc *alloc;
+    fallible_allocator *alloc;
     void operator()(MapNode *node) {
       node->~MapNode();
       alloc->deallocate(node, sizeof(MapNode));
     }
   };
 
-  Alloc *alloc_;
+  fallible_allocator *alloc_;
 
   using set_t =
       boost::intrusive::set<MapNode, boost::intrusive::key_of_value<KeyOfNode>,
@@ -104,7 +94,7 @@ public:
 
   map() noexcept : alloc_(&get_default_allocator()) {}
 
-  explicit map(Alloc &a) noexcept : alloc_(&a) {}
+  explicit map(fallible_allocator &a) noexcept : alloc_(&a) {}
 
   // Move-only
   map(const map &) = delete;
@@ -132,18 +122,19 @@ public:
   size_type size() const noexcept { return set_.size(); }
   size_type max_size() const noexcept { return size_type(-1); }
 
-  [[nodiscard]] result<map> try_clone() const noexcept {
-    map new_map(*alloc_);
+  [[nodiscard]] result<map>
+  try_clone(fallible_allocator &alloc) const noexcept {
+    map new_map(alloc);
 
     for (const auto &node : set_) {
-      auto block = alloc_->allocate(sizeof(MapNode), alignof(MapNode));
+      auto block = alloc.allocate(sizeof(MapNode), alignof(MapNode));
       if (!block)
         return unexpected(block.error());
       MapNode *ptr = static_cast<MapNode *>(block->ptr);
 
-      auto node_res = node.try_clone();
+      auto node_res = node.try_clone(alloc);
       if (!node_res) {
-        alloc_->deallocate(ptr, sizeof(MapNode));
+        alloc.deallocate(ptr, sizeof(MapNode));
         return unexpected(node_res.error());
       }
 
@@ -152,6 +143,10 @@ public:
     }
 
     return new_map;
+  }
+
+  [[nodiscard]] result<map> try_clone() const noexcept {
+    return try_clone(*alloc_);
   }
 
   [[nodiscard]] result<V *> try_insert(K key, V value) noexcept {
@@ -167,7 +162,6 @@ public:
 
     MapNode *node = new (block->ptr) MapNode(std::move(key), std::move(value));
 
-    // 4. Link into tree
     set_.insert_equal(*node);
     return &node->value;
   }
@@ -263,7 +257,7 @@ public:
     return *this;
   }
 
-  Alloc &get_allocator() const noexcept { return *alloc_; }
+  fallible_allocator &get_allocator() const noexcept { return *alloc_; }
 
   void merge(map &&other) noexcept {
     auto it = other.set_.begin();
@@ -280,10 +274,10 @@ public:
   }
 };
 
-template <typename K, typename V, typename Compare, typename Alloc>
-struct is_relocatable<map<K, V, Compare, Alloc>> : std::false_type {};
+template <typename K, typename V, typename Compare>
+struct is_relocatable<map<K, V, Compare>> : std::false_type {};
 
-template <typename K, typename V, typename Compare, typename Alloc>
-struct is_fallible_type<map<K, V, Compare, Alloc>> : std::true_type {};
+template <typename K, typename V, typename Compare>
+struct is_fallible_type<map<K, V, Compare>> : std::true_type {};
 
 } // namespace reloco
