@@ -69,4 +69,11 @@ public:
 // However, users can specialize this for types like std::unique_ptr.
 template <typename T> struct is_relocatable : std::is_trivially_copyable<T> {};
 
+template <typename T> struct is_result : std::false_type {};
+
+template <typename T>
+struct is_result<result<T>> : std::true_type {};
+
+template <typename T> inline constexpr bool is_result_v = is_result<T>::value;
+
 } // namespace reloco

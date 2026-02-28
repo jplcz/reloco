@@ -46,10 +46,32 @@ public:
     return try_allocate(std::move(func), get_default_allocator());
   }
 
-  R operator()(Args... args) const {
-    RELOCO_ASSERT(m_vtable && "Attempted to call empty fallible_function");
+  R operator()(Args &&...args) const noexcept {
+    RELOCO_ASSERT(m_vtable, "Attempted to call empty fallible_function");
     return m_vtable->invoke(&m_storage, std::forward<Args>(args)...);
   }
+
+  /**
+   * @brief Safely invokes the function if it is initialized.
+   * - If R is already a reloco::result, it flattens the result.
+   * - If R is a raw value, it wraps it in a reloco::result.
+   */
+  template <typename... CallArgs>
+  auto try_call(CallArgs &&...args) const noexcept {
+    using ReturnType = R;
+
+    if (!m_vtable) [[unlikely]] {
+      if constexpr (is_result_v<ReturnType>) {
+        return ReturnType(unexpected(error::container_empty));
+      } else {
+        return result<ReturnType>(unexpected(error::container_empty));
+      }
+    }
+
+    return m_vtable->invoke(&m_storage, std::forward<CallArgs>(args)...);
+  }
+
+  function() noexcept = default;
 
   ~function() noexcept {
     if (m_vtable)
@@ -235,8 +257,6 @@ private:
 
   const vtable *m_vtable = nullptr;
   fallible_allocator *m_alloc = nullptr;
-
-  function() = default; // Private to force try_create
 };
 
 template <typename R, typename... Args>

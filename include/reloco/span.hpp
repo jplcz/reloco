@@ -132,11 +132,11 @@ public:
   [[nodiscard]] constexpr result<span<T>> try_last(size_type n) const noexcept {
     if (n > size())
       return unexpected(error::out_of_bounds);
-    return hardened_span<T>(span_.data() + (size() - n), n);
+    return span<T>(span_.data() + (size() - n), n);
   }
 
   constexpr span<T> unsafe_first(size_type n) const noexcept {
-    return hardened_span<T>(span_.data(), n);
+    return span<T>(span_.data(), n);
   }
 
   [[nodiscard]] constexpr span<const std::byte> as_bytes() const noexcept {

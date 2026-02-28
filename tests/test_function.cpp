@@ -71,3 +71,30 @@ TEST(CFunctionWrapperTest, MoveZeroesSource) {
   EXPECT_EQ(f2(1, 1), 2);
   EXPECT_DEATH({ f1(1, 1); }, "");
 }
+
+TEST(FallibleFunctionTest, TryCallLogic) {
+  using FuncType = reloco::function<reloco::result<int>(int)>;
+  FuncType empty_func;
+
+  // Test Null Call
+  auto res1 = empty_func.try_call(10);
+  ASSERT_FALSE(res1.has_value());
+  EXPECT_EQ(res1.error(), reloco::error::container_empty);
+
+  // Test Valid Call (Success)
+  auto valid_func =
+      FuncType::try_create([](int x) -> reloco::result<int> { return x * 2; });
+
+  auto res2 = valid_func->try_call(21);
+  ASSERT_TRUE(res2.has_value());
+  EXPECT_EQ(*res2, 42);
+
+  // Test Valid Call (Internal Failure)
+  auto fail_func = FuncType::try_create([](int) -> reloco::result<int> {
+    return reloco::unexpected(reloco::error::invalid_argument);
+  });
+
+  auto res3 = fail_func->try_call(0);
+  ASSERT_FALSE(res3.has_value());
+  EXPECT_EQ(res3.error(), reloco::error::invalid_argument);
+}
