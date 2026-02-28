@@ -298,3 +298,37 @@ TEST_F(ConstructionHelpersTest, Usage_SafeMoveValidation) {
   ASSERT_TRUE(res.has_value());
   EXPECT_TRUE(local_obj.moved);
 }
+
+TEST_F(ConstructionHelpersTest, Usage_CrossAllocatorCloning) {
+  struct SharedBuffer {
+    size_t size;
+    int *data;
+    reloco::fallible_allocator *alloc;
+
+    // Custom clone logic to ensure new buffer uses the NEW allocator
+    reloco::result<SharedBuffer>
+    try_clone(reloco::fallible_allocator &new_alloc) const {
+      auto new_data = new_alloc.allocate(sizeof(int) * size, alignof(int));
+      if (!new_data)
+        return reloco::unexpected(reloco::error::allocation_failed);
+
+      std::copy(data, data + size, (int *)new_data->ptr);
+      return SharedBuffer{size, (int *)new_data->ptr, &new_alloc};
+    }
+
+    ~SharedBuffer() {
+      if (alloc)
+        alloc->deallocate(data, sizeof(int) * size);
+    }
+  };
+
+  int raw_data[] = {1, 2, 3};
+  SharedBuffer original{3, raw_data, nullptr}; // Simplified for test
+
+  // Clone into a DIFFERENT allocator
+  auto clone_res = reloco::construction_helpers::try_clone(alloc, original);
+
+  ASSERT_TRUE(clone_res.has_value());
+  EXPECT_EQ(clone_res->alloc, &alloc); // Proves it transitioned pools
+  EXPECT_EQ(clone_res->data[0], 1);
+}
