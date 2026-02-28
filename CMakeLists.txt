@@ -78,6 +78,7 @@ if(RELOCO_BUILD_TESTS)
         tests/test_function.cpp
         tests/test_flat_set.cpp
         tests/test_construction_helpers.cpp
+        tests/test_string_view.cpp
     )
 
     if(Boost_FOUND)

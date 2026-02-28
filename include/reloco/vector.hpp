@@ -331,10 +331,12 @@ public:
   }
 
   [[nodiscard]] const T &unsafe_at(const size_t index) const noexcept {
+    RELOCO_DEBUG_ASSERT(index < size_, "Vector index out of bounds");
     return data_[index];
   }
 
   [[nodiscard]] T &unsafe_at(const size_t index) noexcept {
+    RELOCO_DEBUG_ASSERT(index < size_, "Vector index out of bounds");
     return data_[index];
   }
 
@@ -348,9 +350,15 @@ public:
     return data_;
   }
 
-  value_type *unsafe_data() noexcept { return data_; }
+  value_type *unsafe_data() noexcept {
+    RELOCO_DEBUG_ASSERT(!empty(), "vector is empty");
+    return data_;
+  }
 
-  const value_type *unsafe_data() const noexcept { return data_; }
+  const value_type *unsafe_data() const noexcept {
+    RELOCO_DEBUG_ASSERT(!empty(), "vector is empty");
+    return data_;
+  }
 
   /**
    * Construct non-owning view of this vector

@@ -10,7 +10,7 @@
 #include <iterator>
 #include <reloco/allocator.hpp>
 #include <reloco/concepts.hpp>
-#include <string_view>
+#include <reloco/string_view.hpp>
 
 namespace reloco {
 
@@ -38,7 +38,7 @@ public:
   using pointer = char *;
   using const_pointer = const char *;
 
-  static constexpr size_type npos = std::string_view::npos;
+  static constexpr size_type npos = string_view::npos;
 
   basic_string() noexcept
       : alloc_(&get_default_allocator()), data_(&empty_char) {}
@@ -67,8 +67,7 @@ public:
     return {};
   }
 
-  result<void> try_construct(basic_string *storage,
-                             std::string_view sv) noexcept {
+  result<void> try_construct(basic_string *storage, string_view sv) noexcept {
     auto res = storage->try_append(sv);
     if (!res)
       return unexpected(res.error());
@@ -85,7 +84,7 @@ public:
     return str;
   }
 
-  static result<basic_string> try_create(std::string_view sv) noexcept {
+  static result<basic_string> try_create(string_view sv) noexcept {
     basic_string str;
     if (!sv.empty()) {
       auto res = str.try_append(sv);
@@ -139,7 +138,7 @@ public:
     return {};
   }
 
-  [[nodiscard]] result<void> try_append(std::string_view sv) noexcept {
+  [[nodiscard]] result<void> try_append(string_view sv) noexcept {
     if (sv.empty())
       return {};
 
@@ -167,7 +166,7 @@ public:
   [[nodiscard]] result<void> try_append(const char *s) noexcept {
     if (!s)
       return {};
-    return try_append(std::string_view(s));
+    return try_append(string_view(s));
   }
 
   const char *c_str() const noexcept { return data_; }
@@ -210,21 +209,30 @@ public:
     return data_[pos];
   }
 
-  char &unsafe_at(size_type pos) noexcept { return data_[pos]; }
+  char &unsafe_at(size_type pos) noexcept {
+    RELOCO_DEBUG_ASSERT(pos < size_);
+    return data_[pos];
+  }
 
   char &back() noexcept {
     RELOCO_ASSERT(!empty());
     return data_[size_ - 1];
   }
 
-  char &unsafe_back() noexcept { return data_[size_ - 1]; }
+  char &unsafe_back() noexcept {
+    RELOCO_DEBUG_ASSERT(!empty());
+    return data_[size_ - 1];
+  }
 
   char &front() noexcept {
     RELOCO_ASSERT(!empty());
     return data_[0];
   }
 
-  char &unsafe_front() noexcept { return data_[0]; }
+  char &unsafe_front() noexcept {
+    RELOCO_DEBUG_ASSERT(!empty());
+    return data_[0];
+  }
 
   bool empty() const noexcept { return size_ == 0; }
 
@@ -264,7 +272,7 @@ public:
   auto operator<=>(const char *s) const noexcept {
     if (!s)
       return std::strong_ordering::greater;
-    std::string_view other_view(s);
+    string_view other_view(s);
     return std::lexicographical_compare_three_way(
         begin(), end(), other_view.begin(), other_view.end());
   }
@@ -281,18 +289,19 @@ public:
     return std::strcmp(data_, s) == 0;
   }
 
-  std::string_view view() const noexcept {
-    return std::string_view(data_, size_);
-  }
+  string_view view() const noexcept { return string_view(data_, size_); }
 
   operator std::string_view() const noexcept {
     return std::string_view(data_, size_);
   }
 
+  operator reloco::string_view() const noexcept {
+    return reloco::string_view(data_, size_);
+  }
+
   explicit operator std::string() const { return std::string(data_, size_); }
 
-  [[nodiscard]] static result<basic_string>
-  from_view(std::string_view sv) noexcept {
+  [[nodiscard]] static result<basic_string> from_view(string_view sv) noexcept {
     basic_string str;
     auto res = str.try_reserve(sv.size());
     if (!res)
@@ -375,7 +384,7 @@ public:
   }
 
   [[nodiscard]] result<void> try_insert(size_type pos,
-                                        std::string_view sv) noexcept {
+                                        string_view sv) noexcept {
     if (sv.empty())
       return {};
 
@@ -436,7 +445,7 @@ public:
     return {};
   }
 
-  [[nodiscard]] result<void> try_assign(std::string_view sv) noexcept {
+  [[nodiscard]] result<void> try_assign(string_view sv) noexcept {
     if (sv.empty())
       return {};
 
@@ -466,7 +475,7 @@ public:
     return {};
   }
 
-  size_type find(std::string_view sv, size_type pos = 0) const noexcept {
+  size_type find(string_view sv, size_type pos = 0) const noexcept {
     return view().find(sv, pos);
   }
 
@@ -474,21 +483,19 @@ public:
     return view().find(c, pos);
   }
 
-  size_type rfind(std::string_view sv, size_type pos = npos) const noexcept {
+  size_type rfind(string_view sv, size_type pos = npos) const noexcept {
     return view().rfind(sv, pos);
   }
 
-  bool contains(std::string_view sv) const noexcept {
-    return view().find(sv) != std::string_view::npos;
+  bool contains(string_view sv) const noexcept {
+    return view().find(sv) != string_view::npos;
   }
 
-  bool starts_with(std::string_view sv) const noexcept {
+  bool starts_with(string_view sv) const noexcept {
     return view().starts_with(sv);
   }
 
-  bool ends_with(std::string_view sv) const noexcept {
-    return view().ends_with(sv);
-  }
+  bool ends_with(string_view sv) const noexcept { return view().ends_with(sv); }
 
   allocator_type &get_allocator() const noexcept { return *alloc_; }
 };

@@ -85,9 +85,17 @@ public:
     return {};
   }
 
-  [[nodiscard]] T *unsafe_get() noexcept { return &m_storage; }
+  [[nodiscard]] T *unsafe_get() noexcept {
+    RELOCO_DEBUG_ASSERT(m_initialized,
+                        "Accessing fallible_constructed before try_init()");
+    return &m_storage;
+  }
 
-  [[nodiscard]] const T *unsafe_get() const noexcept { return &m_storage; }
+  [[nodiscard]] const T *unsafe_get() const noexcept {
+    RELOCO_DEBUG_ASSERT(m_initialized,
+                        "Accessing fallible_constructed before try_init()");
+    return &m_storage;
+  }
 
   [[nodiscard]] T *get() noexcept {
     RELOCO_ASSERT(m_initialized,
@@ -219,7 +227,11 @@ public:
     return m_ptr;
   }
 
-  [[nodiscard]] T *unsafe_get() const noexcept { return m_ptr; }
+  [[nodiscard]] T *unsafe_get() const noexcept {
+    RELOCO_DEBUG_ASSERT(m_ptr,
+                        "Accessing fallible_allocated before try_init()");
+    return m_ptr;
+  }
 
   [[nodiscard]] T *get() const noexcept {
     RELOCO_ASSERT(m_ptr, "Accessing fallible_allocated before try_init()");
@@ -270,10 +282,16 @@ public:
   }
 
   [[nodiscard]] T *unsafe_get() noexcept {
+    RELOCO_DEBUG_ASSERT(
+        m_initialized,
+        "Accessing static_fallible_constructed before try_init()");
     return reinterpret_cast<T *>(&m_storage);
   }
 
   [[nodiscard]] const T *unsafe_get() const noexcept {
+    RELOCO_DEBUG_ASSERT(
+        m_initialized,
+        "Accessing static_fallible_constructed before try_init()");
     return reinterpret_cast<const T *>(&m_storage);
   }
 

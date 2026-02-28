@@ -52,6 +52,7 @@ public:
   }
 
   [[nodiscard]] constexpr T &unsafe_at(size_type index) const noexcept {
+    RELOCO_DEBUG_ASSERT(index < span_.size() && "Span index out of bounds");
     return span_.data()[index];
   }
 
@@ -75,7 +76,10 @@ public:
   }
 
   constexpr size_type size() const noexcept { return span_.size(); }
-  constexpr T *unsafe_data() const noexcept { return span_.data(); }
+  constexpr T *unsafe_data() const noexcept {
+    RELOCO_DEBUG_ASSERT(!span_.empty(), "span has no data");
+    return span_.data();
+  }
   constexpr bool empty() const noexcept { return span_.empty(); }
 
   [[nodiscard]] constexpr iterator begin() noexcept { return span_.begin(); }
@@ -113,7 +117,10 @@ public:
     return span_.front();
   }
 
-  constexpr T &unsafe_front() const noexcept { return *span_.data(); }
+  constexpr T &unsafe_front() const noexcept {
+    RELOCO_DEBUG_ASSERT(!empty(), "front() called on empty span");
+    return *span_.data();
+  }
 
   [[nodiscard]] constexpr result<span<T>>
   try_first(size_type n) const noexcept {

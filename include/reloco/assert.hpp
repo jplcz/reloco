@@ -57,3 +57,18 @@ inline void set_assert_handler(assert_handler_t new_handler) {
     }                                                                          \
   } while (0)
 #endif
+
+#if defined(NDEBUG) && !defined(RELOCO_DEBUG)
+#if (defined(__clang__) || defined(__GNUC__))
+#define RELOCO_DEBUG_ASSERT(cond, ...)                                         \
+  do {                                                                         \
+    if (!(cond))                                                               \
+      __builtin_unreachable();                                                 \
+  } while (0)
+#else
+#define RELOCO_DEBUG_ASSERT(cond, ...) (void)0
+#endif
+#else
+// In Debug builds, it behaves exactly like RELOCO_ASSERT
+#define RELOCO_DEBUG_ASSERT(cond, ...) RELOCO_ASSERT(cond, ##__VA_ARGS__)
+#endif
