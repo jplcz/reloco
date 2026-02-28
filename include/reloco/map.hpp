@@ -107,16 +107,16 @@ public:
 
   void clear() noexcept { set_.clear_and_dispose(NodeDisposer{alloc_}); }
 
-  iterator begin() noexcept { return set_.begin(); }
-  const_iterator begin() const noexcept { return set_.begin(); }
-  const_iterator cbegin() const noexcept { return set_.cbegin(); }
+  iterator begin() & noexcept { return set_.begin(); }
+  const_iterator begin() const & noexcept { return set_.begin(); }
+  const_iterator cbegin() const & noexcept { return set_.cbegin(); }
 
-  iterator end() noexcept { return set_.end(); }
-  const_iterator end() const noexcept { return set_.end(); }
-  const_iterator cend() const noexcept { return set_.cend(); }
+  iterator end() & noexcept { return set_.end(); }
+  const_iterator end() const & noexcept { return set_.end(); }
+  const_iterator cend() const & noexcept { return set_.cend(); }
 
-  reverse_iterator rbegin() noexcept { return set_.rbegin(); }
-  reverse_iterator rend() noexcept { return set_.rend(); }
+  reverse_iterator rbegin() & noexcept { return set_.rbegin(); }
+  reverse_iterator rend() & noexcept { return set_.rend(); }
 
   [[nodiscard]] bool empty() const noexcept { return set_.empty(); }
   size_type size() const noexcept { return set_.size(); }
@@ -149,7 +149,7 @@ public:
     return try_clone(*alloc_);
   }
 
-  [[nodiscard]] result<V *> try_insert(K key, V value) noexcept {
+  [[nodiscard]] result<V *> try_insert(K key, V value) & noexcept {
     // Search for existing
     auto it = set_.find(key);
     if (it != set_.end()) {
@@ -166,7 +166,7 @@ public:
     return &node->value;
   }
 
-  [[nodiscard]] result<void> try_erase(const K &key) noexcept {
+  [[nodiscard]] result<void> try_erase(const K &key) & noexcept {
     auto it = set_.find(key);
     if (it == set_.end()) {
       return unexpected(error::out_of_range);
@@ -177,21 +177,25 @@ public:
     return {};
   }
 
-  iterator find(const K &key) noexcept { return set_.find(key); }
+  iterator find(const K &key) & noexcept { return set_.find(key); }
 
-  const_iterator find(const K &key) const noexcept { return set_.find(key); }
+  const_iterator find(const K &key) const & noexcept { return set_.find(key); }
 
   bool contains(const K &key) const noexcept { return find(key) != end(); }
 
-  iterator lower_bound(const K &key) noexcept { return set_.lower_bound(key); }
+  iterator lower_bound(const K &key) & noexcept {
+    return set_.lower_bound(key);
+  }
 
-  iterator upper_bound(const K &key) noexcept { return set_.upper_bound(key); }
+  iterator upper_bound(const K &key) & noexcept {
+    return set_.upper_bound(key);
+  }
 
-  std::pair<iterator, iterator> equal_range(const K &key) noexcept {
+  std::pair<iterator, iterator> equal_range(const K &key) & noexcept {
     return set_.equal_range(key);
   }
 
-  [[nodiscard]] result<V *> try_at(const K &key) noexcept {
+  [[nodiscard]] result<V *> try_at(const K &key) & noexcept {
     auto it = find(key);
     if (it == end()) {
       return unexpected(error::out_of_range);
@@ -199,15 +203,15 @@ public:
     return &(it->value);
   }
 
-  iterator erase(const_iterator it) noexcept {
+  iterator erase(const_iterator it) & noexcept {
     return set_.erase_and_dispose(it, NodeDisposer{alloc_});
   }
 
-  iterator erase(const_iterator first, const_iterator last) noexcept {
+  iterator erase(const_iterator first, const_iterator last) & noexcept {
     return set_.erase_and_dispose(first, last, NodeDisposer{alloc_});
   }
 
-  size_type erase(const K &key) noexcept {
+  size_type erase(const K &key) & noexcept {
     auto it = find(key);
     if (it != end()) {
       erase(it);
@@ -217,7 +221,8 @@ public:
   }
 
   template <typename... Args>
-  [[nodiscard]] result<V *> try_emplace(const K &key, Args &&...args) noexcept {
+  [[nodiscard]] result<V *> try_emplace(const K &key,
+                                        Args &&...args) & noexcept {
     auto it = set_.find(key);
     if (it != set_.end()) {
       return &it->value; // STL behavior: return existing if found
@@ -259,7 +264,7 @@ public:
 
   fallible_allocator &get_allocator() const noexcept { return *alloc_; }
 
-  void merge(map &&other) noexcept {
+  void merge(map &&other) & noexcept {
     auto it = other.set_.begin();
     while (it != other.set_.end()) {
       auto [inserted_it, success] = set_.insert_unique(*it);

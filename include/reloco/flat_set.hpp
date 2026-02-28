@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <iterator>
 #include <reloco/collection_view.hpp>
+#include <reloco/rvalue_safety.hpp>
 #include <reloco/vector.hpp>
 
 namespace reloco {
@@ -11,6 +12,8 @@ template <typename T, typename Compare = std::less<T>> class flat_set {
   Compare m_comp;
 
 public:
+  RELOCO_BLOCK_RVALUE_ACCESS(T);
+
   static result<flat_set> try_allocate(fallible_allocator &alloc,
                                        size_t initial_capacity = 0) {
     auto vec_res = vector<T>::try_allocate(alloc, initial_capacity);
@@ -26,7 +29,7 @@ public:
   size_t size() const noexcept { return m_data.size(); }
   void clear() noexcept { m_data.clear(); }
 
-  result<T *> try_insert(T &&value) noexcept {
+  result<T *> try_insert(T &&value) & noexcept {
     auto it = find_pos(value);
     if (it != m_data.end() && !m_comp(value, *it)) {
       return unexpected(error::already_exists);
@@ -43,7 +46,7 @@ public:
 
   template <typename Key>
   result<std::reference_wrapper<const T>>
-  try_find(const Key &value) const noexcept {
+  try_find(const Key &value) const & noexcept {
     auto it = find_pos(value);
     if (it != m_data.end() && !m_comp(value, *it)) {
       return std::cref(*it);
@@ -54,7 +57,7 @@ public:
   /**
    * Construct non-owning view of this flat map
    */
-  result<any_view<T>> as_view() noexcept { return m_data.as_view(); }
+  result<any_view<T>> as_view() & noexcept { return m_data.as_view(); }
 
   /**
    * @brief Performs a deep copy of the set using a specific allocator.

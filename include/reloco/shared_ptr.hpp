@@ -199,12 +199,12 @@ public:
 
 template <typename T, typename U>
 auto operator<=>(const shared_ptr<T> &a, const shared_ptr<U> &b) noexcept {
-  return a.get() <=> b.get();
+  return a.unsafe_get() <=> b.unsafe_get();
 }
 
 template <typename T>
 bool operator==(const shared_ptr<T> &lhs, std::nullptr_t) noexcept {
-  return lhs.get() == nullptr;
+  return lhs.unsafe_get() == nullptr;
 }
 
 template <typename T>
@@ -214,17 +214,17 @@ bool operator!=(const shared_ptr<T> &lhs, std::nullptr_t) noexcept {
 
 template <typename T, typename U>
 bool operator==(const shared_ptr<T> &lhs, const shared_ptr<U> &rhs) noexcept {
-  return lhs.get() == rhs.get();
+  return lhs.unsafe_get() == rhs.unsafe_get();
 }
 
 template <typename T, typename U>
 bool operator!=(const shared_ptr<T> &lhs, const shared_ptr<U> &rhs) noexcept {
-  return lhs.get() != rhs.get();
+  return lhs.unsafe_get() != rhs.unsafe_get();
 }
 
 template <typename T, typename U>
 bool operator<(const shared_ptr<T> &lhs, const shared_ptr<U> &rhs) noexcept {
-  return lhs.get() < rhs.get();
+  return lhs.unsafe_get() < rhs.unsafe_get();
 }
 
 template <typename T> class weak_ptr {
