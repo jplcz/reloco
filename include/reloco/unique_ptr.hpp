@@ -1,6 +1,7 @@
 #pragma once
 #include <reloco/allocator.hpp>
 #include <reloco/concepts.hpp>
+#include <reloco/rvalue_safety.hpp>
 
 namespace reloco {
 
@@ -9,6 +10,8 @@ template <typename T> class [[nodiscard]] unique_ptr {
   fallible_allocator *m_alloc = nullptr;
 
 public:
+  RELOCO_BLOCK_RVALUE_ACCESS(T);
+
   template <typename... Args>
   static auto try_allocate(fallible_allocator &alloc, Args &&...args) noexcept
       -> result<unique_ptr<T>> {
@@ -54,18 +57,18 @@ public:
 
   ~unique_ptr() noexcept { reset(); }
 
-  T &operator*() const noexcept {
+  T &operator*() const & noexcept {
     RELOCO_ASSERT(m_ptr, "Dereference of null unique_ptr");
     return *m_ptr;
   }
 
-  T *operator->() const noexcept {
+  T *operator->() const & noexcept {
     RELOCO_ASSERT(m_ptr, "Access of null unique_ptr");
     return m_ptr;
   }
 
   explicit operator bool() const noexcept { return m_ptr != nullptr; }
-  T *get() const noexcept { return m_ptr; }
+  T *unsafe_get() const & noexcept { return m_ptr; }
 
   void reset() noexcept {
     if (m_ptr) {

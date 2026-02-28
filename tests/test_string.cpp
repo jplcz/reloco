@@ -7,23 +7,23 @@ TEST(StringTest, BasicOperations) {
   ASSERT_TRUE(str_res.has_value());
 
   auto &str = *str_res;
-  EXPECT_STREQ(str.c_str(), "Hello");
+  EXPECT_STREQ(str.unsafe_c_str(), "Hello");
   EXPECT_EQ(str.length(), 5);
 
   ASSERT_TRUE(str.try_append(" Reloco"));
-  EXPECT_STREQ(str.c_str(), "Hello Reloco");
+  EXPECT_STREQ(str.unsafe_c_str(), "Hello Reloco");
 }
 
 TEST(StringTest, GrowthRelocation) {
   auto str = reloco::string::try_create("Short").value();
-  const char *original_ptr = str.c_str();
+  const char *original_ptr = str.unsafe_c_str();
 
   // Trigger a massive reservation
   ASSERT_TRUE(str.try_reserve(1024 * 1024));
 
   // On many systems, this might be the same pointer due to in-place growth!
   // But regardless, the data is preserved.
-  EXPECT_STREQ(str.c_str(), "Short");
+  EXPECT_STREQ(str.unsafe_c_str(), "Short");
 }
 
 TEST(StringTest, SpaceshipComparisons) {
@@ -48,7 +48,7 @@ TEST(StringTest, StlInterface) {
 
   // Test sorting via iterators
   std::sort(str.begin(), str.end());
-  EXPECT_STREQ(str.c_str(), "aborv");
+  EXPECT_STREQ(str.unsafe_c_str(), "aborv");
 
   // Test accessors
   EXPECT_EQ(str[0], 'a');
@@ -82,7 +82,7 @@ TEST(StringTest, StringViewInteropperability) {
   // Test from_view
   std::string_view sv = "From View";
   auto fs2 = reloco::string::from_view(sv).value();
-  EXPECT_STREQ(fs2.c_str(), "From View");
+  EXPECT_STREQ(fs2.unsafe_c_str(), "From View");
 }
 
 TEST(StringTest, StringViewAppend) {
@@ -92,7 +92,7 @@ TEST(StringTest, StringViewAppend) {
   // Append only a portion of the view
   ASSERT_TRUE(str.try_append(sv.substr(0, 5)));
 
-  EXPECT_STREQ(str.c_str(), "Part1Part2");
+  EXPECT_STREQ(str.unsafe_c_str(), "Part1Part2");
   EXPECT_EQ(str.length(), 10);
 }
 
@@ -110,7 +110,7 @@ TEST(StringTest, Formatting) {
   const char *msg = "Not Found";
   ASSERT_TRUE(str.try_append_fmt("Error %d - %s", errorCode, msg));
 
-  EXPECT_STREQ(str.c_str(), "Log: Error 404 - Not Found");
+  EXPECT_STREQ(str.unsafe_c_str(), "Log: Error 404 - Not Found");
   EXPECT_EQ(str.length(), 26);
 }
 
@@ -129,7 +129,7 @@ TEST(StringTest, AdvancedStlFeatures) {
 
   // Test Resize
   ASSERT_TRUE(str.try_resize(10, '!'));
-  EXPECT_STREQ(str.c_str(), "reloco!!!!");
+  EXPECT_STREQ(str.unsafe_c_str(), "reloco!!!!");
 
   // Test Searching
   EXPECT_TRUE(str.contains("loco"));
@@ -144,14 +144,14 @@ TEST(StringTest, AdvancedStlFeatures) {
 
   // Test Insertion
   ASSERT_TRUE(str.try_insert(0, "C++ "));
-  EXPECT_STREQ(str.c_str(), "C++ reloco!!!!");
+  EXPECT_STREQ(str.unsafe_c_str(), "C++ reloco!!!!");
 
   // Verify it works with iterator traits
   auto str2 = reloco::string::try_create("test").value();
 
   // Test Erase
   str2.erase(1, 2); // "test" -> "tt"
-  EXPECT_STREQ(str2.c_str(), "tt");
+  EXPECT_STREQ(str2.unsafe_c_str(), "tt");
 }
 
 TEST(StringTest, TypeTraitsVerification) {
@@ -194,5 +194,5 @@ TEST(StringTest, StringAssignFailurePreservesData) {
   auto res = str.try_assign(huge_view);
 
   EXPECT_FALSE(res.has_value());
-  EXPECT_STREQ(str.c_str(), "KeepMe"); // Data is still intact!
+  EXPECT_STREQ(str.unsafe_c_str(), "KeepMe"); // Data is still intact!
 }

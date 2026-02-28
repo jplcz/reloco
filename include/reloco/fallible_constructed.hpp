@@ -197,7 +197,7 @@ public:
     }
   }
 
-  result<void> try_init() noexcept {
+  result<void> try_init() & noexcept {
     if (m_ptr)
       return {};
 
@@ -220,30 +220,30 @@ public:
     return {};
   }
 
-  [[nodiscard]] result<T *> try_get() const noexcept {
+  [[nodiscard]] result<T *> try_get() const & noexcept {
     if (!m_ptr) [[unlikely]] {
       return unexpected(error::not_initialized);
     }
     return m_ptr;
   }
 
-  [[nodiscard]] T *unsafe_get() const noexcept {
+  [[nodiscard]] T *unsafe_get() const & noexcept {
     RELOCO_DEBUG_ASSERT(m_ptr,
                         "Accessing fallible_allocated before try_init()");
     return m_ptr;
   }
 
-  [[nodiscard]] T *get() const noexcept {
+  [[nodiscard]] T *get() const & noexcept {
     RELOCO_ASSERT(m_ptr, "Accessing fallible_allocated before try_init()");
     return m_ptr;
   }
 
-  [[nodiscard]] T &operator*() const noexcept {
+  [[nodiscard]] T &operator*() const & noexcept {
     RELOCO_ASSERT(m_ptr, "Dereferencing fallible_allocated before try_init()");
     return *m_ptr;
   }
 
-  [[nodiscard]] T *operator->() const noexcept {
+  [[nodiscard]] T *operator->() const & noexcept {
     RELOCO_ASSERT(m_ptr,
                   "Accessing member of fallible_allocated before try_init()");
     return m_ptr;
@@ -263,7 +263,7 @@ public:
   static_fallible_constructed &
   operator=(const static_fallible_constructed &) = delete;
 
-  result<void> try_init() noexcept {
+  result<void> try_init() & noexcept {
     if (m_initialized)
       return {};
 
@@ -281,54 +281,54 @@ public:
     return {};
   }
 
-  [[nodiscard]] T *unsafe_get() noexcept {
+  [[nodiscard]] T *unsafe_get() & noexcept {
     RELOCO_DEBUG_ASSERT(
         m_initialized,
         "Accessing static_fallible_constructed before try_init()");
     return reinterpret_cast<T *>(&m_storage);
   }
 
-  [[nodiscard]] const T *unsafe_get() const noexcept {
+  [[nodiscard]] const T *unsafe_get() const & noexcept {
     RELOCO_DEBUG_ASSERT(
         m_initialized,
         "Accessing static_fallible_constructed before try_init()");
     return reinterpret_cast<const T *>(&m_storage);
   }
 
-  [[nodiscard]] T *get() noexcept {
+  [[nodiscard]] T *get() & noexcept {
     RELOCO_ASSERT(m_initialized,
                   "Accessing static_fallible_constructed before try_init()");
     return reinterpret_cast<T *>(&m_storage);
   }
 
-  [[nodiscard]] const T *get() const noexcept {
+  [[nodiscard]] const T *get() const & noexcept {
     RELOCO_ASSERT(m_initialized,
                   "Accessing static_fallible_constructed before try_init()");
     return reinterpret_cast<const T *>(&m_storage);
   }
 
-  [[nodiscard]] T &operator*() noexcept {
+  [[nodiscard]] T &operator*() & noexcept {
     RELOCO_ASSERT(
         m_initialized,
         "Dereferencing static_fallible_constructed before try_init()");
     return *reinterpret_cast<T *>(&m_storage);
   }
 
-  [[nodiscard]] const T &operator*() const noexcept {
+  [[nodiscard]] const T &operator*() const & noexcept {
     RELOCO_ASSERT(
         m_initialized,
         "Dereferencing static_fallible_constructed before try_init()");
     return *reinterpret_cast<const T *>(&m_storage);
   }
 
-  [[nodiscard]] T *operator->() noexcept {
+  [[nodiscard]] T *operator->() & noexcept {
     RELOCO_ASSERT(
         m_initialized,
         "Accessing member of static_fallible_constructed before try_init()");
     return reinterpret_cast<T *>(&m_storage);
   }
 
-  [[nodiscard]] const T *operator->() const noexcept {
+  [[nodiscard]] const T *operator->() const & noexcept {
     RELOCO_ASSERT(
         m_initialized,
         "Accessing member of static_fallible_constructed before try_init()");
@@ -339,14 +339,14 @@ public:
     return m_initialized;
   }
 
-  [[nodiscard]] result<T *> try_get() noexcept {
+  [[nodiscard]] result<T *> try_get() & noexcept {
     if (!m_initialized) [[unlikely]] {
       return unexpected(error::not_initialized);
     }
     return reinterpret_cast<T *>(&m_storage);
   }
 
-  [[nodiscard]] result<const T *> try_get() const noexcept {
+  [[nodiscard]] result<const T *> try_get() const & noexcept {
     if (!m_initialized) [[unlikely]] {
       return unexpected(error::not_initialized);
     }

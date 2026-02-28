@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <reloco/rvalue_safety.hpp>
 #include <reloco/span.hpp>
 #include <utility>
 
@@ -13,35 +14,38 @@ template <typename T, std::size_t N> struct array {
   using iterator = T *;
   using const_iterator = const T *;
 
+  RELOCO_BLOCK_RVALUE_ACCESS(T);
+
   [[nodiscard]] constexpr result<std::reference_wrapper<T>>
-  try_at(size_type index) noexcept {
+  try_at(size_type index) & noexcept {
     if (index >= N) [[unlikely]] {
       return unexpected(error::out_of_bounds);
     }
     return std::ref(data_[index]);
   }
 
-  constexpr T &operator[](size_type index) noexcept {
-    RELOCO_ASSERT(index < N && "Array index out of bounds");
+  constexpr T &operator[](size_type index) & noexcept {
+    RELOCO_ASSERT(index < N, "Array index out of bounds");
     return data_[index];
   }
 
-  [[nodiscard]] constexpr T &unsafe_at(size_type index) noexcept {
+  [[nodiscard]] constexpr T &unsafe_at(size_type index) & noexcept {
+    RELOCO_DEBUG_ASSERT(index < N, "Array index out of bounds");
     return data_[index];
   }
 
-  [[nodiscard]] constexpr span<T> as_span() noexcept {
+  [[nodiscard]] constexpr span<T> as_span() & noexcept {
     return span<T>(data_, N);
   }
 
-  [[nodiscard]] constexpr span<const T> as_span() const noexcept {
+  [[nodiscard]] constexpr span<const T> as_span() const & noexcept {
     return span<const T>(data_, N);
   }
 
   static constexpr size_type size() noexcept { return N; }
-  constexpr T *data() noexcept { return data_; }
-  constexpr iterator begin() noexcept { return data_; }
-  constexpr iterator end() noexcept { return data_ + N; }
+  constexpr T *data() & noexcept { return data_; }
+  constexpr iterator begin() & noexcept { return data_; }
+  constexpr iterator end() & noexcept { return data_ + N; }
 
   constexpr void fill(const T &value) noexcept {
     for (std::size_t i = 0; i < N; ++i) {
@@ -57,7 +61,7 @@ template <typename T, std::size_t N> struct array {
   }
 
   template <std::size_t Offset, std::size_t Count>
-  [[nodiscard]] constexpr span<T, Count> static_subspan() noexcept {
+  [[nodiscard]] constexpr span<T, Count> static_subspan() & noexcept {
     static_assert(Offset + Count <= N, "Static subspan exceeds array bounds");
     return span<T, Count>(data_ + Offset, Count);
   }
@@ -92,7 +96,8 @@ template <typename T, std::size_t N> struct array {
 };
 
 template <typename T, std::size_t N>
-[[nodiscard]] constexpr array<std::remove_cv_t<T>, N>to_array(T (&static_arr)[N]) noexcept {
+[[nodiscard]] constexpr array<std::remove_cv_t<T>, N>
+to_array(T (&static_arr)[N]) noexcept {
   array<std::remove_cv_t<T>, N> result;
   for (std::size_t i = 0; i < N; ++i) {
     result[i] = static_arr[i];

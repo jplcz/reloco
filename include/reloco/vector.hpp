@@ -6,6 +6,7 @@
 #include <reloco/collection_view.hpp>
 #include <reloco/concepts.hpp>
 #include <reloco/construction_helpers.hpp>
+#include <reloco/rvalue_safety.hpp>
 #include <span>
 
 namespace reloco {
@@ -32,6 +33,8 @@ public:
 
   vector() noexcept : alloc_(&get_default_allocator()) {}
   explicit vector(fallible_allocator &a) noexcept : alloc_(&a) {}
+
+  RELOCO_BLOCK_RVALUE_ACCESS(T);
 
   // Move-only
   vector(const vector &) = delete;
@@ -70,21 +73,21 @@ public:
     return try_allocate(get_default_allocator(), initial_cap);
   }
 
-  iterator begin() noexcept { return data_; }
-  iterator end() noexcept { return data_ + size_; }
-  const_iterator begin() const noexcept { return data_; }
-  const_iterator end() const noexcept { return data_ + size_; }
+  iterator begin() & noexcept { return data_; }
+  iterator end() & noexcept { return data_ + size_; }
+  const_iterator begin() const & noexcept { return data_; }
+  const_iterator end() const & noexcept { return data_ + size_; }
   [[nodiscard]] size_type size() const noexcept { return size_; }
   [[nodiscard]] size_type capacity() const noexcept { return cap_; }
   [[nodiscard]] bool empty() const noexcept { return size_ == 0; }
-  reference operator[](size_type pos) { return data_[pos]; }
-  const_reference operator[](size_type pos) const { return data_[pos]; }
-  reverse_iterator rbegin() noexcept { return reverse_iterator(end()); }
-  reverse_iterator rend() noexcept { return reverse_iterator(begin()); }
-  const_reverse_iterator rbegin() const noexcept {
+  reference operator[](size_type pos) & { return data_[pos]; }
+  const_reference operator[](size_type pos) const & { return data_[pos]; }
+  reverse_iterator rbegin() & noexcept { return reverse_iterator(end()); }
+  reverse_iterator rend() & noexcept { return reverse_iterator(begin()); }
+  const_reverse_iterator rbegin() const & noexcept {
     return const_reverse_iterator(end());
   }
-  const_reverse_iterator rend() const noexcept {
+  const_reverse_iterator rend() const & noexcept {
     return const_reverse_iterator(begin());
   }
   fallible_allocator *get_allocator() const noexcept { return alloc_; }
@@ -132,7 +135,7 @@ public:
   }
 
   template <typename... Args>
-  [[nodiscard]] result<T *> try_emplace_back(Args &&...args) noexcept {
+  [[nodiscard]] result<T *> try_emplace_back(Args &&...args) & noexcept {
     if (size_ == cap_) {
       auto res = try_reserve(cap_ == 0 ? 8 : cap_ * 2);
       if (!res)
@@ -151,7 +154,7 @@ public:
     return ptr;
   }
 
-  [[nodiscard]] result<T *> try_push_back(T &&val) noexcept {
+  [[nodiscard]] result<T *> try_push_back(T &&val) & noexcept {
     if (size_ == cap_) {
       auto res = try_reserve(cap_ == 0 ? 8 : cap_ * 2);
       if (!res)
@@ -170,7 +173,7 @@ public:
     return ptr;
   }
 
-  [[nodiscard]] result<void> try_pop_back() noexcept {
+  [[nodiscard]] result<void> try_pop_back() & noexcept {
     if (size_ == 0)
       return unexpected(error::out_of_range);
     --size_;
@@ -224,7 +227,7 @@ public:
     return try_clone(*alloc_);
   }
 
-  [[nodiscard]] result<void> try_erase(size_type pos) noexcept {
+  [[nodiscard]] result<void> try_erase(size_type pos) & noexcept {
     if (pos >= size_)
       return unexpected(error::out_of_range);
 
@@ -249,7 +252,7 @@ public:
   }
 
   template <typename... Args>
-  [[nodiscard]] result<T *> try_insert(size_type pos, Args &&...args) noexcept {
+  [[nodiscard]] result<T *> try_insert(size_type pos, Args &&...args) & noexcept {
     if (pos > size_) {
       return unexpected(error::out_of_range);
     }
@@ -294,68 +297,68 @@ public:
     return ptr;
   }
 
-  result<const value_type *> try_data() const noexcept {
+  result<const value_type *> try_data() const & noexcept {
     if (empty())
       return unexpected(error::container_empty);
     return data_;
   }
 
-  result<value_type *> try_data() noexcept {
+  result<value_type *> try_data() & noexcept {
     if (empty())
       return unexpected(error::container_empty);
     return data_;
   }
 
   [[nodiscard]] result<std::reference_wrapper<const T>>
-  try_at(const size_t index) const noexcept {
+  try_at(const size_t index) const & noexcept {
     if (index >= size_)
       return unexpected(error::out_of_range);
     return std::ref(data_[index]);
   }
 
   [[nodiscard]] result<std::reference_wrapper<T>>
-  try_at(const size_t index) noexcept {
+  try_at(const size_t index) & noexcept {
     if (index >= size_)
       return unexpected(error::out_of_range);
     return std::ref(data_[index]);
   }
 
-  [[nodiscard]] const T &at(const size_t index) const noexcept {
+  [[nodiscard]] const T &at(const size_t index) const & noexcept {
     RELOCO_ASSERT(index < size_, "Vector index out of bounds");
     return data_[index];
   }
 
-  [[nodiscard]] T &at(const size_t index) noexcept {
+  [[nodiscard]] T &at(const size_t index) & noexcept {
     RELOCO_ASSERT(index < size_, "Vector index out of bounds");
     return data_[index];
   }
 
-  [[nodiscard]] const T &unsafe_at(const size_t index) const noexcept {
+  [[nodiscard]] const T &unsafe_at(const size_t index) const & noexcept {
     RELOCO_DEBUG_ASSERT(index < size_, "Vector index out of bounds");
     return data_[index];
   }
 
-  [[nodiscard]] T &unsafe_at(const size_t index) noexcept {
+  [[nodiscard]] T &unsafe_at(const size_t index) & noexcept {
     RELOCO_DEBUG_ASSERT(index < size_, "Vector index out of bounds");
     return data_[index];
   }
 
-  value_type *data() noexcept {
+  value_type *data() & noexcept {
     RELOCO_ASSERT(!empty());
     return data_;
   }
 
-  const value_type *data() const noexcept {
+  const value_type *data() const & noexcept {
     RELOCO_ASSERT(!empty());
     return data_;
   }
 
-  value_type *unsafe_data() noexcept {
+  value_type *unsafe_data() & noexcept {
     RELOCO_DEBUG_ASSERT(!empty(), "vector is empty");
     return data_;
   }
 
-  const value_type *unsafe_data() const noexcept {
+  const value_type *unsafe_data() const & noexcept {
     RELOCO_DEBUG_ASSERT(!empty(), "vector is empty");
     return data_;
   }
@@ -363,7 +366,7 @@ public:
   /**
    * Construct non-owning view of this vector
    */
-  result<any_view<T>> as_view() noexcept {
+  result<any_view<T>> as_view() & noexcept {
     return any_view<T>::try_create(
         collection_view<vector<T>, policy::non_owner>(this), *alloc_);
   }

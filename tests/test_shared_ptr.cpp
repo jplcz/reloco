@@ -70,7 +70,7 @@ TEST_F(SmartPointerTest, CopyAndMoveSemantics) {
     reloco::shared_ptr<TrackedNode> ptr3 = std::move(ptr2); // Move
     EXPECT_EQ(ptr1.use_count(), 2);
     EXPECT_EQ(ptr3.use_count(), 2);
-    EXPECT_EQ(ptr2.get(), nullptr);
+    EXPECT_EQ(ptr2.unsafe_get(), nullptr);
   }
   EXPECT_EQ(ptr1.use_count(), 1);
 }
@@ -87,7 +87,7 @@ TEST_F(SmartPointerTest, CombinedCopyAndMoveSemantics) {
     reloco::shared_ptr<TrackedNode> ptr3 = std::move(ptr2); // Move
     EXPECT_EQ(ptr1.use_count(), 2);
     EXPECT_EQ(ptr3.use_count(), 2);
-    EXPECT_EQ(ptr2.get(), nullptr);
+    EXPECT_EQ(ptr2.unsafe_get(), nullptr);
   }
   EXPECT_EQ(ptr1.use_count(), 1);
 }
@@ -218,7 +218,7 @@ TEST_F(SmartPointerTest, CombinedRespectsStrictAlignment) {
   auto res = reloco::try_allocate_combined_shared<AlignedType>(alloc);
 
   ASSERT_TRUE(res.has_value());
-  uintptr_t addr = reinterpret_cast<uintptr_t>(res->get());
+  uintptr_t addr = reinterpret_cast<uintptr_t>(res->unsafe_get());
   EXPECT_EQ(addr % 64, 0) << "Object in combined block not aligned to 64 bytes";
 }
 
@@ -231,7 +231,7 @@ TEST_F(SmartPointerTest, PlainRespectsStrictAlignment) {
   auto res = reloco::try_allocate_shared<AlignedType>(alloc);
 
   ASSERT_TRUE(res.has_value());
-  uintptr_t addr = reinterpret_cast<uintptr_t>(res->get());
+  uintptr_t addr = reinterpret_cast<uintptr_t>(res->unsafe_get());
   EXPECT_EQ(addr % 64, 0) << "Object in combined block not aligned to 64 bytes";
 }
 
@@ -341,7 +341,8 @@ TEST_F(SmartPointerTest, CombinedStaticPointerCast) {
   reloco::shared_ptr<CastTests::Base> b_ptr =
       reloco::static_pointer_cast<CastTests::Base>(d_ptr);
 
-  EXPECT_EQ(b_ptr.get(), static_cast<CastTests::Base *>(d_ptr.get()));
+  EXPECT_EQ(b_ptr.unsafe_get(),
+            static_cast<CastTests::Base *>(d_ptr.unsafe_get()));
   EXPECT_EQ(b_ptr.use_count(), 2);
   EXPECT_EQ(b_ptr->base_val, 1);
 
@@ -360,7 +361,8 @@ TEST_F(SmartPointerTest, StaticPointerCast) {
   reloco::shared_ptr<CastTests::Base> b_ptr =
       reloco::static_pointer_cast<CastTests::Base>(d_ptr);
 
-  EXPECT_EQ(b_ptr.get(), static_cast<CastTests::Base *>(d_ptr.get()));
+  EXPECT_EQ(b_ptr.unsafe_get(),
+            static_cast<CastTests::Base *>(d_ptr.unsafe_get()));
   EXPECT_EQ(b_ptr.use_count(), 2);
   EXPECT_EQ(b_ptr->base_val, 1);
 
@@ -379,7 +381,7 @@ TEST_F(SmartPointerTest, ConstPointerCast) {
   reloco::shared_ptr<const CastTests::Derived> c_ptr =
       reloco::const_pointer_cast<const CastTests::Derived>(ptr);
 
-  EXPECT_EQ(c_ptr.get(), ptr.get());
+  EXPECT_EQ(c_ptr.unsafe_get(), ptr.unsafe_get());
   EXPECT_EQ(c_ptr.use_count(), 2);
 
   // Verify we can cast back
@@ -395,7 +397,7 @@ TEST_F(SmartPointerTest, CombinedConstPointerCast) {
   reloco::shared_ptr<const CastTests::Derived> c_ptr =
       reloco::const_pointer_cast<const CastTests::Derived>(ptr);
 
-  EXPECT_EQ(c_ptr.get(), ptr.get());
+  EXPECT_EQ(c_ptr.unsafe_get(), ptr.unsafe_get());
   EXPECT_EQ(c_ptr.use_count(), 2);
 
   // Verify we can cast back
@@ -413,13 +415,13 @@ TEST_F(SmartPointerTest, DynamicPointerCast) {
   // Success Case: Dynamic cast Base -> Derived
   auto d_ptr_2 = reloco::dynamic_pointer_cast<CastTests::Derived>(b_ptr);
   ASSERT_TRUE(d_ptr_2);
-  EXPECT_EQ(d_ptr_2.get(), d_ptr.get());
+  EXPECT_EQ(d_ptr_2.unsafe_get(), d_ptr.unsafe_get());
   EXPECT_EQ(d_ptr_2->derived_val, 2);
 
   // Failure Case: Dynamic cast Base -> Other
   auto o_ptr = reloco::dynamic_pointer_cast<CastTests::Other>(b_ptr);
   EXPECT_FALSE(o_ptr);
-  EXPECT_EQ(o_ptr.get(), nullptr);
+  EXPECT_EQ(o_ptr.unsafe_get(), nullptr);
 }
 
 TEST_F(SmartPointerTest, CombinedDynamicPointerCast) {
@@ -432,13 +434,13 @@ TEST_F(SmartPointerTest, CombinedDynamicPointerCast) {
   // Success Case: Dynamic cast Base -> Derived
   auto d_ptr_2 = reloco::dynamic_pointer_cast<CastTests::Derived>(b_ptr);
   ASSERT_TRUE(d_ptr_2);
-  EXPECT_EQ(d_ptr_2.get(), d_ptr.get());
+  EXPECT_EQ(d_ptr_2.unsafe_get(), d_ptr.unsafe_get());
   EXPECT_EQ(d_ptr_2->derived_val, 2);
 
   // Failure Case: Dynamic cast Base -> Other
   auto o_ptr = reloco::dynamic_pointer_cast<CastTests::Other>(b_ptr);
   EXPECT_FALSE(o_ptr);
-  EXPECT_EQ(o_ptr.get(), nullptr);
+  EXPECT_EQ(o_ptr.unsafe_get(), nullptr);
 }
 
 TEST_F(SmartPointerTest, ReinterpretPointerCast) {
@@ -448,7 +450,8 @@ TEST_F(SmartPointerTest, ReinterpretPointerCast) {
   // View the object as a byte array
   auto b_ptr = reloco::reinterpret_pointer_cast<std::byte>(d_ptr);
 
-  EXPECT_EQ(static_cast<void *>(b_ptr.get()), static_cast<void *>(d_ptr.get()));
+  EXPECT_EQ(static_cast<void *>(b_ptr.unsafe_get()),
+            static_cast<void *>(d_ptr.unsafe_get()));
   EXPECT_EQ(b_ptr.use_count(), 2);
 }
 
@@ -459,7 +462,8 @@ TEST_F(SmartPointerTest, CombinedReinterpretPointerCast) {
   // View the object as a byte array
   auto b_ptr = reloco::reinterpret_pointer_cast<std::byte>(d_ptr);
 
-  EXPECT_EQ(static_cast<void *>(b_ptr.get()), static_cast<void *>(d_ptr.get()));
+  EXPECT_EQ(static_cast<void *>(b_ptr.unsafe_get()),
+            static_cast<void *>(d_ptr.unsafe_get()));
   EXPECT_EQ(b_ptr.use_count(), 2);
 }
 
@@ -471,7 +475,9 @@ TEST_F(SmartPointerTest, WeakFromThisLifecycle) {
   reloco::weak_ptr<TrackedNode> w_ptr = s_ptr->weak_from_this();
 
   EXPECT_FALSE(w_ptr.expired());
-  EXPECT_EQ(w_ptr.lock().value().get(), s_ptr.get());
+  auto locked_value = w_ptr.lock().value();
+  EXPECT_EQ(locked_value.unsafe_get(), s_ptr.unsafe_get());
+  locked_value.reset();
 
   s_ptr.reset();
 
@@ -487,7 +493,9 @@ TEST_F(SmartPointerTest, CombinedWeakFromThisLifecycle) {
   reloco::weak_ptr<TrackedNode> w_ptr = s_ptr->weak_from_this();
 
   EXPECT_FALSE(w_ptr.expired());
-  EXPECT_EQ(w_ptr.lock().value().get(), s_ptr.get());
+  auto locked_ptr = w_ptr.lock().value();
+  EXPECT_EQ(locked_ptr.unsafe_get(), s_ptr.unsafe_get());
+  locked_ptr.reset();
 
   s_ptr.reset();
 

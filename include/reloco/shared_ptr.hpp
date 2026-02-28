@@ -3,6 +3,7 @@
 #include <reloco/assert.hpp>
 #include <reloco/concepts.hpp>
 #include <reloco/core.hpp>
+#include <reloco/rvalue_safety.hpp>
 
 namespace reloco {
 
@@ -89,6 +90,8 @@ template <typename T> class shared_ptr {
   template <typename U> friend class shared_ptr;
 
 public:
+  RELOCO_BLOCK_RVALUE_ACCESS(T);
+
   shared_ptr() noexcept = default;
 
   ~shared_ptr() {
@@ -146,19 +149,17 @@ public:
     return *this;
   }
 
-  T *operator->() const noexcept {
+  T *operator->() const & noexcept {
     RELOCO_ASSERT(ptr_);
     return ptr_;
   }
 
-  T &operator*() const noexcept {
+  T &operator*() const & noexcept {
     RELOCO_ASSERT(ptr_);
     return *(ptr_);
   }
 
-  T *get() const noexcept { return ptr_; }
-
-  T *unsafe_get() const noexcept { return ptr_; }
+  T *unsafe_get() const & noexcept { return ptr_; }
 
   result<T *> try_get() const noexcept {
     if (!ptr_)
@@ -429,13 +430,13 @@ template <typename Tp, typename... Args>
 
 template <typename T, typename U>
 shared_ptr<T> static_pointer_cast(const shared_ptr<U> &r) noexcept {
-  auto p = static_cast<T *>(r.get());
+  auto p = static_cast<T *>(r.unsafe_get());
   return shared_ptr<T>(r, p);
 }
 
 template <typename T, typename U>
 shared_ptr<T> dynamic_pointer_cast(const shared_ptr<U> &r) noexcept {
-  if (auto *p = dynamic_cast<T *>(r.get())) {
+  if (auto *p = dynamic_cast<T *>(r.unsafe_get())) {
     return shared_ptr<T>(r, p);
   }
   return shared_ptr<T>();
@@ -443,12 +444,12 @@ shared_ptr<T> dynamic_pointer_cast(const shared_ptr<U> &r) noexcept {
 
 template <typename T, typename U>
 shared_ptr<T> const_pointer_cast(const shared_ptr<U> &r) noexcept {
-  return shared_ptr<T>(r, const_cast<T *>(r.get()));
+  return shared_ptr<T>(r, const_cast<T *>(r.unsafe_get()));
 }
 
 template <typename T, typename U>
 shared_ptr<T> reinterpret_pointer_cast(const shared_ptr<U> &r) noexcept {
-  return shared_ptr<T>(r, reinterpret_cast<T *>(r.get()));
+  return shared_ptr<T>(r, reinterpret_cast<T *>(r.unsafe_get()));
 }
 
 template <typename T>
@@ -462,7 +463,7 @@ namespace std {
 
 template <typename T> struct hash<reloco::shared_ptr<T>> {
   size_t operator()(const reloco::shared_ptr<T> &p) const noexcept {
-    return hash<T *>{}(p.get());
+    return hash<T *>{}(p.unsafe_get());
   }
 };
 

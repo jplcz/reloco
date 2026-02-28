@@ -24,7 +24,8 @@ enum class error : int {
   try_again,
   not_initialized,
   container_empty,
-  not_found
+  not_found,
+  integer_overflow
 };
 
 template <typename T> using result = expected<T, error>;

@@ -53,7 +53,7 @@ TEST_F(MakeUniqueTest, RespectsExtendedAlignment) {
   auto res = reloco::unique_ptr<AlignedType>::try_create();
 
   ASSERT_TRUE(res.has_value());
-  auto ptr_val = reinterpret_cast<std::uintptr_t>(res->get());
+  auto ptr_val = reinterpret_cast<std::uintptr_t>(res->unsafe_get());
   EXPECT_EQ(ptr_val % 64, 0);
 }
 

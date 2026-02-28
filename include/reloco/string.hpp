@@ -10,6 +10,7 @@
 #include <iterator>
 #include <reloco/allocator.hpp>
 #include <reloco/concepts.hpp>
+#include <reloco/rvalue_safety.hpp>
 #include <reloco/string_view.hpp>
 
 namespace reloco {
@@ -37,6 +38,8 @@ public:
   using const_reference = const char &;
   using pointer = char *;
   using const_pointer = const char *;
+
+  RELOCO_BLOCK_RVALUE_ACCESS(value_type);
 
   static constexpr size_type npos = string_view::npos;
 
@@ -125,7 +128,7 @@ public:
     return try_clone(*alloc_);
   }
 
-  [[nodiscard]] result<void> try_reserve(std::size_t new_cap) noexcept {
+  [[nodiscard]] result<void> try_reserve(std::size_t new_cap) & noexcept {
     if (new_cap <= cap_)
       return {};
 
@@ -152,7 +155,7 @@ public:
     return {};
   }
 
-  [[nodiscard]] result<void> try_append(string_view sv) noexcept {
+  [[nodiscard]] result<void> try_append(string_view sv) & noexcept {
     if (sv.empty())
       return {};
 
@@ -177,16 +180,19 @@ public:
     return {};
   }
 
-  [[nodiscard]] result<void> try_append(const char *s) noexcept {
+  [[nodiscard]] result<void> try_append(const char *s) & noexcept {
     if (!s)
       return {};
     return try_append(string_view(s));
   }
 
-  const char *c_str() const noexcept { return data_; }
-  std::size_t length() const noexcept { return size_; }
-  std::size_t size() const noexcept { return size_; }
-  std::size_t capacity() const noexcept { return cap_; }
+  const char *unsafe_c_str() const & noexcept { return data_; }
+  const char *unsafe_c_str() const && noexcept = delete;
+  const char *c_str() const = delete;
+
+  std::size_t length() const & noexcept { return size_; }
+  std::size_t size() const & noexcept { return size_; }
+  std::size_t capacity() const & noexcept { return cap_; }
 
   ~basic_string() noexcept {
     if (cap_ > 0 && data_ != &empty_char) {
@@ -194,56 +200,56 @@ public:
     }
   }
 
-  iterator begin() noexcept { return data_; }
-  iterator end() noexcept { return data_ + size_; }
-  const_iterator begin() const noexcept { return data_; }
-  const_iterator end() const noexcept { return data_ + size_; }
-  reverse_iterator rbegin() noexcept { return reverse_iterator(end()); }
-  reverse_iterator rend() noexcept { return reverse_iterator(begin()); }
-  const_reverse_iterator rbegin() const noexcept {
+  iterator begin() & noexcept { return data_; }
+  iterator end() & noexcept { return data_ + size_; }
+  const_iterator begin() const & noexcept { return data_; }
+  const_iterator end() const & noexcept { return data_ + size_; }
+  reverse_iterator rbegin() & noexcept { return reverse_iterator(end()); }
+  reverse_iterator rend() & noexcept { return reverse_iterator(begin()); }
+  const_reverse_iterator rbegin() const & noexcept {
     return const_reverse_iterator(end());
   }
-  const_reverse_iterator rend() const noexcept {
+  const_reverse_iterator rend() const & noexcept {
     return const_reverse_iterator(begin());
   }
 
-  char &operator[](size_type pos) noexcept {
+  char &operator[](size_type pos) & noexcept {
     RELOCO_ASSERT(pos < size_);
     return data_[pos];
   }
-  const char &operator[](size_type pos) const noexcept {
+  const char &operator[](size_type pos) const & noexcept {
     RELOCO_ASSERT(pos < size_);
     return data_[pos];
   }
 
-  char &at(size_type pos) noexcept {
+  char &at(size_type pos) & noexcept {
     // In reloco, we prefer assertions over throwing exceptions for
     // out-of-bounds
     RELOCO_ASSERT(pos < size_);
     return data_[pos];
   }
 
-  char &unsafe_at(size_type pos) noexcept {
+  char &unsafe_at(size_type pos) & noexcept {
     RELOCO_DEBUG_ASSERT(pos < size_);
     return data_[pos];
   }
 
-  char &back() noexcept {
+  char &back() & noexcept {
     RELOCO_ASSERT(!empty());
     return data_[size_ - 1];
   }
 
-  char &unsafe_back() noexcept {
+  char &unsafe_back() & noexcept {
     RELOCO_DEBUG_ASSERT(!empty());
     return data_[size_ - 1];
   }
 
-  char &front() noexcept {
+  char &front() & noexcept {
     RELOCO_ASSERT(!empty());
     return data_[0];
   }
 
-  char &unsafe_front() noexcept {
+  char &unsafe_front() & noexcept {
     RELOCO_DEBUG_ASSERT(!empty());
     return data_[0];
   }
@@ -264,7 +270,7 @@ public:
     }
   }
 
-  [[nodiscard]] result<void> shrink_to_fit() noexcept {
+  [[nodiscard]] result<void> shrink_to_fit() & noexcept {
     if (cap_ <= size_)
       return {};
 
@@ -305,11 +311,11 @@ public:
 
   string_view view() const noexcept { return string_view(data_, size_); }
 
-  operator std::string_view() const noexcept {
+  operator std::string_view() const & noexcept {
     return std::string_view(data_, size_);
   }
 
-  operator reloco::string_view() const noexcept {
+  operator reloco::string_view() const & noexcept {
     return reloco::string_view(data_, size_);
   }
 
@@ -363,13 +369,13 @@ public:
     return {};
   }
 
-  void pop_back() noexcept {
+  void pop_back() & noexcept {
     RELOCO_ASSERT(size_ > 0);
     --size_;
     data_[size_] = '\0';
   }
 
-  [[nodiscard]] result<void> try_pop_back() noexcept {
+  [[nodiscard]] result<void> try_pop_back() & noexcept {
     if (size_ == 0) {
       return unexpected(error::out_of_range);
     }
@@ -379,7 +385,7 @@ public:
   }
 
   [[nodiscard]] result<void> try_resize(size_type count,
-                                        char ch = '\0') noexcept {
+                                        char ch = '\0') & noexcept {
     if (count <= size_) {
       size_ = count;
       if (cap_ > 0)
@@ -398,7 +404,7 @@ public:
   }
 
   [[nodiscard]] result<void> try_insert(size_type pos,
-                                        string_view sv) noexcept {
+                                        string_view sv) & noexcept {
     if (sv.empty())
       return {};
 
@@ -423,7 +429,7 @@ public:
     return {};
   }
 
-  void erase(size_type pos = 0, size_type count = npos) noexcept {
+  void erase(size_type pos = 0, size_type count = npos) & noexcept {
     RELOCO_ASSERT(pos <= size_);
 
     // Adjust count if it exceeds remaining string length
@@ -440,7 +446,7 @@ public:
   }
 
   [[nodiscard]] result<void> try_erase(size_type pos = 0,
-                                       size_type count = npos) noexcept {
+                                       size_type count = npos) & noexcept {
     if (pos > size_) {
       return unexpected(error::out_of_range);
     }
@@ -459,7 +465,7 @@ public:
     return {};
   }
 
-  [[nodiscard]] result<void> try_assign(string_view sv) noexcept {
+  [[nodiscard]] result<void> try_assign(string_view sv) & noexcept {
     if (sv.empty())
       return {};
 
