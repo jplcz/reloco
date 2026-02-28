@@ -76,4 +76,17 @@ concept is_fallible_initializable = requires {
   typename T::reloco_fallible_t; // Concept only checks for this name
 };
 
+/**
+ * @brief Concept for types providing an optimized in-place clone.
+ * Requirements:
+ * - Takes an allocator for nested resources.
+ * - Takes a raw pointer to uninitialized destination storage.
+ * - Takes a reference to the source object to be cloned.
+ */
+template <typename T>
+concept has_try_clone_at =
+    requires(fallible_allocator &alloc, T *storage, const T &source) {
+      { T::try_clone_at(alloc, storage, source) } -> std::same_as<result<void>>;
+    };
+
 } // namespace reloco

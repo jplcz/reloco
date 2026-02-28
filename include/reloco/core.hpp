@@ -49,6 +49,8 @@ class fallible_allocator {
 public:
   virtual ~fallible_allocator() noexcept = default;
 
+  // Core Virtual Interface
+
   [[nodiscard]] virtual result<mem_block>
   allocate(std::size_t bytes, std::size_t alignment) noexcept = 0;
 
@@ -71,8 +73,7 @@ template <typename T> struct is_relocatable : std::is_trivially_copyable<T> {};
 
 template <typename T> struct is_result : std::false_type {};
 
-template <typename T>
-struct is_result<result<T>> : std::true_type {};
+template <typename T> struct is_result<result<T>> : std::true_type {};
 
 template <typename T> inline constexpr bool is_result_v = is_result<T>::value;
 

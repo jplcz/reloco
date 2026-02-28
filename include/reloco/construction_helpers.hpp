@@ -148,15 +148,31 @@ struct construction_helpers {
     }
   }
 
+  /**
+   * @brief Performs a fallible deep-copy directly into uninitialized storage.
+   * Priority:
+   * 1. Specialized try_clone_at: Direct construction from source to storage.
+   * 2. try_clone fallback: Create a value-result temporary and move-construct
+   * it.
+   */
   template <typename T>
   static result<void> try_clone_at(fallible_allocator &alloc, T *storage,
                                    const T &source) {
-    auto res = try_clone<T>(alloc, source);
-    if (!res)
-      return unexpected(res.error());
+    static_assert(
+        std::is_nothrow_move_constructible_v<T>,
+        "Reloco requires noexcept move-construction for clone fallbacks.");
 
-    new (storage) T(std::move(*res));
-    return {};
+    if constexpr (has_try_clone_at<T>) {
+      return T::try_clone_at(alloc, storage, source);
+    } else {
+      auto res = try_clone<T>(alloc, source);
+      if (!res) {
+        return unexpected(res.error());
+      }
+
+      new (storage) T(std::move(*res));
+      return {};
+    }
   }
 };
 

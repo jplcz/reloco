@@ -94,6 +94,20 @@ public:
     return str;
   }
 
+  [[nodiscard]] result<void>
+  try_clone_at(fallible_allocator &alloc, basic_string *storage,
+               const basic_string &source) const noexcept {
+    new (storage) basic_string(alloc);
+    if (!source.empty()) {
+      auto res = storage->try_assign(source.view());
+      if (!res) {
+        storage->~basic_string();
+        return unexpected(res.error());
+      }
+    }
+    return {};
+  }
+
   [[nodiscard]] result<basic_string>
   try_clone(fallible_allocator &clone_alloc) const noexcept {
     basic_string clone(clone_alloc);
