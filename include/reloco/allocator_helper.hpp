@@ -5,6 +5,10 @@
 #include <reloco/core.hpp>
 #include <reloco/rvalue_safety.hpp>
 
+#if defined(_MSC_VER)
+#include <intsafe.h>
+#endif
+
 namespace reloco {
 
 namespace detail {
@@ -31,8 +35,6 @@ template <typename T>
   // GCC and Clang intrinsic
   return __builtin_mul_overflow(a, b, result);
 #elif defined(_MSC_VER)
-  // MSVC intrinsic (requires <intsafe.h> or <unsigned.h>)
-  // For 64-bit unsigned:
   if constexpr (sizeof(T) == 8 && std::is_unsigned_v<T>) {
     return SizeTMult(a, b, result) != 0; // Returns non-zero on error
   }
