@@ -1,6 +1,7 @@
 #pragma once
 #include <reloco/assert.hpp>
 #include <reloco/core.hpp>
+#include <reloco/rvalue_safety.hpp>
 #include <span>
 
 namespace reloco {
@@ -31,6 +32,8 @@ public:
 
   static constexpr size_t extent = Extent;
 
+  RELOCO_BLOCK_RVALUE_ACCESS(T);
+
   constexpr span() noexcept
     requires(Extent == 0 || Extent == std::dynamic_extent)
   = default;
@@ -39,26 +42,26 @@ public:
       : span_(ptr, ptr ? count : 0) {}
 
   [[nodiscard]] constexpr result<std::reference_wrapper<T>>
-  try_at(size_type index) const noexcept {
+  try_at(size_type index) const & noexcept {
     if (index >= span_.size()) [[unlikely]] {
       return unexpected(error::out_of_bounds);
     }
     return std::ref(span_[index]);
   }
 
-  constexpr T &operator[](size_type index) const noexcept {
+  constexpr T &operator[](size_type index) const & noexcept {
     RELOCO_ASSERT(index < span_.size() && "Span index out of bounds");
     return span_[index];
   }
 
-  [[nodiscard]] constexpr T &unsafe_at(size_type index) const noexcept {
+  [[nodiscard]] constexpr T &unsafe_at(size_type index) const & noexcept {
     RELOCO_DEBUG_ASSERT(index < span_.size() && "Span index out of bounds");
     return span_.data()[index];
   }
 
   [[nodiscard]] constexpr result<span<T>>
   try_subspan(size_type offset,
-              size_type count = std::dynamic_extent) const noexcept {
+              size_type count = std::dynamic_extent) const & noexcept {
     if (offset > span_.size())
       return reloco::unexpected(error::out_of_bounds);
 
@@ -71,75 +74,76 @@ public:
   }
 
   constexpr span<T> unsafe_subspan(size_type offset,
-                                   size_type count) const noexcept {
+                                   size_type count) const & noexcept {
     return span<T>(span_.data() + offset, count);
   }
 
   constexpr size_type size() const noexcept { return span_.size(); }
-  constexpr T *unsafe_data() const noexcept {
+  constexpr T *unsafe_data() const & noexcept {
     RELOCO_DEBUG_ASSERT(!span_.empty(), "span has no data");
     return span_.data();
   }
   constexpr bool empty() const noexcept { return span_.empty(); }
 
-  [[nodiscard]] constexpr iterator begin() noexcept { return span_.begin(); }
-  [[nodiscard]] constexpr iterator end() noexcept { return span_.end(); }
+  [[nodiscard]] constexpr iterator begin() & noexcept { return span_.begin(); }
+  [[nodiscard]] constexpr iterator end() & noexcept { return span_.end(); }
 #if __cplusplus > 202002L
-  [[nodiscard]] constexpr const_iterator begin() const noexcept {
+  [[nodiscard]] constexpr const_iterator begin() const & noexcept {
     return span_.begin();
   }
-  [[nodiscard]] constexpr const_iterator end() const noexcept {
+  [[nodiscard]] constexpr const_iterator end() const & noexcept {
     return span_.end();
   }
 #endif
-  [[nodiscard]] constexpr reverse_iterator rbegin() noexcept {
+  [[nodiscard]] constexpr reverse_iterator rbegin() & noexcept {
     return span_.rbegin();
   }
-  [[nodiscard]] constexpr reverse_iterator rend() noexcept {
+  [[nodiscard]] constexpr reverse_iterator rend() & noexcept {
     return span_.rend();
   }
   [[nodiscard]] constexpr result<std::reference_wrapper<T>>
-  try_front() const noexcept {
+  try_front() const & noexcept {
     if (empty()) [[unlikely]]
       return unexpected(error::out_of_bounds);
     return std::ref(span_.front());
   }
 
   [[nodiscard]] constexpr result<std::reference_wrapper<T>>
-  try_back() const noexcept {
+  try_back() const & noexcept {
     if (empty()) [[unlikely]]
       return unexpected(error::out_of_bounds);
     return std::ref(span_.back());
   }
 
-  constexpr T &front() const noexcept {
+  constexpr T &front() const & noexcept {
     RELOCO_ASSERT(!empty(), "front() called on empty span");
     return span_.front();
   }
 
-  constexpr T &unsafe_front() const noexcept {
+  constexpr T &unsafe_front() const & noexcept {
     RELOCO_DEBUG_ASSERT(!empty(), "front() called on empty span");
     return *span_.data();
   }
 
   [[nodiscard]] constexpr result<span<T>>
-  try_first(size_type n) const noexcept {
+  try_first(size_type n) const & noexcept {
     if (n > size())
       return unexpected(error::out_of_bounds);
     return span<T>(span_.data(), n);
   }
 
-  [[nodiscard]] constexpr result<span<T>> try_last(size_type n) const noexcept {
+  [[nodiscard]] constexpr result<span<T>>
+  try_last(size_type n) const & noexcept {
     if (n > size())
       return unexpected(error::out_of_bounds);
     return span<T>(span_.data() + (size() - n), n);
   }
 
-  constexpr span<T> unsafe_first(size_type n) const noexcept {
+  constexpr span<T> unsafe_first(size_type n) const & noexcept {
     return span<T>(span_.data(), n);
   }
 
-  [[nodiscard]] constexpr span<const std::byte> as_bytes() const noexcept {
+  [[nodiscard]] constexpr span<const std::byte> as_bytes() const & noexcept {
     return span<const std::byte>(
         reinterpret_cast<const std::byte *>(span_.data()), span_.size_bytes());
   }
