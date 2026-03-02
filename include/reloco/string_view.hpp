@@ -1,6 +1,7 @@
 #pragma once
 #include <reloco/assert.hpp>
 #include <reloco/core.hpp>
+#include <reloco/rvalue_safety.hpp>
 #include <string_view>
 
 namespace reloco {
@@ -14,6 +15,8 @@ struct basic_string_view : std::basic_string_view<CharT, TraitsT> {
   using base::base;
   using base::empty;
   using base::size;
+
+  RELOCO_BLOCK_RVALUE_ACCESS(CharT);
 
   constexpr basic_string_view(const basic_string_view &rhs) noexcept
       : std::basic_string_view<CharT, TraitsT>(rhs) {}
@@ -44,59 +47,59 @@ struct basic_string_view : std::basic_string_view<CharT, TraitsT> {
   }
 
   [[nodiscard]] constexpr const_reference
-  operator[](size_type pos) const noexcept {
+  operator[](size_type pos) const & noexcept {
     RELOCO_ASSERT(pos < size(), "string_view index out of bounds");
     return base::operator[](pos);
   }
 
   [[nodiscard]] constexpr result<std::reference_wrapper<const CharT>>
-  try_front() const noexcept {
+  try_front() const & noexcept {
     if (empty)
       return unexpected(error::container_empty);
     return base::front();
   }
 
   [[nodiscard]] constexpr result<std::reference_wrapper<const CharT>>
-  try_back() const noexcept {
+  try_back() const & noexcept {
     if (empty)
       return unexpected(error::container_empty);
     return base::back();
   }
 
-  [[nodiscard]] constexpr const_reference front() const noexcept {
+  [[nodiscard]] constexpr const_reference front() const & noexcept {
     RELOCO_ASSERT(!empty(), "front() called on empty string_view");
     return base::front();
   }
 
-  [[nodiscard]] constexpr const_reference back() const noexcept {
+  [[nodiscard]] constexpr const_reference back() const & noexcept {
     RELOCO_ASSERT(!empty(), "back() called on empty string_view");
     return base::back();
   }
 
-  [[nodiscard]] constexpr const_reference unsafe_front() const noexcept {
+  [[nodiscard]] constexpr const_reference unsafe_front() const & noexcept {
     RELOCO_DEBUG_ASSERT(!empty(), "front() called on empty string_view");
     return base::front();
   }
 
-  [[nodiscard]] constexpr const_reference unsafe_back() const noexcept {
+  [[nodiscard]] constexpr const_reference unsafe_back() const & noexcept {
     RELOCO_DEBUG_ASSERT(!empty(), "back() called on empty string_view");
     return base::back();
   }
 
   [[nodiscard]] constexpr basic_string_view
-  substr(size_type pos, size_type count = base::npos) const noexcept {
+  substr(size_type pos, size_type count = base::npos) const & noexcept {
     RELOCO_ASSERT(pos <= size(), "substr position out of bounds");
     return basic_string_view(base::substr(pos, count));
   }
 
   [[nodiscard]] constexpr basic_string_view
-  unsafe_substr(size_type pos, size_type count = base::npos) const noexcept {
+  unsafe_substr(size_type pos, size_type count = base::npos) const & noexcept {
     RELOCO_DEBUG_ASSERT(pos <= size(), "substr position out of bounds");
     return basic_string_view(base::substr(pos, count));
   }
 
   [[nodiscard]] constexpr result<std::reference_wrapper<const CharT>>
-  try_at(size_type pos) const noexcept {
+  try_at(size_type pos) const & noexcept {
     if (pos >= size()) {
       return unexpected(error::out_of_bounds);
     }
@@ -104,7 +107,7 @@ struct basic_string_view : std::basic_string_view<CharT, TraitsT> {
   }
 
   [[nodiscard]] constexpr result<basic_string_view>
-  try_substr(size_type pos, size_type count = base::npos) const noexcept {
+  try_substr(size_type pos, size_type count = base::npos) const & noexcept {
     if (pos > size()) {
       return unexpected(error::out_of_bounds);
     }
@@ -116,7 +119,7 @@ struct basic_string_view : std::basic_string_view<CharT, TraitsT> {
    * Triggers RELOCO_ASSERT if the view is empty, as dereferencing
    * the result of data() on an empty view is usually a logic error.
    */
-  [[nodiscard]] constexpr const_pointer data() const noexcept {
+  [[nodiscard]] constexpr const_pointer data() const & noexcept {
     RELOCO_ASSERT(!empty(), "data() called on empty string_view");
     return base::data();
   }
@@ -125,7 +128,7 @@ struct basic_string_view : std::basic_string_view<CharT, TraitsT> {
    * @brief Safe-by-default access to the raw pointer.
    * returns a result containing the pointer only if the view is non-empty.
    */
-  [[nodiscard]] constexpr result<const_pointer> try_data() const noexcept {
+  [[nodiscard]] constexpr result<const_pointer> try_data() const & noexcept {
     if (empty()) {
       return unexpected(error::container_empty);
     }
@@ -136,40 +139,41 @@ struct basic_string_view : std::basic_string_view<CharT, TraitsT> {
    * @brief Explicitly allows null pointer access if intended.
    * Use this only when passing to external APIs that explicitly handle null.
    */
-  [[nodiscard]] constexpr const_pointer unsafe_data() const noexcept {
+  [[nodiscard]] constexpr const_pointer unsafe_data() const & noexcept {
+    RELOCO_DEBUG_ASSERT(!empty(), "data() called on empty string_view");
     return base::data();
   }
 
-  constexpr base to_std() const noexcept { return static_cast<base>(*this); }
+  constexpr base to_std() const & noexcept { return static_cast<base>(*this); }
 
-  constexpr void remove_prefix(size_type n) noexcept {
+  constexpr void remove_prefix(size_type n) & noexcept {
     RELOCO_ASSERT(n <= size(), "remove_prefix exceeds view size");
     base::remove_prefix(n);
   }
 
-  constexpr void unsafe_remove_prefix(size_type n) noexcept {
+  constexpr void unsafe_remove_prefix(size_type n) & noexcept {
     RELOCO_DEBUG_ASSERT(n <= size(), "remove_prefix exceeds view size");
     base::remove_prefix(n);
   }
 
-  constexpr void remove_suffix(size_type n) noexcept {
+  constexpr void remove_suffix(size_type n) & noexcept {
     RELOCO_ASSERT(n <= size(), "remove_suffix exceeds view size");
     base::remove_suffix(n);
   }
 
-  constexpr void unsafe_remove_suffix(size_type n) noexcept {
+  constexpr void unsafe_remove_suffix(size_type n) & noexcept {
     RELOCO_DEBUG_ASSERT(n <= size(), "remove_suffix exceeds view size");
     base::remove_suffix(n);
   }
 
-  constexpr result<void> try_remove_prefix(size_type n) noexcept {
+  constexpr result<void> try_remove_prefix(size_type n) & noexcept {
     if (n > size())
       return unexpected(error::out_of_bounds);
     base::remove_prefix(n);
     return {};
   }
 
-  constexpr result<void> try_remove_suffix(size_type n) noexcept {
+  constexpr result<void> try_remove_suffix(size_type n) & noexcept {
     if (n > size())
       return unexpected(error::out_of_bounds);
     base::remove_suffix(n);
@@ -181,6 +185,15 @@ struct basic_string_view : std::basic_string_view<CharT, TraitsT> {
     RELOCO_ASSERT(first <= last, "Invalid pointer range for string_view");
     return safe_string_view(first, static_cast<size_type>(last - first));
   }
+
+  auto begin() const & noexcept { return base::begin(); }
+  auto end() const & noexcept { return base::end(); }
+  auto cbegin() const & noexcept { return base::begin(); }
+  auto cend() const & noexcept { return base::end(); }
+  auto rbegin() const & noexcept { return std::reverse_iterator(end()); }
+  auto rend() const & noexcept { return std::reverse_iterator(begin()); }
+  auto crbegin() const & noexcept { return std::reverse_iterator(end()); }
+  auto crend() const & noexcept { return std::reverse_iterator(begin()); }
 };
 
 using string_view = basic_string_view<char>;

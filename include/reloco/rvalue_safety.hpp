@@ -22,6 +22,7 @@ namespace reloco {
   /** @name Rvalue Safety Guards */                                            \
   /** @{ */                                                                    \
   Type &operator[](size_t) const && = delete;                                  \
+  Type &operator[](size_t) && = delete;                                        \
   auto front() const && = delete;                                              \
   auto back() const && = delete;                                               \
   auto try_front() const && = delete;                                          \
@@ -34,6 +35,12 @@ namespace reloco {
   auto unsafe_data() const && = delete;                                        \
   auto begin() const && = delete;                                              \
   auto end() const && = delete;                                                \
+  auto rbegin() const && = delete;                                             \
+  auto rend() const && = delete;                                               \
+  auto cbegin() const && = delete;                                             \
+  auto cend() const && = delete;                                               \
+  auto crbegin() const && = delete;                                            \
+  auto crend() const && = delete;                                              \
   auto operator*() const && = delete;                                          \
   auto operator->() const && = delete;                                         \
   auto get() const && = delete;                                                \
