@@ -170,7 +170,7 @@ include(FetchContent)
 
 FetchContent_Declare(
 reloco
-GIT_REPOSITORY https://github.com/jplcz/reloco.git
+GIT_REPOSITORY https://gitea.com/jplcz/reloco.git
 )
 
 FetchContent_MakeAvailable(reloco)
