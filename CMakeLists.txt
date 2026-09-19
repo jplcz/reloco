@@ -16,7 +16,7 @@ set(JPLCZ_RELOCO_DEVELOPMENT_DEFAULT ${JPLCZ_RELOCO_IS_TOP_LEVEL})
 option(JPLCZ_RELOCO_ENABLE_STRICT_WARNINGS
     "Enable comprehensive GCC and Clang warnings" ${JPLCZ_RELOCO_DEVELOPMENT_DEFAULT})
 option(JPLCZ_RELOCO_ENABLE_UNSAFE_BUFFER_USAGE
-    "Enable Clang unsafe buffer usage diagnostics" OFF)
+    "Enable Clang unsafe buffer usage diagnostics" ${JPLCZ_RELOCO_DEVELOPMENT_DEFAULT})
 option(JPLCZ_RELOCO_ENABLE_WERROR
     "Enable build with -Werror" OFF)
 option(JPLCZ_RELOCO_BUILD_TESTS
@@ -76,9 +76,15 @@ add_library(jplcz_reloco::reloco ALIAS jplcz_reloco)
 add_library(jplcz_reloco_warnings INTERFACE)
 if(JPLCZ_RELOCO_ENABLE_UNSAFE_BUFFER_USAGE AND
    NOT JPLCZ_RELOCO_COMPILER_SUPPORTS_WUNSAFE_BUFFER_USAGE)
-    message(FATAL_ERROR
-        "JPLCZ_RELOCO_ENABLE_UNSAFE_BUFFER_USAGE requires a compiler that supports "
-        "-Wunsafe-buffer-usage")
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR
+            "JPLCZ_RELOCO_ENABLE_UNSAFE_BUFFER_USAGE requires a compiler that supports "
+            "-Wunsafe-buffer-usage")
+    else()
+        # Enabled by default only for Clang; silently skip on other compilers
+        # that lack -Wunsafe-buffer-usage instead of failing the build.
+        set(JPLCZ_RELOCO_ENABLE_UNSAFE_BUFFER_USAGE OFF)
+    endif()
 endif()
 
 if(JPLCZ_RELOCO_ENABLE_STRICT_WARNINGS)

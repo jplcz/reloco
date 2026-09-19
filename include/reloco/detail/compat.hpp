@@ -7,6 +7,8 @@
 /** @file compat.hpp
  * @brief Compiler and language-version feature detection for reloco. */
 
+#include "../reloco_config.hpp"
+
 #include <cstdlib>
 
 #if defined(_MSVC_LANG)
