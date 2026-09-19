@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Jarosław Pelczar <jarek@jpelczar.com>
+#
+# SPDX-License-Identifier: BSD-2-Clause
+
+@PACKAGE_INIT@
+
+include("${CMAKE_CURRENT_LIST_DIR}/jplcz_relocoTargets.cmake")

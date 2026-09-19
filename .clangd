@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: 2026 Jarosław Pelczar <jarek@jpelczar.com>
+#
+# SPDX-License-Identifier: BSD-2-Clause
+
+CompileFlags:
+  Remove:
+    - -Werror
+
+Index:
+  Background: Build
+  StandardLibrary: true
+
+Diagnostics:
+  UnusedIncludes: Strict
+  MissingIncludes: Strict
+  ClangTidy:
+    Add:
+      - bugprone-*
+      - performance-*
+      - portability-*
+    Remove:
+      - bugprone-easily-swappable-parameters
+    FastCheckFilter: Strict
+
+Completion:
+  AllScopes: true
+  ArgumentLists: FullPlaceholders
+  HeaderInsertion: IWYU
+
+InlayHints:
+  Enabled: true
+
+Hover:
+  ShowAKA: true
+
+Style:
+  AngledHeaders:
+    - microfmt/.*
