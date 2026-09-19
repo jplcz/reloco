@@ -29,7 +29,7 @@ struct arena_allocator_tag {};
 template <> struct reloco::allocator_traits<arena_allocator_tag> {
   using context_type = arena_allocator_context;
 
-  static reloco::alloc_result<reloco::mem_block>
+  static reloco::result<reloco::mem_block>
   allocate(reloco::value_ref<context_type> ctx, std::size_t bytes,
           std::size_t alignment) noexcept {
     RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
@@ -37,7 +37,7 @@ template <> struct reloco::allocator_traits<arena_allocator_tag> {
     std::size_t space = ctx->capacity - ctx->offset;
     void *aligned = std::align(alignment, bytes, current, space);
     if (!aligned)
-      return reloco::unexpected(reloco::allocator_error::allocation_failed);
+      return reloco::unexpected(reloco::error::allocation_failed);
     ctx->offset =
         static_cast<std::size_t>(static_cast<std::byte *>(aligned) - ctx->buffer) + bytes;
     RELOCO_END_UNSAFE_BUFFER_USAGE
@@ -46,7 +46,7 @@ template <> struct reloco::allocator_traits<arena_allocator_tag> {
 
   static void deallocate(reloco::value_ref<context_type>, void *, std::size_t) noexcept {}
 
-  static reloco::alloc_result<std::size_t>
+  static reloco::result<std::size_t>
   expand_in_place(reloco::value_ref<context_type> ctx, void *ptr, std::size_t old_size,
                   std::size_t new_size) noexcept {
     RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
@@ -59,7 +59,7 @@ template <> struct reloco::allocator_traits<arena_allocator_tag> {
         return new_size;
       }
     }
-    return reloco::unexpected(reloco::allocator_error::unsupported_operation);
+    return reloco::unexpected(reloco::error::unsupported_operation);
   }
 };
 
@@ -125,7 +125,7 @@ TEST(AllocatorTest, DefaultConstructedRefIsInvalid) {
   auto blk = ref.allocate(16, 8);
   RELOCO_END_UNSAFE_BUFFER_USAGE
   ASSERT_FALSE(blk);
-  EXPECT_EQ(blk.error(), reloco::allocator_error::unsupported_operation);
+  EXPECT_EQ(blk.error(), reloco::error::unsupported_operation);
 }
 
 TEST(AllocatorTest, DefaultAllocatorIsBackedByTheProcessHeap) {

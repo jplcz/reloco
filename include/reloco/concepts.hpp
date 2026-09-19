@@ -134,6 +134,26 @@ template <typename T, typename... Args>
 inline constexpr bool has_try_construct_v = detail::has_try_construct_impl<void, T, Args...>::value;
 
 /**
+ * @brief Detects a fallible clone operation with an explicit allocator.
+ *
+ * Satisfied by `source.try_clone(reloco::allocator_ref) -> reloco::expected<T,
+ * E>`, for any `E` — the allocator-aware shape of `has_try_clone_v`, useful
+ * on its own when a caller needs to distinguish the two shapes (e.g.
+ * `construction_helpers`).
+ */
+template <typename T>
+inline constexpr bool has_try_clone_allocator_aware_v = detail::has_try_clone_allocator_aware_impl<T>::value;
+
+/**
+ * @brief Detects a self-contained fallible clone operation.
+ *
+ * Satisfied by `source.try_clone() -> reloco::expected<T, E>`, for any `E`
+ * — the self-contained shape of `has_try_clone_v`.
+ */
+template <typename T>
+inline constexpr bool has_try_clone_self_contained_v = detail::has_try_clone_self_contained_impl<T>::value;
+
+/**
  * @brief Detects a fallible clone operation, allocator-aware or
  * self-contained.
  *
@@ -144,8 +164,7 @@ inline constexpr bool has_try_construct_v = detail::has_try_construct_impl<void,
  * simple objects), for any `E`.
  */
 template <typename T>
-inline constexpr bool has_try_clone_v =
-    detail::has_try_clone_allocator_aware_impl<T>::value || detail::has_try_clone_self_contained_impl<T>::value;
+inline constexpr bool has_try_clone_v = has_try_clone_allocator_aware_v<T> || has_try_clone_self_contained_v<T>;
 
 /**
  * @brief Detects an optimized in-place clone.
@@ -168,6 +187,12 @@ concept has_try_allocate = has_try_allocate_v<T, Args...>;
 
 template <typename T, typename... Args>
 concept has_try_construct = has_try_construct_v<T, Args...>;
+
+template <typename T>
+concept has_try_clone_allocator_aware = has_try_clone_allocator_aware_v<T>;
+
+template <typename T>
+concept has_try_clone_self_contained = has_try_clone_self_contained_v<T>;
 
 template <typename T>
 concept has_try_clone = has_try_clone_v<T>;

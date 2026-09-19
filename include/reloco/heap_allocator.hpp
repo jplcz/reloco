@@ -57,21 +57,21 @@ template <> struct allocator_traits<heap_allocator_tag> {
    * @brief Allocates `bytes` with at least `alignment` alignment.
    * @param bytes Requested size in bytes.
    * @param alignment Requested alignment; must be a power of two.
-   * @return The allocated block, or `allocator_error::allocation_failed`.
+   * @return The allocated block, or `error::allocation_failed`.
    */
-  static alloc_result<mem_block> allocate(std::size_t bytes, std::size_t alignment) noexcept {
+  static result<mem_block> allocate(std::size_t bytes, std::size_t alignment) noexcept {
     if (alignment <= alignof(std::max_align_t)) {
       void *ptr = std::malloc(bytes == 0 ? 1 : bytes);
       if (!ptr)
-        return unexpected(allocator_error::allocation_failed);
+        return unexpected(error::allocation_failed);
       return mem_block{ptr, bytes};
     }
 #if defined(_MSC_VER)
-    return unexpected(allocator_error::unsupported_operation);
+    return unexpected(error::unsupported_operation);
 #else
     void *ptr = detail::heap_aligned_alloc(alignment, bytes == 0 ? alignment : bytes);
     if (!ptr)
-      return unexpected(allocator_error::allocation_failed);
+      return unexpected(error::allocation_failed);
     return mem_block{ptr, bytes};
 #endif
   }
@@ -85,13 +85,13 @@ template <> struct allocator_traits<heap_allocator_tag> {
    * @brief Resizes a block in place when possible, falling back to a fresh
    * allocation plus copy otherwise.
    */
-  static alloc_result<mem_block> reallocate(void *ptr, std::size_t old_size,
+  static result<mem_block> reallocate(void *ptr, std::size_t old_size,
                                             std::size_t new_size,
                                             std::size_t alignment) noexcept {
     if (alignment <= alignof(std::max_align_t)) {
       void *new_ptr = std::realloc(ptr, new_size == 0 ? 1 : new_size);
       if (!new_ptr)
-        return unexpected(allocator_error::allocation_failed);
+        return unexpected(error::allocation_failed);
       return mem_block{new_ptr, new_size};
     }
 

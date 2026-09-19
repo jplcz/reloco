@@ -9,7 +9,9 @@
 #include <reloco/array.hpp>
 #include <reloco/checked_value.hpp>
 #include <reloco/concepts.hpp>
+#include <reloco/construction_helpers.hpp>
 #include <reloco/default_allocator.hpp>
+#include <reloco/error.hpp>
 #include <reloco/expected.hpp>
 #include <reloco/heap_allocator.hpp>
 #include <reloco/lifetime.hpp>

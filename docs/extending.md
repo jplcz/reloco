@@ -62,7 +62,7 @@ template <> struct reloco::allocator_traits<your_allocator_tag> {
   using context_type = your_allocator_context;
 
   // Mutating operation: value_ref<context_type>.
-  static reloco::alloc_result<reloco::mem_block>
+  static reloco::result<reloco::mem_block>
   allocate(reloco::value_ref<context_type> context, std::size_t bytes,
           std::size_t alignment) noexcept {
     // ... implement using context->... ...

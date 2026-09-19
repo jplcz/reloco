@@ -181,11 +181,12 @@ but two things changed to fit this repository's conventions:
 
 * Legacy checked for one fixed `result<T>` alias (`expected<T, error>` with
   a single global `error` enum). `reloco` uses a scoped, per-feature error
-  enum for every fallible type (`span_error`, `string_view_error`,
-  `allocator_error`, and so on — see [Hardened containers](hardened-containers.md)),
-  so every `has_try_*_v` trait instead accepts *any*
-  `reloco::expected<T, E>` return, whatever `E` the implementing type
-  chooses.
+  enum for most fallible types (`span_error`, `string_view_error`, and so
+  on — see [Hardened containers](hardened-containers.md)), plus
+  `reloco::error`/`reloco::result<T>` (see `error.hpp`) as a general-purpose
+  default for types that don't need a dedicated enum, so every
+  `has_try_*_v` trait instead accepts *any* `reloco::expected<T, E>` return,
+  whatever `E` the implementing type chooses.
 * Legacy took a `fallible_allocator &`, a virtual base class. `reloco` has
   no virtual allocator interface; `has_try_allocate_v`, `has_try_clone_v`,
   and `has_try_clone_at_v` instead expect a `reloco::allocator_ref`, the

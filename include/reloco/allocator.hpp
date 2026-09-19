@@ -21,9 +21,16 @@
  * the way `span`/`array` offer `at()` alongside `unsafe_at()`, so the entire
  * interface is callable only from inside a
  * `RELOCO_BEGIN_UNSAFE_BUFFER_USAGE`/`RELOCO_END_UNSAFE_BUFFER_USAGE` block.
+ *
+ * Every operation returns `reloco::result<T>` (`expected<T, reloco::error>`,
+ * see `error.hpp`) rather than a dedicated `allocator_error` enum: its two
+ * failure modes, `allocation_failed` and `unsupported_operation`, are
+ * already exactly what `reloco::error` provides, so introducing a
+ * single-purpose enum here would only duplicate it.
  */
 
 #include "detail/compat.hpp"
+#include "error.hpp"
 #include "expected.hpp"
 #include "lifetime.hpp"
 #include "value_ptr.hpp"
@@ -38,13 +45,6 @@
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
 namespace reloco {
-
-enum class allocator_error {
-  allocation_failed,
-  unsupported_operation,
-};
-
-template <typename T> using alloc_result = expected<T, allocator_error>;
 
 struct [[nodiscard]] mem_block {
   void *ptr;
@@ -92,7 +92,7 @@ struct has_allocator_expand_in_place<
                        std::declval<value_ref<typename allocator_traits<Tag>::context_type>>(),
                        std::declval<void *>(), std::declval<std::size_t>(),
                        std::declval<std::size_t>())),
-                   alloc_result<std::size_t>> {};
+                   result<std::size_t>> {};
 
 template <typename Tag, typename = void>
 struct has_stateless_allocator_expand_in_place : std::false_type {};
@@ -104,7 +104,7 @@ struct has_stateless_allocator_expand_in_place<
     : std::is_same<decltype(allocator_traits<Tag>::expand_in_place(
                        std::declval<void *>(), std::declval<std::size_t>(),
                        std::declval<std::size_t>())),
-                   alloc_result<std::size_t>> {};
+                   result<std::size_t>> {};
 
 template <typename Tag, typename = void>
 struct has_allocator_reallocate : std::false_type {};
@@ -119,7 +119,7 @@ struct has_allocator_reallocate<
                        std::declval<value_ref<typename allocator_traits<Tag>::context_type>>(),
                        std::declval<void *>(), std::declval<std::size_t>(),
                        std::declval<std::size_t>(), std::declval<std::size_t>())),
-                   alloc_result<mem_block>> {};
+                   result<mem_block>> {};
 
 template <typename Tag, typename = void>
 struct has_stateless_allocator_reallocate : std::false_type {};
@@ -132,7 +132,7 @@ struct has_stateless_allocator_reallocate<
     : std::is_same<decltype(allocator_traits<Tag>::reallocate(
                        std::declval<void *>(), std::declval<std::size_t>(),
                        std::declval<std::size_t>(), std::declval<std::size_t>())),
-                   alloc_result<mem_block>> {};
+                   result<mem_block>> {};
 
 template <typename Tag, typename = void>
 struct has_allocator_advise : std::false_type {};
@@ -165,11 +165,11 @@ struct has_stateless_allocator_advise<
 class RELOCO_POINTER allocator_ref {
 public:
   struct vtable {
-    alloc_result<mem_block> (*allocate)(void *ctx, std::size_t bytes,
+    result<mem_block> (*allocate)(void *ctx, std::size_t bytes,
                                         std::size_t alignment) noexcept;
-    alloc_result<std::size_t> (*expand_in_place)(void *ctx, void *ptr, std::size_t old_size,
+    result<std::size_t> (*expand_in_place)(void *ctx, void *ptr, std::size_t old_size,
                                                  std::size_t new_size) noexcept;
-    alloc_result<mem_block> (*reallocate)(void *ctx, void *ptr, std::size_t old_size,
+    result<mem_block> (*reallocate)(void *ctx, void *ptr, std::size_t old_size,
                                           std::size_t new_size, std::size_t alignment) noexcept;
     void (*deallocate)(void *ctx, void *ptr, std::size_t bytes) noexcept;
     void (*advise)(void *ctx, void *ptr, std::size_t bytes, usage_hint hint) noexcept;
@@ -216,10 +216,10 @@ public:
    * `RELOCO_BEGIN_UNSAFE_BUFFER_USAGE`/`RELOCO_END_UNSAFE_BUFFER_USAGE`,
    * making the opt-in to raw memory management explicit and greppable.
    */
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE alloc_result<mem_block>
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE result<mem_block>
   allocate(std::size_t bytes, std::size_t alignment) const noexcept {
     if (!vtbl_)
-      return unexpected(allocator_error::unsupported_operation);
+      return unexpected(error::unsupported_operation);
     return vtbl_->allocate(ctx_.get(), bytes, alignment);
   }
 
@@ -243,10 +243,10 @@ public:
    * @brief Attempts to grow a block in place, without moving it.
    * See @ref allocate for why this is `RELOCO_UNSAFE_BUFFER_USAGE`.
    */
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE alloc_result<std::size_t>
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE result<std::size_t>
   expand_in_place(void *ptr, std::size_t old_size, std::size_t new_size) const noexcept {
     if (!can_expand_in_place())
-      return unexpected(allocator_error::unsupported_operation);
+      return unexpected(error::unsupported_operation);
     return vtbl_->expand_in_place(ctx_.get(), ptr, old_size, new_size);
   }
 
@@ -261,11 +261,11 @@ public:
    * @brief Resizes a block, possibly moving it.
    * See @ref allocate for why this is `RELOCO_UNSAFE_BUFFER_USAGE`.
    */
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE alloc_result<mem_block>
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE result<mem_block>
   reallocate(void *ptr, std::size_t old_size, std::size_t new_size,
             std::size_t alignment) const noexcept {
     if (!can_reallocate())
-      return unexpected(allocator_error::unsupported_operation);
+      return unexpected(error::unsupported_operation);
     return vtbl_->reallocate(ctx_.get(), ptr, old_size, new_size, alignment);
   }
 
@@ -288,7 +288,7 @@ public:
 
 private:
   template <typename Tag>
-  static alloc_result<mem_block> allocate_entry(void *ctx, std::size_t bytes,
+  static result<mem_block> allocate_entry(void *ctx, std::size_t bytes,
                                                 std::size_t alignment) noexcept {
     using context_type = typename allocator_traits<Tag>::context_type;
     if constexpr (std::is_void_v<context_type>) {
@@ -321,7 +321,7 @@ private:
           return allocator_traits<Tag>::expand_in_place(ptr, old_size, new_size);
         };
       } else {
-        return static_cast<alloc_result<std::size_t> (*)(void *, void *, std::size_t,
+        return static_cast<result<std::size_t> (*)(void *, void *, std::size_t,
                                                           std::size_t) noexcept>(nullptr);
       }
     } else if constexpr (detail::has_allocator_expand_in_place<Tag>::value) {
@@ -331,7 +331,7 @@ private:
                                                        old_size, new_size);
       };
     } else {
-      return static_cast<alloc_result<std::size_t> (*)(void *, void *, std::size_t,
+      return static_cast<result<std::size_t> (*)(void *, void *, std::size_t,
                                                         std::size_t) noexcept>(nullptr);
     }
   }
@@ -346,7 +346,7 @@ private:
           return allocator_traits<Tag>::reallocate(ptr, old_size, new_size, alignment);
         };
       } else {
-        return static_cast<alloc_result<mem_block> (*)(void *, void *, std::size_t, std::size_t,
+        return static_cast<result<mem_block> (*)(void *, void *, std::size_t, std::size_t,
                                                         std::size_t) noexcept>(nullptr);
       }
     } else if constexpr (detail::has_allocator_reallocate<Tag>::value) {
@@ -357,7 +357,7 @@ private:
                                                  new_size, alignment);
       };
     } else {
-      return static_cast<alloc_result<mem_block> (*)(void *, void *, std::size_t, std::size_t,
+      return static_cast<result<mem_block> (*)(void *, void *, std::size_t, std::size_t,
                                                       std::size_t) noexcept>(nullptr);
     }
   }
