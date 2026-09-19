@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 Jarosław Pelczar <jarek@jpelczar.com>
+#
+# SPDX-License-Identifier: BSD-2-Clause
+
+name: Sanitizers
+
+on:
+  push:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - converted_to_draft
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: sanitizers-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect sanitizer changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      build: ${{ steps.filter.outputs.build }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Classify changed files
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            build:
+              - ".github/workflows/sanitizers.yml"
+              - "CMakeLists.txt"
+              - "cmake/**"
+              - "include/**"
+              - "tests/**"
+              - "scripts/run-sanitizers.sh"
+
+  address-undefined:
+    needs: changes
+    if: >-
+      (github.event_name == 'workflow_dispatch' ||
+       needs.changes.outputs.build == 'true') &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.draft == false)
+    name: AddressSanitizer and UndefinedBehaviorSanitizer
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build and test with sanitizers
+        run: ./scripts/run-sanitizers.sh build

@@ -1,0 +1,17 @@
+{
+  "name": "jplcz-reloco",
+  "version": "0.1.0",
+  "description": "Header-only Safety by Default alternatives to the C++ Standard Library",
+  "homepage": "https://github.com/jplcz/reloco",
+  "license": "BSD-2-Clause",
+  "dependencies": [
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    },
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
+    }
+  ]
+}
