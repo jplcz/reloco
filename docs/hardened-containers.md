@@ -83,7 +83,7 @@ of disabling hardening for the entire program.
 | Tier | Examples | Behavior on invalid input |
 |---|---|---|
 | Checked | `operator[]`, `front()`, `back()`, `substr()` | Assertion handler, then trap |
-| Non-trapping | `try_at()`, `try_front()`, `try_back()`, `try_substr()` | Returns `reloco::expected` with `string_view_error` |
+| Non-trapping | `try_at()`, `try_front()`, `try_back()`, `try_substr()` | Returns `reloco::result` (`reloco::expected<T, reloco::error>`) |
 | Explicitly unsafe | `unsafe_front()`, `unsafe_back()`, `unsafe_substr()` | Debug assertion only; caller owns the precondition |
 
 Use checked operations when invalid input indicates a programming defect. Use
@@ -118,7 +118,7 @@ active alternative.
 | Non-trapping | `try_at()`, `try_front()`, `try_back()`, `try_subspan()`, `try_first()`, `try_last()` |
 | Explicitly unsafe | `unsafe_at()`, `unsafe_front()`, `unsafe_back()`, `unsafe_subspan()`, `unsafe_first()`, `unsafe_last()` |
 
-Fallible span operations return `reloco::expected` with a `span_error`.
+Fallible span operations return `reloco::result` (`reloco::expected<T, reloco::error>`).
 `as_bytes()` creates a read-only byte view without copying the represented
 storage.
 

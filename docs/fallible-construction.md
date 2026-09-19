@@ -14,8 +14,10 @@ targets `reloco` targets everywhere else — firmware, RTOS tasks, interrupt
 paths, kernel-adjacent code — so `reloco` never puts fallible work inside a
 constructor. Instead, every type that can fail to come into existence
 exposes one (or more) of five static or member functions, and reports the
-outcome through `reloco::expected<T, E>` (see
-[Hardened containers](hardened-containers.md)) instead of throwing.
+outcome through `reloco::result<T>` (`reloco::expected<T, reloco::error>`,
+see [Hardened containers](hardened-containers.md) and `error.hpp`) instead
+of throwing. `reloco::error` is the one error enum every fallible reloco
+operation uses; no type defines its own scoped error enum.
 
 `include/reloco/concepts.hpp` defines a `has_try_*_v<T, ...>` compile-time
 detection trait for each of these functions (plus a matching C++20
@@ -36,24 +38,28 @@ This is a convention, not an interface: implement whichever of the five
 functions make sense for a given type (most types only need one or two), and
 generic code that wants to work with any of them checks for each function
 with the matching trait. Ported from `reloco_legacy`'s `concepts.hpp`, with
-two changes to fit this repository's conventions (see below).
+two changes to fit this repository's conventions (see below). Rather than
+hand-writing the `if constexpr` dispatch every time, most code should reach
+for `reloco::construction_helpers` (see below and
+`include/reloco/construction_helpers.hpp`), which already implements it once
+for every type that follows this protocol; `reloco::unique_ptr<T>` (see
+`unique_ptr.hpp`) is a small, complete example of a type built entirely on
+top of it.
 
 ## 1. `try_create`: the default-allocator factory
 
 ```cpp
-enum class widget_error { invalid_argument };
-
 struct widget {
   int value;
 
-  static reloco::expected<widget, widget_error> try_create(int v) noexcept {
+  static reloco::result<widget> try_create(int v) noexcept {
     if (v < 0)
-      return reloco::unexpected(widget_error::invalid_argument);
+      return reloco::unexpected(reloco::error::invalid_argument);
     return widget{v};
   }
 };
 
-reloco::expected<widget, widget_error> made = widget::try_create(3);
+reloco::result<widget> made = widget::try_create(3);
 ```
 
 Implement `try_create` when a type can be instantiated without the caller
@@ -65,10 +71,10 @@ application code that has not opted into explicit allocator control.
 ## 2. `try_allocate`: the explicit-allocator factory
 
 ```cpp
-static reloco::expected<widget, widget_error>
+static reloco::result<widget>
 try_allocate(reloco::allocator_ref alloc, int v) noexcept {
   if (v < 0)
-    return reloco::unexpected(widget_error::invalid_argument);
+    return reloco::unexpected(reloco::error::invalid_argument);
   // ... use `alloc` for any nested allocation the type needs ...
   return widget{v};
 }
@@ -88,10 +94,10 @@ so take it by value.
 struct handle {
   int fd = -1; // noexcept-default-constructible "shell" state
 
-  reloco::expected<void, widget_error> try_construct(const char *path) noexcept {
+  reloco::result<void> try_construct(const char *path) noexcept {
     fd = open_device(path);
     if (fd < 0)
-      return reloco::unexpected(widget_error::invalid_argument);
+      return reloco::unexpected(reloco::error::invalid_argument);
     return {};
   }
 };
@@ -116,21 +122,25 @@ is placement-newed, whether or not `try_construct` later succeeds.
 
 ```cpp
 // Allocator-aware: for types owning allocator-backed nested resources.
-reloco::expected<widget, widget_error> try_clone(reloco::allocator_ref alloc) const noexcept;
+reloco::result<widget> try_clone(reloco::allocator_ref alloc) const noexcept;
 
 // Self-contained: for types with no allocator dependency.
-reloco::expected<widget, widget_error> try_clone() const noexcept;
+reloco::result<widget> try_clone() const noexcept;
 ```
 
 Implement one of these two shapes — never both — when a type needs an
 independent copy that can fail (allocation failure, a resource that cannot
 be duplicated). `has_try_clone_v<T>` is satisfied by either shape, so
-generic code does not need to know which one a given type chose.
+generic code does not need to know which one a given type chose; if generic
+code specifically needs to tell them apart (as `construction_helpers::
+try_clone` does, to know whether to pass an allocator), it checks
+`has_try_clone_allocator_aware_v<T>`/`has_try_clone_self_contained_v<T>`
+individually instead.
 
 ## 5. `try_clone_at`: optimized in-place clone
 
 ```cpp
-static reloco::expected<void, widget_error>
+static reloco::result<void>
 try_clone_at(reloco::allocator_ref alloc, widget *storage, const widget &source) noexcept {
   new (storage) widget{source.value};
   return {};
@@ -146,22 +156,27 @@ tradeoff `try_construct` makes for first-time initialization.
 
 Generic code that wants to construct or clone a type without knowing in
 advance which functions it implements checks the traits with
-`if constexpr`:
+`if constexpr`. `reloco::construction_helpers` (see
+`include/reloco/construction_helpers.hpp`) already does this once, choosing
+the most efficient available tier for a given `T`:
 
 ```cpp
-template <typename T, typename... Args>
-auto make(reloco::allocator_ref alloc, Args &&...args) {
-  static_assert(reloco::has_try_allocate_v<T, Args...> || reloco::has_try_create_v<T, Args...>,
-                "T must implement try_allocate or try_create");
-  if constexpr (reloco::has_try_allocate_v<T, Args...>) {
-    return T::try_allocate(alloc, std::forward<Args>(args)...);
-  } else {
-    return T::try_create(std::forward<Args>(args)...);
-  }
-}
+// Picks try_allocate, falling back to try_create, falling back to a plain
+// noexcept constructor call -- whichever T actually implements.
+reloco::result<widget> made =
+    reloco::construction_helpers::try_allocate<widget>(alloc, 3);
+
+// Two-phase, in-place construction into caller-owned storage: picks
+// T::try_construct if available, otherwise placement-news T directly.
+reloco::result<void> constructed =
+    reloco::construction_helpers::try_construct<widget>(alloc, storage, 3);
+
+// Fallible copy, dispatching to try_clone/try_clone_at (allocator-aware or
+// self-contained, whichever T implements) or a plain copy constructor.
+reloco::result<widget> cloned = reloco::construction_helpers::try_clone(alloc, source);
 ```
 
-Under C++20, the same detection is also available as a real `concept`
+Under C++20, the underlying traits are also available as real `concept`s
 (`reloco::has_try_create<T, Args...>`, etc.), usable directly in a
 `template` constraint or `requires` clause instead of `if constexpr`:
 
@@ -177,18 +192,18 @@ there is no risk of the two disagreeing.
 ## Differences from `reloco_legacy`
 
 `reloco_legacy/include/reloco/concepts.hpp` is the origin of this pattern,
-but two things changed to fit this repository's conventions:
+but one thing changed to fit this repository's conventions: legacy took a
+`fallible_allocator &`, a virtual base class. `reloco` has no virtual
+allocator interface; `has_try_allocate_v`, `has_try_clone_v`, and
+`has_try_clone_at_v` instead expect a `reloco::allocator_ref`, the
+type-erased, non-virtual handle described in
+[Extending reloco](extending.md).
 
-* Legacy checked for one fixed `result<T>` alias (`expected<T, error>` with
-  a single global `error` enum). `reloco` uses a scoped, per-feature error
-  enum for most fallible types (`span_error`, `string_view_error`, and so
-  on — see [Hardened containers](hardened-containers.md)), plus
-  `reloco::error`/`reloco::result<T>` (see `error.hpp`) as a general-purpose
-  default for types that don't need a dedicated enum, so every
-  `has_try_*_v` trait instead accepts *any* `reloco::expected<T, E>` return,
-  whatever `E` the implementing type chooses.
-* Legacy took a `fallible_allocator &`, a virtual base class. `reloco` has
-  no virtual allocator interface; `has_try_allocate_v`, `has_try_clone_v`,
-  and `has_try_clone_at_v` instead expect a `reloco::allocator_ref`, the
-  type-erased, non-virtual handle described in
-  [Extending reloco](extending.md).
+Both legacy and `reloco` require every one of these functions to report its
+outcome through the library's one error type — `reloco::error`/
+`reloco::result<T>` here (see `error.hpp`) — rather than an arbitrary
+per-type error enum. This is enforced by `concepts.hpp`'s detection traits
+themselves: `has_try_create_v<T, Args...>` (and the other four) only holds
+if `T::try_create(Args...)` returns exactly `reloco::result<T>`, so a type
+that reports failure through some other type is treated as not implementing
+the protocol at all.

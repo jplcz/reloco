@@ -72,7 +72,7 @@ void handle_packet(reloco::span<const uint8_t> bytes) {
   // Never traps or reads out of bounds, even with attacker-controlled input.
   const auto header = bytes.try_first(4);
   if (!header.has_value()) {
-    // header.error() is a reloco::span_error — handle it explicitly.
+    // header.error() is a reloco::error — handle it explicitly.
     return;
   }
 

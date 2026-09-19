@@ -18,6 +18,7 @@
 #include <reloco/rvalue_safety.hpp>
 #include <reloco/span.hpp>
 #include <reloco/string_view.hpp>
+#include <reloco/unique_ptr.hpp>
 #include <reloco/value_ptr.hpp>
 #include <reloco/value_ref.hpp>
 
