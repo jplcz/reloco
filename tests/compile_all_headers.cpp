@@ -5,9 +5,11 @@
 // Compiles every public reloco header under each supported C++ standard.
 // Used by RELOCO_BUILD_HEADER_CHECKS and scripts/check-unsafe-buffer-usage.sh.
 
+#include <reloco/allocator.hpp>
 #include <reloco/array.hpp>
 #include <reloco/checked_value.hpp>
 #include <reloco/expected.hpp>
+#include <reloco/heap_allocator.hpp>
 #include <reloco/lifetime.hpp>
 #include <reloco/rvalue_safety.hpp>
 #include <reloco/span.hpp>

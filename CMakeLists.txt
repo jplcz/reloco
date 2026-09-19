@@ -199,7 +199,8 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_array.cpp
         tests/test_span.cpp
         tests/test_string_view.cpp
-        tests/test_expected.cpp)
+        tests/test_expected.cpp
+        tests/test_allocator.cpp)
     target_link_libraries(jplcz_reloco_tests PRIVATE jplcz_reloco GTest::gtest_main)
     jplcz_reloco_enable_warnings(jplcz_reloco_tests)
     gtest_discover_tests(jplcz_reloco_tests)
