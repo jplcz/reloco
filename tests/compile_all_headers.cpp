@@ -8,6 +8,7 @@
 #include <reloco/allocator.hpp>
 #include <reloco/array.hpp>
 #include <reloco/checked_value.hpp>
+#include <reloco/default_allocator.hpp>
 #include <reloco/expected.hpp>
 #include <reloco/heap_allocator.hpp>
 #include <reloco/lifetime.hpp>

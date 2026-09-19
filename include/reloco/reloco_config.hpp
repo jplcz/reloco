@@ -28,6 +28,19 @@
  * flag instead of (or in addition to) `reloco_user_config.hpp`; both
  * approaches are equivalent since library headers only ever apply a default
  * when the macro is not already defined.
+ *
+ * `reloco_user_config.hpp` must not `#include` any reloco header
+ * (directly or transitively). It is reached from `detail/compat.hpp`'s very
+ * first line, before that header has defined even its own feature-detection
+ * macros (`RELOCO_HAS_ATTRIBUTE` and friends); any reloco header pulled in
+ * from here would re-enter `compat.hpp` while it is still on the include
+ * stack, so `#pragma once` would skip it and leave those macros undefined,
+ * breaking the build. Keep `reloco_user_config.hpp` to plain `#define`s;
+ * customization points that need a real type or definition (like
+ * `RELOCO_DEFAULT_ALLOCATOR_CUSTOM` below) work by opting out of the
+ * library's own definition, so the actual override can be written as an
+ * ordinary out-of-line definition in its own header, included by the
+ * application through the normal path rather than from here.
  */
 
 #if defined(RELOCO_CONFIG)
@@ -63,3 +76,29 @@
 // RELOCO_DEBUG
 //     Force RELOCO_DEBUG_ASSERT to stay active even when NDEBUG is defined,
 //     instead of compiling down to RELOCO_UNREACHABLE()/no-op.
+//
+// RELOCO_DEFAULT_ALLOCATOR_CUSTOM
+//     Define (to any value) to take over reloco::reloco_global_alloc::
+//     default_allocator(), the hook reloco::default_allocator() (see
+//     reloco/default_allocator.hpp) forwards to. Defining it suppresses the
+//     library's own definition (allocator<heap_allocator_tag>::ref(), the
+//     process heap) so exactly one definition -- yours -- exists.
+//
+//     Since reloco_user_config.hpp cannot #include reloco/allocator.hpp
+//     (see above), define the Tag/allocator_traits<Tag> specialization and
+//     the out-of-line hook definition in their own header, included by the
+//     application through the normal path, not from reloco_user_config.hpp:
+//
+//         // reloco_user_config.hpp
+//         #define RELOCO_DEFAULT_ALLOCATOR_CUSTOM
+//
+//         // my_arena_allocator.hpp, included normally elsewhere by the app
+//         #include <reloco/allocator.hpp>
+//         #include <reloco/default_allocator.hpp>
+//         struct my_arena_tag {};
+//         template <> struct reloco::allocator_traits<my_arena_tag> { ... };
+//         inline reloco::allocator_ref
+//         reloco::reloco_global_alloc::default_allocator() noexcept {
+//           static my_arena arena;
+//           return reloco::allocator<my_arena_tag>(arena).ref();
+//         }

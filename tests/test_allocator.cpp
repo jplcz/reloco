@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 #include <reloco/allocator.hpp>
+#include <reloco/default_allocator.hpp>
 #include <reloco/heap_allocator.hpp>
 
 #include <cstddef>
@@ -125,4 +126,16 @@ TEST(AllocatorTest, DefaultConstructedRefIsInvalid) {
   RELOCO_END_UNSAFE_BUFFER_USAGE
   ASSERT_FALSE(blk);
   EXPECT_EQ(blk.error(), reloco::allocator_error::unsupported_operation);
+}
+
+TEST(AllocatorTest, DefaultAllocatorIsBackedByTheProcessHeap) {
+  reloco::allocator_ref def = reloco::default_allocator();
+  ASSERT_TRUE(static_cast<bool>(def));
+
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+  auto blk = def.allocate(32, 8);
+  ASSERT_TRUE(blk);
+  EXPECT_NE(blk->ptr, nullptr);
+  def.deallocate(blk->ptr, 32);
+  RELOCO_END_UNSAFE_BUFFER_USAGE
 }
