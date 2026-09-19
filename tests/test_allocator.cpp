@@ -65,6 +65,7 @@ template <> struct reloco::allocator_traits<arena_allocator_tag> {
 TEST(AllocatorTest, HeapBackendAllocatesReallocatesAndDeallocates) {
   reloco::allocator_ref heap = reloco::allocator<reloco::heap_allocator_tag>::ref();
 
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
   auto blk = heap.allocate(64, 8);
   ASSERT_TRUE(blk);
   EXPECT_NE(blk->ptr, nullptr);
@@ -76,6 +77,7 @@ TEST(AllocatorTest, HeapBackendAllocatesReallocatesAndDeallocates) {
   EXPECT_EQ(grown->size, 128u);
 
   heap.deallocate(grown->ptr, 128);
+  RELOCO_END_UNSAFE_BUFFER_USAGE
 
   EXPECT_FALSE(heap.can_expand_in_place());
   EXPECT_FALSE(heap.can_advise());
@@ -87,6 +89,7 @@ TEST(AllocatorTest, StatefulArenaBackendViaOwningWrapper) {
       arena_allocator_context{storage, sizeof(storage)}};
   reloco::allocator_ref ref = arena.ref();
 
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
   auto a1 = ref.allocate(16, 8);
   ASSERT_TRUE(a1);
 
@@ -99,6 +102,7 @@ TEST(AllocatorTest, StatefulArenaBackendViaOwningWrapper) {
   EXPECT_FALSE(ref.can_advise());
 
   ref.deallocate(a1->ptr, 32);
+  RELOCO_END_UNSAFE_BUFFER_USAGE
 }
 
 TEST(AllocatorTest, StatefulBackendCanBindACallerOwnedContextDirectly) {
@@ -106,15 +110,19 @@ TEST(AllocatorTest, StatefulBackendCanBindACallerOwnedContextDirectly) {
   arena_allocator_context ctx{storage, sizeof(storage)};
   reloco::allocator_ref ref{arena_allocator_tag{}, ctx};
 
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
   auto a = ref.allocate(8, 8);
   ASSERT_TRUE(a);
   ref.deallocate(a->ptr, 8);
+  RELOCO_END_UNSAFE_BUFFER_USAGE
 }
 
 TEST(AllocatorTest, DefaultConstructedRefIsInvalid) {
   reloco::allocator_ref ref;
   EXPECT_FALSE(static_cast<bool>(ref));
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
   auto blk = ref.allocate(16, 8);
+  RELOCO_END_UNSAFE_BUFFER_USAGE
   ASSERT_FALSE(blk);
   EXPECT_EQ(blk.error(), reloco::allocator_error::unsupported_operation);
 }

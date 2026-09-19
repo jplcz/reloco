@@ -13,6 +13,10 @@
 #include <cstdlib>
 #include <cstring>
 
+// This backend is raw malloc/realloc/free/aligned_alloc plumbing throughout;
+// treated as a single checked boundary, matching allocator.hpp itself.
+RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+
 namespace reloco {
 
 /**
@@ -95,9 +99,7 @@ template <> struct allocator_traits<heap_allocator_tag> {
     if (!block)
       return block;
     if (ptr != nullptr) {
-      RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
       std::memcpy(block->ptr, ptr, old_size < new_size ? old_size : new_size);
-      RELOCO_END_UNSAFE_BUFFER_USAGE
       std::free(ptr);
     }
     return block;
@@ -105,3 +107,5 @@ template <> struct allocator_traits<heap_allocator_tag> {
 };
 
 } // namespace reloco
+
+RELOCO_END_UNSAFE_BUFFER_USAGE

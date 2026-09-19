@@ -14,6 +14,13 @@
  * backend here is just an empty tag plus an `allocator_traits<Tag>`
  * specialization: no virtual base class, no vtable-carrying inheritance, no
  * allocation, and no runtime registration.
+ *
+ * Every operational method on @ref allocator_ref (`allocate`, `deallocate`,
+ * `expand_in_place`, `reallocate`, `advise`) is `RELOCO_UNSAFE_BUFFER_USAGE`:
+ * there is no checked/bounds-tracked alternative for raw memory management
+ * the way `span`/`array` offer `at()` alongside `unsafe_at()`, so the entire
+ * interface is callable only from inside a
+ * `RELOCO_BEGIN_UNSAFE_BUFFER_USAGE`/`RELOCO_END_UNSAFE_BUFFER_USAGE` block.
  */
 
 #include "detail/compat.hpp"
@@ -24,6 +31,11 @@
 #include <cstddef>
 #include <type_traits>
 #include <utility>
+
+// The whole allocator interface deals in raw sized/aligned pointers (mem_block,
+// void* ctx recovery, raw allocate/deallocate/reallocate/advise signatures),
+// so it is treated as a single checked boundary, like span.hpp/array.hpp.
+RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
 namespace reloco {
 
@@ -194,14 +206,28 @@ public:
             std::enable_if_t<!std::is_lvalue_reference_v<Context>, int> = 0>
   constexpr allocator_ref(Tag, Context &&) = delete;
 
-  [[nodiscard]] alloc_result<mem_block> allocate(std::size_t bytes,
-                                                 std::size_t alignment) const noexcept {
+  /**
+   * @brief Allocates a block of at least `bytes` size, aligned to
+   * `alignment`.
+   *
+   * Marked `RELOCO_UNSAFE_BUFFER_USAGE`: the returned block is a raw,
+   * unchecked `void*` + size pair with no bounds tracking of its own, so
+   * every call site must be wrapped in
+   * `RELOCO_BEGIN_UNSAFE_BUFFER_USAGE`/`RELOCO_END_UNSAFE_BUFFER_USAGE`,
+   * making the opt-in to raw memory management explicit and greppable.
+   */
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE alloc_result<mem_block>
+  allocate(std::size_t bytes, std::size_t alignment) const noexcept {
     if (!vtbl_)
       return unexpected(allocator_error::unsupported_operation);
     return vtbl_->allocate(ctx_.get(), bytes, alignment);
   }
 
-  void deallocate(void *ptr, std::size_t bytes) const noexcept {
+  /**
+   * @brief Releases a block previously returned by `allocate`/`reallocate`.
+   * See @ref allocate for why this is `RELOCO_UNSAFE_BUFFER_USAGE`.
+   */
+  RELOCO_UNSAFE_BUFFER_USAGE void deallocate(void *ptr, std::size_t bytes) const noexcept {
     if (vtbl_)
       vtbl_->deallocate(ctx_.get(), ptr, bytes);
   }
@@ -213,7 +239,11 @@ public:
     return vtbl_ && vtbl_->expand_in_place;
   }
 
-  [[nodiscard]] alloc_result<std::size_t>
+  /**
+   * @brief Attempts to grow a block in place, without moving it.
+   * See @ref allocate for why this is `RELOCO_UNSAFE_BUFFER_USAGE`.
+   */
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE alloc_result<std::size_t>
   expand_in_place(void *ptr, std::size_t old_size, std::size_t new_size) const noexcept {
     if (!can_expand_in_place())
       return unexpected(allocator_error::unsupported_operation);
@@ -227,9 +257,13 @@ public:
     return vtbl_ && vtbl_->reallocate;
   }
 
-  [[nodiscard]] alloc_result<mem_block> reallocate(void *ptr, std::size_t old_size,
-                                                   std::size_t new_size,
-                                                   std::size_t alignment) const noexcept {
+  /**
+   * @brief Resizes a block, possibly moving it.
+   * See @ref allocate for why this is `RELOCO_UNSAFE_BUFFER_USAGE`.
+   */
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE alloc_result<mem_block>
+  reallocate(void *ptr, std::size_t old_size, std::size_t new_size,
+            std::size_t alignment) const noexcept {
     if (!can_reallocate())
       return unexpected(allocator_error::unsupported_operation);
     return vtbl_->reallocate(ctx_.get(), ptr, old_size, new_size, alignment);
@@ -240,7 +274,12 @@ public:
    */
   [[nodiscard]] constexpr bool can_advise() const noexcept { return vtbl_ && vtbl_->advise; }
 
-  void advise(void *ptr, std::size_t bytes, usage_hint hint) const noexcept {
+  /**
+   * @brief Hints at the intended access pattern for a block.
+   * See @ref allocate for why this is `RELOCO_UNSAFE_BUFFER_USAGE`.
+   */
+  RELOCO_UNSAFE_BUFFER_USAGE void advise(void *ptr, std::size_t bytes,
+                                        usage_hint hint) const noexcept {
     if (can_advise())
       vtbl_->advise(ctx_.get(), ptr, bytes, hint);
   }
@@ -400,3 +439,5 @@ public:
 };
 
 } // namespace reloco
+
+RELOCO_END_UNSAFE_BUFFER_USAGE
