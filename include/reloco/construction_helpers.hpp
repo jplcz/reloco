@@ -11,19 +11,14 @@
  * `try_clone_at` functions it implements (see `concepts.hpp` and
  * `docs/fallible-construction.md`).
  *
- * Ported from `reloco_legacy/include/reloco/construction_helpers.hpp`. Two
- * things differ from the legacy shape, matching `concepts.hpp`'s own
- * departures from legacy:
- *
- * - Legacy returned a single, fixed `result<T>` (`expected<T, error>`).
- *   Every function here instead returns `auto`, deduced per instantiation
- *   to `reloco::expected<T, E>` for whichever `E` the resolved tier
- *   actually uses -- `T`'s own error type when a `try_*` operation on `T`
- *   is used, or `reloco::error` (see `error.hpp`) for the tiers that fall
- *   all the way back to plain, non-fallible construction and so can never
- *   actually produce an error.
- * - Legacy took a `fallible_allocator &`. These take a
- *   `reloco::allocator_ref` (see `allocator.hpp`) by value instead.
+ * Ported from `reloco_legacy/include/reloco/construction_helpers.hpp`. Only
+ * one thing differs from the legacy shape: legacy took a
+ * `fallible_allocator &`; these take a `reloco::allocator_ref` (see
+ * `allocator.hpp`) by value instead. Every function still returns a single,
+ * fixed `reloco::result<T>` (or `result<void>`), exactly like legacy --
+ * `concepts.hpp`'s `has_try_*_v` traits only recognize a `try_*` operation
+ * that itself returns `reloco::result<...>`, so every tier already agrees
+ * on the same error type and no per-instantiation deduction is needed.
  *
  * `try_construct` and `try_clone_at` placement-new directly into
  * caller-owned, uninitialized storage and manually destroy partially
@@ -74,42 +69,38 @@ struct construction_helpers {
    * @param alloc The allocator to use for tier 2.
    * @param storage Uninitialized memory of size >= `sizeof(T)`.
    * @param args Arguments forwarded to whichever tier is selected.
-   * @return `reloco::expected<void, E>`, `E` depending on the selected tier.
    */
   template <typename T, typename... Args>
-  RELOCO_UNSAFE_BUFFER_USAGE static auto try_construct(allocator_ref alloc, T *storage, Args &&...args) noexcept {
+  RELOCO_UNSAFE_BUFFER_USAGE static result<void> try_construct(allocator_ref alloc, T *storage,
+                                                               Args &&...args) noexcept {
     if constexpr (has_try_construct_v<T, Args...>) {
       static_assert(std::is_nothrow_default_constructible_v<T>,
                     "Two-phase construction requires a noexcept default constructor for the shell.");
       new (storage) T();
       auto res = storage->try_construct(std::forward<Args>(args)...);
-      if (!res) {
+      if (!res)
         storage->~T();
-        return res;
-      }
       return res;
     } else if constexpr (has_try_allocate_v<T, Args...>) {
       auto res = T::try_allocate(alloc, std::forward<Args>(args)...);
-      using result_t = expected<void, typename decltype(res)::error_type>;
       if (!res)
-        return result_t(unexpected(res.error()));
+        return unexpected(res.error());
       static_assert(std::is_nothrow_move_constructible_v<T>, "reloco requires noexcept move-construction.");
       new (storage) T(std::move(*res));
-      return result_t{};
+      return {};
     } else if constexpr (has_try_create_v<T, Args...>) {
       auto res = T::try_create(std::forward<Args>(args)...);
-      using result_t = expected<void, typename decltype(res)::error_type>;
       if (!res)
-        return result_t(unexpected(res.error()));
+        return unexpected(res.error());
       static_assert(std::is_nothrow_move_constructible_v<T>, "reloco requires noexcept move-construction.");
       new (storage) T(std::move(*res));
-      return result_t{};
+      return {};
     } else {
       static_assert(std::is_nothrow_constructible_v<T, Args...>,
                     "Type must be either fallible via try_construct, try_allocate, try_create, or nothrow "
                     "constructible.");
       new (storage) T(std::forward<Args>(args)...);
-      return expected<void, error>{};
+      return {};
     }
   }
 
@@ -122,9 +113,9 @@ struct construction_helpers {
    *
    * @param alloc The allocator to provide for tiers that support
    * `has_try_allocate_v`.
-   * @return `reloco::expected<T, E>`, `E` depending on the selected tier.
    */
-  template <typename T, typename... Args> static auto try_allocate(allocator_ref alloc, Args &&...args) noexcept {
+  template <typename T, typename... Args>
+  static result<T> try_allocate(allocator_ref alloc, Args &&...args) noexcept {
     if constexpr (has_try_allocate_v<T, Args...>) {
       return T::try_allocate(alloc, std::forward<Args>(args)...);
     } else if constexpr (has_try_create_v<T, Args...>) {
@@ -136,15 +127,14 @@ struct construction_helpers {
                     "reloco requires noexcept move-construction to return values safely.");
       T shell;
       auto res = shell.try_construct(std::forward<Args>(args)...);
-      using result_t = expected<T, typename decltype(res)::error_type>;
       if (!res)
-        return result_t(unexpected(res.error()));
-      return result_t(std::move(shell));
+        return unexpected(res.error());
+      return result<T>(std::move(shell));
     } else {
       static_assert(std::is_nothrow_constructible_v<T, Args...>,
                     "Type must be either fallible (try_construct/allocate/create) or standard nothrow "
                     "constructible.");
-      return expected<T, error>(T(std::forward<Args>(args)...));
+      return result<T>(T(std::forward<Args>(args)...));
     }
   }
 
@@ -162,10 +152,8 @@ struct construction_helpers {
    *    cloning as a new default-allocator creation from `source`.
    * 5. **Nothrow copy**: standard copy-construction; `T` must be
    *    `std::is_nothrow_copy_constructible_v<T>`.
-   *
-   * @return `reloco::expected<T, E>`, `E` depending on the selected tier.
    */
-  template <typename T> static auto try_clone(allocator_ref alloc, const T &source) noexcept {
+  template <typename T> static result<T> try_clone(allocator_ref alloc, const T &source) noexcept {
     if constexpr (has_try_clone_allocator_aware_v<T>) {
       return source.try_clone(alloc);
     } else if constexpr (has_try_clone_self_contained_v<T>) {
@@ -177,7 +165,7 @@ struct construction_helpers {
     } else {
       static_assert(std::is_nothrow_copy_constructible_v<T>,
                     "Type must implement try_clone or be nothrow copy constructible.");
-      return expected<T, error>(T(source));
+      return result<T>(T(source));
     }
   }
 
@@ -190,22 +178,19 @@ struct construction_helpers {
    *    `storage`.
    * 2. Otherwise, falls back to `try_clone` and move-constructs the result
    *    into `storage`.
-   *
-   * @return `reloco::expected<void, E>`, `E` depending on the selected
-   * tier.
    */
   template <typename T>
-  RELOCO_UNSAFE_BUFFER_USAGE static auto try_clone_at(allocator_ref alloc, T *storage, const T &source) noexcept {
+  RELOCO_UNSAFE_BUFFER_USAGE static result<void> try_clone_at(allocator_ref alloc, T *storage,
+                                                              const T &source) noexcept {
     if constexpr (has_try_clone_at_v<T>) {
       return T::try_clone_at(alloc, storage, source);
     } else {
       static_assert(std::is_nothrow_move_constructible_v<T>, "reloco requires noexcept move-construction for clone fallbacks.");
       auto res = try_clone<T>(alloc, source);
-      using result_t = expected<void, typename decltype(res)::error_type>;
       if (!res)
-        return result_t(unexpected(res.error()));
+        return unexpected(res.error());
       new (storage) T(std::move(*res));
-      return result_t{};
+      return {};
     }
   }
 };

@@ -13,16 +13,16 @@ namespace {
 
 using reloco::construction_helpers;
 
-enum class widget_error { bad };
+
 
 reloco::allocator_ref heap() { return reloco::allocator<reloco::heap_allocator_tag>::ref(); }
 
 // Tier 1: has_try_construct_v.
 struct constructible_widget {
   int value = 0;
-  reloco::expected<void, widget_error> try_construct(int v) noexcept {
+  reloco::result<void> try_construct(int v) noexcept {
     if (v < 0)
-      return reloco::unexpected(widget_error::bad);
+      return reloco::unexpected(reloco::error::invalid_argument);
     value = v;
     return {};
   }
@@ -31,10 +31,10 @@ struct constructible_widget {
 // Tier 2: has_try_allocate_v.
 struct allocating_widget {
   int value;
-  static reloco::expected<allocating_widget, widget_error> try_allocate(reloco::allocator_ref,
+  static reloco::result<allocating_widget> try_allocate(reloco::allocator_ref,
                                                                         int v) noexcept {
     if (v < 0)
-      return reloco::unexpected(widget_error::bad);
+      return reloco::unexpected(reloco::error::invalid_argument);
     return allocating_widget{v};
   }
 };
@@ -42,9 +42,9 @@ struct allocating_widget {
 // Tier 3: has_try_create_v.
 struct creatable_widget {
   int value;
-  static reloco::expected<creatable_widget, widget_error> try_create(int v) noexcept {
+  static reloco::result<creatable_widget> try_create(int v) noexcept {
     if (v < 0)
-      return reloco::unexpected(widget_error::bad);
+      return reloco::unexpected(reloco::error::invalid_argument);
     return creatable_widget{v};
   }
 };
@@ -58,7 +58,7 @@ struct plain_widget {
 // try_clone tier 1: allocator-aware.
 struct allocator_aware_clonable_widget {
   int value;
-  reloco::expected<allocator_aware_clonable_widget, widget_error>
+  reloco::result<allocator_aware_clonable_widget>
   try_clone(reloco::allocator_ref) const noexcept {
     return allocator_aware_clonable_widget{value};
   }
@@ -67,7 +67,7 @@ struct allocator_aware_clonable_widget {
 // try_clone tier 2: self-contained.
 struct self_contained_clonable_widget {
   int value;
-  reloco::expected<self_contained_clonable_widget, widget_error> try_clone() const noexcept {
+  reloco::result<self_contained_clonable_widget> try_clone() const noexcept {
     return self_contained_clonable_widget{value};
   }
 };
@@ -75,7 +75,7 @@ struct self_contained_clonable_widget {
 // try_clone_at tier 1: direct in-place clone.
 struct clonable_at_widget {
   int value;
-  static reloco::expected<void, widget_error>
+  static reloco::result<void>
   try_clone_at(reloco::allocator_ref, clonable_at_widget *storage,
               const clonable_at_widget &source) noexcept {
     new (storage) clonable_at_widget{source.value};
@@ -102,7 +102,7 @@ TEST(ConstructionHelpersTest, TryConstructUsesInPlaceFallibleTier) {
   auto failed = construction_helpers::try_construct(heap(), ptr, -1);
   RELOCO_END_UNSAFE_BUFFER_USAGE
   ASSERT_FALSE(failed);
-  EXPECT_EQ(failed.error(), widget_error::bad);
+  EXPECT_EQ(failed.error(), reloco::error::invalid_argument);
 }
 
 TEST(ConstructionHelpersTest, TryConstructUsesAllocateTier) {
@@ -116,7 +116,7 @@ TEST(ConstructionHelpersTest, TryConstructUsesAllocateTier) {
   auto failed = construction_helpers::try_construct(heap(), ptr, -1);
   RELOCO_END_UNSAFE_BUFFER_USAGE
   ASSERT_FALSE(failed);
-  EXPECT_EQ(failed.error(), widget_error::bad);
+  EXPECT_EQ(failed.error(), reloco::error::invalid_argument);
 }
 
 TEST(ConstructionHelpersTest, TryConstructUsesCreateTier) {
@@ -130,7 +130,7 @@ TEST(ConstructionHelpersTest, TryConstructUsesCreateTier) {
   auto failed = construction_helpers::try_construct(heap(), ptr, -1);
   RELOCO_END_UNSAFE_BUFFER_USAGE
   ASSERT_FALSE(failed);
-  EXPECT_EQ(failed.error(), widget_error::bad);
+  EXPECT_EQ(failed.error(), reloco::error::invalid_argument);
 }
 
 TEST(ConstructionHelpersTest, TryConstructUsesNothrowFallbackTier) {
@@ -150,7 +150,7 @@ TEST(ConstructionHelpersTest, TryAllocateUsesAllocateTier) {
 
   auto failed = construction_helpers::try_allocate<allocating_widget>(heap(), -1);
   ASSERT_FALSE(failed);
-  EXPECT_EQ(failed.error(), widget_error::bad);
+  EXPECT_EQ(failed.error(), reloco::error::invalid_argument);
 }
 
 TEST(ConstructionHelpersTest, TryAllocateUsesCreateTier) {
@@ -166,7 +166,7 @@ TEST(ConstructionHelpersTest, TryAllocateUsesConstructTier) {
 
   auto failed = construction_helpers::try_allocate<constructible_widget>(heap(), -1);
   ASSERT_FALSE(failed);
-  EXPECT_EQ(failed.error(), widget_error::bad);
+  EXPECT_EQ(failed.error(), reloco::error::invalid_argument);
 }
 
 TEST(ConstructionHelpersTest, TryAllocateUsesNothrowFallbackTier) {

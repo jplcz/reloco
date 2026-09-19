@@ -11,34 +11,34 @@
 
 namespace {
 
-enum class widget_error { bad };
+
 
 struct plain_widget {};
 
 struct creatable_widget {
   int value;
-  static reloco::expected<creatable_widget, widget_error> try_create(int v) noexcept {
+  static reloco::result<creatable_widget> try_create(int v) noexcept {
     if (v < 0)
-      return reloco::unexpected(widget_error::bad);
+      return reloco::unexpected(reloco::error::invalid_argument);
     return creatable_widget{v};
   }
 };
 
 struct allocating_widget {
   int value;
-  static reloco::expected<allocating_widget, widget_error> try_allocate(reloco::allocator_ref,
+  static reloco::result<allocating_widget> try_allocate(reloco::allocator_ref,
                                                                         int v) noexcept {
     if (v < 0)
-      return reloco::unexpected(widget_error::bad);
+      return reloco::unexpected(reloco::error::invalid_argument);
     return allocating_widget{v};
   }
 };
 
 struct constructible_widget {
   int value = 0;
-  reloco::expected<void, widget_error> try_construct(int v) noexcept {
+  reloco::result<void> try_construct(int v) noexcept {
     if (v < 0)
-      return reloco::unexpected(widget_error::bad);
+      return reloco::unexpected(reloco::error::invalid_argument);
     value = v;
     return {};
   }
@@ -46,7 +46,7 @@ struct constructible_widget {
 
 struct allocator_aware_clonable_widget {
   int value;
-  reloco::expected<allocator_aware_clonable_widget, widget_error>
+  reloco::result<allocator_aware_clonable_widget>
   try_clone(reloco::allocator_ref) const noexcept {
     return allocator_aware_clonable_widget{value};
   }
@@ -54,14 +54,14 @@ struct allocator_aware_clonable_widget {
 
 struct self_contained_clonable_widget {
   int value;
-  reloco::expected<self_contained_clonable_widget, widget_error> try_clone() const noexcept {
+  reloco::result<self_contained_clonable_widget> try_clone() const noexcept {
     return self_contained_clonable_widget{value};
   }
 };
 
 struct clonable_at_widget {
   int value;
-  static reloco::expected<void, widget_error> try_clone_at(reloco::allocator_ref, clonable_at_widget *storage,
+  static reloco::result<void> try_clone_at(reloco::allocator_ref, clonable_at_widget *storage,
                                                            const clonable_at_widget &source) noexcept {
     new (storage) clonable_at_widget{source.value};
     return {};

@@ -104,7 +104,7 @@ TEST(SpanTest, ProvidesCheckedAndFallibleAccess) {
   ASSERT_TRUE(view.try_at(1).has_value());
   EXPECT_EQ(view.try_at(1).value().get(), 20);
   EXPECT_FALSE(view.try_at(view.size()).has_value());
-  EXPECT_EQ(view.try_at(view.size()).error(), reloco::span_error::out_of_bounds);
+  EXPECT_EQ(view.try_at(view.size()).error(), reloco::error::out_of_bounds);
 
   ASSERT_TRUE(view.try_front().has_value());
   EXPECT_EQ(view.try_front().value().get(), 10);
@@ -115,7 +115,7 @@ TEST(SpanTest, ProvidesCheckedAndFallibleAccess) {
 
   reloco::span<int> empty;
   EXPECT_FALSE(empty.try_data().has_value());
-  EXPECT_EQ(empty.try_data().error(), reloco::span_error::container_empty);
+  EXPECT_EQ(empty.try_data().error(), reloco::error::container_empty);
   EXPECT_FALSE(empty.try_front().has_value());
   EXPECT_FALSE(empty.try_back().has_value());
 }

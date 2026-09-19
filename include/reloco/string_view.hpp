@@ -5,6 +5,7 @@
 #pragma once
 
 #include "detail/assert.hpp"
+#include "error.hpp"
 #include "expected.hpp"
 #include <cstddef>
 #include <functional>
@@ -16,11 +17,6 @@ namespace reloco {
 
 // All of the below classes contain checked pointer arithmetic
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
-
-enum class string_view_error {
-  container_empty,
-  out_of_bounds,
-};
 
 template <typename CharT, typename TraitsT = std::char_traits<CharT>> class RELOCO_POINTER basic_string_view {
 public:
@@ -72,17 +68,17 @@ public:
     return view_[pos];
   }
 
-  [[nodiscard]] expected<std::reference_wrapper<const CharT>, string_view_error>
+  [[nodiscard]] result<std::reference_wrapper<const CharT>>
   try_front() const noexcept RELOCO_LIFETIMEBOUND {
     if (empty())
-      return unexpected(string_view_error::container_empty);
+      return unexpected(error::container_empty);
     return std::cref(view_.front());
   }
 
-  [[nodiscard]] expected<std::reference_wrapper<const CharT>, string_view_error>
+  [[nodiscard]] result<std::reference_wrapper<const CharT>>
   try_back() const noexcept RELOCO_LIFETIMEBOUND {
     if (empty())
-      return unexpected(string_view_error::container_empty);
+      return unexpected(error::container_empty);
     return std::cref(view_.back());
   }
 
@@ -118,25 +114,25 @@ public:
     return basic_string_view(view_.substr(pos, count));
   }
 
-  [[nodiscard]] expected<std::reference_wrapper<const CharT>, string_view_error>
+  [[nodiscard]] result<std::reference_wrapper<const CharT>>
   try_at(size_type pos) const noexcept RELOCO_LIFETIMEBOUND {
     if (pos >= size())
-      return unexpected(string_view_error::out_of_bounds);
+      return unexpected(error::out_of_bounds);
     return std::cref(view_[pos]);
   }
 
-  [[nodiscard]] expected<basic_string_view, string_view_error>
+  [[nodiscard]] result<basic_string_view>
   try_substr(size_type pos, size_type count = npos) const noexcept RELOCO_LIFETIMEBOUND {
     if (pos > size())
-      return unexpected(string_view_error::out_of_bounds);
+      return unexpected(error::out_of_bounds);
     return basic_string_view(view_.substr(pos, count));
   }
 
   [[nodiscard]] constexpr const_pointer data() const noexcept RELOCO_LIFETIMEBOUND { return view_.data(); }
 
-  [[nodiscard]] expected<const_pointer, string_view_error> try_data() const noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] result<const_pointer> try_data() const noexcept RELOCO_LIFETIMEBOUND {
     if (empty())
-      return unexpected(string_view_error::container_empty);
+      return unexpected(error::container_empty);
     return view_.data();
   }
 
@@ -165,16 +161,16 @@ public:
     view_.remove_suffix(n);
   }
 
-  [[nodiscard]] expected<void, string_view_error> try_remove_prefix(size_type n) & noexcept {
+  [[nodiscard]] result<void> try_remove_prefix(size_type n) & noexcept {
     if (n > size())
-      return unexpected(string_view_error::out_of_bounds);
+      return unexpected(error::out_of_bounds);
     view_.remove_prefix(n);
     return {};
   }
 
-  [[nodiscard]] expected<void, string_view_error> try_remove_suffix(size_type n) & noexcept {
+  [[nodiscard]] result<void> try_remove_suffix(size_type n) & noexcept {
     if (n > size())
-      return unexpected(string_view_error::out_of_bounds);
+      return unexpected(error::out_of_bounds);
     view_.remove_suffix(n);
     return {};
   }

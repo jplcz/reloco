@@ -9,6 +9,7 @@
 
 #include "detail/assert.hpp"
 #include "detail/compat.hpp"
+#include "error.hpp"
 #include "expected.hpp"
 #include "lifetime.hpp"
 #include "rvalue_safety.hpp"
@@ -22,11 +23,6 @@
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
 namespace reloco {
-
-enum class span_error {
-  out_of_bounds,
-  container_empty,
-};
 
 /**
  * @brief A lightweight, dynamic-extent view over a contiguous element range.
@@ -162,17 +158,17 @@ public:
    * @brief Attempts to create a subspan without trapping.
    * @param offset Zero-based starting index.
    * @param count Requested number of elements, or all remaining elements.
-   * @return The requested span or @ref span_error::out_of_bounds.
+   * @return The requested span or @ref error::out_of_bounds.
    */
-  [[nodiscard]] expected<span<T>, span_error>
+  [[nodiscard]] result<span<T>>
   try_subspan(std::size_t offset,
               std::size_t count = static_cast<std::size_t>(-1)) const & noexcept RELOCO_LIFETIMEBOUND {
     if (offset > m_size)
-      return unexpected(span_error::out_of_bounds);
+      return unexpected(error::out_of_bounds);
     const std::size_t rem = m_size - offset;
     const std::size_t actual_count = count == static_cast<std::size_t>(-1) ? rem : count;
     if (actual_count > rem)
-      return unexpected(span_error::out_of_bounds);
+      return unexpected(error::out_of_bounds);
     return span<T>(pointer_at(offset), actual_count);
   }
 
@@ -198,9 +194,9 @@ public:
   /**
    * @brief Returns the data pointer when the span is non-empty.
    */
-  [[nodiscard]] expected<T *, span_error> try_data() const & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] result<T *> try_data() const & noexcept RELOCO_LIFETIMEBOUND {
     if (empty())
-      return unexpected(span_error::container_empty);
+      return unexpected(error::container_empty);
     return m_ptr;
   }
 
@@ -242,10 +238,10 @@ public:
   /**
    * @brief Attempts to access an element without trapping.
    */
-  [[nodiscard]] expected<std::reference_wrapper<T>, span_error>
+  [[nodiscard]] result<std::reference_wrapper<T>>
   try_at(std::size_t idx) const & noexcept RELOCO_LIFETIMEBOUND {
     if (idx >= m_size)
-      return unexpected(span_error::out_of_bounds);
+      return unexpected(error::out_of_bounds);
     return std::ref(m_ptr[idx]);
   }
 
@@ -257,15 +253,15 @@ public:
     return m_ptr[idx];
   }
 
-  [[nodiscard]] expected<std::reference_wrapper<T>, span_error> try_front() const & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] result<std::reference_wrapper<T>> try_front() const & noexcept RELOCO_LIFETIMEBOUND {
     if (empty())
-      return unexpected(span_error::container_empty);
+      return unexpected(error::container_empty);
     return std::ref(*m_ptr);
   }
 
-  [[nodiscard]] expected<std::reference_wrapper<T>, span_error> try_back() const & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] result<std::reference_wrapper<T>> try_back() const & noexcept RELOCO_LIFETIMEBOUND {
     if (empty())
-      return unexpected(span_error::container_empty);
+      return unexpected(error::container_empty);
     return std::ref(m_ptr[m_size - 1]);
   }
 
@@ -303,15 +299,15 @@ public:
     return span<T>(pointer_at(m_size - count), count);
   }
 
-  [[nodiscard]] expected<span<T>, span_error> try_first(std::size_t count) const & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] result<span<T>> try_first(std::size_t count) const & noexcept RELOCO_LIFETIMEBOUND {
     if (count > m_size)
-      return unexpected(span_error::out_of_bounds);
+      return unexpected(error::out_of_bounds);
     return span<T>(m_ptr, count);
   }
 
-  [[nodiscard]] expected<span<T>, span_error> try_last(std::size_t count) const & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] result<span<T>> try_last(std::size_t count) const & noexcept RELOCO_LIFETIMEBOUND {
     if (count > m_size)
-      return unexpected(span_error::out_of_bounds);
+      return unexpected(error::out_of_bounds);
     return span<T>(pointer_at(m_size - count), count);
   }
 

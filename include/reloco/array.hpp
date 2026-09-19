@@ -6,6 +6,7 @@
 
 /** @file array.hpp @brief Hardened fixed-size C++17-compatible array. */
 
+#include "error.hpp"
 #include "expected.hpp"
 #include "lifetime.hpp"
 #include "rvalue_safety.hpp"
@@ -40,15 +41,15 @@ template <typename T, std::size_t N> struct RELOCO_OWNER array {
 
   RELOCO_BLOCK_RVALUE_ACCESS(T);
 
-  [[nodiscard]] expected<std::reference_wrapper<T>, span_error> try_at(size_type index) & noexcept {
+  [[nodiscard]] result<std::reference_wrapper<T>> try_at(size_type index) & noexcept {
     if (index >= N)
-      return unexpected(span_error::out_of_bounds);
+      return unexpected(error::out_of_bounds);
     return std::ref(data_[index]);
   }
 
-  [[nodiscard]] expected<std::reference_wrapper<const T>, span_error> try_at(size_type index) const & noexcept {
+  [[nodiscard]] result<std::reference_wrapper<const T>> try_at(size_type index) const & noexcept {
     if (index >= N)
-      return unexpected(span_error::out_of_bounds);
+      return unexpected(error::out_of_bounds);
     return std::cref(data_[index]);
   }
 
@@ -77,15 +78,15 @@ template <typename T, std::size_t N> struct RELOCO_OWNER array {
   [[nodiscard]] constexpr T &back() & noexcept { return data_[N - 1]; }
   [[nodiscard]] constexpr const T &back() const & noexcept { return data_[N - 1]; }
 
-  [[nodiscard]] expected<std::reference_wrapper<T>, span_error> try_front() & noexcept { return std::ref(data_[0]); }
+  [[nodiscard]] result<std::reference_wrapper<T>> try_front() & noexcept { return std::ref(data_[0]); }
 
-  [[nodiscard]] expected<std::reference_wrapper<const T>, span_error> try_front() const & noexcept {
+  [[nodiscard]] result<std::reference_wrapper<const T>> try_front() const & noexcept {
     return std::cref(data_[0]);
   }
 
-  [[nodiscard]] expected<std::reference_wrapper<T>, span_error> try_back() & noexcept { return std::ref(data_[N - 1]); }
+  [[nodiscard]] result<std::reference_wrapper<T>> try_back() & noexcept { return std::ref(data_[N - 1]); }
 
-  [[nodiscard]] expected<std::reference_wrapper<const T>, span_error> try_back() const & noexcept {
+  [[nodiscard]] result<std::reference_wrapper<const T>> try_back() const & noexcept {
     return std::cref(data_[N - 1]);
   }
 
@@ -212,28 +213,28 @@ template <typename T> struct array<T, 0> {
 
   RELOCO_BLOCK_RVALUE_ACCESS(T);
 
-  [[nodiscard]] expected<std::reference_wrapper<T>, span_error> try_at(size_type) & noexcept {
-    return unexpected(span_error::out_of_bounds);
+  [[nodiscard]] result<std::reference_wrapper<T>> try_at(size_type) & noexcept {
+    return unexpected(error::out_of_bounds);
   }
 
-  [[nodiscard]] expected<std::reference_wrapper<const T>, span_error> try_at(size_type) const & noexcept {
-    return unexpected(span_error::out_of_bounds);
+  [[nodiscard]] result<std::reference_wrapper<const T>> try_at(size_type) const & noexcept {
+    return unexpected(error::out_of_bounds);
   }
 
-  [[nodiscard]] expected<std::reference_wrapper<T>, span_error> try_front() & noexcept {
-    return unexpected(span_error::container_empty);
+  [[nodiscard]] result<std::reference_wrapper<T>> try_front() & noexcept {
+    return unexpected(error::container_empty);
   }
 
-  [[nodiscard]] expected<std::reference_wrapper<const T>, span_error> try_front() const & noexcept {
-    return unexpected(span_error::container_empty);
+  [[nodiscard]] result<std::reference_wrapper<const T>> try_front() const & noexcept {
+    return unexpected(error::container_empty);
   }
 
-  [[nodiscard]] expected<std::reference_wrapper<T>, span_error> try_back() & noexcept {
-    return unexpected(span_error::container_empty);
+  [[nodiscard]] result<std::reference_wrapper<T>> try_back() & noexcept {
+    return unexpected(error::container_empty);
   }
 
-  [[nodiscard]] expected<std::reference_wrapper<const T>, span_error> try_back() const & noexcept {
-    return unexpected(span_error::container_empty);
+  [[nodiscard]] result<std::reference_wrapper<const T>> try_back() const & noexcept {
+    return unexpected(error::container_empty);
   }
 
   [[nodiscard]] constexpr T &operator[](size_type) & noexcept {
