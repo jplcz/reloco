@@ -27,6 +27,7 @@ Start with the guide that matches what you are building:
 | Guide | Covers |
 |---|---|
 | [Hardened containers](docs/hardened-containers.md) | Checked views and results, non-trapping access, assertion handling, and explicit security opt-out |
+| [Fallible construction](docs/fallible-construction.md) | The `try_create`/`try_allocate`/`try_construct`/`try_clone`/`try_clone_at` protocol and its `has_try_*` detection traits/concepts |
 | [Lifetime safety](docs/lifetime-safety.md) | Borrowed values and pointers, lifetime annotations, consumed-value tracking, and compiler diagnostics |
 | [Extending reloco](docs/extending.md) | The tag + `*_traits<Tag>` + `context_type` provider pattern used by `allocator_ref` and future pluggable backends |
 | [Package-manager integration](docs/package-managers.md) | Conan 2, vcpkg overlays, CPM.cmake, CPack packaging, and CMake-based dependency managers |
