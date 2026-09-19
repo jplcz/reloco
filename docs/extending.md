@@ -21,6 +21,17 @@ this pattern in reloco; `include/reloco/heap_allocator.hpp` is a concrete
 stateless backend (`heap_allocator_tag`) built against it. Read both
 alongside this page as a complete, real example.
 
+`allocator_ref`'s every operational method (`allocate`, `deallocate`,
+`expand_in_place`, `reallocate`, `advise`) is marked `RELOCO_UNSAFE_BUFFER_USAGE`
+and must be called from inside a `RELOCO_BEGIN_UNSAFE_BUFFER_USAGE`/
+`RELOCO_END_UNSAFE_BUFFER_USAGE` block (see `docs/lifetime-safety.md`),
+since raw memory management has no bounds-tracked alternative to opt into
+instead — unlike span/array, where only the `unsafe_*`-named subset carries
+that attribute. `can_expand_in_place()`/`can_reallocate()`/`can_advise()`/
+`operator bool()` are ordinary checked accessors and are exempt. Apply the
+same convention to any new provider whose operations manage raw memory or
+otherwise have no safer alternative.
+
 There are two different tasks this pattern covers, with two different
 templates below:
 
@@ -395,3 +406,75 @@ Notes:
   not both); the two constructor overloads above are already mutually
   exclusive on `std::is_void_v<typename Traits::context_type>`, so a given
   `Tag` can only ever match one of them.
+
+## 3. Wiring a provider as the process-wide default
+
+Once a Tag has working `*_traits<Tag>`, some providers also want a single
+process-wide instance that library-internal call sites reach for when the
+caller does not pass an explicit `*_ref`, similar to Rust's
+`#[global_allocator]`. `reloco::default_allocator()`
+(`include/reloco/default_allocator.hpp`) is reloco's example of this: it
+forwards to a plain hook struct rather than calling a Tag directly, so the
+hook can be forward declared and overridden without ever including
+`allocator.hpp` from `reloco_user_config.hpp`:
+
+```cpp
+namespace reloco {
+struct reloco_global_alloc {
+  [[nodiscard]] static allocator_ref default_allocator() noexcept;
+};
+
+[[nodiscard]] inline allocator_ref default_allocator() noexcept {
+  return reloco_global_alloc::default_allocator();
+}
+} // namespace reloco
+```
+
+`include/reloco/default_allocator.hpp` supplies the built-in definition of
+`reloco_global_alloc::default_allocator()` (`allocator<heap_allocator_tag>::
+ref()`, the process heap) unless the application defines
+`RELOCO_DEFAULT_ALLOCATOR_CUSTOM`, in which case it must supply exactly one
+out-of-line definition of that static member itself.
+
+This two-piece shape — a forward-declarable hook struct plus an
+opt-out-only macro — exists because of a real ordering hazard:
+`reloco_user_config.hpp` is reached from `detail/compat.hpp`'s very first
+line, before that header has even defined its own feature-detection macros
+(`RELOCO_HAS_ATTRIBUTE` and friends). Any reloco header pulled in from
+`reloco_user_config.hpp` would re-enter `compat.hpp` while it is still on
+the include stack; `#pragma once` would then skip that re-entry and leave
+those macros undefined, breaking every downstream header (see
+`reloco_config.hpp` for the full explanation). So `reloco_user_config.hpp`
+may only ever contain `#define`s — never `#include <reloco/...>` — and the
+actual `reloco_global_alloc::default_allocator()` override, along with the
+Tag and `allocator_traits<Tag>` specialization it depends on, must live in
+its own ordinary header that the application includes through its normal
+path instead:
+
+```cpp
+// reloco_user_config.hpp -- #defines only, no #include of any reloco header.
+#define RELOCO_DEFAULT_ALLOCATOR_CUSTOM
+
+// my_arena_allocator.hpp -- included normally elsewhere by the app, e.g.
+// from a source file, before any use of reloco::default_allocator().
+#include <reloco/allocator.hpp>
+#include <reloco/default_allocator.hpp>
+
+struct my_arena_tag {};
+
+template <> struct reloco::allocator_traits<my_arena_tag> {
+  using context_type = my_arena;
+  // ... allocate/deallocate, per section 1 above ...
+};
+
+inline reloco::allocator_ref reloco::reloco_global_alloc::default_allocator() noexcept {
+  static my_arena arena;
+  return reloco::allocator<my_arena_tag>(arena).ref();
+}
+```
+
+Apply the same shape to any new process-wide default you add: a forward
+declarable hook struct with one static member, a built-in definition guarded
+by `#if !defined(RELOCO_YOUR_THING_CUSTOM)`, and documentation directing
+overriders to define the opt-out macro in `reloco_user_config.hpp` while
+placing the real override in its own header.
