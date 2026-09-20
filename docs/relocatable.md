@@ -82,6 +82,11 @@ buffer -- relocating the wrapper by copying bytes would then only be as
 safe as the erased, captured type itself, which `function` has no way to
 inspect.
 
+`reloco::collection_view<T>`/`reloco::mutable_collection_view<T>` (see
+`collection_view.hpp`) need no such opt-in at all: like `allocator_ref`,
+each is just an untyped context pointer plus a `const vtable *`, already
+trivially copyable, so the default definition already applies.
+
 ## Opting a type in
 
 Specialize `is_trivially_relocatable` for your own type once you have

@@ -23,6 +23,7 @@ where, not a tutorial.
 | `unique_ptr.hpp` | `unique_ptr<T>` | Move-only, allocator-backed smart pointer with fallible construction |
 | `shared_ptr.hpp` | `shared_ptr<T>`, `weak_ptr<T>`, `enable_shared_from_this<T>` | Reference-counted, allocator-backed smart pointer with fallible construction |
 | `function.hpp` | `function<R(Args...)>` | Type-erased, allocator-backed callable wrapper with fallible construction |
+| `collection_view.hpp` | `collection_view<T>`, `mutable_collection_view<T>`, `collection_view_traits<Container>` | Type-erased, non-owning views over an adapted sequence container |
 | `value_ptr.hpp` | `value_ptr<T>` | Nullable, non-owning pointer that rejects binding to prvalue temporaries |
 | `value_ref.hpp` | `value_ref<T>` | Non-null, non-owning reference wrapper that rejects binding to prvalue temporaries |
 | `checked_value.hpp` | `checked_value<T>` | Move-only wrapper with Rust-like use-after-move checks |
@@ -222,6 +223,61 @@ double-wrapped. `reloco::is_trivially_relocatable<function<R(Args...)>>` is
 always `false`: the captured callable may live inline in the SOO buffer, so
 relocating the wrapper by copying bytes is only as safe as the (erased)
 captured type itself (see [Trivial relocation](relocatable.md)).
+
+## `collection_view<T>` / `mutable_collection_view<T>` / `collection_view_traits<Container>`
+
+`include/reloco/collection_view.hpp`
+
+Type-erased, non-owning views over an *adapted* sequence container
+(`reloco::span<T>`, `reloco::array<T, N>`, `std::array<T, N>`,
+`std::span<T>`, ...), matching `allocator_ref`'s customization-point shape:
+a two-word handle (an untyped context pointer plus a `const vtable *`), no
+virtual base class, no RTTI, no allocation of its own. There is
+deliberately no structural detection ("any type that happens to have
+`size()`/`begin()`/`end()`"): a container type is only usable through these
+views once someone specializes `collection_view_traits<Container>` for it,
+exactly like `allocator_ref` requires an explicit `allocator_traits<Tag>`
+specialization. Every required accessor must be supplied explicitly by the
+adapter author; optional capabilities (contiguous `data()` access, mutable
+access) are switched on by required `static constexpr bool` flags
+(`has_data`, `is_mutable`) on the traits specialization, mirroring how
+`allocator_ref::can_expand_in_place()`/`can_reallocate()`/`can_advise()`
+report an optional backend operation.
+
+`collection_view<T>` is *unconditionally read-only*: every accessor
+(`size`/`empty`/`at`/`try_at`/`unsafe_at`/`data`/`try_data`/`unsafe_data`/
+`for_each`) returns or visits `const T &`/`const T *`, regardless of
+whether the bound container or `T` itself is `const`-qualified.
+`mutable_collection_view<T>`, derived from `collection_view<T>`, is the
+*only* way to obtain write access: its converting constructor additionally
+requires the adapter's `is_mutable` flag and a non-`const` lvalue container,
+and it adds `T &`/`T *`-returning overloads of `at`/`try_at`/`unsafe_at`/
+`data`/`try_data`/`unsafe_data`/`for_each` alongside the read-only ones it
+inherits.
+
+```cpp
+reloco::array<int, 3> a{1, 2, 3};
+
+reloco::collection_view<int> view(a);       // read-only
+int total = 0;
+view.for_each([&](const int &v) { total += v; });
+
+reloco::mutable_collection_view<int> mview(a); // requires a non-const array
+mview.at(0) = 100;                             // a[0] == 100
+```
+
+Both converting constructors are `explicit`: binding a container is always
+a deliberate, visible step at the call site, never an implicit conversion.
+Neither view allocates, copies, or owns the underlying container: like
+`span`/`allocator_ref`, the referenced container must outlive every view
+built from it.
+
+Built-in `collection_view_traits` adapters ship for `reloco::span<T>`,
+`reloco::array<T, N>`, `std::array<T, N>`, and `std::span<T>` (the last
+gated behind `RELOCO_HAS_STD_SPAN`). No adapters for owning/node-based
+containers (`std::vector`, `std::list`, `std::map`, ...) are provided yet;
+see the `collection_view_traits` primary template's documentation for the
+full contract required to add one.
 
 ## `value_ptr<T>` / `value_ref<T>`
 

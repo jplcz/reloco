@@ -8,6 +8,7 @@
 #include <reloco/allocator.hpp>
 #include <reloco/array.hpp>
 #include <reloco/checked_value.hpp>
+#include <reloco/collection_view.hpp>
 #include <reloco/concepts.hpp>
 #include <reloco/construction_helpers.hpp>
 #include <reloco/default_allocator.hpp>
