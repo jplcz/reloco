@@ -131,13 +131,12 @@ struct has_container_ref_traits<Container, std::void_t<decltype(container_ref_tr
  * @brief Checks whether `Container` may back a sequence
  * `mutable_container_ref<T>` (i.e. `Key == void`).
  */
-template <typename Container, typename T, typename = void>
-struct is_container_ref_source : std::false_type {};
+template <typename Container, typename T, typename = void> struct is_container_ref_source : std::false_type {};
 
 template <typename Container, typename T>
 struct is_container_ref_source<Container, T, std::enable_if_t<has_container_ref_traits<Container>::value>>
     : std::bool_constant<!container_ref_traits<Container>::is_associative &&
-                          std::is_same_v<T, typename container_ref_traits<Container>::element_type>> {};
+                         std::is_same_v<T, typename container_ref_traits<Container>::element_type>> {};
 
 /**
  * @brief Detects whether `container_ref_traits<Container>` defines
@@ -147,12 +146,10 @@ struct is_container_ref_source<Container, T, std::enable_if_t<has_container_ref_
  * `::key_type` below is never attempted for a sequence-only traits
  * specialization (which need not define it).
  */
-template <typename Container, typename = void>
-struct has_associative_container_ref_traits : std::false_type {};
+template <typename Container, typename = void> struct has_associative_container_ref_traits : std::false_type {};
 
 template <typename Container>
-struct has_associative_container_ref_traits<Container,
-                                             std::void_t<typename container_ref_traits<Container>::key_type>>
+struct has_associative_container_ref_traits<Container, std::void_t<typename container_ref_traits<Container>::key_type>>
     : std::true_type {};
 
 /**
@@ -163,13 +160,12 @@ template <typename Container, typename T, typename Key, typename = void>
 struct is_associative_container_ref_source : std::false_type {};
 
 template <typename Container, typename T, typename Key>
-struct is_associative_container_ref_source<
-    Container, T, Key,
-    std::enable_if_t<has_container_ref_traits<Container>::value &&
-                      has_associative_container_ref_traits<Container>::value>>
+struct is_associative_container_ref_source<Container, T, Key,
+                                           std::enable_if_t<has_container_ref_traits<Container>::value &&
+                                                            has_associative_container_ref_traits<Container>::value>>
     : std::bool_constant<container_ref_traits<Container>::is_associative &&
-                          std::is_same_v<T, typename container_ref_traits<Container>::element_type> &&
-                          std::is_same_v<Key, typename container_ref_traits<Container>::key_type>> {};
+                         std::is_same_v<T, typename container_ref_traits<Container>::element_type> &&
+                         std::is_same_v<Key, typename container_ref_traits<Container>::key_type>> {};
 
 /**
  * @brief Sequence-container implementation of `mutable_container_ref<T>`.
@@ -215,8 +211,8 @@ public:
    * never an implicit conversion.
    */
   template <typename Container, std::enable_if_t<is_container_ref_source<Container, T>::value, int> = 0>
-  constexpr explicit mutable_sequence_container_ref(Container &c RELOCO_LIFETIMEBOUND
-                                                         RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
+  constexpr explicit mutable_sequence_container_ref(
+      Container &c RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
       : ctx_(std::addressof(c)), vtbl_(&s_vtbl<Container>) {}
 
   /**
@@ -341,7 +337,7 @@ public:
    * like" containers, so an index-based traversal is always meaningful.
    * @tparam Fn Callable invocable as `Fn(T &)`.
    */
-  template <typename Fn> void for_each(Fn &&fn) {
+  template <typename Fn> void for_each(Fn &&fn) const {
     if (!vtbl_)
       return;
     const size_type n = vtbl_->size(ctx_);
@@ -391,9 +387,9 @@ private:
   }
 
   template <typename Container>
-  static constexpr vtable s_vtbl{&size_entry<Container>,  &empty_entry<Container>,     &clear_entry<Container>,
-                                 &push_back_entry<Container>, &push_front_entry<Container>,
-                                 &insert_at_entry<Container>, &erase_at_entry<Container>, &at_entry<Container>};
+  static constexpr vtable s_vtbl{&size_entry<Container>,      &empty_entry<Container>,      &clear_entry<Container>,
+                                 &push_back_entry<Container>, &push_front_entry<Container>, &insert_at_entry<Container>,
+                                 &erase_at_entry<Container>,  &at_entry<Container>};
 
   void *ctx_ = nullptr;
   const vtable *vtbl_ = nullptr;
@@ -446,8 +442,8 @@ public:
    */
   template <typename Container,
             std::enable_if_t<is_associative_container_ref_source<Container, T, Key>::value, int> = 0>
-  constexpr explicit mutable_associative_container_ref(Container &c RELOCO_LIFETIMEBOUND
-                                                             RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
+  constexpr explicit mutable_associative_container_ref(
+      Container &c RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
       : ctx_(std::addressof(c)), vtbl_(&s_vtbl<Container>) {}
 
   /**
@@ -585,16 +581,15 @@ private:
     return traits::find(*static_cast<Container *>(ctx), key);
   }
 
-  template <typename Container>
-  static void for_each_entry(void *ctx, void *visitor_ctx, visit_fn visit) noexcept {
+  template <typename Container> static void for_each_entry(void *ctx, void *visitor_ctx, visit_fn visit) noexcept {
     using traits = container_ref_traits<Container>;
     traits::for_each(*static_cast<Container *>(ctx), visitor_ctx, visit);
   }
 
   template <typename Container>
-  static constexpr vtable s_vtbl{&size_entry<Container>,  &empty_entry<Container>, &clear_entry<Container>,
-                                 &insert_at_entry<Container>, &erase_entry<Container>,
-                                 &find_entry<Container>,      &for_each_entry<Container>};
+  static constexpr vtable s_vtbl{&size_entry<Container>,      &empty_entry<Container>, &clear_entry<Container>,
+                                 &insert_at_entry<Container>, &erase_entry<Container>, &find_entry<Container>,
+                                 &for_each_entry<Container>};
 
   void *ctx_ = nullptr;
   const vtable *vtbl_ = nullptr;
@@ -621,8 +616,7 @@ private:
  * default) for a sequence container.
  */
 template <typename T, typename Key = void>
-using mutable_container_ref =
-    std::conditional_t<std::is_void_v<Key>, detail::mutable_sequence_container_ref<T>,
-                       detail::mutable_associative_container_ref<T, Key>>;
+using mutable_container_ref = std::conditional_t<std::is_void_v<Key>, detail::mutable_sequence_container_ref<T>,
+                                                 detail::mutable_associative_container_ref<T, Key>>;
 
 } // namespace reloco
