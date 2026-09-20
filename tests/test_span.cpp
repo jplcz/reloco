@@ -121,6 +121,7 @@ TEST(SpanTest, ProvidesCheckedAndFallibleAccess) {
 }
 
 TEST(SpanTest, ProvidesCheckedAndFallibleSubviews) {
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE;
   uint32_t values[] = {0x11223344, 0x55667788, 0x99aabbcc, 0xddeeff00};
   reloco::span<uint32_t> view(values);
 
@@ -147,6 +148,7 @@ TEST(SpanTest, ProvidesCheckedAndFallibleSubviews) {
   reloco::span<const uint32_t> const_view = view;
   EXPECT_EQ(const_view.data(), values);
   EXPECT_EQ(const_view.size_bytes(), sizeof(values));
+  RELOCO_END_UNSAFE_BUFFER_USAGE;
 }
 
 #if RELOCO_HAS_STD_SPAN
