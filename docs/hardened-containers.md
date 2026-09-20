@@ -15,6 +15,8 @@ core types include:
 | `reloco::array<T, N>` | Fixed-size owning array with hardened element access |
 | `reloco::string_view` | Non-owning character view with checked and non-trapping access |
 | `reloco::span<T>` | Non-owning contiguous range over contiguous storage |
+| `reloco::string` | Allocator-backed, growable character buffer with fallible construction |
+| `reloco::unique_ptr<T>` | Move-only, allocator-backed smart pointer with fallible construction |
 | `reloco::expected<T, E>` | Allocation-free value-or-error result |
 
 These types provide familiar standard-library-style APIs while keeping the
@@ -32,6 +34,8 @@ other code where an unchecked access or dangling borrow is a security issue.
 | `std::array<T, N>` | `reloco::array<T, N>` | Fixed-size owned storage |
 | `std::span<T>` | `reloco::span<T>` | Borrowed contiguous storage |
 | `std::string_view` | `reloco::string_view` | Borrowed character data |
+| `std::string` | `reloco::string` | Allocator-backed, growable, fallible character storage |
+| `std::unique_ptr<T>` | `reloco::unique_ptr<T>` | Allocator-backed, fallible single-object ownership |
 | `std::expected<T, E>` | `reloco::expected<T, E>` | Allocation-free fallible results |
 
 This is a project default, not a ban on the standard library. Keep standard
@@ -39,10 +43,16 @@ types when required by a platform API, third-party library, ABI, or generic
 ecosystem interface. Convert to a hardened view at the boundary and keep the
 security-sensitive implementation on reloco types.
 
-Dynamic owning containers such as `std::string`, `std::vector`, and
-`std::map` have no direct reloco replacement. Use them only where allocation,
-failure behavior, and execution context are explicitly acceptable. Prefer
-caller-owned fixed storage and `reloco::span` in bounded or kernel-mode
+`reloco::string` is the one dynamic owning container reloco provides: an
+allocator-backed, growable character buffer whose construction and every
+mutation that can fail (`try_reserve`, `try_append`, `try_insert`, ...)
+returns `reloco::result<T>` instead of throwing. It composes with the
+fallible-construction protocol (see `docs/fallible-construction.md`), so
+`reloco::unique_ptr<reloco::string>::try_create(...)` and similar work out
+of the box. `std::vector`, `std::map`, and other dynamic containers still
+have no direct reloco replacement; use them only where allocation, failure
+behavior, and execution context are explicitly acceptable, and prefer
+caller-owned fixed storage plus `reloco::span` in bounded or kernel-mode
 paths.
 
 ```cpp

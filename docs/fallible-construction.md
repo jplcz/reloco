@@ -44,7 +44,11 @@ for `reloco::construction_helpers` (see below and
 `include/reloco/construction_helpers.hpp`), which already implements it once
 for every type that follows this protocol; `reloco::unique_ptr<T>` (see
 `unique_ptr.hpp`) is a small, complete example of a type built entirely on
-top of it.
+top of it. `reloco::string` (see `string.hpp`) is a real-world example that
+implements the protocol itself -- `try_create`, `try_allocate`, `try_clone`,
+and `try_clone_at` -- rather than consuming it, which is why
+`reloco::unique_ptr<reloco::string>::try_create(...)` composes automatically
+through `has_try_create_v`.
 
 ## 1. `try_create`: the default-allocator factory
 
