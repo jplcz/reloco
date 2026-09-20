@@ -180,15 +180,13 @@ public:
   }
 
   [[nodiscard]] result<void> try_resize(size_type count, CharT ch = CharT()) & noexcept {
-    if (count <= size_) {
-      size_ = count;
-      data_[size_] = CharT();
-      return {};
-    }
     if (count > Capacity) {
       return unexpected(error::out_of_bounds);
     }
-    TraitsT::assign(data_ + size_, count - size_, ch);
+    if (count > size_) {
+      TraitsT::assign(data_ + size_, count - size_, ch);
+    }
+
     size_ = count;
     data_[size_] = CharT();
     return {};
