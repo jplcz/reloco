@@ -92,6 +92,7 @@ for entry in "${matrix[@]}"; do
       "-DCMAKE_CXX_COMPILER=${compiler}"
       -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
       -DJPLCZ_RELOCO_ENABLE_STRICT_WARNINGS=ON
+      -DJPLCZ_RELOCO_ENABLE_WERROR=ON
       "-DJPLCZ_RELOCO_BUILD_TESTS=${run_tests}"
       -DJPLCZ_RELOCO_BUILD_HEADER_CHECKS=ON
     )
