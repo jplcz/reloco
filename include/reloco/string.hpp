@@ -149,7 +149,9 @@ public:
   /**
    * @brief Fallible deep copy using a caller-chosen allocator.
    */
-  [[nodiscard]] result<basic_string> try_clone(allocator_ref alloc) const noexcept { return try_allocate(alloc, view()); }
+  [[nodiscard]] result<basic_string> try_clone(allocator_ref alloc) const noexcept {
+    return try_allocate(alloc, view());
+  }
 
   /**
    * @brief Fallible deep copy reusing this string's own allocator.
@@ -195,7 +197,7 @@ public:
     }
 
     auto res = cap_ == 0 ? alloc_.allocate(required_bytes, alignof(CharT))
-                          : alloc_.reallocate(data_, (cap_ + 1) * sizeof(CharT), required_bytes, alignof(CharT));
+                         : alloc_.reallocate(data_, (cap_ + 1) * sizeof(CharT), required_bytes, alignof(CharT));
     if (!res)
       return unexpected(res.error());
 
@@ -224,8 +226,22 @@ public:
   // ---- mutation ----
 
   [[nodiscard]] result<void> try_assign(view_type sv) & noexcept {
-    size_ = 0;
-    return try_append(sv);
+    if (sv.empty()) {
+      size_ = 0;
+      return {};
+    }
+
+    const size_type new_size = sv.size();
+    if (new_size > cap_) {
+      auto res = try_reserve(std::max(cap_ * 2, new_size));
+      if (!res)
+        return res;
+    }
+
+    TraitsT::copy(data_, sv.data(), sv.size());
+    size_ = new_size;
+    data_[size_] = CharT();
+    return {};
   }
 
   [[nodiscard]] result<void> try_append(view_type sv) & noexcept {
@@ -354,7 +370,8 @@ public:
     return std::ref(data_[pos]);
   }
 
-  [[nodiscard]] result<std::reference_wrapper<const CharT>> try_at(size_type pos) const & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] result<std::reference_wrapper<const CharT>>
+  try_at(size_type pos) const & noexcept RELOCO_LIFETIMEBOUND {
     if (pos >= size_)
       return unexpected(error::out_of_bounds);
     return std::cref(data_[pos]);
@@ -365,8 +382,8 @@ public:
     return data_[pos];
   }
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE const_reference unsafe_at(size_type pos) const & noexcept
-      RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE const_reference
+  unsafe_at(size_type pos) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(pos < size_, "string index out of bounds");
     return data_[pos];
   }
@@ -448,7 +465,9 @@ public:
     return std::basic_string_view<CharT, TraitsT>(data(), size_);
   }
 
-  explicit operator std::basic_string<CharT, TraitsT>() const { return std::basic_string<CharT, TraitsT>(data(), size_); }
+  explicit operator std::basic_string<CharT, TraitsT>() const {
+    return std::basic_string<CharT, TraitsT>(data(), size_);
+  }
 
   // ---- iteration ----
 
