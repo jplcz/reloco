@@ -24,6 +24,8 @@ where, not a tutorial.
 | `shared_ptr.hpp` | `shared_ptr<T>`, `weak_ptr<T>`, `enable_shared_from_this<T>` | Reference-counted, allocator-backed smart pointer with fallible construction |
 | `function.hpp` | `function<R(Args...)>` | Type-erased, allocator-backed callable wrapper with fallible construction |
 | `collection_view.hpp` | `collection_view<T>`, `mutable_collection_view<T>`, `collection_view_traits<Container>` | Type-erased, non-owning views over an adapted sequence container |
+| `container_ref.hpp` | `mutable_container_ref<T, Key = void>`, `container_ref_traits<Container>` | Type-erased handle for structurally mutating (growing/inserting/erasing) an adapted sequence or associative container |
+| `container_ref_std.hpp` | `container_ref_traits<std::vector<T>>`, `container_ref_traits<std::map<Key, Value>>` | Opt-in `container_ref_traits` adapters for `std::vector`/`std::map` |
 | `value_ptr.hpp` | `value_ptr<T>` | Nullable, non-owning pointer that rejects binding to prvalue temporaries |
 | `value_ref.hpp` | `value_ref<T>` | Non-null, non-owning reference wrapper that rejects binding to prvalue temporaries |
 | `checked_value.hpp` | `checked_value<T>` | Move-only wrapper with Rust-like use-after-move checks |
@@ -278,6 +280,61 @@ gated behind `RELOCO_HAS_STD_SPAN`). No adapters for owning/node-based
 containers (`std::vector`, `std::list`, `std::map`, ...) are provided yet;
 see the `collection_view_traits` primary template's documentation for the
 full contract required to add one.
+
+## `mutable_container_ref<T, Key = void>` / `container_ref_traits<Container>`
+
+`include/reloco/container_ref.hpp` (core, no built-in adapters),
+`include/reloco/container_ref_std.hpp` (opt-in `std::vector`/`std::map`
+adapters)
+
+Type-erased, non-owning handle allowing *structural* mutation of an adapted
+container (growing, inserting, erasing, clearing) as well as
+indexed/keyed access to its existing elements -- unlike
+`mutable_collection_view`, which only mutates elements already present and
+never resizes the container. Same customization-point shape as
+`allocator_ref`/`collection_view`: a container is only usable here once
+someone specializes `container_ref_traits<Container>` for it; there is no
+structural detection.
+
+`mutable_container_ref<T, Key = void>` is an alias picking between two
+implementations based on whether `Key` is `void`:
+
+- `mutable_container_ref<T>` (`Key = void`): a *sequence* container handle
+  (`container_ref_traits<Container>::is_associative == false`). Offers
+  `try_push_back`/`try_push_front`/`try_insert_at(index,
+  value)`/`try_erase_at(index)`/`clear()`, `for_each(Fn)` (implemented
+  generically over `at`/`size` -- no separate trait hook needed, since this
+  contract targets index-addressable "vector-like" containers), and
+  `at`/`try_at`/`unsafe_at(index)` for existing elements.
+- `mutable_container_ref<T, Key>` (`Key` other than `void`): an
+  *associative* container handle (`is_associative == true`). Offers
+  `try_insert_at(key, value)`/`try_erase(key)`/`clear()`, `for_each(Fn)`
+  (via a required trait-level iteration hook, since there is no index
+  concept to fall back on), and `at`/`try_at`/`unsafe_at(key)` for existing
+  entries.
+
+```cpp
+std::vector<int> v{1, 2, 3};
+reloco::mutable_container_ref<int> ref(v);
+ref.try_push_back(4);          // v == {1, 2, 3, 4}
+ref.try_insert_at(0, 0);       // v == {0, 1, 2, 3, 4}
+ref.at(0) = 100;                // v == {100, 1, 2, 3, 4}
+```
+
+Every fallible trait function the adapted container cannot support (e.g. a
+container with no efficient front-insertion, or inserting a key that
+already exists) must still be implemented by the traits specialization --
+it simply reports that through its own `result<void>` (e.g.
+`unexpected(error::unsupported_operation)`, `error::already_exists`,
+`error::not_found`) rather than being gated by a separate capability flag.
+
+`container_ref_std.hpp` is deliberately a separate header from
+`container_ref.hpp`: its `std::vector<T>`/`std::map<Key, Value>` adapters
+wrap standard-library operations that allocate and may throw, which the
+rest of reloco avoids; only a caller who explicitly `#include`s this header
+opts into that behavior. Every adapter function in it wraps the
+underlying call in `try`/`catch (...)`, converting any thrown exception
+into `unexpected(error::allocation_failed)`.
 
 ## `value_ptr<T>` / `value_ref<T>`
 

@@ -86,6 +86,9 @@ inspect.
 `collection_view.hpp`) need no such opt-in at all: like `allocator_ref`,
 each is just an untyped context pointer plus a `const vtable *`, already
 trivially copyable, so the default definition already applies.
+`reloco::mutable_container_ref<T, Key>` (see `container_ref.hpp`) is the
+same story: both its sequence and associative implementations are just a
+context pointer plus a `const vtable *`.
 
 ## Opting a type in
 

@@ -11,6 +11,8 @@
 #include <reloco/collection_view.hpp>
 #include <reloco/concepts.hpp>
 #include <reloco/construction_helpers.hpp>
+#include <reloco/container_ref.hpp>
+#include <reloco/container_ref_std.hpp>
 #include <reloco/default_allocator.hpp>
 #include <reloco/error.hpp>
 #include <reloco/expected.hpp>
