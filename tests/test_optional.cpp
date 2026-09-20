@@ -106,7 +106,7 @@ TEST_F(OptionalTest, InPlaceConstruction) {
   struct MultiArg {
     int a;
     float b;
-    MultiArg(int a, float b) : a(a), b(b) {}
+    MultiArg(int a_arg, float b_arg) : a(a_arg), b(b_arg) {}
   };
 
   optional<MultiArg> opt(std::in_place, 10, 3.14f);
