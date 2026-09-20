@@ -24,6 +24,7 @@
 #include <reloco/rvalue_safety.hpp>
 #include <reloco/shared_ptr.hpp>
 #include <reloco/span.hpp>
+#include <reloco/stack_allocator.hpp>
 #include <reloco/string.hpp>
 #include <reloco/string_view.hpp>
 #include <reloco/unique_ptr.hpp>

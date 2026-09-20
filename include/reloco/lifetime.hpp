@@ -61,6 +61,18 @@
 #define RELOCO_LIFETIME_CAPTURE_BY_THIS RELOCO_LIFETIME_CAPTURE_BY(this)
 #endif
 
+/**
+ * Declares that a method completely resets the object's state.
+ * Suppresses use-after-move warnings when the object is reused after calling this method.
+ */
+#if RELOCO_HAS_CPP_ATTRIBUTE(clang::reinitializes)
+#define RELOCO_REINITIALIZES [[clang::reinitializes]]
+#elif RELOCO_HAS_ATTRIBUTE(reinitializes)
+#define RELOCO_REINITIALIZES __attribute__((reinitializes))
+#else
+#define RELOCO_REINITIALIZES
+#endif
+
 // ============================================================================
 // Clang Safe Buffers Pragma Control Blocks
 // ============================================================================
