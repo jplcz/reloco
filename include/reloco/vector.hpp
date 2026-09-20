@@ -601,15 +601,24 @@ template <typename T> struct container_ref_traits<reloco::vector<T>> {
   static T &at(reloco::vector<T> &c, std::size_t index) noexcept { return c[index]; }
 
   static result<void> try_push_back(reloco::vector<T> &c, T value) noexcept {
-    return c.try_push_back(std::move(value));
+    auto res = c.try_push_back(std::move(value));
+    if (!res)
+      return unexpected(res.error());
+    return {};
   }
 
   static result<void> try_push_front(reloco::vector<T> &c, T value) noexcept {
-    return c.try_insert_at(0, std::move(value));
+    auto res = c.try_insert_at(0, std::move(value));
+    if (!res)
+      return unexpected(res.error());
+    return {};
   }
 
   static result<void> try_insert_at(reloco::vector<T> &c, std::size_t index, T value) noexcept {
-    return c.try_insert_at(index, std::move(value));
+    auto res = c.try_insert_at(index, std::move(value));
+    if (!res)
+      return unexpected(res.error());
+    return {};
   }
 
   static result<void> try_erase_at(reloco::vector<T> &c, std::size_t index) noexcept { return c.try_erase_at(index); }
