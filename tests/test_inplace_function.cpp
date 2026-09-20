@@ -163,8 +163,9 @@ TEST_F(InplaceFunctionTest, CapacityAndReassignment) {
   // Test assigning a small lambda, then replacing it with another
   inplace_function<int(), 32> f = []() { return 100; };
 
-  if (f)
+  if (f) {
     EXPECT_EQ(f(), 100);
+  }
 
   // Reassign to a different lambda with a different size
   struct LargeCapture {
@@ -174,8 +175,9 @@ TEST_F(InplaceFunctionTest, CapacityAndReassignment) {
   LargeCapture large;
   f = [large]() { return large.data[3]; };
 
-  if (f)
+  if (f) {
     EXPECT_EQ(f(), 4);
+  }
 }
 
 } // namespace
