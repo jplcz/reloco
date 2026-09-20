@@ -60,7 +60,9 @@
  */
 
 #include "allocator.hpp"
+#include "collection_view.hpp"
 #include "construction_helpers.hpp"
+#include "container_ref.hpp"
 #include "default_allocator.hpp"
 #include "detail/assert.hpp"
 #include "error.hpp"
@@ -104,8 +106,7 @@ public:
   vector(const vector &) = delete;
   vector &operator=(const vector &) = delete;
 
-  vector(vector &&other) noexcept
-      : alloc_(other.alloc_), data_(other.data_), size_(other.size_), cap_(other.cap_) {
+  vector(vector &&other) noexcept : alloc_(other.alloc_), data_(other.data_), size_(other.size_), cap_(other.cap_) {
     other.data_ = nullptr;
     other.size_ = 0;
     other.cap_ = 0;
@@ -194,8 +195,7 @@ public:
   /**
    * @brief Fallible deep copy directly into uninitialized storage.
    */
-  [[nodiscard]] static result<void> try_clone_at(allocator_ref alloc, vector *storage,
-                                                 const vector &source) noexcept {
+  [[nodiscard]] static result<void> try_clone_at(allocator_ref alloc, vector *storage, const vector &source) noexcept {
     auto res = source.try_clone(alloc);
     if (!res)
       return unexpected(res.error());
@@ -573,6 +573,47 @@ private:
  * self-reference into its own storage.
  */
 template <typename T> struct is_trivially_relocatable<vector<T>> : std::true_type {};
+
+/**
+ * @brief Adapts `vector<T, N>` for the collection views.
+ */
+template <typename T> struct collection_view_traits<reloco::vector<T>> {
+  using element_type = T;
+  static constexpr bool is_random_access = true;
+  static constexpr bool has_data = true;
+  static constexpr bool is_mutable = true;
+
+  static std::size_t size(const reloco::vector<T> &c) noexcept { return c.size(); }
+  static bool empty(const reloco::vector<T> &c) noexcept { return c.empty(); }
+  static T &at(reloco::vector<T> &c, std::size_t index) noexcept { return c[index]; }
+  static const T &at(const reloco::vector<T> &c, std::size_t index) noexcept { return c[index]; }
+  static T *data(reloco::vector<T> &c) noexcept { return c.data(); }
+  static const T *data(const reloco::vector<T> &c) noexcept { return c.data(); }
+};
+
+template <typename T> struct container_ref_traits<reloco::vector<T>> {
+  using element_type = T;
+  static constexpr bool is_associative = false;
+
+  static std::size_t size(const reloco::vector<T> &c) noexcept { return c.size(); }
+  static bool empty(const reloco::vector<T> &c) noexcept { return c.empty(); }
+  static void clear(reloco::vector<T> &c) noexcept { c.clear(); }
+  static T &at(reloco::vector<T> &c, std::size_t index) noexcept { return c[index]; }
+
+  static result<void> try_push_back(reloco::vector<T> &c, T value) noexcept {
+    return c.try_push_back(std::move(value));
+  }
+
+  static result<void> try_push_front(reloco::vector<T> &c, T value) noexcept {
+    return c.try_insert_at(0, std::move(value));
+  }
+
+  static result<void> try_insert_at(reloco::vector<T> &c, std::size_t index, T value) noexcept {
+    return c.try_insert_at(index, std::move(value));
+  }
+
+  static result<void> try_erase_at(reloco::vector<T> &c, std::size_t index) noexcept { return c.try_erase_at(index); }
+};
 
 } // namespace reloco
 

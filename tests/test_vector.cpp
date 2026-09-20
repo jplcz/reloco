@@ -297,8 +297,10 @@ TEST(VectorTest, UnsafeAtAndUnsafeDataBypassChecks) {
   auto v = vector<int>::try_create();
   ASSERT_TRUE(v);
   ASSERT_TRUE(v->try_push_back(7));
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE;
   EXPECT_EQ(v->unsafe_at(0), 7);
   EXPECT_EQ(*v->unsafe_data(), 7);
+  RELOCO_END_UNSAFE_BUFFER_USAGE;
 }
 
 TEST(VectorTest, IteratesInOrder) {
@@ -339,7 +341,7 @@ TEST(VectorTest, MoveConstructionTransfersOwnership) {
 
   vector<int> moved(std::move(*v));
   EXPECT_EQ(moved.size(), 2u);
-  EXPECT_TRUE(v->empty()); // NOLINT(bugprone-use-after-move)
+  EXPECT_TRUE(v->empty());      // NOLINT(bugprone-use-after-move)
   EXPECT_EQ(v->capacity(), 0u); // NOLINT(bugprone-use-after-move)
 }
 
@@ -408,8 +410,7 @@ TEST(VectorTest, TryCloneAtWritesIntoUninitializedStorage) {
   ASSERT_TRUE(v->try_push_back(2));
 
   alignas(vector<int>) std::byte storage[sizeof(vector<int>)];
-  auto res =
-      vector<int>::try_clone_at(reloco::default_allocator(), reinterpret_cast<vector<int> *>(storage), *v);
+  auto res = vector<int>::try_clone_at(reloco::default_allocator(), reinterpret_cast<vector<int> *>(storage), *v);
   ASSERT_TRUE(res);
   auto *cloned = reinterpret_cast<vector<int> *>(storage);
   EXPECT_EQ(cloned->size(), 2u);
