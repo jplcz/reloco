@@ -91,7 +91,8 @@ public:
       return unexpected(error::out_of_bounds);
     }
 
-    TraitsT::copy(data_, sv.data(), sv.size());
+    // TraitsT::move handles both non-overlapping and overlapping memory (aliases)
+    TraitsT::move(data_, sv.data(), sv.size());
     size_ = new_size;
     data_[size_] = CharT();
     return {};
@@ -101,13 +102,15 @@ public:
     if (sv.empty())
       return {};
 
-    const size_type new_size = size_ + sv.size();
-    if (new_size > Capacity) {
+    if (Capacity - size_ < sv.size()) {
       return unexpected(error::out_of_bounds);
     }
 
+    // Source [sv.data(), sv.data() + sv.size()) is within [data_, data_ + size_).
+    // Dest [data_ + size_, data_ + size_ + sv.size()) is outside [data_, data_ + size_).
+    // They are disjoint regions, so copy/move works without temporary buffers.
     TraitsT::copy(data_ + size_, sv.data(), sv.size());
-    size_ = new_size;
+    size_ += sv.size();
     data_[size_] = CharT();
     return {};
   }
@@ -134,11 +137,22 @@ public:
     if (sv.empty())
       return {};
 
-    const size_type len = sv.size();
-    TraitsT::move(data_ + pos + len, data_ + pos, size_ - pos);
-    TraitsT::copy(data_ + pos, sv.data(), len);
+    if (aliases(sv)) {
+      // Stage 1: Copy aliased source safely into the unused capacity at the end.
+      // Since sv lives within [0, size_), writing to [size_, Capacity) cannot overwrite sv.
+      TraitsT::copy(data_ + size_, sv.data(), sv.size());
 
-    size_ += len;
+      // Stage 2: Rotate the inserted segment backwards into `pos`.
+      // std::rotate shifts [data_ + pos, data_ + size_) rightward and
+      // moves [data_ + size_, data_ + size_ + sv.size()) into `pos`.
+      std::rotate(data_ + pos, data_ + size_, data_ + size_ + sv.size());
+    } else {
+      // Non-aliasing fast path: shift right first, then copy.
+      TraitsT::move(data_ + pos + sv.size(), data_ + pos, size_ - pos);
+      TraitsT::copy(data_ + pos, sv.data(), sv.size());
+    }
+
+    size_ += sv.size();
     data_[size_] = CharT();
     return {};
   }
@@ -348,6 +362,22 @@ public:
   friend bool operator!=(view_type lhs, const basic_inline_string &rhs) noexcept { return !(lhs == rhs); }
 
 private:
+  /**
+   * @brief Reports whether @p sv references bytes inside this string's own
+   * live content -- i.e. whether it is (or was derived from) `this->view()`
+   * or a substring of it.
+   *
+   * Guards every mutator that takes a `view_type` (`try_assign`,
+   * `try_append`, `try_insert`) against self-referential calls like
+   * `s.try_append(s.view())`: without this check, growing the buffer could
+   * free the very memory @p sv still points at, and even without growth,
+   * `TraitsT::copy`/`move` do not tolerate every possible overlap between
+   * the shifted destination and an aliased source.
+   */
+  [[nodiscard]] bool aliases(view_type sv) const noexcept {
+    return !sv.empty() && sv.data() >= data_ && sv.data() < data_ + size_;
+  }
+
   CharT data_[Capacity + 1]{};
   size_type size_{0};
 };
