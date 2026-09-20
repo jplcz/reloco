@@ -423,7 +423,8 @@ public:
     result<void> (*insert_at)(void *ctx, key_type &&key, T &&value) noexcept;
     result<void> (*erase)(void *ctx, const key_type &key) noexcept;
     T *(*find)(void *ctx, const key_type &key) noexcept;
-    void (*for_each)(void *ctx, void *visitor_ctx, visit_fn visit) noexcept;
+    // MSVC FIX: Expanded function pointer signature inline to avoid C2061 syntax error
+    void (*for_each)(void *ctx, void *visitor_ctx, void (*visit)(void *, const key_type &, T &) noexcept) noexcept;
   };
 
   /**
