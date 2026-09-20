@@ -207,9 +207,11 @@ TEST(VectorTest, TryEraseAtNonRelocatableDestroysAndMoves) {
   bool destroyed[3] = {false, false, false};
   auto v = vector<move_only>::try_create();
   ASSERT_TRUE(v);
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE;
   ASSERT_TRUE(v->try_emplace_back(1, &destroyed[0]));
   ASSERT_TRUE(v->try_emplace_back(2, &destroyed[1]));
   ASSERT_TRUE(v->try_emplace_back(3, &destroyed[2]));
+  RELOCO_END_UNSAFE_BUFFER_USAGE;
 
   ASSERT_TRUE(v->try_erase_at(0));
   EXPECT_TRUE(destroyed[0]);
