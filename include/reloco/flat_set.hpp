@@ -209,7 +209,7 @@ template <typename T, typename Compare> struct collection_view_traits<flat_set<T
   [[nodiscard]] static bool empty(const flat_set<T, Compare> &c) noexcept { return c.empty(); }
 
   [[nodiscard]] static const T &at(const flat_set<T, Compare> &c, std::size_t index) noexcept {
-    BOOSER_ASSERT(index < c.size(), "Index out of bounds");
+    RELOCO_ASSERT(index < c.size(), "Index out of bounds");
     return c.begin()[index];
   }
 
