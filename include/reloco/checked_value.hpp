@@ -171,8 +171,7 @@ public:
    * only at such boundaries, never to silence a real reuse-after-move
    * warning.
    */
-  checked_value &as_known() & noexcept RELOCO_CALLABLE_WHEN("unconsumed", "unknown")
-      RELOCO_RETURN_TYPESTATE(unconsumed) {
+  checked_value &as_known() & noexcept RELOCO_RETURN_TYPESTATE(unconsumed) {
     RELOCO_ASSERT(!moved_from_, "checked_value: as_known() after move");
     return *this;
   }
@@ -332,8 +331,7 @@ public:
    * boundary; see the primary template's @ref checked_value::as_known for
    * the full explanation.
    */
-  checked_value &as_known() & noexcept RELOCO_CALLABLE_WHEN("unconsumed", "unknown")
-      RELOCO_RETURN_TYPESTATE(unconsumed) {
+  checked_value &as_known() & noexcept RELOCO_RETURN_TYPESTATE(unconsumed) {
     RELOCO_ASSERT(!moved_from_, "checked_value: as_known() after move");
     return *this;
   }

@@ -299,8 +299,7 @@ below).
    `<reloco/detail/assert.hpp>`, and return to `"unconsumed"`:
 
    ```cpp
-   transaction &as_known() noexcept & RELOCO_CALLABLE_WHEN("unconsumed", "unknown")
-       RELOCO_RETURN_TYPESTATE(unconsumed) {
+   transaction &as_known() noexcept & RELOCO_RETURN_TYPESTATE(unconsumed) {
      RELOCO_ASSERT(!committed_, "transaction already committed");
      return *this;
    }

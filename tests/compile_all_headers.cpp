@@ -20,6 +20,7 @@
 #include <reloco/function.hpp>
 #include <reloco/heap_allocator.hpp>
 #include <reloco/inline_string.hpp>
+#include <reloco/inplace_function.hpp>
 #include <reloco/lifetime.hpp>
 #include <reloco/optional.hpp>
 #include <reloco/relocatable.hpp>

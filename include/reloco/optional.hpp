@@ -253,14 +253,12 @@ public:
    * boundary; see the primary template's @ref checked_value::as_known for
    * the full explanation.
    */
-  [[nodiscard]] optional &as_known() & noexcept RELOCO_CALLABLE_WHEN("unconsumed", "unknown", "consumed")
-      RELOCO_RETURN_TYPESTATE(unconsumed) {
+  [[nodiscard]] optional &as_known() & noexcept RELOCO_RETURN_TYPESTATE(unconsumed) {
     RELOCO_ASSERT(has_value_, "optional: as_known() called on empty object");
     return *this;
   }
 
-  [[nodiscard]] const optional &as_known() const & noexcept RELOCO_CALLABLE_WHEN("unconsumed", "unknown")
-      RELOCO_RETURN_TYPESTATE(unconsumed) {
+  [[nodiscard]] const optional &as_known() const & noexcept RELOCO_RETURN_TYPESTATE(unconsumed) {
     RELOCO_ASSERT(has_value_, "optional: as_known() called on empty object");
     return *this;
   }
