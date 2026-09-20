@@ -19,7 +19,9 @@
 #include <reloco/flat_set.hpp>
 #include <reloco/function.hpp>
 #include <reloco/heap_allocator.hpp>
+#include <reloco/inline_string.hpp>
 #include <reloco/lifetime.hpp>
+#include <reloco/optional.hpp>
 #include <reloco/relocatable.hpp>
 #include <reloco/rvalue_safety.hpp>
 #include <reloco/shared_ptr.hpp>

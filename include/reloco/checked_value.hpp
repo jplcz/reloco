@@ -49,8 +49,7 @@ template <typename T> class RELOCO_CONSUMABLE(unconsumed) checked_value {
 
 public:
   /** @brief Wraps @p value in a fresh, unconsumed `checked_value`. */
-  constexpr explicit checked_value(T value) noexcept RELOCO_RETURN_TYPESTATE(unconsumed)
-      : value_(std::move(value)) {}
+  constexpr explicit checked_value(T value) noexcept RELOCO_RETURN_TYPESTATE(unconsumed) : value_(std::move(value)) {}
 
   // Move-only: copies are never implicit. Use clone() to opt into an
   // explicit, Rust-`Clone`-style copy when T supports it.
@@ -85,8 +84,7 @@ public:
   }
 
   /** @brief Read-only borrow of the held value. Traps if moved from. */
-  [[nodiscard]] constexpr const T &get() const & noexcept RELOCO_LIFETIMEBOUND
-      RELOCO_CALLABLE_WHEN("unconsumed") {
+  [[nodiscard]] constexpr const T &get() const & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
     RELOCO_ASSERT(!moved_from_, "checked_value: access after move");
     return value_;
   }
@@ -116,8 +114,7 @@ public:
   }
 
   /** @brief Read-only counterpart of @ref unsafe_get. */
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr const T &unsafe_get() const & noexcept
-      RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr const T &unsafe_get() const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(!moved_from_, "checked_value: access after move");
     return value_;
   }
@@ -131,16 +128,13 @@ public:
    * Rust-equivalent of moving out of an owned binding: after `take()`, this
    * object is in the `consumed` state and any further access traps.
    */
-  [[nodiscard]] constexpr T take() && noexcept RELOCO_CALLABLE_WHEN("unconsumed")
-      RELOCO_SET_TYPESTATE(consumed) {
+  [[nodiscard]] constexpr T take() && noexcept RELOCO_CALLABLE_WHEN("unconsumed") RELOCO_SET_TYPESTATE(consumed) {
     RELOCO_ASSERT(!moved_from_, "checked_value: take() after move");
     moved_from_ = true;
     return std::move(value_);
   }
 
-  constexpr T *operator->() noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
-    return &get();
-  }
+  constexpr T *operator->() noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") { return &get(); }
 
   constexpr const T *operator->() const noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
     return &get();
@@ -151,7 +145,6 @@ public:
   constexpr const T &operator*() const & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
     return get();
   }
-
 
   T &operator*() && = delete;
   const T &operator*() const && = delete;
@@ -178,7 +171,7 @@ public:
    * only at such boundaries, never to silence a real reuse-after-move
    * warning.
    */
-  checked_value &as_known() noexcept RELOCO_CALLABLE_WHEN("unconsumed", "unknown")
+  checked_value &as_known() & noexcept RELOCO_CALLABLE_WHEN("unconsumed", "unknown")
       RELOCO_RETURN_TYPESTATE(unconsumed) {
     RELOCO_ASSERT(!moved_from_, "checked_value: as_known() after move");
     return *this;
@@ -268,8 +261,7 @@ public:
    * @brief Moves the held pointer out, nulls the source, and poisons this
    * wrapper's typestate.
    */
-  [[nodiscard]] constexpr T *take() && noexcept RELOCO_CALLABLE_WHEN("unconsumed")
-      RELOCO_SET_TYPESTATE(consumed) {
+  [[nodiscard]] constexpr T *take() && noexcept RELOCO_CALLABLE_WHEN("unconsumed") RELOCO_SET_TYPESTATE(consumed) {
     RELOCO_ASSERT(!moved_from_, "checked_value: take() after move");
     moved_from_ = true;
     T *taken = value_;
@@ -340,7 +332,7 @@ public:
    * boundary; see the primary template's @ref checked_value::as_known for
    * the full explanation.
    */
-  checked_value &as_known() noexcept RELOCO_CALLABLE_WHEN("unconsumed", "unknown")
+  checked_value &as_known() & noexcept RELOCO_CALLABLE_WHEN("unconsumed", "unknown")
       RELOCO_RETURN_TYPESTATE(unconsumed) {
     RELOCO_ASSERT(!moved_from_, "checked_value: as_known() after move");
     return *this;

@@ -257,6 +257,16 @@
 #define RELOCO_RETURN_TYPESTATE(state)
 #endif
 
+/**
+ * Informs the analyzer that if this method returns true, the object is in the given state.
+ * @example bool has_value() const RELOCO_TEST_TYPESTATE(unconsumed);
+ */
+#if defined(__clang__) && RELOCO_HAS_ATTRIBUTE(test_typestate)
+#define RELOCO_TEST_TYPESTATE(state) __attribute__((test_typestate(state)))
+#else
+#define RELOCO_TEST_TYPESTATE(state)
+#endif
+
 // ============================================================================
 // Unsafe Pointer Utilities & Unwrapping Boundaries
 // ============================================================================
