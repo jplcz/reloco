@@ -114,6 +114,7 @@ TEST(VectorTest, TryPopBackFailsOnEmpty) {
 }
 
 TEST(VectorTest, ClearDestroysElementsAndResetsSize) {
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE;
   bool destroyed[3] = {false, false, false};
   auto v = vector<move_only>::try_create();
   ASSERT_TRUE(v);
@@ -125,6 +126,7 @@ TEST(VectorTest, ClearDestroysElementsAndResetsSize) {
   EXPECT_TRUE(destroyed[0]);
   EXPECT_TRUE(destroyed[1]);
   EXPECT_TRUE(destroyed[2]);
+  RELOCO_END_UNSAFE_BUFFER_USAGE;
 }
 
 TEST(VectorTest, TryInsertAtShiftsElementsRight) {
