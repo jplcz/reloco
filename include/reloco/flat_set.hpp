@@ -61,7 +61,7 @@ public:
 
   void clear() noexcept { data_.clear(); }
 
-  [[nodiscard]] result<std::reference_wrapper<T>> try_insert(T &&value) & noexcept {
+  [[nodiscard]] result<std::reference_wrapper<T>> try_insert(T &&value) & noexcept RELOCO_LIFETIMEBOUND {
     auto it = find_pos(value);
     if (it != data_.end() && !comp_(value, *it)) {
       return unexpected(error::already_exists);
@@ -76,7 +76,8 @@ public:
   }
 
   template <typename Key>
-  [[nodiscard]] result<std::reference_wrapper<const T>> try_find(const Key &value) const & noexcept {
+  [[nodiscard]] result<std::reference_wrapper<const T>>
+  try_find(const Key &value) const & noexcept RELOCO_LIFETIMEBOUND {
     auto it = find_pos(value);
     if (it != data_.end() && !comp_(value, *it)) {
       return std::cref(*it);
@@ -97,10 +98,10 @@ public:
     return {};
   }
 
-  [[nodiscard]] const_iterator begin() const & noexcept { return data_.begin(); }
-  [[nodiscard]] const_iterator end() const & noexcept { return data_.end(); }
-  [[nodiscard]] const_iterator cbegin() const & noexcept { return data_.cbegin(); }
-  [[nodiscard]] const_iterator cend() const & noexcept { return data_.cend(); }
+  [[nodiscard]] const_iterator begin() const & noexcept RELOCO_LIFETIMEBOUND { return data_.begin(); }
+  [[nodiscard]] const_iterator end() const & noexcept RELOCO_LIFETIMEBOUND { return data_.end(); }
+  [[nodiscard]] const_iterator cbegin() const & noexcept RELOCO_LIFETIMEBOUND { return data_.cbegin(); }
+  [[nodiscard]] const_iterator cend() const & noexcept RELOCO_LIFETIMEBOUND { return data_.cend(); }
 
   template <typename Fn> void for_each(Fn &&fn) const {
     for (size_type i = 0; i < data_.size(); ++i) {
