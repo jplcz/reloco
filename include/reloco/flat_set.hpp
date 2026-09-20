@@ -187,6 +187,36 @@ template <typename T, typename Compare> struct container_ref_traits<flat_set<T, 
 };
 
 /**
+ * @brief Adapts `reloco::flat_set<T, Compare>` for the collection views.
+ *
+ * `flat_set` is exposed strictly as a read-only collection (`is_mutable = false`).
+ * This prevents `mutable_collection_view` from bypassing the sorting invariant
+ * and modifying the keys in-place, while allowing full O(1) read access for
+ * formatting and inspection.
+ */
+template <typename T, typename Compare> struct collection_view_traits<flat_set<T, Compare>> {
+  using element_type = T;
+
+  // Backed by a contiguous vector, so random access and raw data pointers are O(1)
+  static constexpr bool is_random_access = true;
+  static constexpr bool has_data = true;
+
+  // CRITICAL: Prevent mutation of sorted keys
+  static constexpr bool is_mutable = false;
+
+  [[nodiscard]] static std::size_t size(const flat_set<T, Compare> &c) noexcept { return c.size(); }
+
+  [[nodiscard]] static bool empty(const flat_set<T, Compare> &c) noexcept { return c.empty(); }
+
+  [[nodiscard]] static const T &at(const flat_set<T, Compare> &c, std::size_t index) noexcept {
+    BOOSER_ASSERT(index < c.size(), "Index out of bounds");
+    return c.begin()[index];
+  }
+
+  [[nodiscard]] static const T *data(const flat_set<T, Compare> &c) noexcept { return c.begin(); }
+};
+
+/**
  * @brief `flat_set<T>` is trivially relocatable regardless because it's wrapper over `vector<T>`
  */
 template <typename T> struct is_trivially_relocatable<flat_set<T>> : std::true_type {};
