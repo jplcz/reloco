@@ -40,7 +40,7 @@ TEST_F(StackAllocatorTest, BasicAllocation) {
   // Verify it points into our arena
   auto *ptr_bytes = static_cast<std::byte *>(res->ptr);
   EXPECT_GE(ptr_bytes, arena);
-  EXPECT_LT(ptr_bytes, arena + sizeof(arena));
+  EXPECT_LT(ptr_bytes, std::end(arena));
 }
 
 TEST_F(StackAllocatorTest, AlignmentRespectsBoundaries) {
