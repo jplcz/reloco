@@ -215,7 +215,8 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_stack_allocator.cpp
         tests/test_inline_string.cpp
         tests/test_optional.cpp
-        tests/test_inplace_function.cpp)
+        tests/test_inplace_function.cpp
+        tests/test_function_ref.cpp)
     target_link_libraries(jplcz_reloco_tests PRIVATE jplcz_reloco GTest::gtest_main)
     jplcz_reloco_enable_warnings(jplcz_reloco_tests)
     gtest_discover_tests(jplcz_reloco_tests)

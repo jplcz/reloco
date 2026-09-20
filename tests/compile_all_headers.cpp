@@ -18,6 +18,7 @@
 #include <reloco/expected.hpp>
 #include <reloco/flat_set.hpp>
 #include <reloco/function.hpp>
+#include <reloco/function_ref.hpp>
 #include <reloco/heap_allocator.hpp>
 #include <reloco/inline_string.hpp>
 #include <reloco/inplace_function.hpp>
