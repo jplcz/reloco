@@ -22,6 +22,7 @@ where, not a tutorial.
 | `string.hpp` | `basic_string<CharT, TraitsT>` (`string`, `wstring`) | Move-only, allocator-backed, growable character buffer |
 | `unique_ptr.hpp` | `unique_ptr<T>` | Move-only, allocator-backed smart pointer with fallible construction |
 | `shared_ptr.hpp` | `shared_ptr<T>`, `weak_ptr<T>`, `enable_shared_from_this<T>` | Reference-counted, allocator-backed smart pointer with fallible construction |
+| `function.hpp` | `function<R(Args...)>` | Type-erased, allocator-backed callable wrapper with fallible construction |
 | `value_ptr.hpp` | `value_ptr<T>` | Nullable, non-owning pointer that rejects binding to prvalue temporaries |
 | `value_ref.hpp` | `value_ref<T>` | Non-null, non-owning reference wrapper that rejects binding to prvalue temporaries |
 | `checked_value.hpp` | `checked_value<T>` | Move-only wrapper with Rust-like use-after-move checks |
@@ -189,6 +190,38 @@ the null check and is `RELOCO_UNSAFE_BUFFER_USAGE`-gated; `try_get()`
 returns `result<T *>`. `reloco::is_trivially_relocatable<shared_ptr<T>>`
 and `<weak_ptr<T>>` are always `true`, regardless of `T` (see
 [Trivial relocation](relocatable.md)).
+
+## `function<R(Args...)>`
+
+`include/reloco/function.hpp`
+
+Type-erased, allocator-backed callable wrapper (reloco's `std::function`
+counterpart). `try_allocate(allocator_ref, F)`/`try_create(F)` wrap any
+callable convertible to `R(Args...)`, choosing the cheapest storage tier at
+construction time: a bare function pointer (or captureless lambda) stored
+directly with no allocation, a small-object-optimization inline buffer
+(`function<R(Args...)>::soo_capacity` bytes, alignment up to
+`alignof(std::max_align_t)`), or a single heap allocation for anything
+larger.
+
+```cpp
+auto fn = reloco::function<int(int)>::try_create([captured](int v) noexcept {
+  return captured + v;
+});
+if (fn)
+  int result = (*fn)(41);
+```
+
+Move-only: `try_clone()` performs an explicit fallible deep copy, failing
+with `error::unsupported_operation` if the captured callable is not
+`std::is_nothrow_copy_constructible_v` (or if the function is empty).
+`operator()` asserts non-empty; `try_call(Args...)` is the checked
+alternative, failing with `error::container_empty` instead -- and if `R` is
+itself a `result<U>`, `try_call`'s own result is flattened rather than
+double-wrapped. `reloco::is_trivially_relocatable<function<R(Args...)>>` is
+always `false`: the captured callable may live inline in the SOO buffer, so
+relocating the wrapper by copying bytes is only as safe as the (erased)
+captured type itself (see [Trivial relocation](relocatable.md)).
 
 ## `value_ptr<T>` / `value_ref<T>`
 

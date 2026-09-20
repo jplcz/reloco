@@ -75,6 +75,13 @@ that qualify despite not being trivially copyable:
 > such a `T`* (not the `shared_ptr` wrapping it) would leave that
 > self-pointer stale; do not opt such a `T` in to `is_trivially_relocatable`.
 
+Not every move-only reloco type qualifies, though: `reloco::function<R(Args...)>`
+(see `function.hpp`) is explicitly specialized to `false`, since a small
+enough captured callable is stored inline in its small-object-optimization
+buffer -- relocating the wrapper by copying bytes would then only be as
+safe as the erased, captured type itself, which `function` has no way to
+inspect.
+
 ## Opting a type in
 
 Specialize `is_trivially_relocatable` for your own type once you have

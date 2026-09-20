@@ -13,6 +13,7 @@
 #include <reloco/default_allocator.hpp>
 #include <reloco/error.hpp>
 #include <reloco/expected.hpp>
+#include <reloco/function.hpp>
 #include <reloco/heap_allocator.hpp>
 #include <reloco/lifetime.hpp>
 #include <reloco/relocatable.hpp>
