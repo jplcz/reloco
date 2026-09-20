@@ -17,6 +17,7 @@
 #include <reloco/lifetime.hpp>
 #include <reloco/relocatable.hpp>
 #include <reloco/rvalue_safety.hpp>
+#include <reloco/shared_ptr.hpp>
 #include <reloco/span.hpp>
 #include <reloco/string.hpp>
 #include <reloco/string_view.hpp>

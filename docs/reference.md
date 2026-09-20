@@ -21,6 +21,7 @@ where, not a tutorial.
 | `string_view.hpp` | `basic_string_view<CharT, TraitsT>` (`string_view`, `wstring_view`) | Non-owning, checked view over character data |
 | `string.hpp` | `basic_string<CharT, TraitsT>` (`string`, `wstring`) | Move-only, allocator-backed, growable character buffer |
 | `unique_ptr.hpp` | `unique_ptr<T>` | Move-only, allocator-backed smart pointer with fallible construction |
+| `shared_ptr.hpp` | `shared_ptr<T>`, `weak_ptr<T>`, `enable_shared_from_this<T>` | Reference-counted, allocator-backed smart pointer with fallible construction |
 | `value_ptr.hpp` | `value_ptr<T>` | Nullable, non-owning pointer that rejects binding to prvalue temporaries |
 | `value_ref.hpp` | `value_ref<T>` | Non-null, non-owning reference wrapper that rejects binding to prvalue temporaries |
 | `checked_value.hpp` | `checked_value<T>` | Move-only wrapper with Rust-like use-after-move checks |
@@ -152,6 +153,42 @@ if (ptr)
 No copy constructor: use `T`'s own `try_clone`/`try_clone_at` explicitly for
 a deep copy. `reloco::is_trivially_relocatable<unique_ptr<T>>` is always
 `true`, regardless of `T` (see [Trivial relocation](relocatable.md)).
+
+## `shared_ptr<T>` / `weak_ptr<T>` / `enable_shared_from_this<T>`
+
+`include/reloco/shared_ptr.hpp`
+
+Reference-counted, allocator-backed smart pointer. `shared_ptr<T>` is
+copyable (sharing ownership, incrementing a refcount) and movable;
+`weak_ptr<T>` observes without extending the object's lifetime, and
+`lock()`s back into a `shared_ptr<T>` (or `error::pointer_expired` if the
+object is already gone). Object construction goes through
+`construction_helpers::try_construct`, exactly like `unique_ptr`, so the
+same `try_construct`/`try_allocate`/`try_create`/nothrow-constructible tiers
+apply.
+
+Two allocation layouts are available, mirroring `std::allocate_shared` vs.
+`std::make_shared`:
+
+```cpp
+// Single allocation (object + control block together); recommended default.
+auto ptr = reloco::try_create_combined_shared<widget>(arg1, arg2);
+
+// Object and control block allocated separately: the object's storage is
+// freed as soon as the last shared_ptr releases it, independently of any
+// surviving weak_ptr (which only keeps the small control block alive).
+auto ptr2 = reloco::try_create_shared<widget>(arg1, arg2);
+```
+
+`try_allocate_shared`/`try_allocate_combined_shared` take an explicit
+`allocator_ref`; `try_create_shared`/`try_create_combined_shared` use
+`default_allocator()`. `static_pointer_cast`/`dynamic_pointer_cast`/
+`const_pointer_cast`/`reinterpret_pointer_cast` mirror the `std::shared_ptr`
+casts. `operator*`/`operator->`/`get()` are checked; `unsafe_get()` skips
+the null check and is `RELOCO_UNSAFE_BUFFER_USAGE`-gated; `try_get()`
+returns `result<T *>`. `reloco::is_trivially_relocatable<shared_ptr<T>>`
+and `<weak_ptr<T>>` are always `true`, regardless of `T` (see
+[Trivial relocation](relocatable.md)).
 
 ## `value_ptr<T>` / `value_ref<T>`
 

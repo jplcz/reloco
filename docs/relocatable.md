@@ -64,9 +64,16 @@ that qualify despite not being trivially copyable:
 | Type | Relocatable? | Why |
 |---|---|---|
 | `reloco::unique_ptr<T>` | Always, regardless of `T` | Holds only a `T *` and an `allocator_ref`; the pointee is re-pointed-to, never itself relocated |
+| `reloco::shared_ptr<T>` / `reloco::weak_ptr<T>` | Always, regardless of `T` | Holds only a `T *` and a control-block pointer, neither self-referential |
 | `reloco::basic_string<CharT, TraitsT>` | Always, regardless of `CharT`/`TraitsT` | Holds only an `allocator_ref`, a `CharT *`, and two sizes; its heap buffer never points back at the object |
 | `reloco::checked_value<T>` | Same as `T` | Holds a `T` plus a `bool` flag, with no pointer back into itself |
 | `reloco::checked_value<T *>` | Always, regardless of `T` | Holds only a `T *` and a `bool` flag |
+
+> **Note:** this only covers `shared_ptr<T>`/`weak_ptr<T>` themselves, not a
+> `T` that derives from `reloco::enable_shared_from_this<T>`. That base
+> stores a `weak_ptr<T>` pointing back at `T`'s own address, so *relocating
+> such a `T`* (not the `shared_ptr` wrapping it) would leave that
+> self-pointer stale; do not opt such a `T` in to `is_trivially_relocatable`.
 
 ## Opting a type in
 

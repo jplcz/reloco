@@ -17,6 +17,7 @@ core types include:
 | `reloco::span<T>` | Non-owning contiguous range over contiguous storage |
 | `reloco::string` | Allocator-backed, growable character buffer with fallible construction |
 | `reloco::unique_ptr<T>` | Move-only, allocator-backed smart pointer with fallible construction |
+| `reloco::shared_ptr<T>` / `reloco::weak_ptr<T>` | Reference-counted, allocator-backed smart pointer with fallible construction |
 | `reloco::expected<T, E>` | Allocation-free value-or-error result |
 
 These types provide familiar standard-library-style APIs while keeping the
@@ -36,6 +37,7 @@ other code where an unchecked access or dangling borrow is a security issue.
 | `std::string_view` | `reloco::string_view` | Borrowed character data |
 | `std::string` | `reloco::string` | Allocator-backed, growable, fallible character storage |
 | `std::unique_ptr<T>` | `reloco::unique_ptr<T>` | Allocator-backed, fallible single-object ownership |
+| `std::shared_ptr<T>` / `std::weak_ptr<T>` | `reloco::shared_ptr<T>` / `reloco::weak_ptr<T>` | Allocator-backed, fallible shared object ownership |
 | `std::expected<T, E>` | `reloco::expected<T, E>` | Allocation-free fallible results |
 
 This is a project default, not a ban on the standard library. Keep standard
