@@ -66,6 +66,7 @@ that qualify despite not being trivially copyable:
 | `reloco::unique_ptr<T>` | Always, regardless of `T` | Holds only a `T *` and an `allocator_ref`; the pointee is re-pointed-to, never itself relocated |
 | `reloco::shared_ptr<T>` / `reloco::weak_ptr<T>` | Always, regardless of `T` | Holds only a `T *` and a control-block pointer, neither self-referential |
 | `reloco::basic_string<CharT, TraitsT>` | Always, regardless of `CharT`/`TraitsT` | Holds only an `allocator_ref`, a `CharT *`, and two sizes; its heap buffer never points back at the object |
+| `reloco::vector<T>` | Always, regardless of `T` | Holds only an `allocator_ref`, a `T *`, and two sizes; its heap buffer never points back at the object |
 | `reloco::checked_value<T>` | Same as `T` | Holds a `T` plus a `bool` flag, with no pointer back into itself |
 | `reloco::checked_value<T *>` | Always, regardless of `T` | Holds only a `T *` and a `bool` flag |
 

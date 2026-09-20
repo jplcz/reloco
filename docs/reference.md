@@ -20,6 +20,7 @@ where, not a tutorial.
 | `array.hpp` | `array<T, N>` | Fixed-size owning array with hardened element access |
 | `string_view.hpp` | `basic_string_view<CharT, TraitsT>` (`string_view`, `wstring_view`) | Non-owning, checked view over character data |
 | `string.hpp` | `basic_string<CharT, TraitsT>` (`string`, `wstring`) | Move-only, allocator-backed, growable character buffer |
+| `vector.hpp` | `vector<T>` | Move-only, allocator-backed, growable dynamic array |
 | `unique_ptr.hpp` | `unique_ptr<T>` | Move-only, allocator-backed smart pointer with fallible construction |
 | `shared_ptr.hpp` | `shared_ptr<T>`, `weak_ptr<T>`, `enable_shared_from_this<T>` | Reference-counted, allocator-backed smart pointer with fallible construction |
 | `function.hpp` | `function<R(Args...)>` | Type-erased, allocator-backed callable wrapper with fallible construction |
@@ -133,6 +134,65 @@ standard-library string when one is actually needed at a boundary.
 
 `reloco::is_trivially_relocatable<basic_string<CharT, TraitsT>>` is always
 `true` (see [Trivial relocation](relocatable.md)).
+
+## `vector<T>`
+
+`include/reloco/vector.hpp`
+
+Move-only, allocator-backed, growable dynamic array — the fallible,
+allocator-explicit analogue of `std::vector`. Every instance holds at most
+one heap allocation, obtained and released through a bound
+`reloco::allocator_ref`.
+
+```cpp
+auto v = reloco::vector<int>::try_create();
+if (!v)
+  return; // v.error() is a reloco::error.
+auto ok = v->try_push_back(1);
+ok = v->try_insert_at(0, 0);
+assert((*v)[0] == 0 && (*v)[1] == 1);
+```
+
+Construction and cloning:
+
+| Function | Behavior |
+|---|---|
+| `try_create(size_type initial_cap = 0)` | Builds, optionally reserving capacity, using `default_allocator()` |
+| `try_allocate(allocator_ref alloc, size_type initial_cap = 0)` | Builds, optionally reserving capacity, using an explicit allocator |
+| `try_clone(allocator_ref alloc)` / `try_clone()` | Fallible deep copy, explicit or own allocator |
+| `try_clone_at(allocator_ref alloc, vector *storage, const vector &source)` | Fallible deep copy directly into uninitialized storage |
+
+Because it implements this protocol itself (see
+[Fallible construction](fallible-construction.md)), `vector<T>` composes
+with anything built on `has_try_create_v`/`construction_helpers`:
+`reloco::unique_ptr<reloco::vector<int>>::try_create(...)` just works.
+Element construction (`try_emplace_back`/`try_insert_at`) and cloning both
+delegate to `construction_helpers`, so element types that implement their
+own fallible-construction protocol compose transparently; trivially
+copyable element types with no custom `try_clone` take a single-`memcpy`
+fast path when cloning.
+
+Mutation: `try_reserve`, `shrink_to_fit`, `try_emplace_back`, `try_push_back`,
+`try_pop_back`, `try_insert_at`, `try_erase_at`, `clear`. Every fallible one
+returns `reloco::result<...>`. Growth prefers
+`allocator_ref::expand_in_place` first; when that fails it either
+byte-relocates the whole buffer in one `reallocate` call (when
+`is_trivially_relocatable_v<T>`) or falls back to move-constructing each
+element into a freshly allocated block.
+
+Element access follows the same checked/`try_*`/`unsafe_*` tri-tier
+convention as `span`/`array`/`string`: `operator[]`/`front()`/`back()`
+assert (there is no separately named `at()` — `operator[]` itself is the
+checked tier); `try_at()`/`try_front()`/`try_back()` return
+`reloco::result<...>`; `unsafe_at()`/`unsafe_data()` are
+`RELOCO_UNSAFE_BUFFER_USAGE`-gated escape hatches. `data()`/`front()`/
+`back()` assert the vector is non-empty; `try_data()`/`try_front()`/
+`try_back()` fail with `error::container_empty` instead.
+
+`reloco::is_trivially_relocatable<vector<T>>` is always `true` regardless of
+`T` (see [Trivial relocation](relocatable.md)): the vector's own handle is
+just an `allocator_ref` plus a pointer and two sizes, with no
+self-reference into its own storage.
 
 ## `unique_ptr<T>`
 

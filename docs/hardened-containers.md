@@ -16,6 +16,7 @@ core types include:
 | `reloco::string_view` | Non-owning character view with checked and non-trapping access |
 | `reloco::span<T>` | Non-owning contiguous range over contiguous storage |
 | `reloco::string` | Allocator-backed, growable character buffer with fallible construction |
+| `reloco::vector<T>` | Allocator-backed, growable dynamic array with fallible construction |
 | `reloco::unique_ptr<T>` | Move-only, allocator-backed smart pointer with fallible construction |
 | `reloco::shared_ptr<T>` / `reloco::weak_ptr<T>` | Reference-counted, allocator-backed smart pointer with fallible construction |
 | `reloco::expected<T, E>` | Allocation-free value-or-error result |
@@ -36,6 +37,7 @@ other code where an unchecked access or dangling borrow is a security issue.
 | `std::span<T>` | `reloco::span<T>` | Borrowed contiguous storage |
 | `std::string_view` | `reloco::string_view` | Borrowed character data |
 | `std::string` | `reloco::string` | Allocator-backed, growable, fallible character storage |
+| `std::vector<T>` | `reloco::vector<T>` | Allocator-backed, growable, fallible dynamic array |
 | `std::unique_ptr<T>` | `reloco::unique_ptr<T>` | Allocator-backed, fallible single-object ownership |
 | `std::shared_ptr<T>` / `std::weak_ptr<T>` | `reloco::shared_ptr<T>` / `reloco::weak_ptr<T>` | Allocator-backed, fallible shared object ownership |
 | `std::expected<T, E>` | `reloco::expected<T, E>` | Allocation-free fallible results |
@@ -45,17 +47,20 @@ types when required by a platform API, third-party library, ABI, or generic
 ecosystem interface. Convert to a hardened view at the boundary and keep the
 security-sensitive implementation on reloco types.
 
-`reloco::string` is the one dynamic owning container reloco provides: an
-allocator-backed, growable character buffer whose construction and every
-mutation that can fail (`try_reserve`, `try_append`, `try_insert`, ...)
-returns `reloco::result<T>` instead of throwing. It composes with the
+`reloco::string` and `reloco::vector<T>` are the dynamic owning containers
+reloco provides: an allocator-backed, growable character buffer and dynamic
+array, respectively, whose construction and every mutation that can fail
+(`try_reserve`, `try_append`/`try_push_back`, `try_insert`/`try_insert_at`,
+...) returns `reloco::result<T>` instead of throwing. Both compose with the
 fallible-construction protocol (see `docs/fallible-construction.md`), so
-`reloco::unique_ptr<reloco::string>::try_create(...)` and similar work out
-of the box. `std::vector`, `std::map`, and other dynamic containers still
-have no direct reloco replacement; use them only where allocation, failure
-behavior, and execution context are explicitly acceptable, and prefer
-caller-owned fixed storage plus `reloco::span` in bounded or kernel-mode
-paths.
+`reloco::unique_ptr<reloco::string>::try_create(...)`,
+`reloco::unique_ptr<reloco::vector<T>>::try_create(...)`, and similar work
+out of the box. `std::map` and other associative containers still have no
+direct reloco replacement (see `reloco::mutable_container_ref`/
+`container_ref_std.hpp` for opt-in, type-erased mutation of `std::map`
+itself); use them only where allocation, failure behavior, and execution
+context are explicitly acceptable, and prefer caller-owned fixed storage
+plus `reloco::span` in bounded or kernel-mode paths.
 
 ```cpp
 void parse_packet(std::span<const std::byte> platform_input) {
