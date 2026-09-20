@@ -1,0 +1,252 @@
+<!--
+SPDX-FileCopyrightText: 2026 Jarosław Pelczar <jarek@jpelczar.com>
+
+SPDX-License-Identifier: BSD-2-Clause
+-->
+
+# API reference
+
+Quick, per-type reference for every public reloco header. Start with a
+[guide](../README.md#guides) for the concepts behind these types (fallible
+construction, the checked/`try_*`/`unsafe_*` tri-tier convention, lifetime
+annotations, trivial relocation); this page is a map of what exists and
+where, not a tutorial.
+
+| Header | Type(s) | One-line summary |
+|---|---|---|
+| `expected.hpp` | `expected<T, E>`, `unexpected<E>` | Allocation-free value-or-error result |
+| `error.hpp` | `error`, `result<T>` | The one error enum every fallible reloco operation returns, and its `expected<T, error>` alias |
+| `span.hpp` | `span<T>` | Non-owning, checked view over a contiguous range |
+| `array.hpp` | `array<T, N>` | Fixed-size owning array with hardened element access |
+| `string_view.hpp` | `basic_string_view<CharT, TraitsT>` (`string_view`, `wstring_view`) | Non-owning, checked view over character data |
+| `string.hpp` | `basic_string<CharT, TraitsT>` (`string`, `wstring`) | Move-only, allocator-backed, growable character buffer |
+| `unique_ptr.hpp` | `unique_ptr<T>` | Move-only, allocator-backed smart pointer with fallible construction |
+| `value_ptr.hpp` | `value_ptr<T>` | Nullable, non-owning pointer that rejects binding to prvalue temporaries |
+| `value_ref.hpp` | `value_ref<T>` | Non-null, non-owning reference wrapper that rejects binding to prvalue temporaries |
+| `checked_value.hpp` | `checked_value<T>` | Move-only wrapper with Rust-like use-after-move checks |
+| `allocator.hpp` | `allocator_ref`, `allocator<Tag>`, `allocator_traits<Tag>`, `mem_block`, `usage_hint` | Type-erased allocator handle and the tag-based provider pattern backing it |
+| `heap_allocator.hpp` | `heap_allocator_tag` | Stateless `allocator_traits` backend over the process heap (`new`/`delete`) |
+| `default_allocator.hpp` | `default_allocator()`, `reloco_global_alloc` | Process-wide default allocator, overridable like Rust's `#[global_allocator]` |
+| `concepts.hpp` | `has_try_create_v`, `has_try_allocate_v`, `has_try_construct_v`, `has_try_clone_v`, `has_try_clone_at_v` (+ C++20 concepts) | Detection traits for the fallible-construction protocol |
+| `construction_helpers.hpp` | `construction_helpers` | Compile-time dispatcher picking the best construction/clone strategy for a type |
+| `relocatable.hpp` | `is_trivially_relocatable<T>` (+ C++20 `trivially_relocatable`) | Marks types safely movable by copying bytes and abandoning the source |
+| `lifetime.hpp` | `RELOCO_LIFETIMEBOUND`, `RELOCO_OWNER`, `RELOCO_POINTER`, `RELOCO_UNSAFE_BUFFER_USAGE`, ... | Compiler-specific lifetime/ownership/safe-buffers annotation macros |
+| `rvalue_safety.hpp` | `RELOCO_BLOCK_RVALUE_ACCESS` | Deletes rvalue accessors that would otherwise dangle past a temporary |
+| `reloco_config.hpp` | (user override header hook) | How to override library-wide defaults from `reloco_user_config.hpp` |
+
+## `expected<T, E>` / `result<T>`
+
+`include/reloco/expected.hpp`, `include/reloco/error.hpp`
+
+A `std::expected`-like, allocation-free value-or-error type, usable in
+C++17 (no dependency on the standard library's own `<expected>`).
+`reloco::result<T>` is `reloco::expected<T, reloco::error>` — the one error
+type every fallible reloco operation returns (see
+[Fallible construction](fallible-construction.md)).
+
+```cpp
+reloco::result<int> parse(std::string_view s) noexcept {
+  if (s.empty())
+    return reloco::unexpected(reloco::error::invalid_argument);
+  return 42;
+}
+```
+
+## `span<T>`
+
+`include/reloco/span.hpp`
+
+Non-owning view over a contiguous range of `T`, with the checked/`try_*`/
+`unsafe_*` tri-tier convention on every element/subrange accessor
+(`operator[]`/`at()`, `try_at()`/`try_first()`/`try_last()`/`try_subspan()`,
+`unsafe_at()`/...). See [Hardened containers](hardened-containers.md).
+
+## `array<T, N>`
+
+`include/reloco/array.hpp`
+
+Fixed-size, stack- or member-embeddable owning array. Same tri-tier element
+access as `span`, plus `as_span()` to hand out a borrowed, checked view
+without exposing the underlying storage directly.
+
+## `basic_string_view<CharT, TraitsT>` (`string_view`, `wstring_view`)
+
+`include/reloco/string_view.hpp`
+
+Non-owning, checked view over character data — `std::string_view`, plus the
+tri-tier convention (`front()`/`try_front()`/`unsafe_front()`, etc.),
+rejection of dangling prvalue `std::basic_string` temporaries at the
+constructor, and interop with both `std::basic_string_view` and
+`std::basic_string`.
+
+## `basic_string<CharT, TraitsT>` (`string`, `wstring`)
+
+`include/reloco/string.hpp`
+
+Move-only, allocator-backed, growable character buffer — the fallible,
+allocator-explicit analogue of `std::string`. No small-string optimization:
+every non-empty instance holds exactly one heap allocation, obtained and
+released through a bound `reloco::allocator_ref`.
+
+```cpp
+auto s = reloco::string::try_create(reloco::string_view("hello"));
+if (!s)
+  return; // s.error() is a reloco::error.
+auto ok = s->try_append(reloco::string_view(" world"));
+assert(s->view() == "hello world");
+```
+
+Construction and cloning:
+
+| Function | Behavior |
+|---|---|
+| `try_create(view_type sv = {})` | Builds from `sv` using `default_allocator()` |
+| `try_allocate(allocator_ref alloc, view_type sv = {})` | Builds from `sv` using an explicit allocator |
+| `try_clone(allocator_ref alloc)` / `try_clone()` | Fallible deep copy, explicit or own allocator |
+| `try_clone_at(allocator_ref alloc, basic_string *storage, const basic_string &source)` | Fallible deep copy directly into uninitialized storage |
+
+Because it implements this protocol itself (see
+[Fallible construction](fallible-construction.md)), `basic_string` composes
+with anything built on `has_try_create_v`/`construction_helpers`:
+`reloco::unique_ptr<reloco::string>::try_create(...)` just works.
+
+Mutation: `try_reserve`, `shrink_to_fit`, `try_assign`, `try_append`,
+`try_push_back`, `pop_back`/`try_pop_back`, `try_insert`,
+`erase`/`try_erase`, `try_resize`, `clear`. Every fallible one returns
+`reloco::result<void>`.
+
+Element access follows the same checked/`try_*`/`unsafe_*` tri-tier
+convention as `string_view`/`span`/`array`: `operator[]`/`at()`/`front()`/
+`back()` assert; `try_at()`/`try_front()`/`try_back()` return
+`reloco::result<...>`; `unsafe_at()`/`unsafe_front()`/`unsafe_back()`/
+`unsafe_c_str()` are `RELOCO_UNSAFE_BUFFER_USAGE`-gated escape hatches.
+`data()` is always safe (points at a shared static null character when
+empty, never `nullptr`). `view()` and implicit conversions to
+`reloco::string_view`/`std::string_view` provide borrowed access; explicit
+`operator std::basic_string<CharT, TraitsT>()` converts to an owning
+standard-library string when one is actually needed at a boundary.
+
+`reloco::is_trivially_relocatable<basic_string<CharT, TraitsT>>` is always
+`true` (see [Trivial relocation](relocatable.md)).
+
+## `unique_ptr<T>`
+
+`include/reloco/unique_ptr.hpp`
+
+Move-only, allocator-backed smart pointer. `try_allocate(allocator_ref,
+Args...)`/`try_create(Args...)` allocate the box and then resolve the best
+available construction strategy for `T` via
+`construction_helpers::try_construct` (see
+[Fallible construction](fallible-construction.md)) — so any `T` that
+implements `try_construct`/`try_allocate`/`try_create`, or is simply
+nothrow-constructible from `Args...`, works with no extra glue code.
+
+```cpp
+auto ptr = reloco::unique_ptr<widget>::try_create(arg1, arg2);
+if (ptr)
+  (*ptr)->do_something();
+```
+
+`operator*`/`operator->`/`get()` are checked (`RELOCO_ASSERT` on null);
+`unsafe_get()` skips that check and is `RELOCO_UNSAFE_BUFFER_USAGE`-gated.
+No copy constructor: use `T`'s own `try_clone`/`try_clone_at` explicitly for
+a deep copy. `reloco::is_trivially_relocatable<unique_ptr<T>>` is always
+`true`, regardless of `T` (see [Trivial relocation](relocatable.md)).
+
+## `value_ptr<T>` / `value_ref<T>`
+
+`include/reloco/value_ptr.hpp`, `include/reloco/value_ref.hpp`
+
+Non-owning pointer/reference wrappers that document a borrowed relationship
+without taking ownership, and reject binding to prvalue temporaries at
+compile time so a borrow can never quietly outlive its source. `value_ptr`
+is nullable (`operator bool`, defaults to null); `value_ref` is always
+non-null and convertible to/from `value_ptr`. See
+[Lifetime safety](lifetime-safety.md).
+
+## `checked_value<T>`
+
+`include/reloco/checked_value.hpp`
+
+Move-only wrapper giving Rust-like use-after-move checking to any nothrow
+move-constructible `T` (plus a `T *` partial specialization with an
+additional null check on dereference). A moved-from instance is poisoned:
+further access asserts and traps, on every compiler; under Clang, `
+-Wconsumed` additionally flags use-after-move at compile time. See
+[Lifetime safety](lifetime-safety.md). `reloco::is_trivially_relocatable<
+checked_value<T>>` mirrors `T`'s own relocatability; `checked_value<T *>` is
+always relocatable (see [Trivial relocation](relocatable.md)).
+
+## `allocator_ref` / `allocator<Tag>` / `allocator_traits<Tag>`
+
+`include/reloco/allocator.hpp`
+
+Type-erased, two-word handle (`allocator_ref`) to an allocator backend
+described by a `Tag` + `allocator_traits<Tag>` specialization — no virtual
+base class, no vtable-carrying inheritance. Every operation
+(`allocate`/`deallocate`/`expand_in_place`/`reallocate`/`advise`) returns
+`reloco::result<T>` and is `RELOCO_UNSAFE_BUFFER_USAGE`-gated (raw sized
+pointers, no bounds-tracked alternative). See
+[Extending reloco](extending.md) for how to add a new backend.
+
+## `heap_allocator_tag` / `default_allocator()`
+
+`include/reloco/heap_allocator.hpp`, `include/reloco/default_allocator.hpp`
+
+`heap_allocator_tag` is the stateless, built-in backend over the process
+heap. `default_allocator()` is the process-wide default `allocator_ref`
+(similar to Rust's `#[global_allocator]`): out of the box it returns the
+heap backend, but an application can replace it wholesale by defining
+`RELOCO_DEFAULT_ALLOCATOR_CUSTOM` — see the header's own documentation for
+the exact override recipe (a customization-header include cycle makes it
+slightly more involved than a plain `reloco_user_config.hpp` define).
+
+## Fallible construction: `concepts.hpp` / `construction_helpers.hpp`
+
+`include/reloco/concepts.hpp`, `include/reloco/construction_helpers.hpp`
+
+`has_try_create_v<T, Args...>`, `has_try_allocate_v<T, Args...>`,
+`has_try_construct_v<T, Args...>`, `has_try_clone_v<T>` (and its
+`_allocator_aware`/`_self_contained` halves), and `has_try_clone_at_v<T>`
+detect which of the five fallible-construction functions a type implements
+(plus matching C++20 `concept`s). `construction_helpers::try_construct`/
+`try_allocate`/`try_clone`/`try_clone_at` pick the most efficient available
+strategy at compile time so generic code never hand-writes the `if
+constexpr` dispatch itself. See
+[Fallible construction](fallible-construction.md) for the full protocol,
+and `unique_ptr.hpp`/`string.hpp` for two complete, real-world examples.
+
+## `is_trivially_relocatable<T>`
+
+`include/reloco/relocatable.hpp`
+
+Customization-point trait marking a type whose object representation can be
+relocated by copying its bytes to a new address and abandoning the old one,
+without running a move constructor or destructor at either address. See
+[Trivial relocation](relocatable.md) for the full explanation and the
+built-in specializations (`unique_ptr<T>`, `basic_string<CharT, TraitsT>`,
+`checked_value<T>`/`checked_value<T *>`).
+
+## Lifetime and safety annotation macros
+
+`include/reloco/lifetime.hpp`, `include/reloco/rvalue_safety.hpp`
+
+Compiler-feature-detected macros used throughout the library:
+`RELOCO_LIFETIMEBOUND` (Clang `[[clang::lifetimebound]]`),
+`RELOCO_OWNER`/`RELOCO_POINTER` (GSL owner/pointer annotations for static
+analyzers), `RELOCO_UNSAFE_BUFFER_USAGE`/`RELOCO_BEGIN_UNSAFE_BUFFER_USAGE`/
+`RELOCO_END_UNSAFE_BUFFER_USAGE` (Clang `-Wunsafe-buffer-usage` opt-in
+gating), and `RELOCO_BLOCK_RVALUE_ACCESS(Type)` (deletes a container's
+rvalue accessors so a borrow can never outlive a temporary). See
+[Lifetime safety](lifetime-safety.md).
+
+## `reloco_config.hpp`
+
+`include/reloco/reloco_config.hpp`
+
+The library-wide user-override mechanism: define
+`RELOCO_HAS_USER_CONFIG`/create `reloco_user_config.hpp` on the include path
+to override compile-time defaults (e.g. `RELOCO_DEFAULT_ALLOCATOR_CUSTOM`,
+assertion-handling behavior) before any other reloco header is processed.
+See the header's own documentation for the exact mechanism and its
+constraints (why it cannot itself include headers like `allocator.hpp`).

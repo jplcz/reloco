@@ -55,6 +55,7 @@
 #include "error.hpp"
 #include "expected.hpp"
 #include "lifetime.hpp"
+#include "relocatable.hpp"
 #include "rvalue_safety.hpp"
 #include "string_view.hpp"
 
@@ -62,6 +63,7 @@
 #include <cstddef>
 #include <functional>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -231,6 +233,12 @@ public:
       return {};
     }
 
+    if (auto materialized = materialize_if_aliasing(sv); materialized) {
+      if (!*materialized)
+        return unexpected(materialized->error());
+      return try_assign((*materialized)->view());
+    }
+
     const size_type new_size = sv.size();
     if (new_size > cap_) {
       auto res = try_reserve(std::max(cap_ * 2, new_size));
@@ -247,6 +255,12 @@ public:
   [[nodiscard]] result<void> try_append(view_type sv) & noexcept {
     if (sv.empty())
       return {};
+
+    if (auto materialized = materialize_if_aliasing(sv); materialized) {
+      if (!*materialized)
+        return unexpected(materialized->error());
+      return try_append((*materialized)->view());
+    }
 
     const size_type new_size = size_ + sv.size();
     if (new_size > cap_) {
@@ -282,6 +296,12 @@ public:
       return unexpected(error::out_of_bounds);
     if (sv.empty())
       return {};
+
+    if (auto materialized = materialize_if_aliasing(sv); materialized) {
+      if (!*materialized)
+        return unexpected(materialized->error());
+      return try_insert(pos, (*materialized)->view());
+    }
 
     const size_type len = sv.size();
     auto res = try_reserve(std::max(cap_ * 2, size_ + len));
@@ -511,6 +531,40 @@ private:
     return value;
   }
 
+  /**
+   * @brief Reports whether @p sv references bytes inside this string's own
+   * live content -- i.e. whether it is (or was derived from) `this->view()`
+   * or a substring of it.
+   *
+   * Guards every mutator that takes a `view_type` (`try_assign`,
+   * `try_append`, `try_insert`) against self-referential calls like
+   * `s.try_append(s.view())`: without this check, growing the buffer could
+   * free the very memory @p sv still points at, and even without growth,
+   * `TraitsT::copy`/`move` do not tolerate every possible overlap between
+   * the shifted destination and an aliased source.
+   */
+  [[nodiscard]] bool aliases(view_type sv) const noexcept {
+    return data_ != nullptr && !sv.empty() && sv.data() >= data_ && sv.data() < data_ + size_;
+  }
+
+  /**
+   * @brief If @p sv aliases this string's own buffer (see @ref aliases),
+   * returns an independent, freshly allocated copy of its contents;
+   * otherwise returns `std::nullopt` so the caller can use @p sv directly.
+   *
+   * The returned `result<basic_string>` may itself hold an allocation
+   * failure, which the caller must propagate.
+   */
+  [[nodiscard]] std::optional<result<basic_string>> materialize_if_aliasing(view_type sv) const noexcept {
+    if (!aliases(sv))
+      return std::nullopt;
+    basic_string copy(alloc_);
+    auto res = copy.try_append(sv);
+    if (!res)
+      return result<basic_string>(unexpected(res.error()));
+    return result<basic_string>(std::move(copy));
+  }
+
   void release() noexcept {
     if (cap_ > 0)
       alloc_.deallocate(data_, (cap_ + 1) * sizeof(CharT));
@@ -527,6 +581,14 @@ private:
 
 using string = basic_string<char>;
 using wstring = basic_string<wchar_t>;
+
+/**
+ * @brief `basic_string` only holds an `allocator_ref`, a `CharT *`, and two
+ * sizes -- no pointer back into itself, and its heap buffer never contains
+ * a pointer to the `basic_string` object. True regardless of `CharT`/
+ * `TraitsT`.
+ */
+template <typename CharT, typename TraitsT> struct is_trivially_relocatable<basic_string<CharT, TraitsT>> : std::true_type {};
 
 } // namespace reloco
 

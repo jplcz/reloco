@@ -258,3 +258,41 @@ TEST(StringTest, EmptyStringNeverAllocates) {
   EXPECT_EQ(s->capacity(), 0u);
   EXPECT_NE(s->data(), nullptr);
 }
+
+TEST(StringTest, SelfAppendWithoutGrowthIsSafe) {
+  auto s = string::try_create(string_view("ab"));
+  ASSERT_TRUE(s);
+  ASSERT_TRUE(s->try_reserve(16));
+  ASSERT_TRUE(s->try_append(s->view()));
+  EXPECT_EQ(s->view(), "abab");
+}
+
+TEST(StringTest, SelfAppendForcingGrowthIsSafe) {
+  auto s = string::try_create(string_view("xy"));
+  ASSERT_TRUE(s);
+  ASSERT_TRUE(s->try_append(s->view()));
+  EXPECT_EQ(s->view(), "xyxy");
+  ASSERT_TRUE(s->try_append(s->view()));
+  EXPECT_EQ(s->view(), "xyxyxyxy");
+}
+
+TEST(StringTest, SelfAssignWithOverlappingSubstringIsSafe) {
+  auto s = string::try_create(string_view("abcdef"));
+  ASSERT_TRUE(s);
+  ASSERT_TRUE(s->try_assign(s->view().substr(2)));
+  EXPECT_EQ(s->view(), "cdef");
+}
+
+TEST(StringTest, SelfInsertOfWholeStringIsSafe) {
+  auto s = string::try_create(string_view("abcdef"));
+  ASSERT_TRUE(s);
+  ASSERT_TRUE(s->try_insert(2, s->view()));
+  EXPECT_EQ(s->view(), "ababcdefcdef");
+}
+
+TEST(StringTest, SelfInsertOfOverlappingSubstringIsSafe) {
+  auto s = string::try_create(string_view("hello world"));
+  ASSERT_TRUE(s);
+  ASSERT_TRUE(s->try_insert(0, s->view().substr(6)));
+  EXPECT_EQ(s->view(), "worldhello world");
+}

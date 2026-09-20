@@ -1,0 +1,110 @@
+<!--
+SPDX-FileCopyrightText: 2026 Jarosław Pelczar <jarek@jpelczar.com>
+
+SPDX-License-Identifier: BSD-2-Clause
+-->
+
+# Trivial relocation: `is_trivially_relocatable`
+
+## What relocation means
+
+Moving a C++ object today always means running code at the destination
+address: a move constructor runs there, then a destructor runs at the
+source address. For a type that is just "some bytes with no self-reference
+or external registration" — a `struct { int; double; }`, a `unique_ptr<T>`
+that only stores a pointer and a handle, a `basic_string` that only stores a
+pointer, a size, and a capacity — that is pure overhead: the same effect can
+be achieved by copying the object's bytes to the new address with
+`memcpy`/`realloc` and simply treating the old address as no longer holding
+an object, with no constructor or destructor call at either address at all.
+
+A type has this property, *trivial relocation*, when:
+
+- its bytes can be copied verbatim to a new address (`memcpy`/`realloc`-style,
+  not `memmove`-only — the object does not need to be read again afterward),
+  and
+- the source address can then be treated as if the object had never been
+  there (no destructor call is needed, and nothing else in the program holds
+  a pointer to that now-stale address expecting the object to still live
+  there).
+
+This is *not* the same question `std::is_trivially_copyable` answers.
+Trivial copyability requires that ordinary *copying* (not just relocating)
+leaves two independent, fully live objects — which additionally requires a
+trivial destructor, since both the original and the copy must be
+independently destructible afterward. Relocation only ever needs one object
+to survive; the source is abandoned, not kept alive, so its destructor never
+needs to run there. That is exactly why `reloco::unique_ptr<T>` and
+`reloco::string` qualify for relocation despite being move-only and
+non-trivially-copyable (both declare a destructor): relocating either type's
+bytes to a new address and abandoning the old one never leaves two
+independent objects to destroy, and neither type points back into itself or
+registers its own address anywhere external.
+
+## `reloco::is_trivially_relocatable<T>`
+
+`include/reloco/relocatable.hpp` defines the customization point:
+
+```cpp
+template <typename T> struct is_trivially_relocatable : std::is_trivially_copyable<T> {};
+
+template <typename T>
+inline constexpr bool is_trivially_relocatable_v = is_trivially_relocatable<T>::value;
+
+#if RELOCO_CXX20
+template <typename T> concept trivially_relocatable = is_trivially_relocatable_v<T>;
+#endif
+```
+
+Every `std::is_trivially_copyable` type is trivially relocatable by
+definition (the default), so plain `struct`s, enums, pointers, and other POD
+types need no opt-in. reloco itself opts in the move-only types it ships
+that qualify despite not being trivially copyable:
+
+| Type | Relocatable? | Why |
+|---|---|---|
+| `reloco::unique_ptr<T>` | Always, regardless of `T` | Holds only a `T *` and an `allocator_ref`; the pointee is re-pointed-to, never itself relocated |
+| `reloco::basic_string<CharT, TraitsT>` | Always, regardless of `CharT`/`TraitsT` | Holds only an `allocator_ref`, a `CharT *`, and two sizes; its heap buffer never points back at the object |
+| `reloco::checked_value<T>` | Same as `T` | Holds a `T` plus a `bool` flag, with no pointer back into itself |
+| `reloco::checked_value<T *>` | Always, regardless of `T` | Holds only a `T *` and a `bool` flag |
+
+## Opting a type in
+
+Specialize `is_trivially_relocatable` for your own type once you have
+verified it holds no pointer back into itself (a data member's address
+depending on `this`, an intrusive list/tree link, a `std::function` storing
+a small-object pointer into its own storage, etc.) and is not registered
+anywhere by its own address (e.g. in a static registry keyed by `this`):
+
+```cpp
+class arena_handle {
+  arena *owner_;   // Points elsewhere, not back at *this.
+  std::size_t id_;
+
+public:
+  ~arena_handle() noexcept { /* ... */ }
+  // A user-declared destructor makes this non-trivially-copyable, so it
+  // does not qualify by default even though it holds no self-reference.
+};
+
+template <> struct reloco::is_trivially_relocatable<arena_handle> : std::true_type {};
+```
+
+Do **not** specialize this for a type with an internal self-pointer (e.g. a
+small-buffer-optimized string that may point into its own inline storage,
+or an intrusive list node linked to its neighbors) — relocating its bytes to
+a new address without fixing up that internal pointer produces a dangling
+reference into the old, now-abandoned memory.
+
+## Why this matters
+
+A generic container that tracks `is_trivially_relocatable_v<T>` for its
+element type can grow, shrink, or shift its storage with a raw
+`memcpy`/`memmove`/`realloc` instead of a loop of move-construct-then-destroy
+for every element — the same optimization `reloco::basic_string::try_reserve`
+already applies to its own backing `char` buffer, generalized to any element
+type a future container might hold. `reloco` does not yet ship a container
+built on this trait; `is_trivially_relocatable` is provided now so both
+generic algorithms and reloco's own future containers have a single,
+already-verified customization point to build on, rather than every author
+inventing (and getting slightly wrong) their own relocatability trait.

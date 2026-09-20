@@ -10,6 +10,7 @@
 
 #include "detail/assert.hpp"
 #include "lifetime.hpp"
+#include "relocatable.hpp"
 #include <type_traits>
 #include <utility>
 
@@ -197,6 +198,13 @@ private:
 template <typename T> checked_value(T) -> checked_value<T>;
 
 /**
+ * @brief `checked_value<T>` adds only a `bool` flag alongside `T`, with no
+ * pointer back into itself; relocating it is safe whenever relocating `T`
+ * on its own would be.
+ */
+template <typename T> struct is_trivially_relocatable<checked_value<T>> : is_trivially_relocatable<T> {};
+
+/**
  * @brief Partial specialization for raw pointers.
  *
  * In addition to the move-once semantics of the primary template,
@@ -350,5 +358,11 @@ private:
   T *value_;
   bool moved_from_{false};
 };
+
+/**
+ * @brief `checked_value<T *>` holds only a `T *` and a `bool`, with no
+ * pointer back into itself. Always relocatable, regardless of `T`.
+ */
+template <typename T> struct is_trivially_relocatable<checked_value<T *>> : std::true_type {};
 
 } // namespace reloco

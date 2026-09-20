@@ -15,6 +15,7 @@
 #include <reloco/expected.hpp>
 #include <reloco/heap_allocator.hpp>
 #include <reloco/lifetime.hpp>
+#include <reloco/relocatable.hpp>
 #include <reloco/rvalue_safety.hpp>
 #include <reloco/span.hpp>
 #include <reloco/string.hpp>

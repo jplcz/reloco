@@ -42,6 +42,7 @@
 #include "default_allocator.hpp"
 #include "detail/assert.hpp"
 #include "lifetime.hpp"
+#include "relocatable.hpp"
 #include "rvalue_safety.hpp"
 
 #include <type_traits>
@@ -170,6 +171,15 @@ private:
   T *ptr_{nullptr};
   allocator_ref alloc_{};
 };
+
+/**
+ * @brief `unique_ptr<T>` only holds a `T *` and an `allocator_ref` (itself
+ * two words with no self-reference); relocating those bytes to a new
+ * address and abandoning the old one never invalidates the pointee, which
+ * `unique_ptr` never points back to itself. True regardless of `T` (the
+ * pointee is never relocated, only re-pointed-to).
+ */
+template <typename T> struct is_trivially_relocatable<unique_ptr<T>> : std::true_type {};
 
 } // namespace reloco
 
