@@ -975,6 +975,23 @@ constexpr` dispatch itself. See
 [Fallible construction](fallible-construction.md) for the full protocol,
 and `unique_ptr.hpp`/`string.hpp` for two complete, real-world examples.
 
+## `fallible_singleton<T>` / `atomic_fallible_singleton<T, LockTraits>`
+
+`include/reloco/fallible_singleton.hpp`
+
+Lazily, fallibly initialized singletons built on
+`construction_helpers::try_construct`, avoiding the static initialization
+order fiasco for globals with non-trivial, potentially-failing setup.
+`fallible_singleton<T>::instance()` (or `instance(allocator_ref)`)
+constructs `T` in static storage on first call and returns the same `T *`
+thereafter; it is **not thread-safe**. `atomic_fallible_singleton<T,
+LockTraits>::instance(lock)` is the thread-safe counterpart, guarded by a
+caller-supplied `LockTraits::lock_type &` (any type satisfying
+`has_lock_traits_v<LockTraits>`/the C++20 `lock_traits` concept) only while
+initialization hasn't completed yet. See
+[Fallible construction](fallible-construction.md#lazy-singletons-fallible_singleton-atomic_fallible_singleton)
+for the full explanation.
+
 ## `is_trivially_relocatable<T>`
 
 `include/reloco/relocatable.hpp`

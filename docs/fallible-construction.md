@@ -193,6 +193,45 @@ Both forms check exactly the same thing; `include/reloco/concepts.hpp`
 defines the `_v` trait once and derives the C++20 `concept` from it, so
 there is no risk of the two disagreeing.
 
+## Lazy singletons: `fallible_singleton`, `atomic_fallible_singleton`
+
+`include/reloco/fallible_singleton.hpp` builds `reloco::construction_helpers
+::try_construct` into two ready-made lazy-singleton wrappers, useful for
+globals whose setup is non-trivial and fallible (so they cannot be plain
+`static T instance;` globals) without reintroducing C++'s static
+initialization order fiasco:
+
+```cpp
+struct config {
+  static reloco::result<config> try_create() noexcept { /* parse, validate, ... */ }
+};
+
+// Not thread-safe: construct explicitly, once, from a single thread
+// (e.g. early in main()) before any other thread can call instance().
+reloco::result<config *> cfg = reloco::fallible_singleton<config>::instance();
+```
+
+`reloco::fallible_singleton<T>::instance()` (optionally
+`instance(reloco::allocator_ref)`) constructs `T` in static storage on its
+first call, via whichever `try_construct`/`try_allocate`/`try_create`/plain
+nothrow tier `T` implements (exactly the tiers `construction_helpers`
+already resolves), and returns the same `T *` on every later call. It is
+**not thread-safe**: only use it from a single, controlled initialization
+path.
+
+`reloco::atomic_fallible_singleton<T, LockTraits>::instance(lock)` is the
+thread-safe counterpart: an `std::atomic<int>` fast path lets every thread
+skip locking once initialization has completed, falling back to a
+caller-supplied `LockTraits::lock_type &` (only acquired via
+`LockTraits::lock`/`LockTraits::unlock` while not yet ready) for the first,
+contended call. `LockTraits` is any type providing a `lock_type` member
+plus matching static `lock`/`unlock` functions (detected by
+`has_lock_traits_v<LockTraits>`, plus a matching C++20 `lock_traits`
+concept) — a `std::mutex`, a platform critical section, or an RTOS mutex
+all work equally well, and the lock is caller-owned rather than embedded,
+so this remains usable on freestanding/kernel targets with no
+`std::mutex`.
+
 ## Differences from `reloco_legacy`
 
 `reloco_legacy/include/reloco/concepts.hpp` is the origin of this pattern,
@@ -211,3 +250,15 @@ themselves: `has_try_create_v<T, Args...>` (and the other four) only holds
 if `T::try_create(Args...)` returns exactly `reloco::result<T>`, so a type
 that reports failure through some other type is treated as not implementing
 the protocol at all.
+
+`reloco_legacy/include/reloco/fallible_singleton.hpp` is the origin of
+`fallible_singleton`/`atomic_fallible_singleton`. Legacy dispatched
+construction through its own `is_fallible_initializable`/
+`fallible_constructed` protocol — a `T::try_init(constructor_key)` member
+gated by a friend-only key type, entirely separate from
+`try_create`/`try_allocate`/`try_construct`. `reloco` instead builds
+directly on `construction_helpers::try_construct`, so any `T` that already
+works with `unique_ptr<T>` or the other helpers above works with
+`fallible_singleton`/`atomic_fallible_singleton` too, with no dedicated
+protocol or key type needed. As above, the allocator parameter is a
+`reloco::allocator_ref` rather than a `fallible_allocator &`.

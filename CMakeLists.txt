@@ -208,6 +208,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_string.cpp
         tests/test_relocatable.cpp
         tests/test_relocatable_std.cpp
+        tests/test_fallible_singleton.cpp
         tests/test_shared_ptr.cpp
         tests/test_function.cpp
         tests/test_collection_view.cpp
