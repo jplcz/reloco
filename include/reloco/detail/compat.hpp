@@ -121,3 +121,9 @@
 #else
 #define RELOCO_CONSTEXPR20
 #endif
+
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || (defined(_MSC_VER) && defined(_CPPUNWIND))
+#define RELOCO_HAS_EXCEPTIONS 1
+#else
+#define RELOCO_HAS_EXCEPTIONS 0
+#endif

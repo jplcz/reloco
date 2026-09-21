@@ -910,7 +910,9 @@ wrap standard-library operations that allocate and may throw, which the
 rest of reloco avoids; only a caller who explicitly `#include`s this header
 opts into that behavior. Every adapter function in it wraps the
 underlying call in `try`/`catch (...)`, converting any thrown exception
-into `unexpected(error::allocation_failed)`.
+into `unexpected(error::allocation_failed)` -- except under
+`-fno-exceptions` (`RELOCO_HAS_EXCEPTIONS == 0`), where the call is made
+unguarded instead, since `try`/`catch` isn't valid syntax in that mode.
 
 ## `value_ptr<T>` / `value_ref<T>`
 
@@ -990,7 +992,48 @@ caller-supplied `LockTraits::lock_type &` (any type satisfying
 `has_lock_traits_v<LockTraits>`/the C++20 `lock_traits` concept) only while
 initialization hasn't completed yet. See
 [Fallible construction](fallible-construction.md#lazy-singletons-fallible_singleton-atomic_fallible_singleton)
-for the full explanation.
+for the full explanation. `LockTraits::lock_type` can be any of the
+`mutex`/`recursive_mutex`/`error_checking_mutex` types below (via a thin
+adapter satisfying `has_lock_traits_v`, since `lock()`/`unlock()` return
+`result<void>` rather than `void`) or an application's own mutex/spinlock.
+
+## `mutex` / `recursive_mutex` / `error_checking_mutex` / `shared_mutex` / `condition_variable`
+
+`include/reloco/mutex.hpp`
+
+Backend-selectable synchronization primitives, all with the fallible
+`[[nodiscard]] result<void> lock()`/`unlock()` shape (`result<void>
+lock_shared()`/`unlock_shared()` for `shared_mutex`) instead of throwing,
+plus `[[nodiscard]] bool try_lock()` and a `native_handle()` escape hatch.
+Two built-in backends are selected automatically -- `RELOCO_MUTEX_BACKEND_PTHREAD`
+(POSIX `pthread_mutex_t`/`pthread_rwlock_t`/`pthread_cond_t`) when
+`<pthread.h>` is available, else `RELOCO_MUTEX_BACKEND_STD`
+(`std::mutex`/`std::shared_mutex`/`std::condition_variable`, which covers
+Windows out of the box) -- or forced by defining exactly one of them in
+`reloco_user_config.hpp`. `error_checking_mutex` is implemented once,
+generically, on top of whichever `mutex` backend is active plus an
+`std::atomic<std::thread::id>` owner tag, so it's fully portable (no
+glibc-specific `PTHREAD_MUTEX_ERRORCHECK`/`_NP` initializer macros): its
+`lock()` returns `error::deadlock` when the calling thread already owns it,
+`unlock()` returns `error::invalid_owner` from a non-owning thread, and
+`try_lock()` returns `false` (not an error) when self-owned.
+
+Under `-fno-exceptions`, the `RELOCO_MUTEX_BACKEND_STD` backend's internal
+`std::system_error` translation is compiled out (detected via the
+`RELOCO_HAS_EXCEPTIONS` macro in `detail/compat.hpp`): the underlying
+`std::mutex`/`std::shared_mutex` calls are made unguarded instead, since
+`try`/`catch` isn't valid syntax in that mode and the standard library's own
+throwing paths become terminating calls anyway. `RELOCO_MUTEX_BACKEND_PTHREAD`
+is unaffected -- POSIX mutex calls never throw.
+
+Defining `RELOCO_MUTEX_BACKEND_CUSTOM` suppresses both built-in backends
+(including the generic `error_checking_mutex`) entirely: the application
+must then supply its own `mutex`/`recursive_mutex`/`error_checking_mutex`/
+`shared_mutex`/`condition_variable` matching the same public API, e.g. for
+Win32 `SRWLOCK`/`CRITICAL_SECTION`/`CONDITION_VARIABLE` or an RTOS's native
+primitives (not ported here by design -- see the header's file-level doc
+comment). See `RELOCO_MUTEX_BACKEND_STD`/`_PTHREAD`/`_CUSTOM` in
+`reloco_config.hpp` for the exact selection mechanism.
 
 ## `is_trivially_relocatable<T>`
 

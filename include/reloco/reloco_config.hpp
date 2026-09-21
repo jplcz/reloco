@@ -109,3 +109,26 @@
 //     stores inline before falling back to a heap allocation. Defaults to
 //     15. This is a single process-wide constant, not a template
 //     parameter, so every basic_sso_string instantiation shares it.
+//
+// RELOCO_MUTEX_BACKEND_STD / RELOCO_MUTEX_BACKEND_PTHREAD
+//     Define exactly one (any value) to force which built-in backend
+//     reloco/mutex.hpp uses for reloco::mutex/recursive_mutex/
+//     error_checking_mutex/shared_mutex/condition_variable:
+//       - RELOCO_MUTEX_BACKEND_STD: wraps <mutex>/<shared_mutex>/
+//         <condition_variable>, portable to any hosted C++17 target.
+//       - RELOCO_MUTEX_BACKEND_PTHREAD: wraps <pthread.h> directly, for
+//         POSIX targets.
+//     If neither is defined, mutex.hpp auto-selects PTHREAD when
+//     <pthread.h> is available (RELOCO_HAS_INCLUDE), otherwise STD.
+//
+// RELOCO_MUTEX_BACKEND_CUSTOM
+//     Define (to any value) to take over reloco::mutex/recursive_mutex/
+//     error_checking_mutex/shared_mutex/condition_variable entirely --
+//     suppresses both built-in backends above, so an application
+//     targeting a platform with neither pthread nor a hosted <mutex> (an
+//     RTOS, a Win32-native backend, a freestanding target, ...) can supply
+//     its own, matching public API, in its own header, included by the
+//     application through the normal path rather than from
+//     reloco_user_config.hpp -- exactly the same escape hatch
+//     RELOCO_DEFAULT_ALLOCATOR_CUSTOM provides for
+//     reloco::default_allocator() (see above and reloco/mutex.hpp).

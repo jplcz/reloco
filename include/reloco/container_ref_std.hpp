@@ -17,10 +17,15 @@
  * Every adapter function here wraps the underlying standard-library call in
  * `try`/`catch (...)`, converting any thrown exception into
  * `unexpected(error::allocation_failed)` so it never escapes past this
- * header's `noexcept` trait functions.
+ * header's `noexcept` trait functions. When `RELOCO_HAS_EXCEPTIONS` is `0`
+ * (e.g. built with `-fno-exceptions`), the call is made unguarded instead:
+ * `try`/`catch` is not valid syntax in that mode, and the standard
+ * library's own throwing paths (e.g. `std::bad_alloc`) become terminating
+ * calls anyway, so there is nothing left for reloco to translate.
  */
 
 #include "container_ref.hpp"
+#include "detail/compat.hpp"
 #include "error.hpp"
 #include "expected.hpp"
 
@@ -50,32 +55,47 @@ template <typename T> struct container_ref_traits<std::vector<T>> {
   static T &at(std::vector<T> &c, std::size_t index) noexcept { return c[index]; }
 
   static result<void> try_push_back(std::vector<T> &c, T value) noexcept {
+#if RELOCO_HAS_EXCEPTIONS
     try {
       c.push_back(std::move(value));
       return {};
     } catch (...) {
       return unexpected(error::allocation_failed);
     }
+#else
+    c.push_back(std::move(value));
+    return {};
+#endif
   }
 
   static result<void> try_push_front(std::vector<T> &c, T value) noexcept {
+#if RELOCO_HAS_EXCEPTIONS
     try {
       c.insert(c.begin(), std::move(value));
       return {};
     } catch (...) {
       return unexpected(error::allocation_failed);
     }
+#else
+    c.insert(c.begin(), std::move(value));
+    return {};
+#endif
   }
 
   static result<void> try_insert_at(std::vector<T> &c, std::size_t index, T value) noexcept {
     if (index > c.size())
       return unexpected(error::out_of_bounds);
+#if RELOCO_HAS_EXCEPTIONS
     try {
       c.insert(c.begin() + static_cast<typename std::vector<T>::difference_type>(index), std::move(value));
       return {};
     } catch (...) {
       return unexpected(error::allocation_failed);
     }
+#else
+    c.insert(c.begin() + static_cast<typename std::vector<T>::difference_type>(index), std::move(value));
+    return {};
+#endif
   }
 
   static result<void> try_erase_at(std::vector<T> &c, std::size_t index) noexcept {
@@ -115,6 +135,7 @@ template <typename Key, typename Value> struct container_ref_traits<std::map<Key
   }
 
   static result<void> try_insert_at(std::map<Key, Value> &c, Key key, Value value) noexcept {
+#if RELOCO_HAS_EXCEPTIONS
     try {
       auto [it, inserted] = c.emplace(std::move(key), std::move(value));
       (void)it;
@@ -124,6 +145,13 @@ template <typename Key, typename Value> struct container_ref_traits<std::map<Key
     } catch (...) {
       return unexpected(error::allocation_failed);
     }
+#else
+    auto [it, inserted] = c.emplace(std::move(key), std::move(value));
+    (void)it;
+    if (!inserted)
+      return unexpected(error::already_exists);
+    return {};
+#endif
   }
 
   static result<void> try_erase(std::map<Key, Value> &c, const Key &key) noexcept {
