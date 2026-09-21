@@ -214,6 +214,9 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_vector.cpp
         tests/test_inline_vector.cpp
         tests/test_flat_set.cpp
+        tests/test_flat_map.cpp
+        tests/test_inline_flat_set.cpp
+        tests/test_inline_flat_map.cpp
         tests/test_stack_allocator.cpp
         tests/test_inline_string.cpp
         tests/test_optional.cpp

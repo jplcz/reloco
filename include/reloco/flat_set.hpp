@@ -159,8 +159,12 @@ template <typename T, typename Compare> struct collection_view_traits<flat_set<T
 };
 
 /**
- * @brief `flat_set<T>` is trivially relocatable regardless because it's wrapper over `vector<T>`
+ * @brief `flat_set<T, Compare>` is trivially relocatable exactly when
+ * `Compare` is: it wraps a `vector<T>`, which is always relocatable
+ * regardless of `T`, so only the (usually stateless, trivially copyable)
+ * comparator can prevent that.
  */
-template <typename T> struct is_trivially_relocatable<flat_set<T>> : std::true_type {};
+template <typename T, typename Compare>
+struct is_trivially_relocatable<flat_set<T, Compare>> : is_trivially_relocatable<Compare> {};
 
 } // namespace reloco

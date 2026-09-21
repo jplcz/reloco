@@ -17,10 +17,13 @@
 #include <reloco/error.hpp>
 #include <reloco/error_std.hpp>
 #include <reloco/expected.hpp>
+#include <reloco/flat_map.hpp>
 #include <reloco/flat_set.hpp>
 #include <reloco/function.hpp>
 #include <reloco/function_ref.hpp>
 #include <reloco/heap_allocator.hpp>
+#include <reloco/inline_flat_map.hpp>
+#include <reloco/inline_flat_set.hpp>
 #include <reloco/inline_string.hpp>
 #include <reloco/inline_vector.hpp>
 #include <reloco/inplace_function.hpp>

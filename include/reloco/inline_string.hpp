@@ -79,6 +79,26 @@ public:
   [[nodiscard]] constexpr size_type length() const noexcept { return size_; }
   [[nodiscard]] constexpr bool empty() const noexcept { return size_ == 0; }
 
+  // ---- upgrading to a heap-backed basic_string<CharT, TraitsT> ----
+
+  /**
+   * @brief Copies the current content into a newly heap-allocated
+   * `basic_string<CharT, TraitsT>`, leaving `*this` untouched. Useful when
+   * the fixed `Capacity` has been reached (or is about to be) but the
+   * caller still wants a growable string.
+   */
+  [[nodiscard]] result<basic_string<CharT, TraitsT>> try_to_string(allocator_ref alloc) const noexcept {
+    return basic_string<CharT, TraitsT>::try_allocate(alloc, view());
+  }
+
+  /**
+   * @brief Same as `try_to_string(allocator_ref)`, using the process-wide
+   * default allocator (see `default_allocator()`).
+   */
+  [[nodiscard]] result<basic_string<CharT, TraitsT>> try_to_string() const noexcept {
+    return try_to_string(default_allocator());
+  }
+
   [[nodiscard]] result<void> try_assign(view_type sv) & noexcept {
     if (sv.empty()) {
       size_ = 0;

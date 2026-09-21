@@ -24,6 +24,9 @@ where, not a tutorial.
 | `inline_string.hpp` | `basic_inline_string<Capacity, CharT, TraitsT>` | Fixed-capacity, trivially-copyable, allocation-free character buffer |
 | `vector.hpp` | `vector<T>` | Move-only, allocator-backed, growable dynamic array |
 | `flat_set.hpp` | `flat_set<T, Compare>` | Sorted, unique-element set backed by `vector<T>`, with fallible insertion |
+| `flat_map.hpp` | `flat_map<Key, Mapped, Compare>` | Sorted, unique-key map backed by `vector<std::pair<Key, Mapped>>`, with fallible insertion |
+| `inline_flat_set.hpp` | `inline_flat_set<T, Capacity, Compare>` | Allocation-free counterpart of `flat_set<T, Compare>`, backed by `inline_vector<T, Capacity>` |
+| `inline_flat_map.hpp` | `inline_flat_map<Key, Mapped, Capacity, Compare>` | Allocation-free counterpart of `flat_map<Key, Mapped, Compare>`, backed by `inline_vector<std::pair<Key, Mapped>, Capacity>` |
 | `optional.hpp` | `optional<T>`, `nullopt_t`, `nullopt` | Zero-allocation, conditionally-present value wrapper with tri-tier access |
 | `function_ref.hpp` | `function_ref<R(Args...)>` | Non-owning, zero-allocation borrow of any callable |
 | `inplace_function.hpp` | `inplace_function<Signature, Capacity>` | Zero-allocation, fixed-capacity callable wrapper |
@@ -389,13 +392,134 @@ ok = s->try_insert(1);
 assert(s->contains(1) && s->contains(2));
 ```
 
-`reloco::flat_set<T>` is always trivially relocatable (see
-[Trivial relocation](relocatable.md)), since it wraps a `vector<T>` with no
-self-reference. It has `container_ref_traits`/`collection_view_traits`
-adapters (see below): as an associative `mutable_container_ref` source
+`reloco::flat_set<T, Compare>` is trivially relocatable exactly when
+`Compare` is (see [Trivial relocation](relocatable.md)): it wraps a
+`vector<T>`, which is unconditionally relocatable regardless of `T`, so
+only the (usually stateless, hence trivially relocatable) `Compare`
+matters. It has `container_ref_traits`/`collection_view_traits` adapters
+(see below): as an associative `mutable_container_ref` source
 (`key_type == element_type == T`), and as a read-only
 (`collection_view_traits::is_mutable == false`) collection view, since
 mutating an element in place could break the sort order.
+
+## `flat_map<Key, Mapped, Compare = std::less<Key>>`
+
+`include/reloco/flat_map.hpp`
+
+Sorted, unique-key map backed directly by a `vector<std::pair<Key,
+Mapped>>`: `flat_set`'s key/value counterpart, kept in ascending `Compare`
+order over `.first` rather than a node-based tree. `flat_set` and
+`flat_map` share a common base, `detail::flat_container_base<Storage,
+Compare, KeyOf>` (`include/reloco/detail/flat_container_base.hpp`), which
+implements insertion, removal, lookup, iteration, and cloning once for
+both `vector`- and `inline_vector`-backed storage; `flat_map` only adds the
+key/value-specific surface described below.
+
+```cpp
+auto m = reloco::flat_map<int, std::string>::try_create();
+if (!m)
+  return;
+auto ok = m->try_insert(2, "two");
+ok = m->try_insert(1, "one");
+auto found = m->try_at(1);
+assert(found && found->get() == "one");
+```
+
+`try_insert(Key key, Mapped mapped)` is a fallible-insertion convenience
+that fails with `error::already_exists` if `key` is already present, or
+propagates the underlying storage's allocation failure; `try_at(const
+K &key)` (mutable and `const`-qualified overloads) looks up `key` and
+returns a reference to just the mapped value on success or
+`error::not_found` otherwise. Mutating the mapped value through the
+mutable `try_at` overload is always safe: unlike mutating a key, it cannot
+break the sort invariant. There is deliberately no `operator[]`: unlike
+`std::map`, reloco has no way to silently insert a default-constructed
+value on a missing key without either allocating fallibly or aborting, both
+of which conflict with the library's explicit-fallibility design — use
+`try_insert`/`try_at` instead.
+
+`reloco::flat_map<Key, Mapped, Compare>` is trivially relocatable exactly
+when `Compare` is, for the same reason as `flat_set`. It has
+`container_ref_traits`/`collection_view_traits` adapters: as an
+associative `mutable_container_ref` source (`key_type == Key`,
+`element_type == Mapped`), and as a read-only
+(`collection_view_traits::is_mutable == false`) collection view of
+`(Key, Mapped)` pairs.
+
+## `inline_flat_set<T, Capacity, Compare = std::less<T>>`
+
+`include/reloco/inline_flat_set.hpp`
+
+`flat_set`'s allocation-free counterpart: a sorted, unique-element set
+backed directly by an `inline_vector<T, Capacity>` instead of a `vector<T>`,
+built on the same `detail::flat_container_base` shared with `flat_set`.
+There is no `try_allocate`/`try_create` factory to reserve extra capacity
+with (`Capacity` itself is the fixed reserved capacity, fixed at compile
+time) — only a default constructor is available, and `try_insert` fails
+with `error::capacity_exceeded` once `size() == Capacity`. Everything else
+(`try_insert`, `try_remove`, `contains`, `try_find`, `clear`, iteration,
+`try_clone(alloc)` / `try_clone()`) behaves exactly like `flat_set`.
+
+```cpp
+reloco::inline_flat_set<int, 4> s;
+auto ok = s.try_insert(2);
+ok = s.try_insert(1);
+assert(s.contains(1) && s.contains(2));
+```
+
+`reloco::is_trivially_relocatable<inline_flat_set<T, Capacity, Compare>>`
+is conditional on **both** `is_trivially_relocatable_v<T>` and
+`is_trivially_relocatable_v<Compare>` (unlike `flat_set`, whose `vector<T>`
+storage is unconditionally relocatable, `inline_flat_set`'s
+`inline_vector<T, Capacity>` storage embeds `T` directly, so its
+relocatability already depends on `T` — see `inline_vector<T, Capacity>`
+above). It has the same `container_ref_traits`/`collection_view_traits`
+adapters as `flat_set`.
+
+Like `inline_vector`, `inline_flat_set<T, Capacity, Compare>` can be
+"upgraded" to a heap-backed `flat_set<T, Compare>` via `try_to_flat_set`,
+for callers that reach the fixed `Capacity` but need to keep growing:
+
+| Function | Behavior |
+|---|---|
+| `try_to_flat_set(allocator_ref alloc) const &` / `try_to_flat_set() const &` | Clones every element into a new `flat_set<T, Compare>`, leaving `*this` untouched |
+| `try_to_flat_set(allocator_ref alloc) &&` / `try_to_flat_set() &&` | Moves every element out into a new `flat_set<T, Compare>`, consuming `*this` (left empty either way) |
+
+## `inline_flat_map<Key, Mapped, Capacity, Compare = std::less<Key>>`
+
+`include/reloco/inline_flat_map.hpp`
+
+`flat_map`'s allocation-free counterpart: a sorted, unique-key map backed
+directly by an `inline_vector<std::pair<Key, Mapped>, Capacity>`. As with
+`inline_flat_set`, there is no allocator-taking factory (only a default
+constructor), and `try_insert`/`try_insert_at` fail with
+`error::capacity_exceeded` once `size() == Capacity`. Otherwise it exposes
+the same `try_insert(key, mapped)`/`try_at(key)` surface as `flat_map`
+(including the same rationale for omitting `operator[]`).
+
+```cpp
+reloco::inline_flat_map<int, std::string, 4> m;
+auto ok = m.try_insert(1, "one");
+auto found = m.try_at(1);
+assert(found && found->get() == "one");
+```
+
+`reloco::is_trivially_relocatable<inline_flat_map<Key, Mapped, Capacity,
+Compare>>` is conditional on `is_trivially_relocatable_v<Key>`,
+`is_trivially_relocatable_v<Mapped>`, **and**
+`is_trivially_relocatable_v<Compare>` all holding, for the same
+embedded-storage reason as `inline_flat_set`. It has the same
+`container_ref_traits`/`collection_view_traits` adapters as `flat_map`.
+
+Like `inline_flat_set`, `inline_flat_map<Key, Mapped, Capacity, Compare>`
+can be "upgraded" to a heap-backed `flat_map<Key, Mapped, Compare>` via
+`try_to_flat_map`, mirroring `inline_vector::try_to_vector`'s dual
+clone/consume tiers:
+
+| Function | Behavior |
+|---|---|
+| `try_to_flat_map(allocator_ref alloc) const &` / `try_to_flat_map() const &` | Clones every (key, mapped) entry into a new `flat_map<Key, Mapped, Compare>`, leaving `*this` untouched |
+| `try_to_flat_map(allocator_ref alloc) &&` / `try_to_flat_map() &&` | Moves every (key, mapped) entry out into a new `flat_map<Key, Mapped, Compare>`, consuming `*this` (left empty either way) |
 
 ## `basic_inline_string<Capacity, CharT, TraitsT>` (`inline_string<Capacity>`, `inline_wstring<Capacity>`)
 
@@ -425,6 +549,14 @@ as `basic_string` does. Read-only access follows the same checked/`try_*`/
 `unsafe_*` convention as `basic_string`/`string_view`, including a
 `RELOCO_UNSAFE_BUFFER_USAGE`-gated `unsafe_c_str()` for interop with
 null-terminated-string APIs.
+
+Like the other fixed-capacity types, `basic_inline_string<Capacity, CharT,
+TraitsT>` can be "upgraded" to a heap-backed `basic_string<CharT,
+TraitsT>` via `try_to_string(allocator_ref alloc)` / `try_to_string()`,
+which copy the current content into a new growable string, leaving `*this`
+untouched (there is no consuming `&&` overload: unlike `vector`/
+`inline_flat_set`/`inline_flat_map`, `basic_inline_string` is trivially
+copyable, so there is no move-vs-clone distinction to make).
 
 ## `optional<T>`
 

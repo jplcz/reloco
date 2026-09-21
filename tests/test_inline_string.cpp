@@ -185,6 +185,35 @@ TEST(InlineStringTest, TrivialRelocatable) {
   EXPECT_TRUE(is_trivially_relocatable<test_string>::value);
 }
 
+TEST(InlineStringTest, TryToStringClonesIntoHeapString) {
+  auto s_res = test_string::try_create("hello");
+  ASSERT_TRUE(s_res.has_value());
+  auto &s = *s_res;
+
+  auto str_res = s.try_to_string();
+  ASSERT_TRUE(str_res.has_value());
+  EXPECT_EQ(str_res->view(), "hello");
+
+  // Original is untouched.
+  EXPECT_EQ(s.view(), "hello");
+}
+
+TEST(InlineStringTest, TryToStringWithExplicitAllocator) {
+  auto s_res = test_string::try_create("world");
+  ASSERT_TRUE(s_res.has_value());
+
+  auto str_res = s_res->try_to_string(default_allocator());
+  ASSERT_TRUE(str_res.has_value());
+  EXPECT_EQ(str_res->view(), "world");
+}
+
+TEST(InlineStringTest, TryToStringEmptySourceProducesEmptyString) {
+  test_string s;
+  auto str_res = s.try_to_string();
+  ASSERT_TRUE(str_res.has_value());
+  EXPECT_TRUE(str_res->empty());
+}
+
 } // namespace
 } // namespace reloco
 
