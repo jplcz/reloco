@@ -32,6 +32,7 @@ Start with the guide that matches what you are building:
 | [Fallible construction](docs/fallible-construction.md) | The `try_create`/`try_allocate`/`try_construct`/`try_clone`/`try_clone_at` protocol and its `has_try_*` detection traits/concepts |
 | [Trivial relocation](docs/relocatable.md) | `is_trivially_relocatable<T>`: which types may be moved by copying bytes and abandoning the source, and why |
 | [Lifetime safety](docs/lifetime-safety.md) | Borrowed values and pointers, lifetime annotations, consumed-value tracking, and compiler diagnostics |
+| [Container contract](docs/container-contract.md) | Copy-paste template and checklist for lifetime annotations, rvalue protection, and the tri-tier accessor convention on a new container |
 | [Extending reloco](docs/extending.md) | The tag + `*_traits<Tag>` + `context_type` provider pattern used by `allocator_ref` and future pluggable backends |
 | [API reference](docs/reference.md) | Per-type quick reference for every public header |
 | [Package-manager integration](docs/package-managers.md) | Conan 2, vcpkg overlays, CPM.cmake, CPack packaging, and CMake-based dependency managers |

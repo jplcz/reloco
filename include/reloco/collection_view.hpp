@@ -251,7 +251,7 @@ public:
    * @brief Returns the contiguous data pointer, if the bound container's
    * adapter supports it.
    */
-  [[nodiscard]] result<const T *> try_data() const noexcept {
+  [[nodiscard]] result<const T *> try_data() const noexcept RELOCO_LIFETIMEBOUND {
     if (!supports_direct_access())
       return unexpected(error::unsupported_operation);
     return vtbl_->data(ctx_);
@@ -261,7 +261,7 @@ public:
    * @brief Returns the contiguous data pointer with an always-on precondition
    * check.
    */
-  [[nodiscard]] const T *data() const noexcept {
+  [[nodiscard]] const T *data() const noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(supports_direct_access(), "collection_view does not support contiguous data access");
     return vtbl_->data(ctx_);
   }
@@ -270,7 +270,7 @@ public:
    * @brief Returns the contiguous data pointer with a debug-only
    * precondition check.
    */
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE const T *unsafe_data() const noexcept {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE const T *unsafe_data() const noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(supports_direct_access(), "collection_view does not support contiguous data access");
     return vtbl_->data(ctx_);
   }
@@ -279,7 +279,7 @@ public:
    * @brief Attempts to access an element without trapping.
    * @param index Zero-based index of the element to access.
    */
-  [[nodiscard]] result<std::reference_wrapper<const T>> try_at(size_type index) const noexcept {
+  [[nodiscard]] result<std::reference_wrapper<const T>> try_at(size_type index) const noexcept RELOCO_LIFETIMEBOUND {
     if (!vtbl_ || index >= vtbl_->size(ctx_))
       return unexpected(error::out_of_bounds);
     return std::cref(vtbl_->at(ctx_, index));
@@ -289,7 +289,7 @@ public:
    * @brief Accesses an element with an always-on bounds check.
    * @param index Zero-based index of the element to access.
    */
-  [[nodiscard]] const T &at(size_type index) const noexcept {
+  [[nodiscard]] const T &at(size_type index) const noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(vtbl_ && index < vtbl_->size(ctx_), "collection_view index out of bounds");
     return vtbl_->at(ctx_, index);
   }
@@ -297,7 +297,7 @@ public:
   /**
    * @brief Accesses an element with a debug-only bounds check.
    */
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE const T &unsafe_at(size_type index) const noexcept {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE const T &unsafe_at(size_type index) const noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(vtbl_ && index < vtbl_->size(ctx_), "collection_view index out of bounds");
     return vtbl_->at(ctx_, index);
   }
@@ -435,7 +435,7 @@ public:
    * @brief Returns the contiguous data pointer, if the bound container's
    * adapter supports it.
    */
-  [[nodiscard]] result<T *> try_data() noexcept {
+  [[nodiscard]] result<T *> try_data() noexcept RELOCO_LIFETIMEBOUND {
     if (!mvtbl_ || !mvtbl_->data)
       return unexpected(error::unsupported_operation);
     return mvtbl_->data(this->context());
@@ -445,7 +445,7 @@ public:
    * @brief Returns the contiguous data pointer with an always-on
    * precondition check.
    */
-  [[nodiscard]] T *data() noexcept {
+  [[nodiscard]] T *data() noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(mvtbl_ && mvtbl_->data, "mutable_collection_view does not support contiguous data access");
     return mvtbl_->data(this->context());
   }
@@ -454,7 +454,7 @@ public:
    * @brief Returns the contiguous data pointer with a debug-only
    * precondition check.
    */
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE T *unsafe_data() noexcept {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE T *unsafe_data() noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(mvtbl_ && mvtbl_->data, "mutable_collection_view does not support contiguous data access");
     return mvtbl_->data(this->context());
   }
@@ -467,7 +467,7 @@ public:
    * @brief Attempts to access an element without trapping.
    * @param index Zero-based index of the element to access.
    */
-  [[nodiscard]] result<std::reference_wrapper<T>> try_at(size_type index) noexcept {
+  [[nodiscard]] result<std::reference_wrapper<T>> try_at(size_type index) noexcept RELOCO_LIFETIMEBOUND {
     if (!mvtbl_ || index >= this->size())
       return unexpected(error::out_of_bounds);
     return std::ref(mvtbl_->at(this->context(), index));
@@ -477,7 +477,7 @@ public:
    * @brief Accesses an element with an always-on bounds check.
    * @param index Zero-based index of the element to access.
    */
-  [[nodiscard]] T &at(size_type index) noexcept {
+  [[nodiscard]] T &at(size_type index) noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(mvtbl_ && index < this->size(), "mutable_collection_view index out of bounds");
     return mvtbl_->at(this->context(), index);
   }
@@ -485,7 +485,7 @@ public:
   /**
    * @brief Accesses an element with a debug-only bounds check.
    */
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE T &unsafe_at(size_type index) noexcept {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE T &unsafe_at(size_type index) noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(mvtbl_ && index < this->size(), "mutable_collection_view index out of bounds");
     return mvtbl_->at(this->context(), index);
   }

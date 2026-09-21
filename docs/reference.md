@@ -20,7 +20,13 @@ where, not a tutorial.
 | `array.hpp` | `array<T, N>` | Fixed-size owning array with hardened element access |
 | `string_view.hpp` | `basic_string_view<CharT, TraitsT>` (`string_view`, `wstring_view`) | Non-owning, checked view over character data |
 | `string.hpp` | `basic_string<CharT, TraitsT>` (`string`, `wstring`) | Move-only, allocator-backed, growable character buffer |
+| `inline_string.hpp` | `basic_inline_string<Capacity, CharT, TraitsT>` | Fixed-capacity, trivially-copyable, allocation-free character buffer |
 | `vector.hpp` | `vector<T>` | Move-only, allocator-backed, growable dynamic array |
+| `flat_set.hpp` | `flat_set<T, Compare>` | Sorted, unique-element set backed by `vector<T>`, with fallible insertion |
+| `optional.hpp` | `optional<T>`, `nullopt_t`, `nullopt` | Zero-allocation, conditionally-present value wrapper with tri-tier access |
+| `function_ref.hpp` | `function_ref<R(Args...)>` | Non-owning, zero-allocation borrow of any callable |
+| `inplace_function.hpp` | `inplace_function<Signature, Capacity>` | Zero-allocation, fixed-capacity callable wrapper |
+| `stack_allocator.hpp` | `stack_allocator`, `stack_allocator_tag`, `stack_allocator_context` | Bump-pointer `allocator_traits` backend over a caller-owned buffer |
 | `unique_ptr.hpp` | `unique_ptr<T>` | Move-only, allocator-backed smart pointer with fallible construction |
 | `shared_ptr.hpp` | `shared_ptr<T>`, `weak_ptr<T>`, `enable_shared_from_this<T>` | Reference-counted, allocator-backed smart pointer with fallible construction |
 | `function.hpp` | `function<R(Args...)>` | Type-erased, allocator-backed callable wrapper with fallible construction |
@@ -193,6 +199,158 @@ checked tier); `try_at()`/`try_front()`/`try_back()` return
 `T` (see [Trivial relocation](relocatable.md)): the vector's own handle is
 just an `allocator_ref` plus a pointer and two sizes, with no
 self-reference into its own storage.
+
+## `flat_set<T, Compare = std::less<T>>`
+
+`include/reloco/flat_set.hpp`
+
+Sorted, unique-element set backed directly by a `vector<T>`: a contiguous,
+`std::lower_bound`-searched array kept in ascending `Compare` order rather
+than a node-based tree. `try_insert`/`try_remove` are the only mutators and
+return `reloco::result<...>`; `contains`/`try_find` do not allocate or
+mutate. `begin()`/`end()`/`cbegin()`/`cend()` are read-only (mutating
+through an iterator would break the sort invariant).
+
+```cpp
+auto s = reloco::flat_set<int>::try_create();
+if (!s)
+  return;
+auto ok = s->try_insert(2);
+ok = s->try_insert(1);
+assert(s->contains(1) && s->contains(2));
+```
+
+`reloco::flat_set<T>` is always trivially relocatable (see
+[Trivial relocation](relocatable.md)), since it wraps a `vector<T>` with no
+self-reference. It has `container_ref_traits`/`collection_view_traits`
+adapters (see below): as an associative `mutable_container_ref` source
+(`key_type == element_type == T`), and as a read-only
+(`collection_view_traits::is_mutable == false`) collection view, since
+mutating an element in place could break the sort order.
+
+## `basic_inline_string<Capacity, CharT, TraitsT>` (`inline_string<Capacity>`, `inline_wstring<Capacity>`)
+
+`include/reloco/inline_string.hpp`
+
+Fixed-capacity, inline-allocated character buffer mirroring
+`reloco::basic_string`'s fallible-mutation and tri-tier access convention,
+without ever allocating or throwing. Unlike `basic_string`, it is trivially
+copyable and movable (it holds no heap resource), and
+`reloco::is_trivially_relocatable<basic_inline_string<...>>` is
+unconditionally `true`.
+
+```cpp
+auto s = reloco::inline_string<32>::try_create(reloco::string_view("hello"));
+if (!s)
+  return; // s.error() is a reloco::error.
+auto ok = s->try_append(reloco::string_view(" world"));
+assert(s->view() == "hello world");
+```
+
+Every mutating operation that can exceed `Capacity` (`try_assign`,
+`try_append`, `try_insert`, ...) returns `reloco::result<void>` instead of
+trapping or reallocating — there is no growth path, unlike `basic_string`.
+Self-aliasing appends/inserts (e.g. `s.try_append(s.view())`) are handled
+correctly by temporarily materializing the overlapping source view, exactly
+as `basic_string` does. Read-only access follows the same checked/`try_*`/
+`unsafe_*` convention as `basic_string`/`string_view`, including a
+`RELOCO_UNSAFE_BUFFER_USAGE`-gated `unsafe_c_str()` for interop with
+null-terminated-string APIs.
+
+## `optional<T>`
+
+`include/reloco/optional.hpp`
+
+Zero-allocation, conditionally-present value wrapper replacing
+`std::optional<T>` by eliminating undefined behavior on empty access.
+Storage is inline (no heap allocation), and construction/assignment/`swap`
+compose with `is_trivially_relocatable<T>` for zero-overhead moves where `T`
+permits it.
+
+```cpp
+reloco::optional<int> maybe;
+assert(!maybe.has_value());
+maybe = 42;
+assert(maybe.value() == 42);
+```
+
+Access follows the checked/fallible/unsafe convention used throughout
+reloco: `value()`/`operator*`/`operator->` use `RELOCO_ASSERT` to trap on
+empty access; `try_value()` returns `result<std::reference_wrapper<T>>` and
+`ok_or(error)` bridges directly into a `result<T>` pipeline; `unsafe_value()`/
+`unsafe_ptr()` are `RELOCO_UNSAFE_BUFFER_USAGE`-gated, debug-only-checked
+escape hatches. `emplace(...)` destroys any held value and constructs a new
+one in place, returning a borrowed reference to it.
+`reloco::is_trivially_relocatable<optional<T>>` follows `T`'s own
+relocatability.
+
+## `function_ref<R(Args...)>`
+
+`include/reloco/function_ref.hpp`
+
+Non-owning, zero-allocation, type-erased borrow of any callable (lambdas,
+function pointers, functors, member-invocable objects), storing exactly two
+pointers (a context payload and a trampoline function). It has no default
+constructor and can never be null: the single converting constructor is
+`RELOCO_LIFETIMEBOUND`-annotated so Clang rejects binding it to a temporary
+callable (e.g. an inline lambda) that would immediately dangle.
+
+```cpp
+void call_it(reloco::function_ref<int(int)> f) { assert(f(1) == 2); }
+call_it([](int x) { return x + 1; });
+```
+
+Prefer `function_ref` over `reloco::function<R(Args...)>` at a call boundary
+that does not need to store the callable past the call: it never allocates
+and has no ownership overhead, at the cost of the caller owning the bound
+callable's lifetime for the duration of the call.
+
+## `inplace_function<Signature, Capacity = 32>`
+
+`include/reloco/inplace_function.hpp`
+
+Zero-allocation, fixed-capacity, move-only callable wrapper: a deterministic
+alternative to `std::function` that stores the type-erased callable entirely
+inline in a `Capacity`-byte buffer. If a functor exceeds `Capacity` or its
+alignment requirement, construction fails to compile via `static_assert`
+rather than silently falling back to heap allocation.
+
+```cpp
+reloco::inplace_function<int(int)> f = [](int x) { return x + 1; };
+assert(f(1) == 2);
+```
+
+`operator()` is the checked tier (`RELOCO_ASSERT`s if empty);
+`unsafe_invoke()` is the `RELOCO_UNSAFE_BUFFER_USAGE`-gated unsafe tier that
+skips the empty check. The class carries `-Wconsumed` typestate annotations
+(`RELOCO_CONSUMABLE`/`RELOCO_CALLABLE_WHEN`/`RELOCO_SET_TYPESTATE`) so Clang
+flags invoking a default-constructed or moved-from instance. Relocation
+(move/swap) uses `is_trivially_relocatable<Functor>` to skip the
+move-constructor/destructor pair for the stored callable when possible.
+
+## `stack_allocator` / `stack_allocator_tag` / `stack_allocator_context`
+
+`include/reloco/stack_allocator.hpp`
+
+`allocator_traits<stack_allocator_tag>` backend implementing a bump-pointer
+(arena) allocator over a single caller-owned buffer: `allocate` advances an
+offset into the buffer and never frees individual blocks, only the whole
+arena at once via `stack_allocator_context::reset()`. `reallocate` and
+`advise` are intentionally unimplemented; `allocator_ref::can_reallocate()`/
+`can_advise()` detect their absence and report `false`/
+`error::unsupported_operation` automatically.
+
+```cpp
+alignas(std::max_align_t) std::byte buffer[1024];
+reloco::stack_allocator arena(reloco::stack_allocator_context(buffer, sizeof(buffer)));
+auto vec = reloco::vector<int>::try_allocate(arena.ref());
+arena.context()->reset(); // Reclaim the entire arena at once.
+```
+
+Use `stack_allocator` for a scoped or per-frame arena backing any reloco
+container that takes an `allocator_ref` (`vector<T>`, `basic_string`,
+`flat_set<T>`, ...), instead of `heap_allocator_tag`, when allocation must
+be deterministic and bounded to a caller-owned buffer.
 
 ## `unique_ptr<T>`
 

@@ -41,62 +41,76 @@ template <typename T, std::size_t N> struct RELOCO_OWNER array {
 
   RELOCO_BLOCK_RVALUE_ACCESS(T);
 
-  [[nodiscard]] result<std::reference_wrapper<T>> try_at(size_type index) & noexcept {
+  [[nodiscard]] result<std::reference_wrapper<T>> try_at(size_type index) & noexcept RELOCO_LIFETIMEBOUND {
     if (index >= N)
       return unexpected(error::out_of_bounds);
     return std::ref(data_[index]);
   }
 
-  [[nodiscard]] result<std::reference_wrapper<const T>> try_at(size_type index) const & noexcept {
+  [[nodiscard]] result<std::reference_wrapper<const T>> try_at(size_type index) const & noexcept
+      RELOCO_LIFETIMEBOUND {
     if (index >= N)
       return unexpected(error::out_of_bounds);
     return std::cref(data_[index]);
   }
 
-  [[nodiscard]] constexpr T &operator[](size_type index) & noexcept {
+  [[nodiscard]] constexpr T &operator[](size_type index) & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(index < N, "array index out of bounds");
     return data_[index];
   }
 
-  [[nodiscard]] constexpr const T &operator[](size_type index) const & noexcept {
+  [[nodiscard]] constexpr const T &operator[](size_type index) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(index < N, "array index out of bounds");
     return data_[index];
   }
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr T &unsafe_at(size_type index) & noexcept {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr T &unsafe_at(size_type index) & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(index < N, "array index out of bounds");
     return data_[index];
   }
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr const T &unsafe_at(size_type index) const & noexcept {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr const T &unsafe_at(size_type index) const & noexcept
+      RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(index < N, "array index out of bounds");
     return data_[index];
   }
 
-  [[nodiscard]] constexpr T &front() & noexcept { return data_[0]; }
-  [[nodiscard]] constexpr const T &front() const & noexcept { return data_[0]; }
-  [[nodiscard]] constexpr T &back() & noexcept { return data_[N - 1]; }
-  [[nodiscard]] constexpr const T &back() const & noexcept { return data_[N - 1]; }
+  [[nodiscard]] constexpr T &front() & noexcept RELOCO_LIFETIMEBOUND { return data_[0]; }
+  [[nodiscard]] constexpr const T &front() const & noexcept RELOCO_LIFETIMEBOUND { return data_[0]; }
+  [[nodiscard]] constexpr T &back() & noexcept RELOCO_LIFETIMEBOUND { return data_[N - 1]; }
+  [[nodiscard]] constexpr const T &back() const & noexcept RELOCO_LIFETIMEBOUND { return data_[N - 1]; }
 
-  [[nodiscard]] result<std::reference_wrapper<T>> try_front() & noexcept { return std::ref(data_[0]); }
+  [[nodiscard]] result<std::reference_wrapper<T>> try_front() & noexcept RELOCO_LIFETIMEBOUND {
+    return std::ref(data_[0]);
+  }
 
-  [[nodiscard]] result<std::reference_wrapper<const T>> try_front() const & noexcept {
+  [[nodiscard]] result<std::reference_wrapper<const T>> try_front() const & noexcept RELOCO_LIFETIMEBOUND {
     return std::cref(data_[0]);
   }
 
-  [[nodiscard]] result<std::reference_wrapper<T>> try_back() & noexcept { return std::ref(data_[N - 1]); }
+  [[nodiscard]] result<std::reference_wrapper<T>> try_back() & noexcept RELOCO_LIFETIMEBOUND {
+    return std::ref(data_[N - 1]);
+  }
 
-  [[nodiscard]] result<std::reference_wrapper<const T>> try_back() const & noexcept {
+  [[nodiscard]] result<std::reference_wrapper<const T>> try_back() const & noexcept RELOCO_LIFETIMEBOUND {
     return std::cref(data_[N - 1]);
   }
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr T &unsafe_front() & noexcept { return data_[0]; }
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr const T &unsafe_front() const & noexcept { return data_[0]; }
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr T &unsafe_front() & noexcept RELOCO_LIFETIMEBOUND {
+    return data_[0];
+  }
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr const T &unsafe_front() const & noexcept RELOCO_LIFETIMEBOUND {
+    return data_[0];
+  }
   T &unsafe_front() && = delete;
   const T &unsafe_front() const && = delete;
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr T &unsafe_back() & noexcept { return data_[N - 1]; }
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr const T &unsafe_back() const & noexcept { return data_[N - 1]; }
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr T &unsafe_back() & noexcept RELOCO_LIFETIMEBOUND {
+    return data_[N - 1];
+  }
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr const T &unsafe_back() const & noexcept RELOCO_LIFETIMEBOUND {
+    return data_[N - 1];
+  }
   T &unsafe_back() && = delete;
   const T &unsafe_back() const && = delete;
 
@@ -213,114 +227,129 @@ template <typename T> struct array<T, 0> {
 
   RELOCO_BLOCK_RVALUE_ACCESS(T);
 
-  [[nodiscard]] result<std::reference_wrapper<T>> try_at(size_type) & noexcept {
+  [[nodiscard]] result<std::reference_wrapper<T>> try_at(size_type) & noexcept RELOCO_LIFETIMEBOUND {
     return unexpected(error::out_of_bounds);
   }
 
-  [[nodiscard]] result<std::reference_wrapper<const T>> try_at(size_type) const & noexcept {
+  [[nodiscard]] result<std::reference_wrapper<const T>> try_at(size_type) const & noexcept RELOCO_LIFETIMEBOUND {
     return unexpected(error::out_of_bounds);
   }
 
-  [[nodiscard]] result<std::reference_wrapper<T>> try_front() & noexcept {
+  [[nodiscard]] result<std::reference_wrapper<T>> try_front() & noexcept RELOCO_LIFETIMEBOUND {
     return unexpected(error::container_empty);
   }
 
-  [[nodiscard]] result<std::reference_wrapper<const T>> try_front() const & noexcept {
+  [[nodiscard]] result<std::reference_wrapper<const T>> try_front() const & noexcept RELOCO_LIFETIMEBOUND {
     return unexpected(error::container_empty);
   }
 
-  [[nodiscard]] result<std::reference_wrapper<T>> try_back() & noexcept {
+  [[nodiscard]] result<std::reference_wrapper<T>> try_back() & noexcept RELOCO_LIFETIMEBOUND {
     return unexpected(error::container_empty);
   }
 
-  [[nodiscard]] result<std::reference_wrapper<const T>> try_back() const & noexcept {
+  [[nodiscard]] result<std::reference_wrapper<const T>> try_back() const & noexcept RELOCO_LIFETIMEBOUND {
     return unexpected(error::container_empty);
   }
 
-  [[nodiscard]] constexpr T &operator[](size_type) & noexcept {
+  [[nodiscard]] constexpr T &operator[](size_type) & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(false, "array index out of bounds");
     return *static_cast<T *>(nullptr);
   }
 
-  [[nodiscard]] constexpr const T &operator[](size_type) const & noexcept {
+  [[nodiscard]] constexpr const T &operator[](size_type) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(false, "array index out of bounds");
     return *static_cast<const T *>(nullptr);
   }
 
-  [[nodiscard]] constexpr T &front() & noexcept {
+  [[nodiscard]] constexpr T &front() & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(false, "front() called on empty array");
     return *static_cast<T *>(nullptr);
   }
 
-  [[nodiscard]] constexpr const T &front() const & noexcept {
+  [[nodiscard]] constexpr const T &front() const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(false, "front() called on empty array");
     return *static_cast<const T *>(nullptr);
   }
 
-  [[nodiscard]] constexpr T &back() & noexcept {
+  [[nodiscard]] constexpr T &back() & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(false, "back() called on empty array");
     return *static_cast<T *>(nullptr);
   }
 
-  [[nodiscard]] constexpr const T &back() const & noexcept {
+  [[nodiscard]] constexpr const T &back() const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(false, "back() called on empty array");
     return *static_cast<const T *>(nullptr);
   }
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr T &unsafe_at(size_type) & noexcept {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr T &unsafe_at(size_type) & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(false, "array index out of bounds");
     return *static_cast<T *>(nullptr);
   }
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr const T &unsafe_at(size_type) const & noexcept {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr const T &unsafe_at(size_type) const & noexcept
+      RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(false, "array index out of bounds");
     return *static_cast<const T *>(nullptr);
   }
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr T &unsafe_front() & noexcept {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr T &unsafe_front() & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(false, "front() called on empty array");
     return *static_cast<T *>(nullptr);
   }
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr const T &unsafe_front() const & noexcept {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr const T &unsafe_front() const & noexcept
+      RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(false, "front() called on empty array");
     return *static_cast<const T *>(nullptr);
   }
   T &unsafe_front() && = delete;
   const T &unsafe_front() const && = delete;
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr T &unsafe_back() & noexcept {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr T &unsafe_back() & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(false, "back() called on empty array");
     return *static_cast<T *>(nullptr);
   }
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr const T &unsafe_back() const & noexcept {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr const T &unsafe_back() const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(false, "back() called on empty array");
     return *static_cast<const T *>(nullptr);
   }
   T &unsafe_back() && = delete;
   const T &unsafe_back() const && = delete;
 
-  [[nodiscard]] constexpr span<T> as_span() & noexcept { return {}; }
-  [[nodiscard]] constexpr span<const T> as_span() const & noexcept { return {}; }
+  [[nodiscard]] constexpr span<T> as_span() & noexcept RELOCO_LIFETIMEBOUND { return {}; }
+  [[nodiscard]] constexpr span<const T> as_span() const & noexcept RELOCO_LIFETIMEBOUND { return {}; }
 
   [[nodiscard]] static constexpr size_type size() noexcept { return 0; }
   [[nodiscard]] static constexpr bool empty() noexcept { return true; }
 
-  [[nodiscard]] constexpr T *data() & noexcept { return nullptr; }
-  [[nodiscard]] constexpr const T *data() const & noexcept { return nullptr; }
-  [[nodiscard]] constexpr iterator begin() & noexcept { return nullptr; }
-  [[nodiscard]] constexpr iterator end() & noexcept { return nullptr; }
-  [[nodiscard]] constexpr const_iterator begin() const & noexcept { return nullptr; }
-  [[nodiscard]] constexpr const_iterator end() const & noexcept { return nullptr; }
-  [[nodiscard]] constexpr const_iterator cbegin() const & noexcept { return nullptr; }
-  [[nodiscard]] constexpr const_iterator cend() const & noexcept { return nullptr; }
-  [[nodiscard]] constexpr reverse_iterator rbegin() & noexcept { return reverse_iterator(end()); }
-  [[nodiscard]] constexpr reverse_iterator rend() & noexcept { return reverse_iterator(begin()); }
-  [[nodiscard]] constexpr const_reverse_iterator rbegin() const & noexcept { return const_reverse_iterator(end()); }
-  [[nodiscard]] constexpr const_reverse_iterator rend() const & noexcept { return const_reverse_iterator(begin()); }
-  [[nodiscard]] constexpr const_reverse_iterator crbegin() const & noexcept { return const_reverse_iterator(cend()); }
-  [[nodiscard]] constexpr const_reverse_iterator crend() const & noexcept { return const_reverse_iterator(cbegin()); }
+  [[nodiscard]] constexpr T *data() & noexcept RELOCO_LIFETIMEBOUND { return nullptr; }
+  [[nodiscard]] constexpr const T *data() const & noexcept RELOCO_LIFETIMEBOUND { return nullptr; }
+  [[nodiscard]] constexpr iterator begin() & noexcept RELOCO_LIFETIMEBOUND { return nullptr; }
+  [[nodiscard]] constexpr iterator end() & noexcept RELOCO_LIFETIMEBOUND { return nullptr; }
+  [[nodiscard]] constexpr const_iterator begin() const & noexcept RELOCO_LIFETIMEBOUND { return nullptr; }
+  [[nodiscard]] constexpr const_iterator end() const & noexcept RELOCO_LIFETIMEBOUND { return nullptr; }
+  [[nodiscard]] constexpr const_iterator cbegin() const & noexcept RELOCO_LIFETIMEBOUND { return nullptr; }
+  [[nodiscard]] constexpr const_iterator cend() const & noexcept RELOCO_LIFETIMEBOUND { return nullptr; }
+  [[nodiscard]] constexpr reverse_iterator rbegin() & noexcept RELOCO_LIFETIMEBOUND {
+    return reverse_iterator(end());
+  }
+  [[nodiscard]] constexpr reverse_iterator rend() & noexcept RELOCO_LIFETIMEBOUND {
+    return reverse_iterator(begin());
+  }
+  [[nodiscard]] constexpr const_reverse_iterator rbegin() const & noexcept RELOCO_LIFETIMEBOUND {
+    return const_reverse_iterator(end());
+  }
+  [[nodiscard]] constexpr const_reverse_iterator rend() const & noexcept RELOCO_LIFETIMEBOUND {
+    return const_reverse_iterator(begin());
+  }
+  [[nodiscard]] constexpr const_reverse_iterator crbegin() const & noexcept RELOCO_LIFETIMEBOUND {
+    return const_reverse_iterator(cend());
+  }
+  [[nodiscard]] constexpr const_reverse_iterator crend() const & noexcept RELOCO_LIFETIMEBOUND {
+    return const_reverse_iterator(cbegin());
+  }
+
 
   constexpr void fill(const T &) noexcept {}
   constexpr void swap(array &) noexcept {}
@@ -360,13 +389,14 @@ template <typename T, std::size_t N>
 template <typename T, typename... U, std::enable_if_t<(std::is_same_v<T, U> && ...), int> = 0>
 array(T, U...) -> array<T, 1 + sizeof...(U)>;
 
-template <std::size_t I, typename T, std::size_t N> [[nodiscard]] constexpr T &get(array<T, N> &value) noexcept {
+template <std::size_t I, typename T, std::size_t N>
+[[nodiscard]] constexpr T &get(array<T, N> &value RELOCO_LIFETIMEBOUND) noexcept {
   static_assert(I < N, "array index out of bounds");
   return value.data_[I];
 }
 
 template <std::size_t I, typename T, std::size_t N>
-[[nodiscard]] constexpr const T &get(const array<T, N> &value) noexcept {
+[[nodiscard]] constexpr const T &get(const array<T, N> &value RELOCO_LIFETIMEBOUND) noexcept {
   static_assert(I < N, "array index out of bounds");
   return value.data_[I];
 }

@@ -223,7 +223,8 @@ public:
   }
 
   template <typename... Args>
-  T &emplace(Args &&...args) noexcept(std::is_nothrow_constructible_v<T, Args...>) RELOCO_SET_TYPESTATE(unconsumed) {
+  T &emplace(Args &&...args) noexcept(std::is_nothrow_constructible_v<T, Args...>) RELOCO_LIFETIMEBOUND
+      RELOCO_SET_TYPESTATE(unconsumed) {
     destroy();
     construct(std::forward<Args>(args)...);
     return value_;

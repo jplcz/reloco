@@ -17,6 +17,9 @@ core types include:
 | `reloco::span<T>` | Non-owning contiguous range over contiguous storage |
 | `reloco::string` | Allocator-backed, growable character buffer with fallible construction |
 | `reloco::vector<T>` | Allocator-backed, growable dynamic array with fallible construction |
+| `reloco::flat_set<T, Compare>` | Sorted, unique-element set backed by `vector<T>`, with fallible insertion |
+| `reloco::basic_inline_string<Capacity, CharT, TraitsT>` | Fixed-capacity, allocation-free character buffer with fallible mutation |
+| `reloco::optional<T>` | Zero-allocation, conditionally-present value wrapper with hardened access |
 | `reloco::unique_ptr<T>` | Move-only, allocator-backed smart pointer with fallible construction |
 | `reloco::shared_ptr<T>` / `reloco::weak_ptr<T>` | Reference-counted, allocator-backed smart pointer with fallible construction |
 | `reloco::expected<T, E>` | Allocation-free value-or-error result |
@@ -38,6 +41,8 @@ other code where an unchecked access or dangling borrow is a security issue.
 | `std::string_view` | `reloco::string_view` | Borrowed character data |
 | `std::string` | `reloco::string` | Allocator-backed, growable, fallible character storage |
 | `std::vector<T>` | `reloco::vector<T>` | Allocator-backed, growable, fallible dynamic array |
+| `std::set<T>` | `reloco::flat_set<T>` | Sorted, unique-element set with fallible, contiguous storage |
+| `std::optional<T>` | `reloco::optional<T>` | Conditionally-present value with hardened, trapping-by-default access |
 | `std::unique_ptr<T>` | `reloco::unique_ptr<T>` | Allocator-backed, fallible single-object ownership |
 | `std::shared_ptr<T>` / `std::weak_ptr<T>` | `reloco::shared_ptr<T>` / `reloco::weak_ptr<T>` | Allocator-backed, fallible shared object ownership |
 | `std::expected<T, E>` | `reloco::expected<T, E>` | Allocation-free fallible results |
@@ -47,16 +52,17 @@ types when required by a platform API, third-party library, ABI, or generic
 ecosystem interface. Convert to a hardened view at the boundary and keep the
 security-sensitive implementation on reloco types.
 
-`reloco::string` and `reloco::vector<T>` are the dynamic owning containers
-reloco provides: an allocator-backed, growable character buffer and dynamic
-array, respectively, whose construction and every mutation that can fail
+`reloco::string`, `reloco::vector<T>`, and `reloco::flat_set<T>` are the
+dynamic owning containers reloco provides: an allocator-backed, growable
+character buffer, dynamic array, and sorted unique-element set,
+respectively, whose construction and every mutation that can fail
 (`try_reserve`, `try_append`/`try_push_back`, `try_insert`/`try_insert_at`,
-...) returns `reloco::result<T>` instead of throwing. Both compose with the
-fallible-construction protocol (see `docs/fallible-construction.md`), so
-`reloco::unique_ptr<reloco::string>::try_create(...)`,
+...) returns `reloco::result<T>` instead of throwing. All three compose
+with the fallible-construction protocol (see `docs/fallible-construction.md`),
+so `reloco::unique_ptr<reloco::string>::try_create(...)`,
 `reloco::unique_ptr<reloco::vector<T>>::try_create(...)`, and similar work
-out of the box. `std::map` and other associative containers still have no
-direct reloco replacement (see `reloco::mutable_container_ref`/
+out of the box. `std::map` and other node-based associative containers
+still have no direct reloco replacement (see `reloco::mutable_container_ref`/
 `container_ref_std.hpp` for opt-in, type-erased mutation of `std::map`
 itself); use them only where allocation, failure behavior, and execution
 context are explicitly acceptable, and prefer caller-owned fixed storage
@@ -161,10 +167,11 @@ paths with an `unsafe_*` prefix so security-sensitive call sites remain
 visible in review.
 
 Every `unsafe_*` method across the library (`array`, `span`, `string_view`,
-`value_ptr`, and `checked_value`) is additionally marked
-`RELOCO_UNSAFE_BUFFER_USAGE` (see `reloco/lifetime.hpp`). Under Clang's
-`-Wunsafe-buffer-usage`, any unwrapped call site is a compiler diagnostic —
-callers must wrap the call in
+`string`, `vector`, `flat_set`, `basic_inline_string`, `optional`,
+`value_ptr`, `shared_ptr`/`unique_ptr`, and `checked_value`) is additionally
+marked `RELOCO_UNSAFE_BUFFER_USAGE` (see `reloco/lifetime.hpp`). Under
+Clang's `-Wunsafe-buffer-usage`, any unwrapped call site is a compiler
+diagnostic — callers must wrap the call in
 `RELOCO_BEGIN_UNSAFE_BUFFER_USAGE`/`RELOCO_END_UNSAFE_BUFFER_USAGE` to
 make the opt-out explicit and greppable, not just documented in a comment:
 
@@ -202,7 +209,10 @@ The owner must still outlive every non-owning `reloco::string_view` or
 extend the lifetime of referenced storage.
 
 For non-owning references to individual objects, and for guidance on compiler
-annotations, see [Lifetime safety and `value_ref`](lifetime-safety.md).
+annotations, see [Lifetime safety and `value_ref`](lifetime-safety.md). See
+[Container contract](container-contract.md) for the copy-paste template
+implementing these tiers, lifetime annotations, and rvalue protection
+together when adding a new container.
 
 ## Configure assertion reporting
 

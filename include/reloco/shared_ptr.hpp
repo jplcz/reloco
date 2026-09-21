@@ -269,11 +269,12 @@ public:
    * @brief Checked pointer access: fails with `error::empty_pointer` instead
    * of asserting.
    */
-  [[nodiscard]] result<T *> try_get() const noexcept {
+  [[nodiscard]] result<T *> try_get() const & noexcept RELOCO_LIFETIMEBOUND {
     if (!ptr_)
       return unexpected(error::empty_pointer);
     return ptr_;
   }
+  result<T *> try_get() const && = delete;
 
   /** @brief Number of `shared_ptr`s (including this one) sharing ownership,
    * or `0` for an empty pointer. */

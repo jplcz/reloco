@@ -301,7 +301,7 @@ public:
    * growing storage first if needed.
    */
   template <typename... Args>
-  [[nodiscard]] result<std::reference_wrapper<T>> try_emplace_back(Args &&...args) & noexcept {
+  [[nodiscard]] result<std::reference_wrapper<T>> try_emplace_back(Args &&...args) & noexcept RELOCO_LIFETIMEBOUND {
     if (size_ == cap_) {
       auto res = try_reserve(cap_ == 0 ? size_type(8) : cap_ * 2);
       if (!res)
@@ -318,7 +318,7 @@ public:
   /**
    * @brief Move-appends @p value to the end of the vector.
    */
-  [[nodiscard]] result<std::reference_wrapper<T>> try_push_back(T value) & noexcept {
+  [[nodiscard]] result<std::reference_wrapper<T>> try_push_back(T value) & noexcept RELOCO_LIFETIMEBOUND {
     return try_emplace_back(std::move(value));
   }
 
@@ -408,7 +408,8 @@ public:
    * unmodified.
    */
   template <typename... Args>
-  [[nodiscard]] result<std::reference_wrapper<T>> try_insert_at(size_type index, Args &&...args) & noexcept {
+  [[nodiscard]] result<std::reference_wrapper<T>> try_insert_at(size_type index, Args &&...args) & noexcept
+      RELOCO_LIFETIMEBOUND {
     if (index > size_)
       return unexpected(error::out_of_bounds);
 
@@ -444,129 +445,135 @@ public:
 
   // ---- element access ----
 
-  [[nodiscard]] result<std::reference_wrapper<T>> try_at(size_type index) & noexcept {
+  [[nodiscard]] result<std::reference_wrapper<T>> try_at(size_type index) & noexcept RELOCO_LIFETIMEBOUND {
     if (index >= size_)
       return unexpected(error::out_of_bounds);
     return std::ref(data_[index]);
   }
 
-  [[nodiscard]] result<std::reference_wrapper<const T>> try_at(size_type index) const & noexcept {
+  [[nodiscard]] result<std::reference_wrapper<const T>> try_at(size_type index) const & noexcept
+      RELOCO_LIFETIMEBOUND {
     if (index >= size_)
       return unexpected(error::out_of_bounds);
     return std::cref(data_[index]);
   }
 
-  [[nodiscard]] T &operator[](size_type index) & noexcept {
+  [[nodiscard]] T &operator[](size_type index) & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(index < size_, "vector index out of bounds");
     return data_[index];
   }
 
-  [[nodiscard]] const T &operator[](size_type index) const & noexcept {
+  [[nodiscard]] const T &operator[](size_type index) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(index < size_, "vector index out of bounds");
     return data_[index];
   }
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE T &unsafe_at(size_type index) & noexcept {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE T &unsafe_at(size_type index) & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(index < size_, "vector index out of bounds");
     return data_[index];
   }
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE const T &unsafe_at(size_type index) const & noexcept {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE const T &unsafe_at(size_type index) const & noexcept
+      RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(index < size_, "vector index out of bounds");
     return data_[index];
   }
 
-  [[nodiscard]] T &front() & noexcept {
+  [[nodiscard]] T &front() & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(!empty(), "vector is empty");
     return data_[0];
   }
 
-  [[nodiscard]] const T &front() const & noexcept {
+  [[nodiscard]] const T &front() const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(!empty(), "vector is empty");
     return data_[0];
   }
 
-  [[nodiscard]] T &back() & noexcept {
+  [[nodiscard]] T &back() & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(!empty(), "vector is empty");
     return data_[size_ - 1];
   }
 
-  [[nodiscard]] const T &back() const & noexcept {
+  [[nodiscard]] const T &back() const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(!empty(), "vector is empty");
     return data_[size_ - 1];
   }
 
-  [[nodiscard]] result<std::reference_wrapper<T>> try_front() & noexcept {
+  [[nodiscard]] result<std::reference_wrapper<T>> try_front() & noexcept RELOCO_LIFETIMEBOUND {
     if (empty())
       return unexpected(error::container_empty);
     return std::ref(data_[0]);
   }
 
-  [[nodiscard]] result<std::reference_wrapper<const T>> try_front() const & noexcept {
+  [[nodiscard]] result<std::reference_wrapper<const T>> try_front() const & noexcept RELOCO_LIFETIMEBOUND {
     if (empty())
       return unexpected(error::container_empty);
     return std::cref(data_[0]);
   }
 
-  [[nodiscard]] result<std::reference_wrapper<T>> try_back() & noexcept {
+  [[nodiscard]] result<std::reference_wrapper<T>> try_back() & noexcept RELOCO_LIFETIMEBOUND {
     if (empty())
       return unexpected(error::container_empty);
     return std::ref(data_[size_ - 1]);
   }
 
-  [[nodiscard]] result<std::reference_wrapper<const T>> try_back() const & noexcept {
+  [[nodiscard]] result<std::reference_wrapper<const T>> try_back() const & noexcept RELOCO_LIFETIMEBOUND {
     if (empty())
       return unexpected(error::container_empty);
     return std::cref(data_[size_ - 1]);
   }
 
-  [[nodiscard]] T *data() & noexcept {
+  [[nodiscard]] T *data() & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(!empty(), "vector is empty");
     return data_;
   }
 
-  [[nodiscard]] const T *data() const & noexcept {
+  [[nodiscard]] const T *data() const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(!empty(), "vector is empty");
     return data_;
   }
 
-  [[nodiscard]] result<T *> try_data() & noexcept {
+  [[nodiscard]] result<T *> try_data() & noexcept RELOCO_LIFETIMEBOUND {
     if (empty())
       return unexpected(error::container_empty);
     return data_;
   }
 
-  [[nodiscard]] result<const T *> try_data() const & noexcept {
+  [[nodiscard]] result<const T *> try_data() const & noexcept RELOCO_LIFETIMEBOUND {
     if (empty())
       return unexpected(error::container_empty);
     return data_;
   }
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE T *unsafe_data() & noexcept {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE T *unsafe_data() & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(!empty(), "vector has no data");
     return data_;
   }
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE const T *unsafe_data() const & noexcept {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE const T *unsafe_data() const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(!empty(), "vector has no data");
     return data_;
   }
 
   // ---- iteration ----
 
-  [[nodiscard]] iterator begin() & noexcept { return data_; }
-  [[nodiscard]] iterator end() & noexcept { return data_ + size_; }
-  [[nodiscard]] const_iterator begin() const & noexcept { return data_; }
-  [[nodiscard]] const_iterator end() const & noexcept { return data_ + size_; }
-  [[nodiscard]] const_iterator cbegin() const & noexcept { return data_; }
-  [[nodiscard]] const_iterator cend() const & noexcept { return data_ + size_; }
+  [[nodiscard]] iterator begin() & noexcept RELOCO_LIFETIMEBOUND { return data_; }
+  [[nodiscard]] iterator end() & noexcept RELOCO_LIFETIMEBOUND { return data_ + size_; }
+  [[nodiscard]] const_iterator begin() const & noexcept RELOCO_LIFETIMEBOUND { return data_; }
+  [[nodiscard]] const_iterator end() const & noexcept RELOCO_LIFETIMEBOUND { return data_ + size_; }
+  [[nodiscard]] const_iterator cbegin() const & noexcept RELOCO_LIFETIMEBOUND { return data_; }
+  [[nodiscard]] const_iterator cend() const & noexcept RELOCO_LIFETIMEBOUND { return data_ + size_; }
 
-  [[nodiscard]] reverse_iterator rbegin() & noexcept { return reverse_iterator(end()); }
-  [[nodiscard]] reverse_iterator rend() & noexcept { return reverse_iterator(begin()); }
-  [[nodiscard]] const_reverse_iterator rbegin() const & noexcept { return const_reverse_iterator(end()); }
-  [[nodiscard]] const_reverse_iterator rend() const & noexcept { return const_reverse_iterator(begin()); }
-  [[nodiscard]] const_reverse_iterator crbegin() const & noexcept { return rbegin(); }
-  [[nodiscard]] const_reverse_iterator crend() const & noexcept { return rend(); }
+  [[nodiscard]] reverse_iterator rbegin() & noexcept RELOCO_LIFETIMEBOUND { return reverse_iterator(end()); }
+  [[nodiscard]] reverse_iterator rend() & noexcept RELOCO_LIFETIMEBOUND { return reverse_iterator(begin()); }
+  [[nodiscard]] const_reverse_iterator rbegin() const & noexcept RELOCO_LIFETIMEBOUND {
+    return const_reverse_iterator(end());
+  }
+  [[nodiscard]] const_reverse_iterator rend() const & noexcept RELOCO_LIFETIMEBOUND {
+    return const_reverse_iterator(begin());
+  }
+  [[nodiscard]] const_reverse_iterator crbegin() const & noexcept RELOCO_LIFETIMEBOUND { return rbegin(); }
+  [[nodiscard]] const_reverse_iterator crend() const & noexcept RELOCO_LIFETIMEBOUND { return rend(); }
 
 private:
   void release() noexcept {

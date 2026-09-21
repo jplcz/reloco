@@ -581,6 +581,10 @@ Prefer deleted rvalue overloads, reference-qualified accessors, and constrained
 constructors for portable enforcement. An annotation alone cannot prevent a
 dangling reference on compilers that ignore it.
 
+See [Container contract](container-contract.md) for a copy-paste template
+applying these annotations, `RELOCO_BLOCK_RVALUE_ACCESS`, and the tri-tier
+accessor convention together to a new container.
+
 ## Unsafe buffer boundaries
 
 `RELOCO_BEGIN_UNSAFE_BUFFER_USAGE` and
