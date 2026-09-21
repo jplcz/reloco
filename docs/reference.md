@@ -986,6 +986,12 @@ without running a move constructor or destructor at either address. See
 built-in specializations (`unique_ptr<T>`, `basic_string<CharT, TraitsT>`,
 `checked_value<T>`/`checked_value<T *>`).
 
+`include/reloco/relocatable_std.hpp` is a separate, opt-in header adding
+specializations for `std::pair<T1, T2>`, `std::tuple<Ts...>`,
+`std::optional<T>`, and `std::variant<Ts...>`, each forwarding to the
+relocatability of their contained type(s) -- see
+[Trivial relocation](relocatable.md#standard-library-wrapper-types-relocatable_stdhpp).
+
 ## `alignment_of<T>`
 
 `include/reloco/alignment.hpp`

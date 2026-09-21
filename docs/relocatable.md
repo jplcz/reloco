@@ -96,6 +96,41 @@ trivially copyable, so the default definition already applies.
 same story: both its sequence and associative implementations are just a
 context pointer plus a `const vtable *`.
 
+### Standard-library wrapper types: `relocatable_std.hpp`
+
+`include/reloco/relocatable_std.hpp` is an opt-in header (not pulled in by
+anything else in reloco, exactly like `container_ref_std.hpp`) that
+specializes `is_trivially_relocatable` for `std::pair`, `std::tuple`,
+`std::optional`, and `std::variant`, forwarding to the trait of each
+contained type:
+
+| Type | Relocatable? | Why |
+|---|---|---|
+| `std::pair<T1, T2>` | Same as `T1` and `T2` | Flat storage of `first`/`second`, no pointer back into itself |
+| `std::tuple<Ts...>` | Same as every `Ts` | Flat storage of its elements, no pointer back into itself |
+| `std::optional<T>` | Same as `T` | Holds `T` inline plus an engaged flag, no pointer back into itself |
+| `std::variant<Ts...>` | Same as every `Ts` | Holds the active alternative inline plus an index, no pointer back into itself |
+
+These four are already trivially relocatable without this header whenever
+every contained type is trivially *copyable* -- the default
+`is_trivially_relocatable<T> : std::is_trivially_copyable<T>` already gets
+that case right, since each of these standard types is conditionally
+trivially copyable based on its own contained type(s). This header only
+changes the answer for the case the default gets wrong: a contained type
+that is move-only or otherwise non-trivially copyable but still trivially
+relocatable, such as `reloco::unique_ptr<T>`, `reloco::basic_string`, or
+`reloco::vector<T>`. For example, `std::optional<reloco::string>` is not
+trivially copyable (`reloco::basic_string` has a user-provided destructor),
+so without this header it would not be considered relocatable either, even
+though it safely is.
+
+This relies on the standard library implementation not adding hidden
+self-referential state to these class templates beyond what the standard
+requires -- true of libstdc++, libc++, and MSVC STL in practice, and the
+same assumption the P1144 relocation proposal itself makes when discussing
+`std::pair`/`std::tuple`/`std::optional` as conditionally trivially
+relocatable, but not something the standard formally guarantees today.
+
 ## Opting a type in
 
 Specialize `is_trivially_relocatable` for your own type once you have
