@@ -7,9 +7,11 @@
 #include "detail/assert.hpp"
 #include "error.hpp"
 #include "expected.hpp"
+#include <algorithm>
 #include <cstddef>
 #include <functional>
 #include <iterator>
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -18,31 +20,46 @@ namespace reloco {
 // All of the below classes contain checked pointer arithmetic
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
+/**
+ * @brief Hardened, self-contained equivalent of `std::basic_string_view`.
+ *
+ * Unlike an earlier revision, this view does not store a
+ * `std::basic_string_view` internally: it holds its own `data_`/`size_`
+ * pair and implements element access, comparison, and prefix/suffix checks
+ * directly against `TraitsT`. It only calls into the standard library for
+ * the handful of algorithms that are not worth re-deriving by hand
+ * (`std::search` for substring search, `std::find_first_of` for
+ * character-class search), and for interop conversions to/from
+ * `std::basic_string_view` (`to_std()`, the implicit conversion operator,
+ * and construction from `std::basic_string_view`/`std::basic_string`).
+ */
 template <typename CharT, typename TraitsT = std::char_traits<CharT>> class RELOCO_POINTER basic_string_view {
 public:
   using base = std::basic_string_view<CharT, TraitsT>;
   using traits_type = TraitsT;
   using value_type = CharT;
-  using size_type = typename base::size_type;
-  using difference_type = typename base::difference_type;
-  using const_reference = typename base::const_reference;
-  using const_pointer = typename base::const_pointer;
-  using const_iterator = typename base::const_iterator;
+  using size_type = std::size_t;
+  using difference_type = std::ptrdiff_t;
+  using const_reference = const CharT &;
+  using const_pointer = const CharT *;
+  using const_iterator = const CharT *;
   using iterator = const_iterator;
-  using const_reverse_iterator = typename base::const_reverse_iterator;
+  using const_reverse_iterator = std::reverse_iterator<const_iterator>;
   using reverse_iterator = const_reverse_iterator;
 
-  static constexpr size_type npos = base::npos;
+  static constexpr size_type npos = static_cast<size_type>(-1);
 
   constexpr basic_string_view() noexcept = default;
   constexpr basic_string_view(const basic_string_view &) noexcept = default;
   constexpr basic_string_view &operator=(const basic_string_view &) noexcept = default;
-  constexpr basic_string_view(base rhs RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept : view_(rhs) {}
+
+  constexpr basic_string_view(base rhs RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
+      : data_(rhs.data()), size_(rhs.size()) {}
 
   template <typename Allocator>
   constexpr basic_string_view(const std::basic_string<CharT, TraitsT, Allocator> &rhs RELOCO_LIFETIMEBOUND
                                   RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
-      : view_(rhs.data(), rhs.size()) {}
+      : data_(rhs.data()), size_(rhs.size()) {}
 
   template <typename Allocator> basic_string_view(std::basic_string<CharT, TraitsT, Allocator> &&) = delete;
 
@@ -50,194 +67,234 @@ public:
 
   constexpr basic_string_view(const CharT *str RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS,
                               size_type len) noexcept
-      : view_(str == nullptr ? base() : base(str, len)) {
+      : data_(str), size_(str == nullptr ? 0 : len) {
     RELOCO_ASSERT(str != nullptr || len == 0, "string_view data is null with non-zero length");
   }
 
   RELOCO_ALWAYS_INLINE
   constexpr basic_string_view(const CharT *str RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
-      : view_(str == nullptr ? base() : base(str)) {}
+      : data_(str), size_(str == nullptr ? 0 : TraitsT::length(str)) {}
 
-  [[nodiscard]] constexpr size_type size() const noexcept { return view_.size(); }
-  [[nodiscard]] constexpr size_type length() const noexcept { return view_.length(); }
-  [[nodiscard]] constexpr bool empty() const noexcept { return view_.empty(); }
+  [[nodiscard]] constexpr size_type size() const noexcept { return size_; }
+  [[nodiscard]] constexpr size_type length() const noexcept { return size_; }
+  [[nodiscard]] constexpr bool empty() const noexcept { return size_ == 0; }
 
   [[nodiscard]] constexpr const_reference operator[](size_type pos) const noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(pos < size(), "string_view index out of bounds");
-    return view_[pos];
+    return data_[pos];
   }
 
   [[nodiscard]] result<std::reference_wrapper<const CharT>> try_front() const noexcept RELOCO_LIFETIMEBOUND {
     if (empty())
       return unexpected(error::container_empty);
-    return std::cref(view_.front());
+    return std::cref(data_[0]);
   }
 
   [[nodiscard]] result<std::reference_wrapper<const CharT>> try_back() const noexcept RELOCO_LIFETIMEBOUND {
     if (empty())
       return unexpected(error::container_empty);
-    return std::cref(view_.back());
+    return std::cref(data_[size_ - 1]);
   }
 
   [[nodiscard]] constexpr const_reference front() const noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(!empty(), "front() called on empty string_view");
-    return view_.front();
+    return data_[0];
   }
 
   [[nodiscard]] constexpr const_reference back() const noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(!empty(), "back() called on empty string_view");
-    return view_.back();
+    return data_[size_ - 1];
   }
 
   [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr const_reference
   unsafe_front() const noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(!empty(), "front() called on empty string_view");
-    return view_.front();
+    return data_[0];
   }
 
   [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr const_reference unsafe_back() const noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(!empty(), "back() called on empty string_view");
-    return view_.back();
+    return data_[size_ - 1];
   }
 
   [[nodiscard]] constexpr basic_string_view substr(size_type pos = 0,
                                                    size_type count = npos) const noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(pos <= size(), "substr position out of bounds");
-    return basic_string_view(view_.substr(pos, count));
+    return basic_string_view(data_ + pos, std::min(count, size_ - pos));
   }
 
   [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr basic_string_view
   unsafe_substr(size_type pos = 0, size_type count = npos) const noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(pos <= size(), "substr position out of bounds");
-    return basic_string_view(view_.substr(pos, count));
+    return basic_string_view(data_ + pos, std::min(count, size_ - pos));
   }
 
   [[nodiscard]] result<std::reference_wrapper<const CharT>> try_at(size_type pos) const noexcept RELOCO_LIFETIMEBOUND {
     if (pos >= size())
       return unexpected(error::out_of_bounds);
-    return std::cref(view_[pos]);
+    return std::cref(data_[pos]);
   }
 
   [[nodiscard]] result<basic_string_view> try_substr(size_type pos,
                                                      size_type count = npos) const noexcept RELOCO_LIFETIMEBOUND {
     if (pos > size())
       return unexpected(error::out_of_bounds);
-    return basic_string_view(view_.substr(pos, count));
+    return basic_string_view(data_ + pos, std::min(count, size_ - pos));
   }
 
-  [[nodiscard]] constexpr const_pointer data() const noexcept RELOCO_LIFETIMEBOUND { return view_.data(); }
+  [[nodiscard]] constexpr const_pointer data() const noexcept RELOCO_LIFETIMEBOUND { return data_; }
 
   [[nodiscard]] result<const_pointer> try_data() const noexcept RELOCO_LIFETIMEBOUND {
     if (empty())
       return unexpected(error::container_empty);
-    return view_.data();
+    return data_;
   }
 
   [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr const_pointer unsafe_data() const noexcept RELOCO_LIFETIMEBOUND {
-    return view_.data();
+    return data_;
   }
 
-  [[nodiscard]] constexpr base to_std() const noexcept RELOCO_LIFETIMEBOUND { return view_; }
-  [[nodiscard]] constexpr operator base() const noexcept RELOCO_LIFETIMEBOUND { return view_; }
+  [[nodiscard]] constexpr base to_std() const noexcept RELOCO_LIFETIMEBOUND { return base(data_, size_); }
+  [[nodiscard]] constexpr operator base() const noexcept RELOCO_LIFETIMEBOUND { return base(data_, size_); }
 
   constexpr void remove_prefix(size_type n) & noexcept {
     RELOCO_ASSERT(n <= size(), "remove_prefix exceeds view size");
-    view_.remove_prefix(n);
+    data_ += n;
+    size_ -= n;
   }
 
   RELOCO_UNSAFE_BUFFER_USAGE constexpr void unsafe_remove_prefix(size_type n) & noexcept {
     RELOCO_DEBUG_ASSERT(n <= size(), "remove_prefix exceeds view size");
-    view_.remove_prefix(n);
+    data_ += n;
+    size_ -= n;
   }
 
   constexpr void remove_suffix(size_type n) & noexcept {
     RELOCO_ASSERT(n <= size(), "remove_suffix exceeds view size");
-    view_.remove_suffix(n);
+    size_ -= n;
   }
 
   RELOCO_UNSAFE_BUFFER_USAGE constexpr void unsafe_remove_suffix(size_type n) & noexcept {
     RELOCO_DEBUG_ASSERT(n <= size(), "remove_suffix exceeds view size");
-    view_.remove_suffix(n);
+    size_ -= n;
   }
 
   [[nodiscard]] result<void> try_remove_prefix(size_type n) & noexcept {
     if (n > size())
       return unexpected(error::out_of_bounds);
-    view_.remove_prefix(n);
+    data_ += n;
+    size_ -= n;
     return {};
   }
 
   [[nodiscard]] result<void> try_remove_suffix(size_type n) & noexcept {
     if (n > size())
       return unexpected(error::out_of_bounds);
-    view_.remove_suffix(n);
+    size_ -= n;
     return {};
   }
 
-  [[nodiscard]] constexpr size_type find(CharT ch, size_type pos = 0) const noexcept { return view_.find(ch, pos); }
-
-  [[nodiscard]] constexpr size_type find(basic_string_view needle, size_type pos = 0) const noexcept {
-    return view_.find(needle.view_, pos);
+  // A single-character search is a direct TraitsT primitive, so it is
+  // implemented locally rather than delegating to a standard algorithm.
+  [[nodiscard]] constexpr size_type find(CharT ch, size_type pos = 0) const noexcept {
+    if (pos >= size_)
+      return npos;
+    const CharT *found = TraitsT::find(data_ + pos, size_ - pos, ch);
+    return found == nullptr ? npos : static_cast<size_type>(found - data_);
   }
 
-  [[nodiscard]] constexpr size_type find_last_of(basic_string_view chars, size_type pos = npos) const noexcept {
-    return view_.find_last_of(chars.view_, pos);
+  // Substring search is not worth re-deriving by hand: delegate to
+  // `std::search` over the raw buffers instead of wrapping the whole view
+  // in `std::basic_string_view`.
+  [[nodiscard]] size_type find(basic_string_view needle, size_type pos = 0) const noexcept {
+    if (pos > size_)
+      return npos;
+    if (needle.empty())
+      return pos;
+    if (needle.size_ > size_ - pos)
+      return npos;
+    const CharT *first = std::search(data_ + pos, data_ + size_, needle.data_, needle.data_ + needle.size_,
+                                     [](CharT a, CharT b) { return TraitsT::eq(a, b); });
+    return first == data_ + size_ ? npos : static_cast<size_type>(first - data_);
+  }
+
+  // Character-class search likewise delegates to `std::find_first_of`,
+  // applied to a reverse range to search backwards from `pos`.
+  [[nodiscard]] size_type find_last_of(basic_string_view chars, size_type pos = npos) const noexcept {
+    if (empty() || chars.empty())
+      return npos;
+    const size_type last = pos >= size_ - 1 ? size_ - 1 : pos;
+    auto rbegin_ = std::make_reverse_iterator(data_ + last + 1);
+    auto rend_ = std::make_reverse_iterator(data_);
+    auto it = std::find_first_of(rbegin_, rend_, chars.data_, chars.data_ + chars.size_,
+                                 [](CharT a, CharT b) { return TraitsT::eq(a, b); });
+    return it == rend_ ? npos : static_cast<size_type>(std::addressof(*it) - data_);
   }
 
   [[nodiscard]] constexpr int compare(size_type pos, size_type count, basic_string_view rhs) const noexcept {
-    return view_.compare(pos, count, rhs.view_);
+    return substr(pos, count).compare_impl(rhs);
   }
 
   [[nodiscard]] constexpr bool starts_with(basic_string_view prefix) const noexcept {
-    return size() >= prefix.size() && view_.compare(0, prefix.size(), prefix.view_) == 0;
+    return size_ >= prefix.size_ && (prefix.size_ == 0 || TraitsT::compare(data_, prefix.data_, prefix.size_) == 0);
   }
 
-  [[nodiscard]] constexpr bool starts_with(CharT ch) const noexcept { return !empty() && front() == ch; }
+  [[nodiscard]] constexpr bool starts_with(CharT ch) const noexcept { return !empty() && TraitsT::eq(front(), ch); }
 
-  [[nodiscard]] constexpr const_iterator begin() const noexcept RELOCO_LIFETIMEBOUND { return view_.begin(); }
-  [[nodiscard]] constexpr const_iterator end() const noexcept RELOCO_LIFETIMEBOUND { return view_.end(); }
-  [[nodiscard]] constexpr const_iterator cbegin() const noexcept RELOCO_LIFETIMEBOUND { return view_.cbegin(); }
-  [[nodiscard]] constexpr const_iterator cend() const noexcept RELOCO_LIFETIMEBOUND { return view_.cend(); }
-  [[nodiscard]] constexpr const_reverse_iterator rbegin() const noexcept RELOCO_LIFETIMEBOUND { return view_.rbegin(); }
-  [[nodiscard]] constexpr const_reverse_iterator rend() const noexcept RELOCO_LIFETIMEBOUND { return view_.rend(); }
-  [[nodiscard]] constexpr const_reverse_iterator crbegin() const noexcept RELOCO_LIFETIMEBOUND {
-    return view_.crbegin();
+  [[nodiscard]] constexpr const_iterator begin() const noexcept RELOCO_LIFETIMEBOUND { return data_; }
+  [[nodiscard]] constexpr const_iterator end() const noexcept RELOCO_LIFETIMEBOUND { return data_ + size_; }
+  [[nodiscard]] constexpr const_iterator cbegin() const noexcept RELOCO_LIFETIMEBOUND { return data_; }
+  [[nodiscard]] constexpr const_iterator cend() const noexcept RELOCO_LIFETIMEBOUND { return data_ + size_; }
+  [[nodiscard]] constexpr const_reverse_iterator rbegin() const noexcept RELOCO_LIFETIMEBOUND {
+    return const_reverse_iterator(end());
   }
-  [[nodiscard]] constexpr const_reverse_iterator crend() const noexcept RELOCO_LIFETIMEBOUND { return view_.crend(); }
+  [[nodiscard]] constexpr const_reverse_iterator rend() const noexcept RELOCO_LIFETIMEBOUND {
+    return const_reverse_iterator(begin());
+  }
+  [[nodiscard]] constexpr const_reverse_iterator crbegin() const noexcept RELOCO_LIFETIMEBOUND { return rbegin(); }
+  [[nodiscard]] constexpr const_reverse_iterator crend() const noexcept RELOCO_LIFETIMEBOUND { return rend(); }
 
   friend constexpr bool operator==(basic_string_view lhs, basic_string_view rhs) noexcept {
-    return lhs.view_ == rhs.view_;
+    return lhs.size_ == rhs.size_ && (lhs.size_ == 0 || TraitsT::compare(lhs.data_, rhs.data_, lhs.size_) == 0);
   }
 
   friend constexpr bool operator!=(basic_string_view lhs, basic_string_view rhs) noexcept { return !(lhs == rhs); }
 
-  friend constexpr bool operator==(basic_string_view lhs, base rhs) noexcept { return lhs.view_ == rhs; }
+  friend constexpr bool operator==(basic_string_view lhs, base rhs) noexcept { return lhs == basic_string_view(rhs); }
 
-  friend constexpr bool operator==(base lhs, basic_string_view rhs) noexcept { return lhs == rhs.view_; }
+  friend constexpr bool operator==(base lhs, basic_string_view rhs) noexcept { return basic_string_view(lhs) == rhs; }
 
   friend constexpr bool operator!=(basic_string_view lhs, base rhs) noexcept { return !(lhs == rhs); }
 
   friend constexpr bool operator!=(base lhs, basic_string_view rhs) noexcept { return !(lhs == rhs); }
 
-  friend constexpr bool operator==(basic_string_view lhs, const CharT *rhs) noexcept { return lhs.view_ == base(rhs); }
+  friend constexpr bool operator==(basic_string_view lhs, const CharT *rhs) noexcept {
+    return lhs == basic_string_view(rhs);
+  }
 
-  friend constexpr bool operator==(const CharT *lhs, basic_string_view rhs) noexcept { return base(lhs) == rhs.view_; }
+  friend constexpr bool operator==(const CharT *lhs, basic_string_view rhs) noexcept {
+    return basic_string_view(lhs) == rhs;
+  }
 
   friend constexpr bool operator!=(basic_string_view lhs, const CharT *rhs) noexcept { return !(lhs == rhs); }
 
   friend constexpr bool operator!=(const CharT *lhs, basic_string_view rhs) noexcept { return !(lhs == rhs); }
 
   friend constexpr bool operator<(basic_string_view lhs, basic_string_view rhs) noexcept {
-    return lhs.view_ < rhs.view_;
+    return lhs.compare_impl(rhs) < 0;
   }
 
-  friend constexpr bool operator<(basic_string_view lhs, base rhs) noexcept { return lhs.view_ < rhs; }
+  friend constexpr bool operator<(basic_string_view lhs, base rhs) noexcept { return lhs < basic_string_view(rhs); }
 
-  friend constexpr bool operator<(base lhs, basic_string_view rhs) noexcept { return lhs < rhs.view_; }
+  friend constexpr bool operator<(base lhs, basic_string_view rhs) noexcept { return basic_string_view(lhs) < rhs; }
 
-  friend constexpr bool operator<(basic_string_view lhs, const CharT *rhs) noexcept { return lhs.view_ < base(rhs); }
+  friend constexpr bool operator<(basic_string_view lhs, const CharT *rhs) noexcept {
+    return lhs < basic_string_view(rhs);
+  }
 
-  friend constexpr bool operator<(const CharT *lhs, basic_string_view rhs) noexcept { return base(lhs) < rhs.view_; }
+  friend constexpr bool operator<(const CharT *lhs, basic_string_view rhs) noexcept {
+    return basic_string_view(lhs) < rhs;
+  }
 
   [[nodiscard]] static constexpr basic_string_view from_range(const CharT *first, const CharT *last) noexcept {
     RELOCO_ASSERT(first <= last, "invalid pointer range for string_view");
@@ -245,7 +302,24 @@ public:
   }
 
 private:
-  base view_{};
+  // Lexicographic three-way compare against `rhs`, matching
+  // `std::basic_string_view::compare`'s semantics: trivial enough (a
+  // `TraitsT::compare` on the common prefix plus a length tie-break) that
+  // it is implemented locally instead of delegating to `std::`.
+  [[nodiscard]] constexpr int compare_impl(basic_string_view rhs) const noexcept {
+    const size_type common = std::min(size_, rhs.size_);
+    const int r = common == 0 ? 0 : TraitsT::compare(data_, rhs.data_, common);
+    if (r != 0)
+      return r;
+    if (size_ < rhs.size_)
+      return -1;
+    if (size_ > rhs.size_)
+      return 1;
+    return 0;
+  }
+
+  const_pointer data_ = nullptr;
+  size_type size_ = 0;
 };
 
 using string_view = basic_string_view<char>;

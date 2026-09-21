@@ -89,7 +89,10 @@ Non-owning, checked view over character data — `std::string_view`, plus the
 tri-tier convention (`front()`/`try_front()`/`unsafe_front()`, etc.),
 rejection of dangling prvalue `std::basic_string` temporaries at the
 constructor, and interop with both `std::basic_string_view` and
-`std::basic_string`.
+`std::basic_string`. Storage is a self-contained pointer/size pair (not a
+wrapped `std::basic_string_view`); comparisons and prefix/suffix checks are
+implemented directly against `TraitsT`, and only substring/character-class
+search delegates to `std::search`/`std::find_first_of`.
 
 ## `basic_string<CharT, TraitsT>` (`string`, `wstring`)
 
