@@ -315,6 +315,60 @@ checked tier); `try_at()`/`try_front()`/`try_back()` return
 just an `allocator_ref` plus a pointer and two sizes, with no
 self-reference into its own storage.
 
+## `inline_vector<T, Capacity>`
+
+`include/reloco/inline_vector.hpp`
+
+Move-only, fixed-capacity, allocator-free growable array — `vector<T>`'s
+counterpart for when the maximum element count is known at compile time
+and heap allocation must be avoided entirely. Elements live directly
+inside the object, in a raw `alignas(alignof(T)) std::byte` buffer sized
+for exactly `Capacity` elements; unlike `array<T, N>`, `T` need not be
+default-constructible, and `size()` is tracked independently of
+`capacity()`. `Capacity` must be greater than zero — there is no
+zero-capacity specialization.
+
+```cpp
+reloco::inline_vector<int, 4> v;
+auto ok = v.try_push_back(1);
+ok = v.try_insert_at(0, 0);
+assert(v[0] == 0 && v[1] == 1);
+```
+
+Mutation mirrors `vector<T>` (`try_emplace_back`, `try_push_back`,
+`try_pop_back`, `try_insert_at`, `try_erase_at`, `clear`), except there is
+no growth to fall back on: `try_emplace_back`/`try_insert_at` fail with
+`error::capacity_exceeded` once `size() == capacity()`, instead of
+allocating more space. Element construction and cloning delegate to
+`construction_helpers` exactly like `vector<T>`, so nested element types
+that implement their own fallible-construction protocol compose
+transparently.
+
+Cloning follows the same dual-tier shape as `vector<T>`:
+`try_clone(allocator_ref alloc)` / `try_clone()` / `try_clone_at(...)`.
+`try_clone(alloc)` forwards the given allocator to nested fallible
+elements even though `inline_vector` itself never allocates; trivially
+copyable element types with no custom `try_clone` take a single-`memcpy`
+fast path.
+
+Element access follows the same checked/`try_*`/`unsafe_*` tri-tier
+convention as `vector`/`span`/`array`.
+
+`inline_vector<T, Capacity>` can be "upgraded" to a heap-backed `vector<T>`
+via `try_to_vector`, for callers that reach the fixed `Capacity` but need
+to keep growing:
+
+| Function | Behavior |
+|---|---|
+| `try_to_vector(allocator_ref alloc) const &` / `try_to_vector() const &` | Clones every element into a new `vector<T>`, leaving `*this` untouched |
+| `try_to_vector(allocator_ref alloc) &&` / `try_to_vector() &&` | Moves every element out into a new `vector<T>`, consuming `*this` (left empty either way) |
+
+`reloco::is_trivially_relocatable<inline_vector<T, Capacity>>` is
+conditional on `is_trivially_relocatable_v<T>` (see
+[Trivial relocation](relocatable.md)): unlike `vector<T>`'s heap pointer,
+`inline_vector`'s storage is embedded directly in the object, so relocating
+it via `memcpy` is only safe when every contained `T` is too.
+
 ## `flat_set<T, Compare = std::less<T>>`
 
 `include/reloco/flat_set.hpp`

@@ -17,6 +17,7 @@ core types include:
 | `reloco::span<T>` | Non-owning contiguous range over contiguous storage |
 | `reloco::string` | Allocator-backed, growable character buffer with fallible construction |
 | `reloco::vector<T>` | Allocator-backed, growable dynamic array with fallible construction |
+| `reloco::inline_vector<T, Capacity>` | Fixed-capacity, allocation-free growable array with fallible mutation |
 | `reloco::flat_set<T, Compare>` | Sorted, unique-element set backed by `vector<T>`, with fallible insertion |
 | `reloco::basic_inline_string<Capacity, CharT, TraitsT>` | Fixed-capacity, allocation-free character buffer with fallible mutation |
 | `reloco::optional<T>` | Zero-allocation, conditionally-present value wrapper with hardened access |
@@ -41,6 +42,7 @@ other code where an unchecked access or dangling borrow is a security issue.
 | `std::string_view` | `reloco::string_view` | Borrowed character data |
 | `std::string` | `reloco::string` | Allocator-backed, growable, fallible character storage |
 | `std::vector<T>` | `reloco::vector<T>` | Allocator-backed, growable, fallible dynamic array |
+| n/a | `reloco::inline_vector<T, Capacity>` | Fixed-capacity, allocation-free, fallible growable array |
 | `std::set<T>` | `reloco::flat_set<T>` | Sorted, unique-element set with fallible, contiguous storage |
 | `std::optional<T>` | `reloco::optional<T>` | Conditionally-present value with hardened, trapping-by-default access |
 | `std::unique_ptr<T>` | `reloco::unique_ptr<T>` | Allocator-backed, fallible single-object ownership |
@@ -167,10 +169,10 @@ paths with an `unsafe_*` prefix so security-sensitive call sites remain
 visible in review.
 
 Every `unsafe_*` method across the library (`array`, `span`, `string_view`,
-`string`, `vector`, `flat_set`, `basic_inline_string`, `optional`,
-`value_ptr`, `shared_ptr`/`unique_ptr`, and `checked_value`) is additionally
-marked `RELOCO_UNSAFE_BUFFER_USAGE` (see `reloco/lifetime.hpp`). Under
-Clang's `-Wunsafe-buffer-usage`, any unwrapped call site is a compiler
+`string`, `vector`, `inline_vector`, `flat_set`, `basic_inline_string`,
+`optional`, `value_ptr`, `shared_ptr`/`unique_ptr`, and `checked_value`) is
+additionally marked `RELOCO_UNSAFE_BUFFER_USAGE` (see `reloco/lifetime.hpp`).
+Under Clang's `-Wunsafe-buffer-usage`, any unwrapped call site is a compiler
 diagnostic — callers must wrap the call in
 `RELOCO_BEGIN_UNSAFE_BUFFER_USAGE`/`RELOCO_END_UNSAFE_BUFFER_USAGE` to
 make the opt-out explicit and greppable, not just documented in a comment:

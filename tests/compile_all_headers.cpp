@@ -22,6 +22,7 @@
 #include <reloco/function_ref.hpp>
 #include <reloco/heap_allocator.hpp>
 #include <reloco/inline_string.hpp>
+#include <reloco/inline_vector.hpp>
 #include <reloco/inplace_function.hpp>
 #include <reloco/lifetime.hpp>
 #include <reloco/optional.hpp>

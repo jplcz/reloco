@@ -7,8 +7,8 @@ SPDX-License-Identifier: BSD-2-Clause
 # Container contract: lifetime, rvalue safety, and tri-tier access
 
 Every container or view reloco ships (`array`, `span`, `string`/`string_view`,
-`vector`, `flat_set`, `basic_inline_string`, ...) satisfies three orthogonal,
-mechanically-checkable contracts:
+`vector`, `inline_vector`, `flat_set`, `basic_inline_string`, ...) satisfies
+three orthogonal, mechanically-checkable contracts:
 
 1. **Lifetime annotations** (`RELOCO_OWNER`/`RELOCO_POINTER`,
    `RELOCO_LIFETIMEBOUND`, `RELOCO_LIFETIME_CAPTURE_BY_THIS`/
@@ -76,7 +76,8 @@ template <typename T> class RELOCO_POINTER my_view {
 ```
 
 Use `RELOCO_OWNER` when the type manages the lifetime of its storage
-(`array`, `vector`, `basic_string`, `basic_inline_string`, `flat_set`).
+(`array`, `vector`, `inline_vector`, `basic_string`, `basic_inline_string`,
+`flat_set`).
 Use `RELOCO_POINTER` when the type is a non-owning handle over storage it
 does not manage (`span`, `function_ref`, `mutable_container_ref`,
 `stack_allocator_context`).

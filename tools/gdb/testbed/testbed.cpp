@@ -16,6 +16,7 @@
 #include <reloco/expected.hpp>
 #include <reloco/flat_set.hpp>
 #include <reloco/function_ref.hpp>
+#include <reloco/inline_vector.hpp>
 #include <reloco/optional.hpp>
 #include <reloco/shared_ptr.hpp>
 #include <reloco/span.hpp>
@@ -49,6 +50,12 @@ int main() {
   (void)vec_int.try_push_back(2);
   (void)vec_int.try_push_back(3);
   // GDB_CHECK: vec_int => reloco::vector of length 3, capacity 4
+
+  // -- inline_vector -------------------------------------------------------
+  reloco::inline_vector<int, 4> inline_vec_int;
+  (void)inline_vec_int.try_push_back(4);
+  (void)inline_vec_int.try_push_back(5);
+  // GDB_CHECK: inline_vec_int => reloco::inline_vector of length 2, capacity 4
 
   // -- flat_set ------------------------------------------------------------
   reloco::flat_set<int> set_int;

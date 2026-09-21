@@ -126,6 +126,28 @@ class RelocoVectorPrinter:
         return "array"
 
 
+class RelocoInlineVectorPrinter:
+    """Pretty printer for `reloco::inline_vector<T, Capacity>`."""
+
+    def __init__(self, val):
+        self.val = val
+        self.elem_type = val.type.template_argument(0)
+
+    def to_string(self):
+        size = int(self.val["size_"])
+        cap = int(self.val.type.template_argument(1))
+        return "reloco::inline_vector of length %d, capacity %d" % (size, cap)
+
+    def children(self):
+        size = int(self.val["size_"])
+        data = self.val["storage_"].address.cast(self.elem_type.pointer())
+        for i in range(size):
+            yield (str(i), data[i])
+
+    def display_hint(self):
+        return "array"
+
+
 class RelocoFlatSetPrinter:
     """Pretty printer for `reloco::flat_set<T, Compare>`."""
 
@@ -361,6 +383,7 @@ def _build_pretty_printer():
     pp.add_printer("reloco::array", r"^reloco::array<.*>$", RelocoArrayPrinter)
     pp.add_printer("reloco::span", r"^reloco::span<.*>$", RelocoSpanPrinter)
     pp.add_printer("reloco::vector", r"^reloco::vector<.*>$", RelocoVectorPrinter)
+    pp.add_printer("reloco::inline_vector", r"^reloco::inline_vector<.*>$", RelocoInlineVectorPrinter)
     pp.add_printer("reloco::flat_set", r"^reloco::flat_set<.*>$", RelocoFlatSetPrinter)
     pp.add_printer("reloco::basic_string", r"^reloco::basic_string<.*>$", RelocoStringPrinter)
     pp.add_printer("reloco::basic_string_view", r"^reloco::basic_string_view<.*>$", RelocoStringViewPrinter)

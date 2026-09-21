@@ -85,9 +85,9 @@ section of the GDB manual for details.
 
 ## Coverage
 
-Printers are registered for: `array`, `span`, `vector`, `flat_set`,
-`basic_string`/`basic_string_view`/`basic_inline_string`, `optional`,
-`expected` (including the `void` specialization), `unique_ptr`,
+Printers are registered for: `array`, `span`, `vector`, `inline_vector`,
+`flat_set`, `basic_string`/`basic_string_view`/`basic_inline_string`,
+`optional`, `expected` (including the `void` specialization), `unique_ptr`,
 `shared_ptr`/`weak_ptr` (showing `use_count`/`weak_count`), `value_ptr`,
 `value_ref`, `checked_value`, and `function_ref`.
 

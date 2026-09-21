@@ -212,6 +212,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_collection_view.cpp
         tests/test_container_ref.cpp
         tests/test_vector.cpp
+        tests/test_inline_vector.cpp
         tests/test_flat_set.cpp
         tests/test_stack_allocator.cpp
         tests/test_inline_string.cpp
