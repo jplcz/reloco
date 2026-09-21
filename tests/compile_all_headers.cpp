@@ -40,3 +40,4 @@
 
 #include <reloco/detail/assert.hpp>
 #include <reloco/detail/compat.hpp>
+#include <reloco/detail/flat_container_base.hpp>

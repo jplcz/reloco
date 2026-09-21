@@ -1,37 +1,41 @@
+// SPDX-FileCopyrightText: 2026 Jarosław Pelczar <jarek@jpelczar.com>
+//
+// SPDX-License-Identifier: BSD-2-Clause
+
 #pragma once
+
+/** @file flat_set.hpp
+ * @brief Sorted, unique-element set backed directly by `vector<T>`.
+ *
+ * `flat_set<T, Compare>` is a thin derived class of
+ * `detail::flat_container_base<vector<T>, Compare, detail::identity_key_of>`
+ * (see `detail/flat_container_base.hpp`): the base already implements
+ * `try_insert`/`contains`/`try_find`/`try_remove`/iteration/cloning against
+ * any `Storage` that looks like `vector<T>`/`inline_vector<T, Capacity>`,
+ * keyed by `identity_key_of` since a set's element *is* its own key. This
+ * file only adds the `vector<T>`-specific factory wrappers
+ * (`try_allocate`/`try_create`) and re-wraps the base's `try_clone`
+ * results back into `flat_set` itself.
+ */
+
+#include "detail/flat_container_base.hpp"
 #include "vector.hpp"
-#include <algorithm>
-#include <iterator>
 
 namespace reloco {
 
-template <typename T, typename Compare = std::less<T>> class RELOCO_OWNER flat_set {
-  vector<T> data_;
-  Compare comp_;
+template <typename T, typename Compare = std::less<T>>
+class RELOCO_OWNER flat_set : public detail::flat_container_base<vector<T>, Compare, detail::identity_key_of> {
+  using base = detail::flat_container_base<vector<T>, Compare, detail::identity_key_of>;
 
 public:
-  using value_type = typename vector<T>::value_type;
-  using allocator_type = typename vector<T>::allocator_type;
-  using size_type = typename vector<T>::size_type;
-  using difference_type = typename vector<T>::difference_type;
-  using reference = typename vector<T>::reference;
-  using const_reference = typename vector<T>::const_reference;
-  using pointer = typename vector<T>::pointer;
-  using const_pointer = typename vector<T>::const_pointer;
-  using iterator = typename vector<T>::iterator;
-  using const_iterator = typename vector<T>::const_iterator;
-
-  RELOCO_BLOCK_RVALUE_ACCESS(T);
-
-  constexpr flat_set() noexcept = default;
-
-  constexpr explicit flat_set(allocator_ref alloc) noexcept : data_(alloc) {}
+  using base::base;
+  using typename base::size_type;
 
   [[nodiscard]] static result<flat_set> try_allocate(allocator_ref alloc, size_type initial_cap = 0) noexcept {
-    auto vec_res = vector<T>::try_allocate(alloc, initial_cap);
-    if (!vec_res)
-      return unexpected(vec_res.error());
-    return flat_set(std::move(*vec_res));
+    auto res = base::try_allocate(alloc, initial_cap);
+    if (!res)
+      return unexpected(res.error());
+    return flat_set(std::move(*res));
   }
 
   [[nodiscard]] static result<flat_set> try_create(size_type initial_cap = 0) noexcept {
@@ -42,83 +46,21 @@ public:
    * @brief Performs a deep copy of the set using a specific allocator.
    */
   [[nodiscard]] result<flat_set> try_clone(allocator_ref alloc) const noexcept {
-    flat_set result(alloc);
-
-    auto cloned_data = data_.try_clone(alloc);
-    if (!cloned_data)
-      return unexpected(cloned_data.error());
-
-    result.data_ = std::move(*cloned_data);
-    return result;
-  }
-
-  [[nodiscard]] result<flat_set> try_clone() const noexcept { return try_clone(data_.get_allocator()); }
-
-  [[nodiscard]] size_type size() const noexcept { return data_.size(); }
-  [[nodiscard]] size_type capacity() const noexcept { return data_.capacity(); }
-  [[nodiscard]] bool empty() const noexcept { return data_.empty(); }
-  [[nodiscard]] allocator_ref get_allocator() const noexcept { return data_.get_allocator(); }
-
-  void clear() noexcept { data_.clear(); }
-
-  [[nodiscard]] result<std::reference_wrapper<T>> try_insert(T &&value) & noexcept RELOCO_LIFETIMEBOUND {
-    auto it = find_pos(value);
-    if (it != data_.end() && !comp_(value, *it)) {
-      return unexpected(error::already_exists);
-    }
-    const auto index = static_cast<size_type>(std::distance(data_.begin(), it));
-    return data_.try_insert_at(index, std::forward<T>(value));
-  }
-
-  template <typename Key> [[nodiscard]] bool contains(const Key &value) const noexcept {
-    auto it = find_pos(value);
-    return it != data_.end() && !comp_(value, *it);
-  }
-
-  template <typename Key>
-  [[nodiscard]] result<std::reference_wrapper<const T>>
-  try_find(const Key &value) const & noexcept RELOCO_LIFETIMEBOUND {
-    auto it = find_pos(value);
-    if (it != data_.end() && !comp_(value, *it)) {
-      return std::cref(*it);
-    }
-    return unexpected(error::not_found);
-  }
-
-  template <typename Key> [[nodiscard]] result<void> try_remove(const Key &value) & noexcept {
-    auto it = find_pos(value);
-    if (it == data_.end() || comp_(value, *it)) {
-      return unexpected(error::not_found);
-    }
-    const auto index = static_cast<size_type>(std::distance(data_.begin(), it));
-    auto res = data_.try_erase_at(index);
-    if (!res) {
+    auto res = base::try_clone(alloc);
+    if (!res)
       return unexpected(res.error());
-    }
-    return {};
+    return flat_set(std::move(*res));
   }
 
-  [[nodiscard]] const_iterator begin() const & noexcept RELOCO_LIFETIMEBOUND { return data_.begin(); }
-  [[nodiscard]] const_iterator end() const & noexcept RELOCO_LIFETIMEBOUND { return data_.end(); }
-  [[nodiscard]] const_iterator cbegin() const & noexcept RELOCO_LIFETIMEBOUND { return data_.cbegin(); }
-  [[nodiscard]] const_iterator cend() const & noexcept RELOCO_LIFETIMEBOUND { return data_.cend(); }
-
-  template <typename Fn> void for_each(Fn &&fn) const {
-    for (size_type i = 0; i < data_.size(); ++i) {
-      fn(data_[i]);
-    }
+  [[nodiscard]] result<flat_set> try_clone() const noexcept {
+    auto res = base::try_clone();
+    if (!res)
+      return unexpected(res.error());
+    return flat_set(std::move(*res));
   }
 
 private:
-  template <typename Key> auto find_pos(const Key &value) const noexcept {
-    return std::lower_bound(data_.begin(), data_.end(), value, comp_);
-  }
-
-  template <typename Key> auto find_pos(const Key &value) noexcept {
-    return std::lower_bound(data_.begin(), data_.end(), value, comp_);
-  }
-
-  flat_set(vector<T> &&vec) noexcept : data_(std::move(vec)) {}
+  explicit flat_set(base &&b) noexcept : base(std::move(b)) {}
 };
 
 /**
