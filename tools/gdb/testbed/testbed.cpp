@@ -14,8 +14,11 @@
 #include <reloco/array.hpp>
 #include <reloco/checked_value.hpp>
 #include <reloco/expected.hpp>
+#include <reloco/flat_map.hpp>
 #include <reloco/flat_set.hpp>
 #include <reloco/function_ref.hpp>
+#include <reloco/inline_flat_map.hpp>
+#include <reloco/inline_flat_set.hpp>
 #include <reloco/inline_vector.hpp>
 #include <reloco/optional.hpp>
 #include <reloco/shared_ptr.hpp>
@@ -63,6 +66,23 @@ int main() {
   (void)set_int.try_insert(1);
   (void)set_int.try_insert(2);
   // GDB_CHECK: set_int => reloco::flat_set of length 3
+
+  // -- flat_map ------------------------------------------------------------
+  reloco::flat_map<int, int> map_int;
+  (void)map_int.try_insert(2, 20);
+  (void)map_int.try_insert(1, 10);
+  // GDB_CHECK: map_int => reloco::flat_map of length 2
+
+  // -- inline_flat_set -------------------------------------------------------
+  reloco::inline_flat_set<int, 4> inline_set_int;
+  (void)inline_set_int.try_insert(6);
+  (void)inline_set_int.try_insert(5);
+  // GDB_CHECK: inline_set_int => reloco::inline_flat_set of length 2, capacity 4
+
+  // -- inline_flat_map -------------------------------------------------------
+  reloco::inline_flat_map<int, int, 4> inline_map_int;
+  (void)inline_map_int.try_insert(7, 70);
+  // GDB_CHECK: inline_map_int => reloco::inline_flat_map of length 1, capacity 4
 
   // -- basic_string / basic_string_view ------------------------------------
   auto str_hello_res = reloco::string::try_create(reloco::string_view("hello"));

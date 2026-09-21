@@ -169,6 +169,79 @@ class RelocoFlatSetPrinter:
         return "array"
 
 
+class RelocoFlatMapPrinter:
+    """Pretty printer for `reloco::flat_map<Key, Mapped, Compare>`."""
+
+    def __init__(self, val):
+        self.val = val
+
+    def to_string(self):
+        size = int(self.val["data_"]["size_"])
+        return "reloco::flat_map of length %d" % size
+
+    def children(self):
+        vec = self.val["data_"]
+        size = int(vec["size_"])
+        data = vec["data_"]
+        for i in range(size):
+            entry = data[i]
+            yield ("key%d" % i, entry["first"])
+            yield ("value%d" % i, entry["second"])
+
+    def display_hint(self):
+        return "map"
+
+
+class RelocoInlineFlatSetPrinter:
+    """Pretty printer for `reloco::inline_flat_set<T, Capacity, Compare>`."""
+
+    def __init__(self, val):
+        self.val = val
+
+    def to_string(self):
+        vec = self.val["data_"]
+        size = int(vec["size_"])
+        cap = int(vec.type.template_argument(1))
+        return "reloco::inline_flat_set of length %d, capacity %d" % (size, cap)
+
+    def children(self):
+        vec = self.val["data_"]
+        size = int(vec["size_"])
+        elem_type = vec.type.template_argument(0)
+        data = vec["storage_"].address.cast(elem_type.pointer())
+        for i in range(size):
+            yield (str(i), data[i])
+
+    def display_hint(self):
+        return "array"
+
+
+class RelocoInlineFlatMapPrinter:
+    """Pretty printer for `reloco::inline_flat_map<Key, Mapped, Capacity, Compare>`."""
+
+    def __init__(self, val):
+        self.val = val
+
+    def to_string(self):
+        vec = self.val["data_"]
+        size = int(vec["size_"])
+        cap = int(vec.type.template_argument(1))
+        return "reloco::inline_flat_map of length %d, capacity %d" % (size, cap)
+
+    def children(self):
+        vec = self.val["data_"]
+        size = int(vec["size_"])
+        elem_type = vec.type.template_argument(0)
+        data = vec["storage_"].address.cast(elem_type.pointer())
+        for i in range(size):
+            entry = data[i]
+            yield ("key%d" % i, entry["first"])
+            yield ("value%d" % i, entry["second"])
+
+    def display_hint(self):
+        return "map"
+
+
 class RelocoStringPrinter:
     """Pretty printer for `reloco::basic_string<CharT, TraitsT>`."""
 
@@ -385,6 +458,9 @@ def _build_pretty_printer():
     pp.add_printer("reloco::vector", r"^reloco::vector<.*>$", RelocoVectorPrinter)
     pp.add_printer("reloco::inline_vector", r"^reloco::inline_vector<.*>$", RelocoInlineVectorPrinter)
     pp.add_printer("reloco::flat_set", r"^reloco::flat_set<.*>$", RelocoFlatSetPrinter)
+    pp.add_printer("reloco::flat_map", r"^reloco::flat_map<.*>$", RelocoFlatMapPrinter)
+    pp.add_printer("reloco::inline_flat_set", r"^reloco::inline_flat_set<.*>$", RelocoInlineFlatSetPrinter)
+    pp.add_printer("reloco::inline_flat_map", r"^reloco::inline_flat_map<.*>$", RelocoInlineFlatMapPrinter)
     pp.add_printer("reloco::basic_string", r"^reloco::basic_string<.*>$", RelocoStringPrinter)
     pp.add_printer("reloco::basic_string_view", r"^reloco::basic_string_view<.*>$", RelocoStringViewPrinter)
     pp.add_printer("reloco::basic_inline_string", r"^reloco::basic_inline_string<.*>$", RelocoInlineStringPrinter)
