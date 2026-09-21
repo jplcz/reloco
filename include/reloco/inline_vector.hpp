@@ -11,8 +11,9 @@
  * `inline_vector<T, Capacity>` is `vector<T>`'s (see `vector.hpp`)
  * fixed-capacity counterpart: instead of an `allocator_ref`-backed heap
  * allocation, its elements live directly inside the object, in a raw
- * `alignas(alignof(T)) std::byte` buffer sized for exactly `Capacity`
- * elements -- the same "raw storage + placement-new" pattern
+ * `alignas(reloco::effective_alignment_v<T>) std::byte` buffer sized for
+ * exactly `Capacity` elements (see `alignment.hpp`) -- the same "raw
+ * storage + placement-new" pattern
  * `inplace_function<Signature, Capacity>` (see `inplace_function.hpp`)
  * already uses for its type-erased callable, just without the vtable. This
  * makes `inline_vector<T, Capacity>` useful wherever a bounded, small
@@ -68,6 +69,7 @@
  * `RELOCO_BEGIN_UNSAFE_BUFFER_USAGE`/`RELOCO_END_UNSAFE_BUFFER_USAGE`.
  */
 
+#include "alignment.hpp"
 #include "collection_view.hpp"
 #include "construction_helpers.hpp"
 #include "container_ref.hpp"
@@ -448,12 +450,12 @@ public:
     return std::cref(*slot(size_ - 1));
   }
 
-  [[nodiscard]] T *data() & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) T *data() & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(!empty(), "inline_vector is empty");
     return slot(0);
   }
 
-  [[nodiscard]] const T *data() const & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) const T *data() const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(!empty(), "inline_vector is empty");
     return slot(0);
   }
@@ -470,21 +472,28 @@ public:
     return slot(0);
   }
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE T *unsafe_data() & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE
+  RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) T *unsafe_data() & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(!empty(), "inline_vector has no data");
     return slot(0);
   }
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE const T *unsafe_data() const & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE
+  RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) const T *unsafe_data() const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(!empty(), "inline_vector has no data");
     return slot(0);
   }
 
   // ---- iteration ----
 
-  [[nodiscard]] iterator begin() & noexcept RELOCO_LIFETIMEBOUND { return slot(0); }
+  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) iterator begin() & noexcept RELOCO_LIFETIMEBOUND {
+    return slot(0);
+  }
   [[nodiscard]] iterator end() & noexcept RELOCO_LIFETIMEBOUND { return slot(size_); }
-  [[nodiscard]] const_iterator begin() const & noexcept RELOCO_LIFETIMEBOUND { return slot(0); }
+  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) const_iterator
+      begin() const & noexcept RELOCO_LIFETIMEBOUND {
+    return slot(0);
+  }
   [[nodiscard]] const_iterator end() const & noexcept RELOCO_LIFETIMEBOUND { return slot(size_); }
   [[nodiscard]] const_iterator cbegin() const & noexcept RELOCO_LIFETIMEBOUND { return slot(0); }
   [[nodiscard]] const_iterator cend() const & noexcept RELOCO_LIFETIMEBOUND { return slot(size_); }
@@ -520,7 +529,7 @@ private:
     other.size_ = 0;
   }
 
-  alignas(alignof(T)) std::byte storage_[sizeof(T) * Capacity];
+  alignas(effective_alignment_v<T>) std::byte storage_[sizeof(T) * Capacity];
   size_type size_ = 0;
 };
 

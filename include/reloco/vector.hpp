@@ -59,6 +59,7 @@
  * matching `allocator.hpp`/`unique_ptr.hpp`/`array.hpp`/`string.hpp`.
  */
 
+#include "alignment.hpp"
 #include "allocator.hpp"
 #include "collection_view.hpp"
 #include "construction_helpers.hpp"
@@ -228,14 +229,14 @@ public:
     }
 
     if constexpr (is_trivially_relocatable_v<T>) {
-      auto res = data_ ? alloc_.reallocate(data_, cap_ * sizeof(T), required_bytes, alignof(T))
-                       : alloc_.allocate(required_bytes, alignof(T));
+      auto res = data_ ? alloc_.reallocate(data_, cap_ * sizeof(T), required_bytes, effective_alignment_v<T>)
+                       : alloc_.allocate(required_bytes, effective_alignment_v<T>);
       if (!res)
         return unexpected(res.error());
       data_ = static_cast<T *>(res->ptr);
       cap_ = new_cap;
     } else {
-      auto res = alloc_.allocate(required_bytes, alignof(T));
+      auto res = alloc_.allocate(required_bytes, effective_alignment_v<T>);
       if (!res)
         return unexpected(res.error());
 
@@ -270,13 +271,13 @@ public:
     }
 
     if constexpr (is_trivially_relocatable_v<T>) {
-      auto res = alloc_.reallocate(data_, cap_ * sizeof(T), size_ * sizeof(T), alignof(T));
+      auto res = alloc_.reallocate(data_, cap_ * sizeof(T), size_ * sizeof(T), effective_alignment_v<T>);
       if (!res)
         return unexpected(res.error());
       data_ = static_cast<T *>(res->ptr);
       cap_ = size_;
     } else {
-      auto res = alloc_.allocate(size_ * sizeof(T), alignof(T));
+      auto res = alloc_.allocate(size_ * sizeof(T), effective_alignment_v<T>);
       if (!res)
         return unexpected(res.error());
 
@@ -521,12 +522,12 @@ public:
     return std::cref(data_[size_ - 1]);
   }
 
-  [[nodiscard]] T *data() & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) T *data() & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(!empty(), "vector is empty");
     return data_;
   }
 
-  [[nodiscard]] const T *data() const & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) const T *data() const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(!empty(), "vector is empty");
     return data_;
   }
@@ -543,21 +544,28 @@ public:
     return data_;
   }
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE T *unsafe_data() & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE
+  RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) T *unsafe_data() & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(!empty(), "vector has no data");
     return data_;
   }
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE const T *unsafe_data() const & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE
+  RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) const T *unsafe_data() const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(!empty(), "vector has no data");
     return data_;
   }
 
   // ---- iteration ----
 
-  [[nodiscard]] iterator begin() & noexcept RELOCO_LIFETIMEBOUND { return data_; }
+  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) iterator begin() & noexcept RELOCO_LIFETIMEBOUND {
+    return data_;
+  }
   [[nodiscard]] iterator end() & noexcept RELOCO_LIFETIMEBOUND { return data_ + size_; }
-  [[nodiscard]] const_iterator begin() const & noexcept RELOCO_LIFETIMEBOUND { return data_; }
+  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) const_iterator
+      begin() const & noexcept RELOCO_LIFETIMEBOUND {
+    return data_;
+  }
   [[nodiscard]] const_iterator end() const & noexcept RELOCO_LIFETIMEBOUND { return data_ + size_; }
   [[nodiscard]] const_iterator cbegin() const & noexcept RELOCO_LIFETIMEBOUND { return data_; }
   [[nodiscard]] const_iterator cend() const & noexcept RELOCO_LIFETIMEBOUND { return data_ + size_; }

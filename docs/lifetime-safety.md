@@ -155,7 +155,9 @@ to nothing. They must therefore improve diagnostics without changing program
 semantics or becoming the only enforcement of a lifetime rule.
 
 Use the stronger contract macros only when their requirements hold on every
-path. `RELOCO_ASSUME_ALIGNED` makes misaligned returns undefined behavior,
+path. `RELOCO_ASSUME_ALIGNED` makes misaligned returns undefined behavior
+(see [Over-alignment](alignment.md) for how `vector<T>`/`array<T, N>`/
+`inline_vector<T, Capacity>` use it together with `alignment_of<T>`),
 `RELOCO_MUSTTAIL` requires ABI-compatible caller and callee signatures, and
 the consumable-state macros suit one-way state transitions rather than
 resettable or idempotent objects. `RELOCO_MALLOC_PAIR` is for heap-like GCC

@@ -6,6 +6,7 @@
 
 /** @file array.hpp @brief Hardened fixed-size C++17-compatible array. */
 
+#include "alignment.hpp"
 #include "error.hpp"
 #include "expected.hpp"
 #include "lifetime.hpp"
@@ -25,7 +26,7 @@ namespace reloco {
 template <typename T, std::size_t N> struct RELOCO_OWNER array {
   static_assert(N > 0, "use the zero-size array specialization");
 
-  T data_[N];
+  alignas(effective_alignment_v<T>) T data_[N];
 
   using value_type = T;
   using size_type = std::size_t;
@@ -122,12 +123,23 @@ template <typename T, std::size_t N> struct RELOCO_OWNER array {
   [[nodiscard]] static constexpr size_type size() noexcept { return N; }
   [[nodiscard]] static constexpr bool empty() noexcept { return false; }
 
-  [[nodiscard]] constexpr T *data() & noexcept RELOCO_LIFETIMEBOUND { return data_; }
-  [[nodiscard]] constexpr const T *data() const & noexcept RELOCO_LIFETIMEBOUND { return data_; }
+  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) constexpr T *data() & noexcept RELOCO_LIFETIMEBOUND {
+    return data_;
+  }
+  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) constexpr const T *data() const & noexcept
+      RELOCO_LIFETIMEBOUND {
+    return data_;
+  }
 
-  [[nodiscard]] constexpr iterator begin() & noexcept RELOCO_LIFETIMEBOUND { return data_; }
+  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) constexpr iterator
+      begin() & noexcept RELOCO_LIFETIMEBOUND {
+    return data_;
+  }
   [[nodiscard]] constexpr iterator end() & noexcept RELOCO_LIFETIMEBOUND { return data_ + N; }
-  [[nodiscard]] constexpr const_iterator begin() const & noexcept RELOCO_LIFETIMEBOUND { return data_; }
+  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) constexpr const_iterator
+      begin() const & noexcept RELOCO_LIFETIMEBOUND {
+    return data_;
+  }
   [[nodiscard]] constexpr const_iterator end() const & noexcept RELOCO_LIFETIMEBOUND { return data_ + N; }
   [[nodiscard]] constexpr const_iterator cbegin() const & noexcept RELOCO_LIFETIMEBOUND { return data_; }
   [[nodiscard]] constexpr const_iterator cend() const & noexcept RELOCO_LIFETIMEBOUND { return data_ + N; }

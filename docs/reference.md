@@ -194,7 +194,9 @@ Non-owning view over a contiguous range of `T`, with the checked/`try_*`/
 
 Fixed-size, stack- or member-embeddable owning array. Same tri-tier element
 access as `span`, plus `as_span()` to hand out a borrowed, checked view
-without exposing the underlying storage directly.
+without exposing the underlying storage directly. Storage alignment is
+`alignment_of<T>`-controlled (see [Over-alignment](alignment.md)) for
+SIMD-friendly over-alignment.
 
 ## `basic_string_view<CharT, TraitsT>` (`string_view`, `wstring_view`)
 
@@ -367,6 +369,11 @@ checked tier); `try_at()`/`try_front()`/`try_back()` return
 just an `allocator_ref` plus a pointer and two sizes, with no
 self-reference into its own storage.
 
+Every allocation requests `alignment_of<T>`-controlled alignment (see
+[Over-alignment](alignment.md)) rather than plain `alignof(T)`, and
+`data()`/`unsafe_data()`/`begin()` carry a matching `RELOCO_ASSUME_ALIGNED`
+hint for the optimizer.
+
 ## `inline_vector<T, Capacity>`
 
 `include/reloco/inline_vector.hpp`
@@ -374,8 +381,9 @@ self-reference into its own storage.
 Move-only, fixed-capacity, allocator-free growable array — `vector<T>`'s
 counterpart for when the maximum element count is known at compile time
 and heap allocation must be avoided entirely. Elements live directly
-inside the object, in a raw `alignas(alignof(T)) std::byte` buffer sized
-for exactly `Capacity` elements; unlike `array<T, N>`, `T` need not be
+inside the object, in a raw `alignas(reloco::effective_alignment_v<T>)
+std::byte` buffer sized for exactly `Capacity` elements (see
+[Over-alignment](alignment.md)); unlike `array<T, N>`, `T` need not be
 default-constructible, and `size()` is tracked independently of
 `capacity()`. `Capacity` must be greater than zero — there is no
 zero-capacity specialization.
@@ -977,6 +985,20 @@ without running a move constructor or destructor at either address. See
 [Trivial relocation](relocatable.md) for the full explanation and the
 built-in specializations (`unique_ptr<T>`, `basic_string<CharT, TraitsT>`,
 `checked_value<T>`/`checked_value<T *>`).
+
+## `alignment_of<T>`
+
+`include/reloco/alignment.hpp`
+
+Customization-point trait controlling the allocation/storage alignment
+`vector<T>`, `array<T, N>`, and `inline_vector<T, Capacity>` request for `T`,
+independent of `alignof(T)`. Defaults to `alignof(T)`; specialize it (once,
+per element type, like `is_trivially_relocatable<T>`) to request SIMD-width
+over-alignment (e.g. 32 bytes for AVX) without redeclaring `T` itself with
+`alignas(...)`. `effective_alignment_v<T>` is `std::max(alignof(T),
+alignment_of_v<T>)` -- the value containers actually use -- and never lets a
+specialization weaken alignment below `alignof(T)`. See
+[Over-alignment](alignment.md).
 
 ## Lifetime and safety annotation macros
 
