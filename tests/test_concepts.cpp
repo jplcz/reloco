@@ -11,8 +11,6 @@
 
 namespace {
 
-
-
 struct plain_widget {};
 
 struct creatable_widget {
@@ -26,8 +24,7 @@ struct creatable_widget {
 
 struct allocating_widget {
   int value;
-  static reloco::result<allocating_widget> try_allocate(reloco::allocator_ref,
-                                                                        int v) noexcept {
+  static reloco::result<allocating_widget> try_allocate(reloco::allocator_ref, int v) noexcept {
     if (v < 0)
       return reloco::unexpected(reloco::error::invalid_argument);
     return allocating_widget{v};
@@ -46,8 +43,7 @@ struct constructible_widget {
 
 struct allocator_aware_clonable_widget {
   int value;
-  reloco::result<allocator_aware_clonable_widget>
-  try_clone(reloco::allocator_ref) const noexcept {
+  reloco::result<allocator_aware_clonable_widget> try_clone(reloco::allocator_ref) const noexcept {
     return allocator_aware_clonable_widget{value};
   }
 };
@@ -62,7 +58,7 @@ struct self_contained_clonable_widget {
 struct clonable_at_widget {
   int value;
   static reloco::result<void> try_clone_at(reloco::allocator_ref, clonable_at_widget *storage,
-                                                           const clonable_at_widget &source) noexcept {
+                                           const clonable_at_widget &source) noexcept {
     new (storage) clonable_at_widget{source.value};
     return {};
   }

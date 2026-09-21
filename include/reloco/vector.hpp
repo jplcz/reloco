@@ -408,8 +408,8 @@ public:
    * unmodified.
    */
   template <typename... Args>
-  [[nodiscard]] result<std::reference_wrapper<T>> try_insert_at(size_type index, Args &&...args) & noexcept
-      RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] result<std::reference_wrapper<T>> try_insert_at(size_type index,
+                                                                Args &&...args) & noexcept RELOCO_LIFETIMEBOUND {
     if (index > size_)
       return unexpected(error::out_of_bounds);
 
@@ -451,8 +451,7 @@ public:
     return std::ref(data_[index]);
   }
 
-  [[nodiscard]] result<std::reference_wrapper<const T>> try_at(size_type index) const & noexcept
-      RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] result<std::reference_wrapper<const T>> try_at(size_type index) const & noexcept RELOCO_LIFETIMEBOUND {
     if (index >= size_)
       return unexpected(error::out_of_bounds);
     return std::cref(data_[index]);
@@ -473,8 +472,7 @@ public:
     return data_[index];
   }
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE const T &unsafe_at(size_type index) const & noexcept
-      RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE const T &unsafe_at(size_type index) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(index < size_, "vector index out of bounds");
     return data_[index];
   }

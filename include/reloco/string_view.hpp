@@ -37,8 +37,7 @@ public:
   constexpr basic_string_view() noexcept = default;
   constexpr basic_string_view(const basic_string_view &) noexcept = default;
   constexpr basic_string_view &operator=(const basic_string_view &) noexcept = default;
-  constexpr basic_string_view(base rhs RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
-      : view_(rhs) {}
+  constexpr basic_string_view(base rhs RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept : view_(rhs) {}
 
   template <typename Allocator>
   constexpr basic_string_view(const std::basic_string<CharT, TraitsT, Allocator> &rhs RELOCO_LIFETIMEBOUND
@@ -68,15 +67,13 @@ public:
     return view_[pos];
   }
 
-  [[nodiscard]] result<std::reference_wrapper<const CharT>>
-  try_front() const noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] result<std::reference_wrapper<const CharT>> try_front() const noexcept RELOCO_LIFETIMEBOUND {
     if (empty())
       return unexpected(error::container_empty);
     return std::cref(view_.front());
   }
 
-  [[nodiscard]] result<std::reference_wrapper<const CharT>>
-  try_back() const noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] result<std::reference_wrapper<const CharT>> try_back() const noexcept RELOCO_LIFETIMEBOUND {
     if (empty())
       return unexpected(error::container_empty);
     return std::cref(view_.back());
@@ -92,7 +89,8 @@ public:
     return view_.back();
   }
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr const_reference unsafe_front() const noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr const_reference
+  unsafe_front() const noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(!empty(), "front() called on empty string_view");
     return view_.front();
   }
@@ -114,15 +112,14 @@ public:
     return basic_string_view(view_.substr(pos, count));
   }
 
-  [[nodiscard]] result<std::reference_wrapper<const CharT>>
-  try_at(size_type pos) const noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] result<std::reference_wrapper<const CharT>> try_at(size_type pos) const noexcept RELOCO_LIFETIMEBOUND {
     if (pos >= size())
       return unexpected(error::out_of_bounds);
     return std::cref(view_[pos]);
   }
 
-  [[nodiscard]] result<basic_string_view>
-  try_substr(size_type pos, size_type count = npos) const noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] result<basic_string_view> try_substr(size_type pos,
+                                                     size_type count = npos) const noexcept RELOCO_LIFETIMEBOUND {
     if (pos > size())
       return unexpected(error::out_of_bounds);
     return basic_string_view(view_.substr(pos, count));
@@ -136,7 +133,9 @@ public:
     return view_.data();
   }
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr const_pointer unsafe_data() const noexcept RELOCO_LIFETIMEBOUND { return view_.data(); }
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr const_pointer unsafe_data() const noexcept RELOCO_LIFETIMEBOUND {
+    return view_.data();
+  }
 
   [[nodiscard]] constexpr base to_std() const noexcept RELOCO_LIFETIMEBOUND { return view_; }
   [[nodiscard]] constexpr operator base() const noexcept RELOCO_LIFETIMEBOUND { return view_; }
@@ -199,9 +198,7 @@ public:
   [[nodiscard]] constexpr const_iterator end() const noexcept RELOCO_LIFETIMEBOUND { return view_.end(); }
   [[nodiscard]] constexpr const_iterator cbegin() const noexcept RELOCO_LIFETIMEBOUND { return view_.cbegin(); }
   [[nodiscard]] constexpr const_iterator cend() const noexcept RELOCO_LIFETIMEBOUND { return view_.cend(); }
-  [[nodiscard]] constexpr const_reverse_iterator rbegin() const noexcept RELOCO_LIFETIMEBOUND {
-    return view_.rbegin();
-  }
+  [[nodiscard]] constexpr const_reverse_iterator rbegin() const noexcept RELOCO_LIFETIMEBOUND { return view_.rbegin(); }
   [[nodiscard]] constexpr const_reverse_iterator rend() const noexcept RELOCO_LIFETIMEBOUND { return view_.rend(); }
   [[nodiscard]] constexpr const_reverse_iterator crbegin() const noexcept RELOCO_LIFETIMEBOUND {
     return view_.crbegin();

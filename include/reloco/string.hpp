@@ -588,7 +588,8 @@ using wstring = basic_string<wchar_t>;
  * a pointer to the `basic_string` object. True regardless of `CharT`/
  * `TraitsT`.
  */
-template <typename CharT, typename TraitsT> struct is_trivially_relocatable<basic_string<CharT, TraitsT>> : std::true_type {};
+template <typename CharT, typename TraitsT>
+struct is_trivially_relocatable<basic_string<CharT, TraitsT>> : std::true_type {};
 
 } // namespace reloco
 

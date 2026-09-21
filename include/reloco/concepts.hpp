@@ -36,41 +36,37 @@ namespace detail {
 
 // Detects a `reloco::result<T>` (`expected<T, error>`) returned by an
 // operation, including the `result<void>` specialization (T == void).
-template <typename T, typename Actual>
-inline constexpr bool is_result_of_v = std::is_same_v<Actual, result<T>>;
+template <typename T, typename Actual> inline constexpr bool is_result_of_v = std::is_same_v<Actual, result<T>>;
 
-template <typename Void, typename T, typename... Args>
-struct has_try_create_impl : std::false_type {};
+template <typename Void, typename T, typename... Args> struct has_try_create_impl : std::false_type {};
 
 template <typename T, typename... Args>
 struct has_try_create_impl<std::void_t<decltype(T::try_create(std::declval<Args>()...))>, T, Args...>
     : std::bool_constant<is_result_of_v<T, decltype(T::try_create(std::declval<Args>()...))>> {};
 
-template <typename Void, typename T, typename... Args>
-struct has_try_allocate_impl : std::false_type {};
+template <typename Void, typename T, typename... Args> struct has_try_allocate_impl : std::false_type {};
 
 template <typename T, typename... Args>
 struct has_try_allocate_impl<
     std::void_t<decltype(T::try_allocate(std::declval<allocator_ref>(), std::declval<Args>()...))>, T, Args...>
-    : std::bool_constant<is_result_of_v<
-          T, decltype(T::try_allocate(std::declval<allocator_ref>(), std::declval<Args>()...))>> {};
+    : std::bool_constant<
+          is_result_of_v<T, decltype(T::try_allocate(std::declval<allocator_ref>(), std::declval<Args>()...))>> {};
 
-template <typename Void, typename T, typename... Args>
-struct has_try_construct_impl : std::false_type {};
+template <typename Void, typename T, typename... Args> struct has_try_construct_impl : std::false_type {};
 
 template <typename T, typename... Args>
-struct has_try_construct_impl<
-    std::void_t<decltype(std::declval<T *>()->try_construct(std::declval<Args>()...))>, T, Args...>
-    : std::bool_constant<is_result_of_v<
-          void, decltype(std::declval<T *>()->try_construct(std::declval<Args>()...))>> {};
+struct has_try_construct_impl<std::void_t<decltype(std::declval<T *>()->try_construct(std::declval<Args>()...))>, T,
+                              Args...>
+    : std::bool_constant<is_result_of_v<void, decltype(std::declval<T *>()->try_construct(std::declval<Args>()...))>> {
+};
 
 template <typename T, typename = void> struct has_try_clone_allocator_aware_impl : std::false_type {};
 
 template <typename T>
 struct has_try_clone_allocator_aware_impl<
     T, std::void_t<decltype(std::declval<const T &>().try_clone(std::declval<allocator_ref>()))>>
-    : std::bool_constant<is_result_of_v<
-          T, decltype(std::declval<const T &>().try_clone(std::declval<allocator_ref>()))>> {};
+    : std::bool_constant<
+          is_result_of_v<T, decltype(std::declval<const T &>().try_clone(std::declval<allocator_ref>()))>> {};
 
 template <typename T, typename = void> struct has_try_clone_self_contained_impl : std::false_type {};
 
@@ -81,12 +77,11 @@ struct has_try_clone_self_contained_impl<T, std::void_t<decltype(std::declval<co
 template <typename T, typename = void> struct has_try_clone_at_impl : std::false_type {};
 
 template <typename T>
-struct has_try_clone_at_impl<
-    T, std::void_t<decltype(T::try_clone_at(std::declval<allocator_ref>(), std::declval<T *>(),
-                                            std::declval<const T &>()))>>
-    : std::bool_constant<is_result_of_v<
-          void, decltype(T::try_clone_at(std::declval<allocator_ref>(), std::declval<T *>(),
-                                          std::declval<const T &>()))>> {};
+struct has_try_clone_at_impl<T, std::void_t<decltype(T::try_clone_at(std::declval<allocator_ref>(), std::declval<T *>(),
+                                                                     std::declval<const T &>()))>>
+    : std::bool_constant<
+          is_result_of_v<void, decltype(T::try_clone_at(std::declval<allocator_ref>(), std::declval<T *>(),
+                                                        std::declval<const T &>()))>> {};
 
 } // namespace detail
 

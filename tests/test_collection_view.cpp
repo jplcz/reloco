@@ -17,12 +17,12 @@ using reloco::mutable_collection_view;
 
 namespace {
 
-template <typename Container, typename = void>
-struct can_bind_mutable_view : std::false_type {};
+template <typename Container, typename = void> struct can_bind_mutable_view : std::false_type {};
 
 template <typename Container>
-struct can_bind_mutable_view<Container, std::void_t<decltype(mutable_collection_view<int>(
-                                             std::declval<Container &>()))>> : std::true_type {};
+struct can_bind_mutable_view<Container,
+                             std::void_t<decltype(mutable_collection_view<int>(std::declval<Container &>()))>>
+    : std::true_type {};
 
 } // namespace
 
@@ -130,8 +130,7 @@ TEST(CollectionViewTest, MutableViewOverRelocoArrayMutatesThroughData) {
 
   auto data_result = mcv.try_data();
   ASSERT_TRUE(data_result.has_value());
-  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
-  (*data_result)[0] = 7;
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE(*data_result)[0] = 7;
   RELOCO_END_UNSAFE_BUFFER_USAGE
   EXPECT_EQ(a[0], 7);
 }

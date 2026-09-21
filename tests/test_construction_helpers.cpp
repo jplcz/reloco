@@ -13,8 +13,6 @@ namespace {
 
 using reloco::construction_helpers;
 
-
-
 reloco::allocator_ref heap() { return reloco::allocator<reloco::heap_allocator_tag>::ref(); }
 
 // Tier 1: has_try_construct_v.
@@ -31,8 +29,7 @@ struct constructible_widget {
 // Tier 2: has_try_allocate_v.
 struct allocating_widget {
   int value;
-  static reloco::result<allocating_widget> try_allocate(reloco::allocator_ref,
-                                                                        int v) noexcept {
+  static reloco::result<allocating_widget> try_allocate(reloco::allocator_ref, int v) noexcept {
     if (v < 0)
       return reloco::unexpected(reloco::error::invalid_argument);
     return allocating_widget{v};
@@ -58,8 +55,7 @@ struct plain_widget {
 // try_clone tier 1: allocator-aware.
 struct allocator_aware_clonable_widget {
   int value;
-  reloco::result<allocator_aware_clonable_widget>
-  try_clone(reloco::allocator_ref) const noexcept {
+  reloco::result<allocator_aware_clonable_widget> try_clone(reloco::allocator_ref) const noexcept {
     return allocator_aware_clonable_widget{value};
   }
 };
@@ -75,9 +71,8 @@ struct self_contained_clonable_widget {
 // try_clone_at tier 1: direct in-place clone.
 struct clonable_at_widget {
   int value;
-  static reloco::result<void>
-  try_clone_at(reloco::allocator_ref, clonable_at_widget *storage,
-              const clonable_at_widget &source) noexcept {
+  static reloco::result<void> try_clone_at(reloco::allocator_ref, clonable_at_widget *storage,
+                                           const clonable_at_widget &source) noexcept {
     new (storage) clonable_at_widget{source.value};
     return {};
   }

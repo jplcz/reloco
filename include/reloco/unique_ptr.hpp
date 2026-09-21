@@ -101,9 +101,7 @@ public:
   unique_ptr(const unique_ptr &) = delete;
   unique_ptr &operator=(const unique_ptr &) = delete;
 
-  constexpr unique_ptr(unique_ptr &&other) noexcept : ptr_(other.ptr_), alloc_(other.alloc_) {
-    other.ptr_ = nullptr;
-  }
+  constexpr unique_ptr(unique_ptr &&other) noexcept : ptr_(other.ptr_), alloc_(other.alloc_) { other.ptr_ = nullptr; }
 
   unique_ptr &operator=(unique_ptr &&other) noexcept {
     if (this != &other) {

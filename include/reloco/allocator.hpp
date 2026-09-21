@@ -80,78 +80,65 @@ template <typename Tag> struct allocator_traits;
 
 namespace detail {
 
-template <typename Tag, typename = void>
-struct has_allocator_expand_in_place : std::false_type {};
+template <typename Tag, typename = void> struct has_allocator_expand_in_place : std::false_type {};
 
 template <typename Tag>
 struct has_allocator_expand_in_place<
     Tag, std::void_t<decltype(allocator_traits<Tag>::expand_in_place(
-             std::declval<value_ref<typename allocator_traits<Tag>::context_type>>(),
-             std::declval<void *>(), std::declval<std::size_t>(), std::declval<std::size_t>()))>>
+             std::declval<value_ref<typename allocator_traits<Tag>::context_type>>(), std::declval<void *>(),
+             std::declval<std::size_t>(), std::declval<std::size_t>()))>>
     : std::is_same<decltype(allocator_traits<Tag>::expand_in_place(
-                       std::declval<value_ref<typename allocator_traits<Tag>::context_type>>(),
-                       std::declval<void *>(), std::declval<std::size_t>(),
-                       std::declval<std::size_t>())),
+                       std::declval<value_ref<typename allocator_traits<Tag>::context_type>>(), std::declval<void *>(),
+                       std::declval<std::size_t>(), std::declval<std::size_t>())),
                    result<std::size_t>> {};
 
-template <typename Tag, typename = void>
-struct has_stateless_allocator_expand_in_place : std::false_type {};
+template <typename Tag, typename = void> struct has_stateless_allocator_expand_in_place : std::false_type {};
 
 template <typename Tag>
 struct has_stateless_allocator_expand_in_place<
     Tag, std::void_t<decltype(allocator_traits<Tag>::expand_in_place(
              std::declval<void *>(), std::declval<std::size_t>(), std::declval<std::size_t>()))>>
-    : std::is_same<decltype(allocator_traits<Tag>::expand_in_place(
-                       std::declval<void *>(), std::declval<std::size_t>(),
-                       std::declval<std::size_t>())),
+    : std::is_same<decltype(allocator_traits<Tag>::expand_in_place(std::declval<void *>(), std::declval<std::size_t>(),
+                                                                   std::declval<std::size_t>())),
                    result<std::size_t>> {};
 
-template <typename Tag, typename = void>
-struct has_allocator_reallocate : std::false_type {};
+template <typename Tag, typename = void> struct has_allocator_reallocate : std::false_type {};
 
 template <typename Tag>
 struct has_allocator_reallocate<
     Tag, std::void_t<decltype(allocator_traits<Tag>::reallocate(
-             std::declval<value_ref<typename allocator_traits<Tag>::context_type>>(),
-             std::declval<void *>(), std::declval<std::size_t>(), std::declval<std::size_t>(),
-             std::declval<std::size_t>()))>>
+             std::declval<value_ref<typename allocator_traits<Tag>::context_type>>(), std::declval<void *>(),
+             std::declval<std::size_t>(), std::declval<std::size_t>(), std::declval<std::size_t>()))>>
     : std::is_same<decltype(allocator_traits<Tag>::reallocate(
-                       std::declval<value_ref<typename allocator_traits<Tag>::context_type>>(),
-                       std::declval<void *>(), std::declval<std::size_t>(),
-                       std::declval<std::size_t>(), std::declval<std::size_t>())),
+                       std::declval<value_ref<typename allocator_traits<Tag>::context_type>>(), std::declval<void *>(),
+                       std::declval<std::size_t>(), std::declval<std::size_t>(), std::declval<std::size_t>())),
                    result<mem_block>> {};
 
-template <typename Tag, typename = void>
-struct has_stateless_allocator_reallocate : std::false_type {};
+template <typename Tag, typename = void> struct has_stateless_allocator_reallocate : std::false_type {};
 
 template <typename Tag>
-struct has_stateless_allocator_reallocate<
-    Tag, std::void_t<decltype(allocator_traits<Tag>::reallocate(
-             std::declval<void *>(), std::declval<std::size_t>(), std::declval<std::size_t>(),
-             std::declval<std::size_t>()))>>
-    : std::is_same<decltype(allocator_traits<Tag>::reallocate(
-                       std::declval<void *>(), std::declval<std::size_t>(),
-                       std::declval<std::size_t>(), std::declval<std::size_t>())),
+struct has_stateless_allocator_reallocate<Tag, std::void_t<decltype(allocator_traits<Tag>::reallocate(
+                                                   std::declval<void *>(), std::declval<std::size_t>(),
+                                                   std::declval<std::size_t>(), std::declval<std::size_t>()))>>
+    : std::is_same<decltype(allocator_traits<Tag>::reallocate(std::declval<void *>(), std::declval<std::size_t>(),
+                                                              std::declval<std::size_t>(),
+                                                              std::declval<std::size_t>())),
                    result<mem_block>> {};
 
-template <typename Tag, typename = void>
-struct has_allocator_advise : std::false_type {};
+template <typename Tag, typename = void> struct has_allocator_advise : std::false_type {};
 
 template <typename Tag>
-struct has_allocator_advise<
-    Tag, std::void_t<decltype(allocator_traits<Tag>::advise(
-             std::declval<value_ref<typename allocator_traits<Tag>::context_type>>(),
-             std::declval<void *>(), std::declval<std::size_t>(), std::declval<usage_hint>()))>>
+struct has_allocator_advise<Tag, std::void_t<decltype(allocator_traits<Tag>::advise(
+                                     std::declval<value_ref<typename allocator_traits<Tag>::context_type>>(),
+                                     std::declval<void *>(), std::declval<std::size_t>(), std::declval<usage_hint>()))>>
     : std::true_type {};
 
-template <typename Tag, typename = void>
-struct has_stateless_allocator_advise : std::false_type {};
+template <typename Tag, typename = void> struct has_stateless_allocator_advise : std::false_type {};
 
 template <typename Tag>
 struct has_stateless_allocator_advise<
-    Tag, std::void_t<decltype(allocator_traits<Tag>::advise(
-             std::declval<void *>(), std::declval<std::size_t>(), std::declval<usage_hint>()))>>
-    : std::true_type {};
+    Tag, std::void_t<decltype(allocator_traits<Tag>::advise(std::declval<void *>(), std::declval<std::size_t>(),
+                                                            std::declval<usage_hint>()))>> : std::true_type {};
 
 } // namespace detail
 
@@ -165,12 +152,10 @@ struct has_stateless_allocator_advise<
 class RELOCO_POINTER allocator_ref {
 public:
   struct vtable {
-    result<mem_block> (*allocate)(void *ctx, std::size_t bytes,
-                                        std::size_t alignment) noexcept;
-    result<std::size_t> (*expand_in_place)(void *ctx, void *ptr, std::size_t old_size,
-                                                 std::size_t new_size) noexcept;
-    result<mem_block> (*reallocate)(void *ctx, void *ptr, std::size_t old_size,
-                                          std::size_t new_size, std::size_t alignment) noexcept;
+    result<mem_block> (*allocate)(void *ctx, std::size_t bytes, std::size_t alignment) noexcept;
+    result<std::size_t> (*expand_in_place)(void *ctx, void *ptr, std::size_t old_size, std::size_t new_size) noexcept;
+    result<mem_block> (*reallocate)(void *ctx, void *ptr, std::size_t old_size, std::size_t new_size,
+                                    std::size_t alignment) noexcept;
     void (*deallocate)(void *ctx, void *ptr, std::size_t bytes) noexcept;
     void (*advise)(void *ctx, void *ptr, std::size_t bytes, usage_hint hint) noexcept;
   };
@@ -198,12 +183,10 @@ public:
             std::enable_if_t<!std::is_void_v<typename Traits::context_type> &&
                                  std::is_convertible_v<Context *, typename Traits::context_type *>,
                              int> = 0>
-  constexpr allocator_ref(Tag, Context &ctx RELOCO_LIFETIMEBOUND
-                                    RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
+  constexpr allocator_ref(Tag, Context &ctx RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
       : ctx_(&ctx), vtbl_(&s_vtbl<Tag>) {}
 
-  template <typename Tag, typename Context,
-            std::enable_if_t<!std::is_lvalue_reference_v<Context>, int> = 0>
+  template <typename Tag, typename Context, std::enable_if_t<!std::is_lvalue_reference_v<Context>, int> = 0>
   constexpr allocator_ref(Tag, Context &&) = delete;
 
   /**
@@ -216,8 +199,8 @@ public:
    * `RELOCO_BEGIN_UNSAFE_BUFFER_USAGE`/`RELOCO_END_UNSAFE_BUFFER_USAGE`,
    * making the opt-in to raw memory management explicit and greppable.
    */
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE result<mem_block>
-  allocate(std::size_t bytes, std::size_t alignment) const noexcept {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE result<mem_block> allocate(std::size_t bytes,
+                                                                      std::size_t alignment) const noexcept {
     if (!vtbl_)
       return unexpected(error::unsupported_operation);
     return vtbl_->allocate(ctx_.get(), bytes, alignment);
@@ -235,16 +218,14 @@ public:
   /**
    * @brief Reports whether the bound backend supports in-place growth.
    */
-  [[nodiscard]] constexpr bool can_expand_in_place() const noexcept {
-    return vtbl_ && vtbl_->expand_in_place;
-  }
+  [[nodiscard]] constexpr bool can_expand_in_place() const noexcept { return vtbl_ && vtbl_->expand_in_place; }
 
   /**
    * @brief Attempts to grow a block in place, without moving it.
    * See @ref allocate for why this is `RELOCO_UNSAFE_BUFFER_USAGE`.
    */
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE result<std::size_t>
-  expand_in_place(void *ptr, std::size_t old_size, std::size_t new_size) const noexcept {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE result<std::size_t> expand_in_place(void *ptr, std::size_t old_size,
+                                                                               std::size_t new_size) const noexcept {
     if (!can_expand_in_place())
       return unexpected(error::unsupported_operation);
     return vtbl_->expand_in_place(ctx_.get(), ptr, old_size, new_size);
@@ -253,17 +234,14 @@ public:
   /**
    * @brief Reports whether the bound backend supports reallocation.
    */
-  [[nodiscard]] constexpr bool can_reallocate() const noexcept {
-    return vtbl_ && vtbl_->reallocate;
-  }
+  [[nodiscard]] constexpr bool can_reallocate() const noexcept { return vtbl_ && vtbl_->reallocate; }
 
   /**
    * @brief Resizes a block, possibly moving it.
    * See @ref allocate for why this is `RELOCO_UNSAFE_BUFFER_USAGE`.
    */
   [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE result<mem_block>
-  reallocate(void *ptr, std::size_t old_size, std::size_t new_size,
-            std::size_t alignment) const noexcept {
+  reallocate(void *ptr, std::size_t old_size, std::size_t new_size, std::size_t alignment) const noexcept {
     if (!can_reallocate())
       return unexpected(error::unsupported_operation);
     return vtbl_->reallocate(ctx_.get(), ptr, old_size, new_size, alignment);
@@ -278,8 +256,7 @@ public:
    * @brief Hints at the intended access pattern for a block.
    * See @ref allocate for why this is `RELOCO_UNSAFE_BUFFER_USAGE`.
    */
-  RELOCO_UNSAFE_BUFFER_USAGE void advise(void *ptr, std::size_t bytes,
-                                        usage_hint hint) const noexcept {
+  RELOCO_UNSAFE_BUFFER_USAGE void advise(void *ptr, std::size_t bytes, usage_hint hint) const noexcept {
     if (can_advise())
       vtbl_->advise(ctx_.get(), ptr, bytes, hint);
   }
@@ -288,8 +265,7 @@ public:
 
 private:
   template <typename Tag>
-  static result<mem_block> allocate_entry(void *ctx, std::size_t bytes,
-                                                std::size_t alignment) noexcept {
+  static result<mem_block> allocate_entry(void *ctx, std::size_t bytes, std::size_t alignment) noexcept {
     using context_type = typename allocator_traits<Tag>::context_type;
     if constexpr (std::is_void_v<context_type>) {
       (void)ctx;
@@ -300,8 +276,7 @@ private:
     }
   }
 
-  template <typename Tag>
-  static void deallocate_entry(void *ctx, void *ptr, std::size_t bytes) noexcept {
+  template <typename Tag> static void deallocate_entry(void *ctx, void *ptr, std::size_t bytes) noexcept {
     using context_type = typename allocator_traits<Tag>::context_type;
     if constexpr (std::is_void_v<context_type>) {
       (void)ctx;
@@ -312,8 +287,7 @@ private:
     }
   }
 
-  template <typename Tag>
-  [[nodiscard]] static constexpr auto expand_in_place_entry() noexcept {
+  template <typename Tag> [[nodiscard]] static constexpr auto expand_in_place_entry() noexcept {
     using context_type = typename allocator_traits<Tag>::context_type;
     if constexpr (std::is_void_v<context_type>) {
       if constexpr (detail::has_stateless_allocator_expand_in_place<Tag>::value) {
@@ -321,49 +295,41 @@ private:
           return allocator_traits<Tag>::expand_in_place(ptr, old_size, new_size);
         };
       } else {
-        return static_cast<result<std::size_t> (*)(void *, void *, std::size_t,
-                                                          std::size_t) noexcept>(nullptr);
+        return static_cast<result<std::size_t> (*)(void *, void *, std::size_t, std::size_t) noexcept>(nullptr);
       }
     } else if constexpr (detail::has_allocator_expand_in_place<Tag>::value) {
       return +[](void *ctx, void *ptr, std::size_t old_size, std::size_t new_size) noexcept {
         auto &typed = *static_cast<context_type *>(ctx);
-        return allocator_traits<Tag>::expand_in_place(value_ref<context_type>(typed), ptr,
-                                                       old_size, new_size);
+        return allocator_traits<Tag>::expand_in_place(value_ref<context_type>(typed), ptr, old_size, new_size);
       };
     } else {
-      return static_cast<result<std::size_t> (*)(void *, void *, std::size_t,
-                                                        std::size_t) noexcept>(nullptr);
+      return static_cast<result<std::size_t> (*)(void *, void *, std::size_t, std::size_t) noexcept>(nullptr);
     }
   }
 
-  template <typename Tag>
-  [[nodiscard]] static constexpr auto reallocate_entry() noexcept {
+  template <typename Tag> [[nodiscard]] static constexpr auto reallocate_entry() noexcept {
     using context_type = typename allocator_traits<Tag>::context_type;
     if constexpr (std::is_void_v<context_type>) {
       if constexpr (detail::has_stateless_allocator_reallocate<Tag>::value) {
-        return +[](void *, void *ptr, std::size_t old_size, std::size_t new_size,
-                   std::size_t alignment) noexcept {
+        return +[](void *, void *ptr, std::size_t old_size, std::size_t new_size, std::size_t alignment) noexcept {
           return allocator_traits<Tag>::reallocate(ptr, old_size, new_size, alignment);
         };
       } else {
-        return static_cast<result<mem_block> (*)(void *, void *, std::size_t, std::size_t,
-                                                        std::size_t) noexcept>(nullptr);
+        return static_cast<result<mem_block> (*)(void *, void *, std::size_t, std::size_t, std::size_t) noexcept>(
+            nullptr);
       }
     } else if constexpr (detail::has_allocator_reallocate<Tag>::value) {
-      return +[](void *ctx, void *ptr, std::size_t old_size, std::size_t new_size,
-                std::size_t alignment) noexcept {
+      return +[](void *ctx, void *ptr, std::size_t old_size, std::size_t new_size, std::size_t alignment) noexcept {
         auto &typed = *static_cast<context_type *>(ctx);
-        return allocator_traits<Tag>::reallocate(value_ref<context_type>(typed), ptr, old_size,
-                                                 new_size, alignment);
+        return allocator_traits<Tag>::reallocate(value_ref<context_type>(typed), ptr, old_size, new_size, alignment);
       };
     } else {
-      return static_cast<result<mem_block> (*)(void *, void *, std::size_t, std::size_t,
-                                                      std::size_t) noexcept>(nullptr);
+      return static_cast<result<mem_block> (*)(void *, void *, std::size_t, std::size_t, std::size_t) noexcept>(
+          nullptr);
     }
   }
 
-  template <typename Tag>
-  [[nodiscard]] static constexpr auto advise_entry() noexcept {
+  template <typename Tag> [[nodiscard]] static constexpr auto advise_entry() noexcept {
     using context_type = typename allocator_traits<Tag>::context_type;
     if constexpr (std::is_void_v<context_type>) {
       if constexpr (detail::has_stateless_allocator_advise<Tag>::value) {
@@ -384,9 +350,8 @@ private:
   }
 
   template <typename Tag>
-  static constexpr vtable s_vtbl{&allocate_entry<Tag>, expand_in_place_entry<Tag>(),
-                                 reallocate_entry<Tag>(), &deallocate_entry<Tag>,
-                                 advise_entry<Tag>()};
+  static constexpr vtable s_vtbl{&allocate_entry<Tag>, expand_in_place_entry<Tag>(), reallocate_entry<Tag>(),
+                                 &deallocate_entry<Tag>, advise_entry<Tag>()};
 
   value_ptr<void> ctx_{};
   const vtable *vtbl_{nullptr};
@@ -397,9 +362,7 @@ private:
  * value, so the context and the handle derived from it share a single
  * object's lifetime.
  */
-template <typename Tag,
-          bool Stateless = std::is_void_v<typename allocator_traits<Tag>::context_type>>
-class allocator;
+template <typename Tag, bool Stateless = std::is_void_v<typename allocator_traits<Tag>::context_type>> class allocator;
 
 template <typename Tag> class RELOCO_OWNER allocator<Tag, false> {
 public:
@@ -412,14 +375,11 @@ public:
     return value_ref<context_type>(context_);
   }
 
-  [[nodiscard]] constexpr value_ref<const context_type>
-  context() const & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] constexpr value_ref<const context_type> context() const & noexcept RELOCO_LIFETIMEBOUND {
     return value_ref<const context_type>(context_);
   }
 
-  [[nodiscard]] constexpr allocator_ref ref() & noexcept RELOCO_LIFETIMEBOUND {
-    return allocator_ref(Tag{}, context_);
-  }
+  [[nodiscard]] constexpr allocator_ref ref() & noexcept RELOCO_LIFETIMEBOUND { return allocator_ref(Tag{}, context_); }
 
   value_ref<context_type> context() && = delete;
   value_ref<const context_type> context() const && = delete;

@@ -257,8 +257,7 @@ TEST(ContainerRefTest, ConvertingConstructorIsExplicit) {
   EXPECT_TRUE((std::is_constructible_v<mutable_container_ref<int>, std::vector<int> &>));
 
   EXPECT_FALSE((std::is_convertible_v<std::map<std::string, int> &, mutable_container_ref<int, std::string>>));
-  EXPECT_TRUE(
-      (std::is_constructible_v<mutable_container_ref<int, std::string>, std::map<std::string, int> &>));
+  EXPECT_TRUE((std::is_constructible_v<mutable_container_ref<int, std::string>, std::map<std::string, int> &>));
 }
 
 TEST(ContainerRefTest, WrongElementTypeCannotBind) {

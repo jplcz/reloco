@@ -28,12 +28,9 @@ template <typename E> unexpected(E) -> unexpected<E>;
 
 struct expected_tag_t {};
 
-template <typename T, typename E>
-class [[nodiscard]] expected : expected_tag_t {
-  static_assert(std::is_nothrow_move_constructible_v<T>,
-                "T must be nothrow move constructible");
-  static_assert(std::is_nothrow_move_constructible_v<E>,
-                "E must be nothrow move constructible");
+template <typename T, typename E> class [[nodiscard]] expected : expected_tag_t {
+  static_assert(std::is_nothrow_move_constructible_v<T>, "T must be nothrow move constructible");
+  static_assert(std::is_nothrow_move_constructible_v<E>, "E must be nothrow move constructible");
 
   union {
     T m_value;
@@ -45,29 +42,22 @@ public:
   using value_type = T;
   using error_type = E;
 
-  template <
-      typename U = T,
-      std::enable_if_t<std::is_nothrow_default_constructible_v<U>, int> = 0>
+  template <typename U = T, std::enable_if_t<std::is_nothrow_default_constructible_v<U>, int> = 0>
   constexpr expected() noexcept : m_has_value(true) {
     new (&m_value) T();
   }
 
-  constexpr expected(T &&val) noexcept
-      : m_value(std::move(val)), m_has_value(true) {}
+  constexpr expected(T &&val) noexcept : m_value(std::move(val)), m_has_value(true) {}
 
-  template <typename U,
-            std::enable_if_t<std::is_constructible_v<T, U &&>, int> = 0>
+  template <typename U, std::enable_if_t<std::is_constructible_v<T, U &&>, int> = 0>
   constexpr expected(U &&val) noexcept : m_has_value(true) {
     new (&m_value) T(std::forward<U>(val));
   }
 
   template <
       typename U, typename G,
-      std::enable_if_t<std::is_nothrow_constructible_v<T, U &&> &&
-                           std::is_nothrow_constructible_v<E, G &&>,
-                       int> = 0>
-  constexpr expected(expected<U, G> &&other) noexcept
-      : m_has_value(other.has_value()) {
+      std::enable_if_t<std::is_nothrow_constructible_v<T, U &&> && std::is_nothrow_constructible_v<E, G &&>, int> = 0>
+  constexpr expected(expected<U, G> &&other) noexcept : m_has_value(other.has_value()) {
     if (m_has_value) {
       new (&m_value) T(std::move(other.value()));
     } else {
@@ -75,16 +65,13 @@ public:
     }
   }
 
-  template <typename G,
-            std::enable_if_t<std::is_constructible_v<E, G &&>, int> = 0>
+  template <typename G, std::enable_if_t<std::is_constructible_v<E, G &&>, int> = 0>
   constexpr expected(unexpected<G> &&err) noexcept : m_has_value(false) {
     new (&m_error) E(std::move(err.value()));
   }
 
-  constexpr expected(unexpected<E> &&err) noexcept
-      : m_error(std::move(err.value())), m_has_value(false) {}
-  constexpr expected(const unexpected<E> &err) noexcept
-      : m_error(err.value()), m_has_value(false) {}
+  constexpr expected(unexpected<E> &&err) noexcept : m_error(std::move(err.value())), m_has_value(false) {}
+  constexpr expected(const unexpected<E> &err) noexcept : m_error(err.value()), m_has_value(false) {}
 
   ~expected() noexcept {
     if (m_has_value)
@@ -149,9 +136,7 @@ public:
     return decltype(f(value()))(unexpected(m_error));
   }
 
-  constexpr T value_or(T &&fallback) const noexcept {
-    return m_has_value ? m_value : std::move(fallback);
-  }
+  constexpr T value_or(T &&fallback) const noexcept { return m_has_value ? m_value : std::move(fallback); }
 
   constexpr T *operator->() & noexcept RELOCO_LIFETIMEBOUND { return &value(); }
   constexpr const T *operator->() const & noexcept RELOCO_LIFETIMEBOUND { return &value(); }
@@ -169,14 +154,11 @@ public:
     return m_error == other.m_error;
   }
 
-  constexpr bool operator!=(const expected &other) const noexcept {
-    return !(*this == other);
-  }
+  constexpr bool operator!=(const expected &other) const noexcept { return !(*this == other); }
 };
 
 template <typename E> class [[nodiscard]] expected<void, E> {
-  static_assert(std::is_nothrow_move_constructible_v<E>,
-                "E must be nothrow move constructible");
+  static_assert(std::is_nothrow_move_constructible_v<E>, "E must be nothrow move constructible");
 
   union {
     E m_error;
@@ -188,8 +170,7 @@ public:
   using error_type = E;
 
   constexpr expected() noexcept : m_has_value(true) {}
-  constexpr expected(unexpected<E> &&err) noexcept
-      : m_error(std::move(err.value())), m_has_value(false) {}
+  constexpr expected(unexpected<E> &&err) noexcept : m_error(std::move(err.value())), m_has_value(false) {}
 
   ~expected() noexcept {
     if (!m_has_value)
@@ -199,9 +180,7 @@ public:
   constexpr bool has_value() const noexcept { return m_has_value; }
   constexpr explicit operator bool() const noexcept { return m_has_value; }
 
-  void value() const noexcept {
-    RELOCO_ASSERT(m_has_value, "Result contains an error");
-  }
+  void value() const noexcept { RELOCO_ASSERT(m_has_value, "Result contains an error"); }
 
   constexpr E &error() & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(!m_has_value, "Result does not contain an error");
@@ -231,9 +210,7 @@ public:
     return m_error == other.m_error;
   }
 
-  constexpr bool operator!=(const expected &other) const noexcept {
-    return !(*this == other);
-  }
+  constexpr bool operator!=(const expected &other) const noexcept { return !(*this == other); }
 };
 
 template <typename E> expected(unexpected<E>) -> expected<void, E>;

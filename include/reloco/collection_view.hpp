@@ -122,15 +122,13 @@ struct has_collection_view_traits<Container, std::void_t<typename collection_vie
  * specialization whose `element_type` matches `T` up to `const`-qualifiers.
  * No other implicit conversion between element types is permitted.
  */
-template <typename Container, typename T, typename = void>
-struct is_collection_view_source : std::false_type {};
+template <typename Container, typename T, typename = void> struct is_collection_view_source : std::false_type {};
 
 template <typename Container, typename T>
 struct is_collection_view_source<Container, T,
                                  std::enable_if_t<has_collection_view_traits<std::remove_const_t<Container>>::value>>
-    : std::bool_constant<std::is_same_v<
-          std::remove_cv_t<T>,
-          std::remove_cv_t<typename collection_view_traits<std::remove_const_t<Container>>::element_type>>> {};
+    : std::bool_constant<std::is_same_v<std::remove_cv_t<T>, std::remove_cv_t<typename collection_view_traits<
+                                                                 std::remove_const_t<Container>>::element_type>>> {};
 
 /**
  * @brief Checks whether `Container` may back a @ref mutable_collection_view<T>.
@@ -145,7 +143,7 @@ template <typename Container, typename T>
 struct is_mutable_collection_view_source<
     Container, T, std::enable_if_t<has_collection_view_traits<std::remove_const_t<Container>>::value>>
     : std::bool_constant<is_collection_view_source<Container, T>::value && !std::is_const_v<Container> &&
-                          collection_view_traits<std::remove_const_t<Container>>::is_mutable> {};
+                         collection_view_traits<std::remove_const_t<Container>>::is_mutable> {};
 
 } // namespace detail
 
@@ -201,8 +199,7 @@ public:
    * never an implicit conversion.
    */
   template <typename Container, std::enable_if_t<detail::is_collection_view_source<Container, T>::value, int> = 0>
-  constexpr explicit collection_view(Container &c RELOCO_LIFETIMEBOUND
-                                          RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
+  constexpr explicit collection_view(Container &c RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
       : ctx_(const_cast<void *>(static_cast<const void *>(std::addressof(c)))), vtbl_(&s_vtbl<Container>) {}
 
   /**
@@ -242,9 +239,8 @@ public:
     if (!vtbl_)
       return;
     using decayed_fn = std::remove_reference_t<Fn>;
-    vtbl_->for_each(ctx_, std::addressof(fn), [](void *visitor_ctx, const T &elem) noexcept {
-      (*static_cast<decayed_fn *>(visitor_ctx))(elem);
-    });
+    vtbl_->for_each(ctx_, std::addressof(fn),
+                    [](void *visitor_ctx, const T &elem) noexcept { (*static_cast<decayed_fn *>(visitor_ctx))(elem); });
   }
 
   /**
@@ -337,18 +333,17 @@ private:
   template <typename Container> static constexpr auto data_entry() noexcept {
     using traits = collection_view_traits<std::remove_const_t<Container>>;
     if constexpr (traits::has_data) {
-      return +[](const void *ctx) noexcept -> const T * {
-        return traits::data(*static_cast<const Container *>(ctx));
-      };
+      return +[](const void *ctx) noexcept -> const T * { return traits::data(*static_cast<const Container *>(ctx)); };
     } else {
       return static_cast<const T *(*)(const void *) noexcept>(nullptr);
     }
   }
 
   template <typename Container>
-  static constexpr vtable s_vtbl{&size_entry<Container>, &empty_entry<Container>, &for_each_entry<Container>,
-                                 &at_entry<Container>, data_entry<Container>(),
-                                 collection_view_traits<std::remove_const_t<Container>>::is_random_access};
+  static constexpr vtable s_vtbl{
+      &size_entry<Container>,     &empty_entry<Container>,
+      &for_each_entry<Container>, &at_entry<Container>,
+      data_entry<Container>(),    collection_view_traits<std::remove_const_t<Container>>::is_random_access};
 
   void *ctx_ = nullptr;
   const vtable *vtbl_ = nullptr;
@@ -401,8 +396,7 @@ public:
    */
   template <typename Container,
             std::enable_if_t<detail::is_mutable_collection_view_source<Container, T>::value, int> = 0>
-  constexpr explicit mutable_collection_view(Container &c RELOCO_LIFETIMEBOUND
-                                                  RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
+  constexpr explicit mutable_collection_view(Container &c RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
       : base(c), mvtbl_(&s_mvtbl<Container>) {}
 
   /**
@@ -422,9 +416,8 @@ public:
     if (!mvtbl_)
       return;
     using decayed_fn = std::remove_reference_t<Fn>;
-    mvtbl_->for_each(this->context(), std::addressof(fn), [](void *visitor_ctx, T &elem) noexcept {
-      (*static_cast<decayed_fn *>(visitor_ctx))(elem);
-    });
+    mvtbl_->for_each(this->context(), std::addressof(fn),
+                     [](void *visitor_ctx, T &elem) noexcept { (*static_cast<decayed_fn *>(visitor_ctx))(elem); });
   }
 
   using base::data;

@@ -108,8 +108,7 @@ struct sp_control_block {
   bool try_add_shared() noexcept {
     auto count = shared_count_.load(std::memory_order_relaxed);
     while (count != 0) {
-      if (shared_count_.compare_exchange_weak(count, count + 1, std::memory_order_acq_rel,
-                                              std::memory_order_relaxed))
+      if (shared_count_.compare_exchange_weak(count, count + 1, std::memory_order_acq_rel, std::memory_order_relaxed))
         return true;
     }
     return false;
@@ -190,8 +189,7 @@ public:
 
   /** @brief Aliasing constructor: shares ownership with `other` but points
    * at `ptr` instead (used by the `*_pointer_cast` helpers below). */
-  template <typename U>
-  shared_ptr(const shared_ptr<U> &other, T *ptr) noexcept : ptr_(ptr), block_(other.block_) {
+  template <typename U> shared_ptr(const shared_ptr<U> &other, T *ptr) noexcept : ptr_(ptr), block_(other.block_) {
     if (block_)
       block_->shared_count_.fetch_add(1, std::memory_order_relaxed);
   }
@@ -292,13 +290,9 @@ public:
     }
   }
 
-  template <typename U> bool owner_before(const shared_ptr<U> &other) const noexcept {
-    return block_ < other.block_;
-  }
+  template <typename U> bool owner_before(const shared_ptr<U> &other) const noexcept { return block_ < other.block_; }
 
-  template <typename U> bool owner_before(const weak_ptr<U> &other) const noexcept {
-    return block_ < other.block_;
-  }
+  template <typename U> bool owner_before(const weak_ptr<U> &other) const noexcept { return block_ < other.block_; }
 
 private:
   constexpr shared_ptr(detail::sp_control_block *block, T *ptr) noexcept : ptr_(ptr), block_(block) {}
@@ -319,23 +313,19 @@ private:
 
 template <typename T> void swap(shared_ptr<T> &lhs, shared_ptr<T> &rhs) noexcept { lhs.swap(rhs); }
 
-template <typename T>
-[[nodiscard]] bool operator==(const shared_ptr<T> &lhs, std::nullptr_t) noexcept {
+template <typename T> [[nodiscard]] bool operator==(const shared_ptr<T> &lhs, std::nullptr_t) noexcept {
   return lhs.get() == nullptr;
 }
 
-template <typename T>
-[[nodiscard]] bool operator==(std::nullptr_t, const shared_ptr<T> &rhs) noexcept {
+template <typename T> [[nodiscard]] bool operator==(std::nullptr_t, const shared_ptr<T> &rhs) noexcept {
   return rhs.get() == nullptr;
 }
 
-template <typename T>
-[[nodiscard]] bool operator!=(const shared_ptr<T> &lhs, std::nullptr_t) noexcept {
+template <typename T> [[nodiscard]] bool operator!=(const shared_ptr<T> &lhs, std::nullptr_t) noexcept {
   return lhs.get() != nullptr;
 }
 
-template <typename T>
-[[nodiscard]] bool operator!=(std::nullptr_t, const shared_ptr<T> &rhs) noexcept {
+template <typename T> [[nodiscard]] bool operator!=(std::nullptr_t, const shared_ptr<T> &rhs) noexcept {
   return rhs.get() != nullptr;
 }
 
@@ -446,13 +436,9 @@ public:
     }
   }
 
-  template <typename U> bool owner_before(const weak_ptr<U> &other) const noexcept {
-    return block_ < other.block_;
-  }
+  template <typename U> bool owner_before(const weak_ptr<U> &other) const noexcept { return block_ < other.block_; }
 
-  template <typename U> bool owner_before(const shared_ptr<U> &other) const noexcept {
-    return block_ < other.block_;
-  }
+  template <typename U> bool owner_before(const shared_ptr<U> &other) const noexcept { return block_ < other.block_; }
 
 private:
   T *ptr_{nullptr};
@@ -582,8 +568,7 @@ template <typename T, typename... Args>
  * @brief `try_allocate_shared` using the process-wide default allocator
  * (see `default_allocator()`).
  */
-template <typename T, typename... Args>
-[[nodiscard]] result<shared_ptr<T>> try_create_shared(Args &&...args) noexcept {
+template <typename T, typename... Args> [[nodiscard]] result<shared_ptr<T>> try_create_shared(Args &&...args) noexcept {
   return try_allocate_shared<T>(default_allocator(), std::forward<Args>(args)...);
 }
 

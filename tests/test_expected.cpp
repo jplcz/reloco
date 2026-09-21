@@ -30,9 +30,7 @@ TEST(ExpectedTest, TransformsAndChainsSuccessfulValues) {
   ASSERT_TRUE(doubled.has_value());
   EXPECT_EQ(doubled.value(), 42);
 
-  const auto chained = result.and_then([](int value) {
-    return reloco::expected<int, std::string>(value + 1);
-  });
+  const auto chained = result.and_then([](int value) { return reloco::expected<int, std::string>(value + 1); });
   ASSERT_TRUE(chained.has_value());
   EXPECT_EQ(chained.value(), 22);
 }

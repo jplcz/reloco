@@ -7,8 +7,8 @@
 /** @file value_ptr.hpp
  * @brief Nullable non-owning pointer wrapper with lifetime annotations. */
 
-#include "lifetime.hpp"
 #include "detail/assert.hpp"
+#include "lifetime.hpp"
 #include <cstddef>
 #include <type_traits>
 
@@ -26,32 +26,21 @@ public:
   constexpr value_ptr() noexcept = default;
   constexpr value_ptr(std::nullptr_t) noexcept {}
 
-  template <typename U,
-            typename = std::enable_if_t<std::is_convertible_v<U *, T *>>>
-  constexpr value_ptr(
-      U *ptr RELOCO_LIFETIMEBOUND
-          RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
-      : ptr_(ptr) {}
+  template <typename U, typename = std::enable_if_t<std::is_convertible_v<U *, T *>>>
+  constexpr value_ptr(U *ptr RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept : ptr_(ptr) {}
 
-  template <typename U,
-            typename = std::enable_if_t<std::is_convertible_v<U *, T *>>>
+  template <typename U, typename = std::enable_if_t<std::is_convertible_v<U *, T *>>>
   constexpr value_ptr(value_ptr<U> other) noexcept : ptr_(other.ptr_) {}
 
-  [[nodiscard]] constexpr T *
-  get() const noexcept RELOCO_LIFETIMEBOUND {
-    return ptr_;
-  }
+  [[nodiscard]] constexpr T *get() const noexcept RELOCO_LIFETIMEBOUND { return ptr_; }
 
-  template <typename U = T,
-            std::enable_if_t<!std::is_void_v<U>, int> = 0>
-  [[nodiscard]] constexpr U &
-  operator*() const noexcept RELOCO_LIFETIMEBOUND {
+  template <typename U = T, std::enable_if_t<!std::is_void_v<U>, int> = 0>
+  [[nodiscard]] constexpr U &operator*() const noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(ptr_ != nullptr, "value_ptr: dereferencing a null pointer");
     return *ptr_;
   }
 
-  [[nodiscard]] constexpr T *
-  operator->() const noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] constexpr T *operator->() const noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(ptr_ != nullptr, "value_ptr: dereferencing a null pointer");
     return ptr_;
   }
@@ -70,17 +59,13 @@ public:
    * `RELOCO_BEGIN_UNSAFE_BUFFER_USAGE`/`RELOCO_END_UNSAFE_BUFFER_USAGE`,
    * making the opt-out to the unsafe tier explicit and greppable at each use.
    */
-  template <typename U = T,
-            std::enable_if_t<!std::is_void_v<U>, int> = 0>
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr U &
-  unsafe_deref() const noexcept RELOCO_LIFETIMEBOUND {
+  template <typename U = T, std::enable_if_t<!std::is_void_v<U>, int> = 0>
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr U &unsafe_deref() const noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(ptr_ != nullptr, "value_ptr: dereferencing a null pointer");
     return *ptr_;
   }
 
-  [[nodiscard]] constexpr explicit operator bool() const noexcept {
-    return ptr_ != nullptr;
-  }
+  [[nodiscard]] constexpr explicit operator bool() const noexcept { return ptr_ != nullptr; }
 
 private:
   template <typename> friend class value_ptr;

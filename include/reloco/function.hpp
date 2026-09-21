@@ -85,8 +85,7 @@ public:
    * storage strategy available for its (decayed) type: a bare function
    * pointer, the inline SOO buffer, or a single heap allocation.
    */
-  template <typename F>
-  [[nodiscard]] static result<function> try_allocate(allocator_ref alloc, F &&func) noexcept {
+  template <typename F> [[nodiscard]] static result<function> try_allocate(allocator_ref alloc, F &&func) noexcept {
     using decayed_f = std::decay_t<F>;
     static_assert(std::is_invocable_r_v<R, decayed_f &, Args...>,
                   "function<R(Args...)>: F must be invocable as R(Args...)");
@@ -97,8 +96,7 @@ public:
     if constexpr (std::is_convertible_v<F, R (*)(Args...)>) {
       f.storage_.func_ptr = reinterpret_cast<void *>(static_cast<R (*)(Args...)>(func));
       f.vtable_ = &c_pointer_vtable_factory<decayed_f>::instance;
-    } else if constexpr (sizeof(decayed_f) <= soo_capacity &&
-                         alignof(decayed_f) <= alignof(std::max_align_t)) {
+    } else if constexpr (sizeof(decayed_f) <= soo_capacity && alignof(decayed_f) <= alignof(std::max_align_t)) {
       new (&f.storage_.buffer) decayed_f(std::forward<F>(func));
       f.vtable_ = &object_vtable_factory<decayed_f>::soo_instance;
     } else {
@@ -177,10 +175,12 @@ public:
    */
   template <typename... CallArgs> auto try_call(CallArgs &&...args) const noexcept {
     if constexpr (detail::is_result_v<R>) {
-      if (!vtable_) RELOCO_UNLIKELY { return R(unexpected(error::container_empty)); }
+      if (!vtable_)
+        RELOCO_UNLIKELY { return R(unexpected(error::container_empty)); }
       return vtable_->invoke(&storage_, std::forward<CallArgs>(args)...);
     } else {
-      if (!vtable_) RELOCO_UNLIKELY { return result<R>(unexpected(error::container_empty)); }
+      if (!vtable_)
+        RELOCO_UNLIKELY { return result<R>(unexpected(error::container_empty)); }
       return result<R>(vtable_->invoke(&storage_, std::forward<CallArgs>(args)...));
     }
   }
@@ -327,8 +327,7 @@ private:
  * due to the user-declared destructor) already gives. Declared explicitly
  * for documentation.
  */
-template <typename R, typename... Args>
-struct is_trivially_relocatable<function<R(Args...)>> : std::false_type {};
+template <typename R, typename... Args> struct is_trivially_relocatable<function<R(Args...)>> : std::false_type {};
 
 } // namespace reloco
 

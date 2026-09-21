@@ -21,43 +21,25 @@ struct derived_value : base_value {};
 struct unrelated_value {};
 
 static_assert(std::is_constructible_v<reloco::value_ref<int>, int &>);
-static_assert(
-    !std::is_constructible_v<reloco::value_ref<int>, const int &>);
-static_assert(
-    std::is_constructible_v<reloco::value_ref<const int>, int &>);
-static_assert(
-    std::is_constructible_v<reloco::value_ref<const int>, const int &>);
+static_assert(!std::is_constructible_v<reloco::value_ref<int>, const int &>);
+static_assert(std::is_constructible_v<reloco::value_ref<const int>, int &>);
+static_assert(std::is_constructible_v<reloco::value_ref<const int>, const int &>);
 static_assert(!std::is_constructible_v<reloco::value_ref<int>, int &&>);
+static_assert(!std::is_constructible_v<reloco::value_ref<int>, const int &&>);
+static_assert(std::is_constructible_v<reloco::value_ref<base_value>, derived_value &>);
+static_assert(!std::is_constructible_v<reloco::value_ref<base_value>, unrelated_value &>);
+static_assert(std::is_same_v<decltype(*std::declval<reloco::value_ref<int> &>()), int &>);
+static_assert(std::is_same_v<decltype(std::declval<reloco::value_ref<int> &>().get()), int *>);
+static_assert(std::is_same_v<decltype(std::declval<reloco::value_ref<int> &>().pointer()), reloco::value_ptr<int>>);
 static_assert(
-    !std::is_constructible_v<reloco::value_ref<int>, const int &&>);
-static_assert(
-    std::is_constructible_v<reloco::value_ref<base_value>, derived_value &>);
-static_assert(!std::is_constructible_v<reloco::value_ref<base_value>,
-                                       unrelated_value &>);
-static_assert(
-    std::is_same_v<decltype(*std::declval<reloco::value_ref<int> &>()),
-                   int &>);
-static_assert(
-    std::is_same_v<decltype(std::declval<reloco::value_ref<int> &>().get()),
-                   int *>);
-static_assert(std::is_same_v<
-              decltype(std::declval<reloco::value_ref<int> &>().pointer()),
-              reloco::value_ptr<int>>);
-static_assert(std::is_same_v<
-              decltype(
-                  std::declval<reloco::value_ref<const int> &>().pointer()),
-              reloco::value_ptr<const int>>);
+    std::is_same_v<decltype(std::declval<reloco::value_ref<const int> &>().pointer()), reloco::value_ptr<const int>>);
 static_assert(std::is_trivially_copyable_v<reloco::value_ptr<int>>);
 static_assert(sizeof(reloco::value_ptr<int>) == sizeof(int *));
 static_assert(std::is_constructible_v<reloco::value_ptr<int>, int *>);
-static_assert(
-    std::is_constructible_v<reloco::value_ptr<const int>, int *>);
-static_assert(
-    !std::is_constructible_v<reloco::value_ptr<int>, const int *>);
-static_assert(
-    std::is_constructible_v<reloco::value_ptr<base_value>, derived_value *>);
-static_assert(
-    std::is_constructible_v<reloco::value_ptr<void>, derived_value *>);
+static_assert(std::is_constructible_v<reloco::value_ptr<const int>, int *>);
+static_assert(!std::is_constructible_v<reloco::value_ptr<int>, const int *>);
+static_assert(std::is_constructible_v<reloco::value_ptr<base_value>, derived_value *>);
+static_assert(std::is_constructible_v<reloco::value_ptr<void>, derived_value *>);
 
 TEST(ValueRef, PreservesMutableReferencedObjectIdentity) {
   int value = 42;
@@ -85,8 +67,7 @@ TEST(ValueRef, ProvidesExplicitReadOnlyAccess) {
   int value = 17;
   reloco::value_ref<const int> ref(value);
 
-  static_assert(
-      std::is_same_v<decltype(*ref), const int &>);
+  static_assert(std::is_same_v<decltype(*ref), const int &>);
   EXPECT_EQ(ref.get(), &value);
   EXPECT_EQ(*ref, 17);
 }
@@ -143,8 +124,7 @@ TEST(ValuePtr, DeductionGuidePreservesPointeeType) {
   const int value = 19;
   reloco::value_ptr ptr(&value);
 
-  static_assert(
-      std::is_same_v<decltype(ptr), reloco::value_ptr<const int>>);
+  static_assert(std::is_same_v<decltype(ptr), reloco::value_ptr<const int>>);
   EXPECT_EQ(*ptr, 19);
 }
 

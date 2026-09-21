@@ -11,54 +11,38 @@
 
 namespace {
 
-template <typename Array, typename = void>
-struct can_index_temporary_array : std::false_type {};
+template <typename Array, typename = void> struct can_index_temporary_array : std::false_type {};
 
 template <typename Array>
-struct can_index_temporary_array<
-    Array, std::void_t<decltype(std::declval<Array &&>()[0])>>
+struct can_index_temporary_array<Array, std::void_t<decltype(std::declval<Array &&>()[0])>> : std::true_type {};
+
+template <typename Array, typename = void> struct can_borrow_temporary_array_data : std::false_type {};
+
+template <typename Array>
+struct can_borrow_temporary_array_data<Array, std::void_t<decltype(std::declval<Array &&>().data())>> : std::true_type {
+};
+
+template <typename Array, typename = void> struct can_iterate_temporary_array : std::false_type {};
+
+template <typename Array>
+struct can_iterate_temporary_array<Array, std::void_t<decltype(std::declval<Array &&>().begin())>> : std::true_type {};
+
+template <typename Array, typename = void> struct can_get_temporary_array_element : std::false_type {};
+
+template <typename Array>
+struct can_get_temporary_array_element<Array, std::void_t<decltype(reloco::get<0>(std::declval<Array &&>()))>>
     : std::true_type {};
 
-template <typename Array, typename = void>
-struct can_borrow_temporary_array_data : std::false_type {};
-
-template <typename Array>
-struct can_borrow_temporary_array_data<
-    Array, std::void_t<decltype(std::declval<Array &&>().data())>>
-    : std::true_type {};
-
-template <typename Array, typename = void>
-struct can_iterate_temporary_array : std::false_type {};
-
-template <typename Array>
-struct can_iterate_temporary_array<
-    Array, std::void_t<decltype(std::declval<Array &&>().begin())>>
-    : std::true_type {};
-
-template <typename Array, typename = void>
-struct can_get_temporary_array_element : std::false_type {};
-
-template <typename Array>
-struct can_get_temporary_array_element<
-    Array, std::void_t<decltype(reloco::get<0>(
-               std::declval<Array &&>()))>> : std::true_type {};
-
-template <typename T, typename U, typename = void>
-struct can_deduce_mixed_array : std::false_type {};
+template <typename T, typename U, typename = void> struct can_deduce_mixed_array : std::false_type {};
 
 template <typename T, typename U>
-struct can_deduce_mixed_array<
-    T, U,
-    std::void_t<decltype(
-        reloco::array{std::declval<T>(), std::declval<U>()})>>
+struct can_deduce_mixed_array<T, U, std::void_t<decltype(reloco::array{std::declval<T>(), std::declval<U>()})>>
     : std::true_type {};
 
 static_assert(!can_index_temporary_array<reloco::array<int, 2>>::value);
-static_assert(!can_borrow_temporary_array_data<
-              reloco::array<int, 2>>::value);
+static_assert(!can_borrow_temporary_array_data<reloco::array<int, 2>>::value);
 static_assert(!can_iterate_temporary_array<reloco::array<int, 2>>::value);
-static_assert(
-    !can_get_temporary_array_element<reloco::array<int, 2>>::value);
+static_assert(!can_get_temporary_array_element<reloco::array<int, 2>>::value);
 static_assert(!can_deduce_mixed_array<int, short>::value);
 static_assert(std::tuple_size<reloco::array<int, 3>>::value == 3);
 
@@ -120,13 +104,9 @@ TEST(ArrayTest, SupportsFillSwapComparisonAndZeroSize) {
   EXPECT_FALSE(empty.try_at(0).has_value());
   EXPECT_FALSE(empty.try_front().has_value());
   EXPECT_FALSE(empty.try_back().has_value());
-  static_assert(std::is_same_v<
-                decltype(std::declval<reloco::array<int, 0> &>().unsafe_at(0)),
-                int &>);
+  static_assert(std::is_same_v<decltype(std::declval<reloco::array<int, 0> &>().unsafe_at(0)), int &>);
 
-  const auto mapped =
-      empty.map([](int value) noexcept { return static_cast<long>(value); });
-  static_assert(std::is_same_v<decltype(mapped),
-                               const reloco::array<long, 0>>);
+  const auto mapped = empty.map([](int value) noexcept { return static_cast<long>(value); });
+  static_assert(std::is_same_v<decltype(mapped), const reloco::array<long, 0>>);
   EXPECT_TRUE(mapped.empty());
 }

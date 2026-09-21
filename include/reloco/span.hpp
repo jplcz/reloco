@@ -85,10 +85,7 @@ public:
    * @param arr Reference to the array.
    */
   template <std::size_t N>
-  constexpr span(
-      T (&arr RELOCO_LIFETIMEBOUND
-             RELOCO_LIFETIME_CAPTURE_BY_THIS)[N]) noexcept
-      : m_ptr(arr), m_size(N) {}
+  constexpr span(T (&arr RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS)[N]) noexcept : m_ptr(arr), m_size(N) {}
 
   /**
    * @brief Constructs a span from a compatible reloco span.
@@ -96,9 +93,7 @@ public:
    * @param other Source span.
    */
   template <typename U, std::enable_if_t<std::is_convertible_v<U (*)[], T (*)[]>, int> = 0>
-  constexpr span(
-      const span<U> &other RELOCO_LIFETIMEBOUND
-          RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
+  constexpr span(const span<U> &other RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
       : m_ptr(other.data()), m_size(other.size()) {}
 
 #if RELOCO_HAS_STD_SPAN
@@ -132,8 +127,7 @@ public:
    * @return A new `reloco::span` view.
    */
   [[nodiscard]] constexpr span<T>
-  subspan(std::size_t offset,
-          std::size_t count = static_cast<std::size_t>(-1)) const & noexcept RELOCO_LIFETIMEBOUND {
+  subspan(std::size_t offset, std::size_t count = static_cast<std::size_t>(-1)) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(offset <= m_size, "subspan offset exceeds span size");
     const std::size_t rem = m_size - offset;
     const std::size_t actual_count = count == static_cast<std::size_t>(-1) ? rem : count;
@@ -238,8 +232,7 @@ public:
   /**
    * @brief Attempts to access an element without trapping.
    */
-  [[nodiscard]] result<std::reference_wrapper<T>>
-  try_at(std::size_t idx) const & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] result<std::reference_wrapper<T>> try_at(std::size_t idx) const & noexcept RELOCO_LIFETIMEBOUND {
     if (idx >= m_size)
       return unexpected(error::out_of_bounds);
     return std::ref(m_ptr[idx]);
@@ -248,7 +241,8 @@ public:
   /**
    * @brief Accesses an element with a debug-only bounds check.
    */
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr T &unsafe_at(std::size_t idx) const & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr T &
+  unsafe_at(std::size_t idx) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(idx < m_size, "span index out of bounds");
     return m_ptr[idx];
   }
@@ -311,12 +305,14 @@ public:
     return span<T>(pointer_at(m_size - count), count);
   }
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr span<T> unsafe_first(std::size_t count) const & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr span<T>
+  unsafe_first(std::size_t count) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(count <= m_size, "first count exceeds span size");
     return span<T>(m_ptr, count);
   }
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr span<T> unsafe_last(std::size_t count) const & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr span<T>
+  unsafe_last(std::size_t count) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(count <= m_size, "last count exceeds span size");
     return span<T>(pointer_at(m_size - count), count);
   }
@@ -340,16 +336,12 @@ public:
   [[nodiscard]] constexpr iterator end() & noexcept RELOCO_LIFETIMEBOUND { return pointer_at(m_size); }
   [[nodiscard]] constexpr iterator end() const & noexcept RELOCO_LIFETIMEBOUND { return pointer_at(m_size); }
 
-  [[nodiscard]] constexpr reverse_iterator rbegin() & noexcept RELOCO_LIFETIMEBOUND {
-    return reverse_iterator(end());
-  }
+  [[nodiscard]] constexpr reverse_iterator rbegin() & noexcept RELOCO_LIFETIMEBOUND { return reverse_iterator(end()); }
   [[nodiscard]] constexpr reverse_iterator rbegin() const & noexcept RELOCO_LIFETIMEBOUND {
     return reverse_iterator(end());
   }
 
-  [[nodiscard]] constexpr reverse_iterator rend() & noexcept RELOCO_LIFETIMEBOUND {
-    return reverse_iterator(begin());
-  }
+  [[nodiscard]] constexpr reverse_iterator rend() & noexcept RELOCO_LIFETIMEBOUND { return reverse_iterator(begin()); }
   [[nodiscard]] constexpr reverse_iterator rend() const & noexcept RELOCO_LIFETIMEBOUND {
     return reverse_iterator(begin());
   }

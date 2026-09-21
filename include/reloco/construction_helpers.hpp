@@ -114,8 +114,7 @@ struct construction_helpers {
    * @param alloc The allocator to provide for tiers that support
    * `has_try_allocate_v`.
    */
-  template <typename T, typename... Args>
-  static result<T> try_allocate(allocator_ref alloc, Args &&...args) noexcept {
+  template <typename T, typename... Args> static result<T> try_allocate(allocator_ref alloc, Args &&...args) noexcept {
     if constexpr (has_try_allocate_v<T, Args...>) {
       return T::try_allocate(alloc, std::forward<Args>(args)...);
     } else if constexpr (has_try_create_v<T, Args...>) {
@@ -185,7 +184,8 @@ struct construction_helpers {
     if constexpr (has_try_clone_at_v<T>) {
       return T::try_clone_at(alloc, storage, source);
     } else {
-      static_assert(std::is_nothrow_move_constructible_v<T>, "reloco requires noexcept move-construction for clone fallbacks.");
+      static_assert(std::is_nothrow_move_constructible_v<T>,
+                    "reloco requires noexcept move-construction for clone fallbacks.");
       auto res = try_clone<T>(alloc, source);
       if (!res)
         return unexpected(res.error());

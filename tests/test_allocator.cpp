@@ -29,26 +29,23 @@ struct arena_allocator_tag {};
 template <> struct reloco::allocator_traits<arena_allocator_tag> {
   using context_type = arena_allocator_context;
 
-  static reloco::result<reloco::mem_block>
-  allocate(reloco::value_ref<context_type> ctx, std::size_t bytes,
-          std::size_t alignment) noexcept {
+  static reloco::result<reloco::mem_block> allocate(reloco::value_ref<context_type> ctx, std::size_t bytes,
+                                                    std::size_t alignment) noexcept {
     RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
     void *current = ctx->buffer + ctx->offset;
     std::size_t space = ctx->capacity - ctx->offset;
     void *aligned = std::align(alignment, bytes, current, space);
     if (!aligned)
       return reloco::unexpected(reloco::error::allocation_failed);
-    ctx->offset =
-        static_cast<std::size_t>(static_cast<std::byte *>(aligned) - ctx->buffer) + bytes;
+    ctx->offset = static_cast<std::size_t>(static_cast<std::byte *>(aligned) - ctx->buffer) + bytes;
     RELOCO_END_UNSAFE_BUFFER_USAGE
     return reloco::mem_block{aligned, bytes};
   }
 
   static void deallocate(reloco::value_ref<context_type>, void *, std::size_t) noexcept {}
 
-  static reloco::result<std::size_t>
-  expand_in_place(reloco::value_ref<context_type> ctx, void *ptr, std::size_t old_size,
-                  std::size_t new_size) noexcept {
+  static reloco::result<std::size_t> expand_in_place(reloco::value_ref<context_type> ctx, void *ptr,
+                                                     std::size_t old_size, std::size_t new_size) noexcept {
     RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
     bool is_last_allocation = static_cast<std::byte *>(ptr) + old_size == ctx->buffer + ctx->offset;
     RELOCO_END_UNSAFE_BUFFER_USAGE
@@ -86,8 +83,7 @@ TEST(AllocatorTest, HeapBackendAllocatesReallocatesAndDeallocates) {
 
 TEST(AllocatorTest, StatefulArenaBackendViaOwningWrapper) {
   alignas(64) std::byte storage[256];
-  reloco::allocator<arena_allocator_tag> arena{
-      arena_allocator_context{storage, sizeof(storage)}};
+  reloco::allocator<arena_allocator_tag> arena{arena_allocator_context{storage, sizeof(storage)}};
   reloco::allocator_ref ref = arena.ref();
 
   RELOCO_BEGIN_UNSAFE_BUFFER_USAGE

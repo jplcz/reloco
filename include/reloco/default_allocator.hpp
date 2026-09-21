@@ -88,9 +88,7 @@ struct reloco_global_alloc {
 
 namespace reloco {
 
-inline allocator_ref reloco_global_alloc::default_allocator() noexcept {
-  return allocator<heap_allocator_tag>::ref();
-}
+inline allocator_ref reloco_global_alloc::default_allocator() noexcept { return allocator<heap_allocator_tag>::ref(); }
 
 } // namespace reloco
 #endif
