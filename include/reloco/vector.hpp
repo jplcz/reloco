@@ -346,10 +346,28 @@ public:
         data_[i].~T();
     }
     size_ = 0;
+  }
 
-    static constexpr std::size_t discard_threshold = 2 * 1024 * 1024; // 2 MB
-    if (const std::size_t bytes = cap_ * sizeof(T); bytes >= discard_threshold)
-      alloc_.advise(data_, bytes, usage_hint::dont_need);
+  /**
+   * @brief Passes memory usage hints to the underlying allocator for the entire backing buffer.
+   */
+  void advise(usage_hint hint) noexcept {
+    if (cap_ > 0) {
+      alloc_.advise(data_, cap_ * sizeof(T), hint);
+    }
+  }
+
+  /**
+   * @brief Surrenders the physical memory of the UNUSED capacity back to the OS,
+   * while keeping the virtual memory addresses intact (avoiding reallocation).
+   */
+  void advise_unused(usage_hint hint = usage_hint::dont_need) noexcept {
+    const std::size_t unused_elements = cap_ - size_;
+    if (unused_elements > 0) {
+      // Advance pointer past the active elements
+      void *unused_ptr = data_ + size_;
+      alloc_.advise(unused_ptr, unused_elements * sizeof(T), hint);
+    }
   }
 
   /**
