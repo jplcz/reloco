@@ -102,7 +102,9 @@ default struct dump is left as-is for those types.
 After editing `tools/gdb/reloco_printers.py`:
 
 1. Regenerate the embedded header: `python3 tools/gdb/generate_embedded_header.py`.
-2. Sanity-check by compiling a small program that exercises the changed
-   type, embedding the header, and inspecting it under `gdb` at a
-   breakpoint (see the printer script's own module docstring for the three
-   loading styles to try).
+2. Add or update a test case for the changed/new type in
+   `tools/gdb/testbed/` and run `tools/gdb/testbed/run.sh`, which compiles a
+   real program using the printers and checks their output under GDB in
+   all three loading modes above. See `tools/gdb/testbed/README.md` for
+   how to add a case; that testbed is not part of the main build/CI, so it
+   must be run explicitly.
