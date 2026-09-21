@@ -16,6 +16,7 @@ where, not a tutorial.
 |---|---|---|
 | `expected.hpp` | `expected<T, E>`, `unexpected<E>` | Allocation-free value-or-error result |
 | `error.hpp` | `error`, `result<T>` | The one error enum every fallible reloco operation returns, and its `expected<T, error>` alias |
+| `error_std.hpp` | `error_category()`, `make_error_code(error)`, `make_error_condition(error)` | Opt-in `<system_error>` binding: makes `reloco::error` convert to `std::error_code`/`std::error_condition` |
 | `span.hpp` | `span<T>` | Non-owning, checked view over a contiguous range |
 | `array.hpp` | `array<T, N>` | Fixed-size owning array with hardened element access |
 | `string_view.hpp` | `basic_string_view<CharT, TraitsT>` (`string_view`, `wstring_view`) | Non-owning, checked view over character data |
@@ -63,6 +64,117 @@ reloco::result<int> parse(std::string_view s) noexcept {
   return 42;
 }
 ```
+
+## `error`
+
+`include/reloco/error.hpp`
+
+reloco has exactly **one** error type in the entire library: `reloco::error`,
+a plain `enum class`. Every fallible operation anywhere in reloco -- every
+`try_*` container mutator, every allocator call, `weak_ptr::lock()`, the
+fallible-construction protocol (`concepts.hpp`) -- returns
+`reloco::result<T>` (`expected<T, error>`) or `result<void>`. No type
+defines its own scoped error enum, and `concepts.hpp`'s detection traits
+only recognize a `try_*` member that itself returns `reloco::result<...>`,
+so this is enforced rather than just a convention.
+
+| Member | Meaning |
+|---|---|
+| `allocation_failed` | The allocator failed to provide/grow/shrink a memory block. |
+| `in_place_growth_failed` | `allocator_ref::expand_in_place` could not grow a block without moving it. |
+| `unsupported_operation` | The operation is not supported by this concrete type/backend (e.g. a `function_ref`/`function` invoked with the wrong signature, an allocator tag that doesn't implement an optional operation). |
+| `out_of_range` | A value fell outside the range required by the operation (a parsed number, a duration, a size argument) -- distinct from `out_of_bounds`, which is specifically about container indices/iterators. |
+| `invalid_argument` | An argument failed a precondition check unrelated to range/bounds (a malformed string, a null callback, mismatched key/value in `flat_set`). |
+| `already_exists` | Insertion failed because an equivalent key/element is already present (`flat_set::try_insert`, `flat_map::try_insert`). |
+| `empty_pointer` | A smart pointer (`unique_ptr`, `shared_ptr`, `value_ptr`, ...) was empty when a non-empty one was required. |
+| `pointer_expired` | A `weak_ptr::lock()` failed because the last owning `shared_ptr` has already released the object. |
+| `no_owner` | An operation requiring an owning handle was attempted on a non-owning one. |
+| `out_of_bounds` | A container index/iterator fell outside `[0, size())` (see `out_of_range` for non-index range checks). |
+| `deadlock` | A locking operation detected it would deadlock (e.g. recursive non-recursive lock acquisition) and failed instead of blocking forever. |
+| `invalid_owner` | An operation was attempted by a thread/handle that does not own the resource it is trying to operate on (e.g. unlocking a mutex you don't hold). |
+| `still_locked` | An operation requiring an unlocked resource found it still locked (e.g. destroying/reclaiming a lock that is still held). |
+| `not_locked` | An operation requiring a locked resource (unlocking, asserting exclusive access) found it was not locked. |
+| `timed_out` | A bounded-wait operation (a timed lock acquisition) did not complete within its deadline. |
+| `try_again` | The operation could not complete right now for a transient reason and may succeed if retried (contended non-blocking lock acquisition). |
+| `not_initialized` | The object/subsystem was used before the initialization step its protocol requires (a two-phase `try_construct` shell that was never followed through, see `concepts.hpp`). |
+| `container_empty` | An operation requiring at least one element (`front`/`back`/`pop_back`) was called on an empty container. |
+| `not_found` | A lookup (`flat_set::try_find`, `flat_map::try_find`, ...) found no matching key/element. |
+| `integer_overflow` | An arithmetic computation (a size/capacity calculation) would overflow its integer type. |
+| `capacity_exceeded` | A fixed-capacity container (`inline_vector`, `inline_flat_set`, `inline_flat_map`, `inplace_function`, ...) has no room left for another element and, unlike a heap-backed container, cannot grow. |
+| `invalid_state` | The operation is not valid given the object's current state (a moved-from object, or an operation attempted in the wrong phase of a multi-step protocol). |
+| `permission_denied` | An OS- or allocator-level access-control check failed (e.g. `mmap` with insufficient permissions). |
+| `interrupted` | The underlying operation was interrupted (e.g. by a signal) and may be safely retried. |
+| `resource_exhausted` | A system-imposed resource limit unrelated to heap memory (a handle/descriptor count, a thread count) was reached. |
+| `busy` | The resource is currently in use by someone else and the operation could not proceed non-blockingly; distinct from `still_locked`/`not_locked` (lock state specifically) and `try_again` (any transient retryable failure). |
+| `io_error` | A lower-level I/O operation (e.g. one performed by an allocator backend) failed for a reason not otherwise covered by a more specific member. |
+| `operation_canceled` | The operation was explicitly canceled before it could complete. |
+
+Several members (`no_owner`/`invalid_owner`, `deadlock`/`still_locked`/
+`not_locked`/`timed_out`, `not_initialized`, `busy`/`interrupted`/
+`io_error`/`operation_canceled`, ...) are not yet returned by any type in
+this header-only core today; they exist so that locking primitives,
+initialization protocols, and OS-backed allocators added later reuse the
+same single enum instead of introducing their own.
+
+### `<system_error>` interop (`error_std.hpp`)
+
+`include/reloco/error_std.hpp` (opt-in; not included by `error.hpp` or any
+other reloco header) makes `reloco::error` satisfy
+`std::is_error_code_enum`, so it implicitly converts to `std::error_code`:
+
+```cpp
+#include <reloco/error_std.hpp>
+
+std::error_code ec = reloco::error::not_found;      // implicit conversion
+throw std::system_error(reloco::error::deadlock);   // ADL-found make_error_code
+```
+
+`reloco::error_category()` returns the singleton `std::error_category`
+(`name() == "reloco"`) backing that conversion; its `message(int)` mirrors
+the one-line descriptions in the table above. `reloco::error` also
+satisfies `std::is_error_condition_enum` (via `make_error_condition`), so
+it converts to `std::error_condition` too, and a `reloco::error`-based
+`std::error_code` compares equal to `std::error_condition(reloco::error::x)`
+directly:
+
+```cpp
+std::error_code ec = reloco::error::busy;
+assert(ec == std::error_condition(reloco::error::busy));
+```
+
+`error_category_impl::equivalent()` (used for the `error_code ==
+error_condition` comparison above) compares by `name()` string content
+(`"reloco"`) instead of category-object identity, so the comparison still
+works even if the category singleton ended up duplicated across a
+shared-library boundary.
+
+`reloco::error` is also plugged into the standard POSIX/`errno` bridge:
+`error_category_impl::default_error_condition(int)` maps several members
+(`allocation_failed`, `invalid_argument`, `out_of_range`, `out_of_bounds`,
+`already_exists`, `deadlock`, `timed_out`, `try_again`,
+`unsupported_operation`, `capacity_exceeded`, `permission_denied`,
+`interrupted`, `busy`, `io_error`, `operation_canceled`,
+`integer_overflow`) onto the closest matching `std::errc` value, so a
+`reloco::error`-based `std::error_code` compares equal to that generic
+condition *and* to any other category's code that reports the same
+`errno`-derived condition (e.g. one built from `errno` via
+`std::generic_category()`):
+
+```cpp
+std::error_code ec = reloco::error::timed_out;
+assert(ec == std::errc::timed_out);
+
+std::error_code errno_ec(ETIMEDOUT, std::generic_category());
+assert(ec == errno_ec);
+```
+
+Members with no sufficiently precise POSIX equivalent (e.g. `not_found`,
+`pointer_expired`) keep the default identity condition and only compare
+equal to themselves. This does not change
+how reloco itself reports errors -- every `try_*` operation still returns
+`reloco::result<T>` -- it is purely a bridge for code that also needs to
+hand a `reloco::error` to, or compare it against, `std::error_code`/
+`std::error_condition`-based APIs.
 
 ## `span<T>`
 

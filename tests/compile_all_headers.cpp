@@ -15,6 +15,7 @@
 #include <reloco/container_ref_std.hpp>
 #include <reloco/default_allocator.hpp>
 #include <reloco/error.hpp>
+#include <reloco/error_std.hpp>
 #include <reloco/expected.hpp>
 #include <reloco/flat_set.hpp>
 #include <reloco/function.hpp>

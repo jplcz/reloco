@@ -200,6 +200,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_span.cpp
         tests/test_string_view.cpp
         tests/test_expected.cpp
+        tests/test_error_std.cpp
         tests/test_allocator.cpp
         tests/test_concepts.cpp
         tests/test_construction_helpers.cpp
