@@ -102,3 +102,10 @@
 //           static my_arena arena;
 //           return reloco::allocator<my_arena_tag>(arena).ref();
 //         }
+//
+// RELOCO_SSO_STRING_CAPACITY
+//     Number of characters (excluding the trailing null terminator) that
+//     reloco::basic_sso_string<CharT, TraitsT> (see reloco/sso_string.hpp)
+//     stores inline before falling back to a heap allocation. Defaults to
+//     15. This is a single process-wide constant, not a template
+//     parameter, so every basic_sso_string instantiation shares it.

@@ -70,6 +70,7 @@ that qualify despite not being trivially copyable:
 | `reloco::inline_vector<T, Capacity>` | Same as `T` | Storage is an inline `T[Capacity]`-shaped byte buffer embedded in the object, not a heap pointer, so relocating via `memcpy` is only safe when every contained `T` also is |
 | `reloco::flat_set<T>` | Always, regardless of `T` | Wraps a `vector<T>`, which is itself always relocatable |
 | `reloco::basic_inline_string<Capacity, CharT, TraitsT>` | Always, regardless of `Capacity`/`CharT`/`TraitsT` | Holds only an inline `CharT` array and a size; never self-referential |
+| `reloco::basic_sso_string<CharT, TraitsT>` | Never, regardless of `CharT`/`TraitsT` | Holds an inline SSO buffer that `data()` can point into while small; relocating via `memcpy` while small would leave the copy's `data()` dangling into the old object |
 | `reloco::optional<T>` | Same as `T` | Holds a `T` plus a `bool` flag inline, with no pointer back into itself |
 | `reloco::checked_value<T>` | Same as `T` | Holds a `T` plus a `bool` flag, with no pointer back into itself |
 | `reloco::checked_value<T *>` | Always, regardless of `T` | Holds only a `T *` and a `bool` flag |

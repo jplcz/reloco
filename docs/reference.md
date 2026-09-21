@@ -259,6 +259,55 @@ standard-library string when one is actually needed at a boundary.
 `reloco::is_trivially_relocatable<basic_string<CharT, TraitsT>>` is always
 `true` (see [Trivial relocation](relocatable.md)).
 
+## `basic_sso_string<CharT, TraitsT>` (`sso_string`, `wsso_string`)
+
+`include/reloco/sso_string.hpp`
+
+Move-only, allocator-backed, growable character buffer with a **small-string
+optimization (SSO)**: strings of at most `sso_capacity` characters (15 by
+default) live entirely inline inside the object and never allocate; growing
+past that inline capacity transparently falls back to a heap allocation,
+exactly like `basic_string`. `shrink_to_fit()` moves a string that has
+shrunk back down to `sso_capacity` or fewer characters back into the inline
+buffer, releasing the heap allocation.
+
+`basic_sso_string` implements the exact same API as `basic_string` --
+`try_create`/`try_allocate`/`try_clone`/`try_clone_at`, the same fallible
+mutators (`try_reserve`, `shrink_to_fit`, `try_assign`, `try_append`,
+`try_push_back`, `pop_back`/`try_pop_back`, `try_insert`, `erase`/
+`try_erase`, `try_resize`, `clear`), and the same checked/`try_*`/`unsafe_*`
+element-access tiers. Additionally, `is_inline()` reports whether the
+current content lives inline or on the heap, and `sso_capacity` is a
+`static constexpr` member exposing the compile-time inline limit.
+
+```cpp
+auto s = reloco::sso_string::try_create(reloco::string_view("hello"));
+if (!s)
+  return; // s.error() is a reloco::error.
+assert(s->is_inline()); // "hello" fits inline, no allocation happened.
+```
+
+The inline capacity is a single process-wide compile-time constant, not a
+template parameter: define `RELOCO_SSO_STRING_CAPACITY` (via a compiler
+`-D` flag or `reloco_user_config.hpp`, see
+[`reloco_config.hpp`](#reloco_confighpp)) to override the default of 15
+characters.
+
+Because the inline buffer is self-referencing while a `basic_sso_string` is
+small (its `data()` can point inside the object itself),
+`reloco::is_trivially_relocatable<basic_sso_string<CharT, TraitsT>>` is
+always `false` -- unlike `basic_string`. Containers that branch on
+`is_trivially_relocatable` (`vector`, `inline_vector`, `flat_set`,
+`flat_map`, ...) always use their safe, per-element move path for
+`basic_sso_string` elements, never `memcpy`.
+
+Prefer `basic_sso_string` over `basic_string` when most expected values are
+short and avoiding an allocation for them matters more than keeping the
+type trivially relocatable; prefer `basic_string` when relocatability
+matters (e.g. as the element type of a frequently grown/erased
+`vector`/`flat_set`) or values are typically longer than the inline
+capacity.
+
 ## `vector<T>`
 
 `include/reloco/vector.hpp`
