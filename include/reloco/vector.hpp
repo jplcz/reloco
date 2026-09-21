@@ -347,7 +347,7 @@ public:
     }
     size_ = 0;
 
-    static constexpr std::size_t discard_threshold = 64 * 1024;
+    static constexpr std::size_t discard_threshold = 2 * 1024 * 1024; // 2 MB
     if (const std::size_t bytes = cap_ * sizeof(T); bytes >= discard_threshold)
       alloc_.advise(data_, bytes, usage_hint::dont_need);
   }
