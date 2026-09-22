@@ -165,16 +165,16 @@ TEST(SpanTest, Sort) {
   reloco::span<int> view(values);
   view.sort();
   EXPECT_TRUE(std::is_sorted(view.begin(), view.end()));
-  EXPECT_EQ(values[0], 1);
-  EXPECT_EQ(values[4], 5);
+  EXPECT_EQ(view[0], 1);
+  EXPECT_EQ(view[4], 5);
 }
 
 TEST(SpanTest, SortBy) {
   int values[] = {5, 3, 1, 4, 2};
   reloco::span<int> view(values);
   view.sort_by([](int a, int b) { return a > b; });
-  EXPECT_EQ(values[0], 5);
-  EXPECT_EQ(values[4], 1);
+  EXPECT_EQ(view[0], 5);
+  EXPECT_EQ(view[4], 1);
 }
 
 TEST(SpanTest, SortUnstable) {
