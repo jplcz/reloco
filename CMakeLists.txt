@@ -210,6 +210,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_relocatable_std.cpp
         tests/test_fallible_singleton.cpp
         tests/test_mutex.cpp
+        tests/test_guarded_mutex.cpp
         tests/test_shared_ptr.cpp
         tests/test_rc.cpp
         tests/test_binary_heap.cpp

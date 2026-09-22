@@ -1428,6 +1428,53 @@ impact. `detail/compat.hpp` also exposes `RELOCO_GUARDED_BY`/
 `RELOCO_NO_THREAD_SAFETY_ANALYSIS` for annotating application code that
 guards its own data with these mutex types.
 
+## `guarded_mutex<T, MutexT = mutex>`
+
+`include/reloco/guarded_mutex.hpp`
+
+A mutex that owns the value it protects, matching Rust's
+`std::sync::Mutex<T>`. `mutex`/`recursive_mutex`/`shared_mutex` above
+protect nothing by themselves -- there is nothing stopping code from
+touching a separately-declared guarded variable without holding the lock
+at all. `guarded_mutex<T>` closes that gap: the `T` lives inside the
+`guarded_mutex<T>` itself, and the only way to reach it is through the
+RAII `guard` returned by `lock()`/`try_lock()`.
+
+```cpp
+reloco::guarded_mutex<int> counter(0);
+{
+  auto g = counter.lock(); // blocks until acquired
+  *g += 1;
+} // lock released automatically here
+
+auto g = counter.try_lock(); // result<guard>, fails with error::busy if held
+if (g)
+  **g += 1;
+```
+
+`lock()` blocks until acquired and returns a `guard` (the checked tier: it
+cannot fail, matching Rust's own `Mutex::lock()` once poisoning is
+disregarded, which reloco has no equivalent of since it never unwinds
+through a held lock). `try_lock()` is the fallible tier, returning
+`result<guard>` and failing with `error::busy` if already held elsewhere
+-- matching Rust's own `Mutex::try_lock() -> Result<MutexGuard<T>,
+TryLockError<...>>` more closely than an `optional<guard>` would (and
+sidesteps `optional<T>`'s Clang consumed-state typestate tracking, which
+does not mix with a guard's branching acquire-or-fail control flow).
+`get_mut()` bypasses locking entirely for callers that already hold an
+exclusive `guarded_mutex&` (Rust's `Mutex::get_mut()`, which borrows `&mut
+self` at compile time instead). `guard` is move-only and releases the
+lock automatically on destruction, matching Rust's `MutexGuard<'a, T>`.
+
+The lock backend is a template parameter (`MutexT = mutex` by default);
+any type providing `lock()`/`unlock()`/`try_lock()` with the same shape as
+`reloco::mutex` works, including `recursive_mutex`. Only exclusive access
+is modeled -- `shared_mutex`'s `lock_shared()`/`unlock_shared()` are not
+exposed through `guarded_mutex<T>`; use `shared_mutex` directly for
+reader/writer locking without an owned value. This is the thread-safe
+counterpart of [`cell<T>`/`ref_cell<T>`](#celltref_cellt) above, which are
+`!Sync`-equivalent (single-threaded only) by design.
+
 ## `is_trivially_relocatable<T>`
 
 `include/reloco/relocatable.hpp`
