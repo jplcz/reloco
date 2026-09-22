@@ -628,6 +628,56 @@ clone/consume tiers:
 | `try_to_flat_map(allocator_ref alloc) const &` / `try_to_flat_map() const &` | Clones every (key, mapped) entry into a new `flat_map<Key, Mapped, Compare>`, leaving `*this` untouched |
 | `try_to_flat_map(allocator_ref alloc) &&` / `try_to_flat_map() &&` | Moves every (key, mapped) entry out into a new `flat_map<Key, Mapped, Compare>`, consuming `*this` (left empty either way) |
 
+## `sso_flat_set<T, InlineCapacity, Compare = std::less<T>>`
+
+`include/reloco/sso_flat_set.hpp`
+
+A sorted, unique-element set backed by `sso_vector<T, InlineCapacity>`
+instead of `vector<T>`: it holds up to `InlineCapacity` elements inline
+without allocating, and transparently promotes to heap storage once that
+capacity is exceeded. Unlike `inline_flat_set`, `try_insert` never fails
+with `error::capacity_exceeded` — growth past `InlineCapacity` just
+allocates, exactly like `flat_set`. Otherwise it exposes the same surface
+as `flat_set` (`try_insert`, `try_find`, `contains`, `try_remove`,
+`try_clone`, etc.), including the same allocator-taking `try_allocate`/
+`try_create` factories.
+
+```cpp
+auto set = reloco::sso_flat_set<int, 4>::try_create();
+auto ok = set->try_insert(42); // stays inline
+auto grown = set->try_insert(1000); // may promote to heap once size > 4
+assert(set->contains(42));
+```
+
+`reloco::is_trivially_relocatable<sso_flat_set<T, InlineCapacity, Compare>>`
+is unconditionally `false`, since it wraps `sso_vector`, which is itself
+never trivially relocatable (its inline buffer is self-referencing). It has
+the same `container_ref_traits`/`collection_view_traits` adapters as
+`flat_set`.
+
+## `sso_flat_map<Key, Mapped, InlineCapacity, Compare = std::less<Key>>`
+
+`include/reloco/sso_flat_map.hpp`
+
+`flat_map`'s SSO-backed counterpart: a sorted, unique-key map backed by
+`sso_vector<std::pair<Key, Mapped>, InlineCapacity>`. Like `sso_flat_set`,
+it never fails with `error::capacity_exceeded` — it stays inline up to
+`InlineCapacity` entries and transparently promotes to heap storage beyond
+that. It exposes the same `try_insert(key, mapped)`/`try_at(key)` surface
+as `flat_map` (including the same rationale for omitting `operator[]`).
+
+```cpp
+auto map = reloco::sso_flat_map<int, std::string, 4>::try_create();
+auto ok = map->try_insert(1, "one");
+auto found = map->try_at(1);
+assert(found && found->get() == "one");
+```
+
+`reloco::is_trivially_relocatable<sso_flat_map<Key, Mapped, InlineCapacity,
+Compare>>` is unconditionally `false`, for the same reason as
+`sso_flat_set`. It has the same `container_ref_traits`/
+`collection_view_traits` adapters as `flat_map`.
+
 ## `basic_inline_string<Capacity, CharT, TraitsT>` (`inline_string<Capacity>`, `inline_wstring<Capacity>`)
 
 `include/reloco/inline_string.hpp`
