@@ -348,12 +348,23 @@ copyable element types with no custom `try_clone` take a single-`memcpy`
 fast path when cloning.
 
 Mutation: `try_reserve`, `shrink_to_fit`, `try_emplace_back`, `try_push_back`,
-`try_pop_back`, `try_insert_at`, `try_erase_at`, `clear`. Every fallible one
-returns `reloco::result<...>`. Growth prefers
+`try_pop_back`, `try_resize`, `try_insert_at`, `try_erase_at`, `clear`. Every
+fallible one returns `reloco::result<...>`. Growth prefers
 `allocator_ref::expand_in_place` first; when that fails it either
 byte-relocates the whole buffer in one `reallocate` call (when
 `is_trivially_relocatable_v<T>`) or falls back to move-constructing each
 element into a freshly allocated block.
+
+`try_resize(count)` / `try_resize(count, value)` grow or shrink the vector
+to exactly `count` elements, reserving storage first if growing. Shrinking
+destroys the trailing elements; growing default-constructs (`try_resize`)
+or copy-constructs `value` into (`try_resize(count, value)`) each new slot.
+`try_resize(count)` requires `T` to be default-constructible (a
+`static_assert`); use the `value`-taking overload otherwise. When `T` is
+trivially default-constructible/trivially copyable, the newly added range
+is bulk zero-filled with a single `std::memset` or filled via a plain
+assignment loop, instead of dispatching `construction_helpers::try_construct`
+per element.
 
 Element access follows the same checked/`try_*`/`unsafe_*` tri-tier
 convention as `span`/`array`/`string`: `operator[]`/`front()`/`back()`
@@ -396,9 +407,10 @@ assert(v[0] == 0 && v[1] == 1);
 ```
 
 Mutation mirrors `vector<T>` (`try_emplace_back`, `try_push_back`,
-`try_pop_back`, `try_insert_at`, `try_erase_at`, `clear`), except there is
-no growth to fall back on: `try_emplace_back`/`try_insert_at` fail with
-`error::capacity_exceeded` once `size() == capacity()`, instead of
+`try_pop_back`, `try_resize`, `try_insert_at`, `try_erase_at`, `clear`),
+except there is no growth to fall back on: `try_emplace_back`/
+`try_insert_at`/`try_resize` fail with `error::capacity_exceeded` once
+`size() == capacity()` (respectively `count > capacity()`), instead of
 allocating more space. Element construction and cloning delegate to
 `construction_helpers` exactly like `vector<T>`, so nested element types
 that implement their own fallible-construction protocol compose
@@ -458,11 +470,12 @@ assert(v.is_inline());
 Construction, cloning, mutation, and element access all follow the same
 protocol/shape as `vector<T>` (`try_allocate`/`try_create`/
 `try_clone`/`try_clone_at`, `try_reserve`/`shrink_to_fit`,
-`try_emplace_back`/`try_push_back`/`try_pop_back`/`try_insert_at`/
-`try_erase_at`/`clear`, checked/`try_*`/`unsafe_*` tri-tier element
-access) -- see [`vector<T>`](#vectort) above for the full breakdown. The
-one addition is `is_inline()`, which reports whether `*this` currently
-holds its elements in the embedded buffer rather than a heap allocation.
+`try_emplace_back`/`try_push_back`/`try_pop_back`/`try_resize`/
+`try_insert_at`/`try_erase_at`/`clear`, checked/`try_*`/`unsafe_*` tri-tier
+element access) -- see [`vector<T>`](#vectort) above for the full
+breakdown. The one addition is `is_inline()`, which reports whether
+`*this` currently holds its elements in the embedded buffer rather than a
+heap allocation.
 
 Because `try_reserve` has no existing heap allocation to
 `expand_in_place`/`reallocate` the first time it promotes from inline to

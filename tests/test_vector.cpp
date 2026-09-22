@@ -24,9 +24,10 @@ namespace {
 // only support nothrow move construction (exercises the manual move/destroy
 // growth and shift paths, not the memcpy/memmove fast paths).
 struct move_only {
-  int value;
+  int value = 0;
   bool *destroyed_flag = nullptr;
 
+  move_only() noexcept = default;
   explicit move_only(int v) noexcept : value(v) {}
   move_only(int v, bool *flag) noexcept : value(v), destroyed_flag(flag) {}
   move_only(const move_only &) = delete;
@@ -435,4 +436,59 @@ TEST(VectorTest, GetAllocatorReturnsUsableAllocator) {
   ASSERT_TRUE(v);
   auto clone = v->try_clone(v->get_allocator());
   ASSERT_TRUE(clone);
+}
+
+TEST(VectorTest, TryResizeGrowsWithDefaultValue) {
+  auto v = vector<int>::try_create();
+  ASSERT_TRUE(v);
+  ASSERT_TRUE(v->try_push_back(1));
+
+  ASSERT_TRUE(v->try_resize(4));
+  EXPECT_EQ(v->size(), 4u);
+  EXPECT_EQ((*v)[0], 1);
+  EXPECT_EQ((*v)[1], 0);
+  EXPECT_EQ((*v)[2], 0);
+  EXPECT_EQ((*v)[3], 0);
+}
+
+TEST(VectorTest, TryResizeGrowsWithFillValue) {
+  auto v = vector<int>::try_create();
+  ASSERT_TRUE(v);
+  ASSERT_TRUE(v->try_push_back(1));
+
+  ASSERT_TRUE(v->try_resize(4, 7));
+  EXPECT_EQ(v->size(), 4u);
+  EXPECT_EQ((*v)[0], 1);
+  EXPECT_EQ((*v)[1], 7);
+  EXPECT_EQ((*v)[2], 7);
+  EXPECT_EQ((*v)[3], 7);
+}
+
+TEST(VectorTest, TryResizeShrinksAndDestroysTrailingElements) {
+  bool destroyed[4] = {false, false, false, false};
+  auto v = vector<move_only>::try_create();
+  ASSERT_TRUE(v);
+  ASSERT_TRUE(v->try_push_back(move_only(0, &destroyed[0])));
+  ASSERT_TRUE(v->try_push_back(move_only(1, &destroyed[1])));
+  ASSERT_TRUE(v->try_push_back(move_only(2, &destroyed[2])));
+  ASSERT_TRUE(v->try_push_back(move_only(3, &destroyed[3])));
+
+  ASSERT_TRUE(v->try_resize(2));
+  EXPECT_EQ(v->size(), 2u);
+  EXPECT_FALSE(destroyed[0]);
+  EXPECT_FALSE(destroyed[1]);
+  EXPECT_TRUE(destroyed[2]);
+  EXPECT_TRUE(destroyed[3]);
+}
+
+TEST(VectorTest, TryResizeToSameSizeIsNoop) {
+  auto v = vector<int>::try_create();
+  ASSERT_TRUE(v);
+  ASSERT_TRUE(v->try_push_back(1));
+  ASSERT_TRUE(v->try_push_back(2));
+
+  ASSERT_TRUE(v->try_resize(2));
+  EXPECT_EQ(v->size(), 2u);
+  EXPECT_EQ((*v)[0], 1);
+  EXPECT_EQ((*v)[1], 2);
 }

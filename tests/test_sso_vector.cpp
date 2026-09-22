@@ -24,9 +24,10 @@ namespace {
 // shift paths, not the memcpy/memmove fast paths). Mirrors test_vector.cpp's
 // / test_inline_vector.cpp's helper of the same name/shape.
 struct move_only {
-  int value;
+  int value = 0;
   bool *destroyed_flag = nullptr;
 
+  move_only() noexcept = default;
   explicit move_only(int v) noexcept : value(v) {}
   move_only(int v, bool *flag) noexcept : value(v), destroyed_flag(flag) {}
   move_only(const move_only &) = delete;
@@ -545,4 +546,47 @@ TEST(SsoVectorTest, IsNotTriviallyRelocatable) {
   using string_sso_vec = sso_vector<reloco::string, 4>;
   EXPECT_FALSE(reloco::is_trivially_relocatable_v<int_sso_vec>);
   EXPECT_FALSE(reloco::is_trivially_relocatable_v<string_sso_vec>);
+}
+
+TEST(SsoVectorTest, TryResizeGrowsWithDefaultValueWhileInline) {
+  sso_vector<int, 4> v;
+  ASSERT_TRUE(v.try_push_back(1));
+
+  ASSERT_TRUE(v.try_resize(4));
+  EXPECT_EQ(v.size(), 4u);
+  EXPECT_TRUE(v.is_inline());
+  EXPECT_EQ(v[0], 1);
+  EXPECT_EQ(v[1], 0);
+  EXPECT_EQ(v[2], 0);
+  EXPECT_EQ(v[3], 0);
+}
+
+TEST(SsoVectorTest, TryResizeGrowsWithFillValueAndPromotesToHeap) {
+  sso_vector<int, 2> v;
+  ASSERT_TRUE(v.try_push_back(1));
+
+  ASSERT_TRUE(v.try_resize(5, 7));
+  EXPECT_EQ(v.size(), 5u);
+  EXPECT_FALSE(v.is_inline());
+  EXPECT_EQ(v[0], 1);
+  EXPECT_EQ(v[1], 7);
+  EXPECT_EQ(v[2], 7);
+  EXPECT_EQ(v[3], 7);
+  EXPECT_EQ(v[4], 7);
+}
+
+TEST(SsoVectorTest, TryResizeShrinksAndDestroysTrailingElements) {
+  bool destroyed[4] = {false, false, false, false};
+  sso_vector<move_only, 4> v;
+  ASSERT_TRUE(v.try_push_back(move_only(0, &destroyed[0])));
+  ASSERT_TRUE(v.try_push_back(move_only(1, &destroyed[1])));
+  ASSERT_TRUE(v.try_push_back(move_only(2, &destroyed[2])));
+  ASSERT_TRUE(v.try_push_back(move_only(3, &destroyed[3])));
+
+  ASSERT_TRUE(v.try_resize(2));
+  EXPECT_EQ(v.size(), 2u);
+  EXPECT_FALSE(destroyed[0]);
+  EXPECT_FALSE(destroyed[1]);
+  EXPECT_TRUE(destroyed[2]);
+  EXPECT_TRUE(destroyed[3]);
 }

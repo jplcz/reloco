@@ -25,9 +25,10 @@ namespace {
 // shift paths, not the memcpy/memmove fast paths). Mirrors test_vector.cpp's
 // helper of the same name/shape.
 struct move_only {
-  int value;
+  int value = 0;
   bool *destroyed_flag = nullptr;
 
+  move_only() noexcept = default;
   explicit move_only(int v) noexcept : value(v) {}
   move_only(int v, bool *flag) noexcept : value(v), destroyed_flag(flag) {}
   move_only(const move_only &) = delete;
@@ -448,4 +449,54 @@ TEST(InlineVectorTest, IsTriviallyRelocatableDependsOnElementType) {
   EXPECT_TRUE(reloco::is_trivially_relocatable_v<string_vec>);
   EXPECT_FALSE(reloco::is_trivially_relocatable_v<std_string_vec>);
   EXPECT_FALSE(reloco::is_trivially_relocatable_v<move_only_vec>);
+}
+
+TEST(InlineVectorTest, TryResizeGrowsWithDefaultValue) {
+  inline_vector<int, 4> v;
+  ASSERT_TRUE(v.try_push_back(1));
+
+  ASSERT_TRUE(v.try_resize(4));
+  EXPECT_EQ(v.size(), 4u);
+  EXPECT_EQ(v[0], 1);
+  EXPECT_EQ(v[1], 0);
+  EXPECT_EQ(v[2], 0);
+  EXPECT_EQ(v[3], 0);
+}
+
+TEST(InlineVectorTest, TryResizeGrowsWithFillValue) {
+  inline_vector<int, 4> v;
+  ASSERT_TRUE(v.try_push_back(1));
+
+  ASSERT_TRUE(v.try_resize(4, 7));
+  EXPECT_EQ(v.size(), 4u);
+  EXPECT_EQ(v[0], 1);
+  EXPECT_EQ(v[1], 7);
+  EXPECT_EQ(v[2], 7);
+  EXPECT_EQ(v[3], 7);
+}
+
+TEST(InlineVectorTest, TryResizeFailsWithCapacityExceeded) {
+  inline_vector<int, 4> v;
+  ASSERT_TRUE(v.try_push_back(1));
+
+  auto res = v.try_resize(5);
+  ASSERT_FALSE(res.has_value());
+  EXPECT_EQ(res.error(), reloco::error::capacity_exceeded);
+  EXPECT_EQ(v.size(), 1u);
+}
+
+TEST(InlineVectorTest, TryResizeShrinksAndDestroysTrailingElements) {
+  bool destroyed[4] = {false, false, false, false};
+  inline_vector<move_only, 4> v;
+  ASSERT_TRUE(v.try_push_back(move_only(0, &destroyed[0])));
+  ASSERT_TRUE(v.try_push_back(move_only(1, &destroyed[1])));
+  ASSERT_TRUE(v.try_push_back(move_only(2, &destroyed[2])));
+  ASSERT_TRUE(v.try_push_back(move_only(3, &destroyed[3])));
+
+  ASSERT_TRUE(v.try_resize(2));
+  EXPECT_EQ(v.size(), 2u);
+  EXPECT_FALSE(destroyed[0]);
+  EXPECT_FALSE(destroyed[1]);
+  EXPECT_TRUE(destroyed[2]);
+  EXPECT_TRUE(destroyed[3]);
 }

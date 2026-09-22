@@ -292,6 +292,85 @@ public:
   }
 
   /**
+   * @brief Resizes the vector to contain @p count elements. Fails with
+   * `error::capacity_exceeded` if @p count > `Capacity`.
+   *
+   * If @p count < size(), the trailing elements are destroyed. If @p count >
+   * size(), each new slot is default-constructed. Requires `T` to be
+   * default-constructible; use `try_resize(count, value)` to fill new
+   * elements with a copy of @p value instead.
+   *
+   * When `T` is trivially default-constructible, the newly added range is
+   * bulk zero-filled with a single `std::memset` rather than looping a
+   * placement-new per element.
+   */
+  [[nodiscard]] result<void> try_resize(size_type count) & noexcept {
+    static_assert(std::is_default_constructible_v<T>,
+                  "try_resize(count) requires T to be default-constructible; use try_resize(count, value) instead.");
+    if (count <= size_) {
+      destroy_range(count, size_);
+      size_ = count;
+      return {};
+    }
+
+    if (count > Capacity)
+      return unexpected(error::capacity_exceeded);
+
+    if constexpr (std::is_trivially_default_constructible_v<T>) {
+      std::memset(static_cast<void *>(slot(size_)), 0, (count - size_) * sizeof(T));
+      size_ = count;
+    } else {
+      size_type i = size_;
+      for (; i < count; ++i) {
+        auto ctor_res = construction_helpers::try_construct<T>(default_allocator(), slot(i));
+        if (!ctor_res) {
+          destroy_range(size_, i);
+          return unexpected(ctor_res.error());
+        }
+      }
+      size_ = count;
+    }
+    return {};
+  }
+
+  /**
+   * @brief Resizes the vector to contain @p count elements, copy-constructing
+   * @p value into any newly added slots. Fails with
+   * `error::capacity_exceeded` if @p count > `Capacity`.
+   *
+   * When `T` is trivially copyable, the newly added range is filled via a
+   * plain assignment loop rather than going through the fallible
+   * construction dispatcher per element.
+   */
+  [[nodiscard]] result<void> try_resize(size_type count, const T &value) & noexcept {
+    if (count <= size_) {
+      destroy_range(count, size_);
+      size_ = count;
+      return {};
+    }
+
+    if (count > Capacity)
+      return unexpected(error::capacity_exceeded);
+
+    if constexpr (std::is_trivially_copyable_v<T>) {
+      for (size_type i = size_; i < count; ++i)
+        *slot(i) = value;
+      size_ = count;
+    } else {
+      size_type i = size_;
+      for (; i < count; ++i) {
+        auto ctor_res = construction_helpers::try_construct<T>(default_allocator(), slot(i), value);
+        if (!ctor_res) {
+          destroy_range(size_, i);
+          return unexpected(ctor_res.error());
+        }
+      }
+      size_ = count;
+    }
+    return {};
+  }
+
+  /**
    * @brief Destroys every element and resets size to zero.
    */
   void clear() noexcept {
@@ -510,6 +589,13 @@ public:
   [[nodiscard]] const_reverse_iterator crend() const & noexcept RELOCO_LIFETIMEBOUND { return rend(); }
 
 private:
+  void destroy_range(size_type from, size_type to) noexcept {
+    if constexpr (!std::is_trivially_destructible_v<T>) {
+      for (size_type i = from; i < to; ++i)
+        slot(i)->~T();
+    }
+  }
+
   // Compute the byte offset before casting to `T *` (rather than casting
   // first and then applying `+ index`) so the pointer arithmetic is done on
   // `std::byte`, avoiding a `cpp/suspicious-pointer-scaling` false positive
