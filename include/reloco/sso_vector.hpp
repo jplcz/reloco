@@ -787,17 +787,18 @@ private:
     }
   }
 
-  // Compute the byte offset before casting to `T *` (rather than casting
-  // first and then applying `+ index`) so the pointer arithmetic is done on
-  // `std::byte`, avoiding a `cpp/suspicious-pointer-scaling` false positive
-  // from static analysis that would otherwise see scaling by `sizeof(T)`
-  // applied to what it believes is still byte-granular storage. Mirrors
-  // `inline_vector::slot()`.
+  // Cast the raw storage to `T *` once and then use ordinary `T *`
+  // pointer arithmetic (implicitly scaled by `sizeof(T)`) instead of
+  // manually multiplying `index * sizeof(T)` against a `std::byte *`.
+  // This avoids both a `cpp/suspicious-pointer-scaling` false positive
+  // (a `std::byte *` scaled as if it were `T *`) and a
+  // `cpp/suspicious-add-sizeof` false positive (an explicit `sizeof(T)`
+  // added to a pointer) from static analysis. Mirrors `inline_vector::slot()`.
   [[nodiscard]] T *inline_slot(size_type index) noexcept {
-    return std::launder(reinterpret_cast<T *>(inline_storage_ + index * sizeof(T)));
+    return std::launder(static_cast<T *>(static_cast<void *>(inline_storage_)) + index);
   }
   [[nodiscard]] const T *inline_slot(size_type index) const noexcept {
-    return std::launder(reinterpret_cast<const T *>(inline_storage_ + index * sizeof(T)));
+    return std::launder(static_cast<const T *>(static_cast<const void *>(inline_storage_)) + index);
   }
 
   // Takes over `other`'s elements (by relocating/moving them into our own

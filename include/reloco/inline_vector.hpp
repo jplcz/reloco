@@ -659,16 +659,18 @@ private:
     }
   }
 
-  // Compute the byte offset before casting to `T *` (rather than casting
-  // first and then applying `+ index`) so the pointer arithmetic is done on
-  // `std::byte`, avoiding a `cpp/suspicious-pointer-scaling` false positive
-  // from static analysis that otherwise sees scaling by `sizeof(T)` applied
-  // to what it believes is still byte-granular storage.
+  // Cast the raw storage to `T *` once and then use ordinary `T *`
+  // pointer arithmetic (implicitly scaled by `sizeof(T)`) instead of
+  // manually multiplying `index * sizeof(T)` against a `std::byte *`.
+  // This avoids both a `cpp/suspicious-pointer-scaling` false positive
+  // (a `std::byte *` scaled as if it were `T *`) and a
+  // `cpp/suspicious-add-sizeof` false positive (an explicit `sizeof(T)`
+  // added to a pointer) from static analysis.
   [[nodiscard]] T *slot(size_type index) noexcept {
-    return std::launder(reinterpret_cast<T *>(storage_ + index * sizeof(T)));
+    return std::launder(static_cast<T *>(static_cast<void *>(storage_)) + index);
   }
   [[nodiscard]] const T *slot(size_type index) const noexcept {
-    return std::launder(reinterpret_cast<const T *>(storage_ + index * sizeof(T)));
+    return std::launder(static_cast<const T *>(static_cast<const void *>(storage_)) + index);
   }
 
   void relocate_from(inline_vector &other) noexcept {
