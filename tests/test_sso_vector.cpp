@@ -576,6 +576,7 @@ TEST(SsoVectorTest, TryResizeGrowsWithFillValueAndPromotesToHeap) {
 }
 
 TEST(SsoVectorTest, TryResizeShrinksAndDestroysTrailingElements) {
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE;
   bool destroyed[4] = {false, false, false, false};
   sso_vector<move_only, 4> v;
   ASSERT_TRUE(v.try_push_back(move_only(0, &destroyed[0])));
@@ -589,4 +590,5 @@ TEST(SsoVectorTest, TryResizeShrinksAndDestroysTrailingElements) {
   EXPECT_FALSE(destroyed[1]);
   EXPECT_TRUE(destroyed[2]);
   EXPECT_TRUE(destroyed[3]);
+  RELOCO_END_UNSAFE_BUFFER_USAGE;
 }

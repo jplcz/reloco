@@ -203,16 +203,16 @@ TEST(InlineVectorTest, TryEraseAtOutOfBoundsFails) {
 }
 
 TEST(InlineVectorTest, TryEraseAtNonRelocatableDestroysAndMoves) {
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE;
   bool destroyed[3] = {false, false, false};
   inline_vector<move_only, 4> v;
-  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE;
   ASSERT_TRUE(v.try_emplace_back(1, &destroyed[0]));
   ASSERT_TRUE(v.try_emplace_back(2, &destroyed[1]));
   ASSERT_TRUE(v.try_emplace_back(3, &destroyed[2]));
-  RELOCO_END_UNSAFE_BUFFER_USAGE;
 
   ASSERT_TRUE(v.try_erase_at(0));
   EXPECT_TRUE(destroyed[0]);
+  RELOCO_END_UNSAFE_BUFFER_USAGE;
   ASSERT_EQ(v.size(), 2u);
   EXPECT_EQ(v[0].value, 2);
   EXPECT_EQ(v[1].value, 3);
@@ -486,6 +486,7 @@ TEST(InlineVectorTest, TryResizeFailsWithCapacityExceeded) {
 }
 
 TEST(InlineVectorTest, TryResizeShrinksAndDestroysTrailingElements) {
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE;
   bool destroyed[4] = {false, false, false, false};
   inline_vector<move_only, 4> v;
   ASSERT_TRUE(v.try_push_back(move_only(0, &destroyed[0])));
@@ -499,4 +500,5 @@ TEST(InlineVectorTest, TryResizeShrinksAndDestroysTrailingElements) {
   EXPECT_FALSE(destroyed[1]);
   EXPECT_TRUE(destroyed[2]);
   EXPECT_TRUE(destroyed[3]);
+  RELOCO_END_UNSAFE_BUFFER_USAGE;
 }
