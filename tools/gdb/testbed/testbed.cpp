@@ -12,17 +12,28 @@
 // printed output contains the expected substring.
 
 #include <reloco/array.hpp>
+#include <reloco/binary_heap.hpp>
+#include <reloco/boxed_slice.hpp>
+#include <reloco/cell.hpp>
 #include <reloco/checked_value.hpp>
+#include <reloco/cow.hpp>
 #include <reloco/expected.hpp>
 #include <reloco/flat_map.hpp>
 #include <reloco/flat_set.hpp>
 #include <reloco/function_ref.hpp>
+#include <reloco/guarded_mutex.hpp>
 #include <reloco/inline_flat_map.hpp>
 #include <reloco/inline_flat_set.hpp>
 #include <reloco/inline_vector.hpp>
+#include <reloco/non_zero.hpp>
 #include <reloco/optional.hpp>
+#include <reloco/rc.hpp>
 #include <reloco/shared_ptr.hpp>
 #include <reloco/span.hpp>
+#include <reloco/sso_flat_map.hpp>
+#include <reloco/sso_flat_set.hpp>
+#include <reloco/sso_string.hpp>
+#include <reloco/sso_vector.hpp>
 #include <reloco/string.hpp>
 #include <reloco/string_view.hpp>
 #include <reloco/unique_ptr.hpp>
@@ -127,6 +138,76 @@ int main() {
   // GDB_CHECK: sptr_int => reloco::shared_ptr =
   reloco::weak_ptr<int> wptr_int(sptr_int);
   // GDB_CHECK: wptr_int => reloco::weak_ptr =
+
+  // -- rc / weak_rc ----------------------------------------------------------
+  auto rc_res = reloco::try_create_combined_rc<int>(11);
+  reloco::rc<int> rc_int = rc_res ? std::move(rc_res.value()) : reloco::rc<int>{};
+  // GDB_CHECK: rc_int => reloco::rc =
+  reloco::weak_rc<int> wrc_int(rc_int);
+  // GDB_CHECK: wrc_int => reloco::weak_rc =
+
+  // -- binary_heap -------------------------------------------------------
+  auto heap_res = reloco::binary_heap<int>::try_create();
+  reloco::binary_heap<int> heap_int = heap_res ? std::move(heap_res.value()) : reloco::binary_heap<int>{};
+  (void)heap_int.try_push(5);
+  (void)heap_int.try_push(9);
+  (void)heap_int.try_push(1);
+  // GDB_CHECK: heap_int => reloco::binary_heap of length 3
+
+  // -- cow -----------------------------------------------------------------
+  int cow_source = 13;
+  reloco::cow<int> cow_borrowed(cow_source);
+  // GDB_CHECK: cow_borrowed => reloco::cow [borrowed]
+  reloco::cow<int> cow_owned(cow_source);
+  auto cow_mut_res = cow_owned.to_mut();
+  (void)cow_mut_res;
+  // GDB_CHECK: cow_owned => reloco::cow [owned]
+
+  // -- boxed_slice -----------------------------------------------------------
+  auto boxed_res = reloco::boxed_slice<int>::try_create(3, 4);
+  reloco::boxed_slice<int> boxed_int = boxed_res ? std::move(boxed_res.value()) : reloco::boxed_slice<int>{};
+  // GDB_CHECK: boxed_int => reloco::boxed_slice of length 3
+
+  // -- guarded_mutex -----------------------------------------------------------
+  reloco::guarded_mutex<int> gmutex_int(21);
+  // GDB_CHECK: gmutex_int => reloco::guarded_mutex
+
+  // -- sso_vector --------------------------------------------------------
+  reloco::sso_vector<int, 4> sso_vec_int;
+  (void)sso_vec_int.try_push_back(1);
+  (void)sso_vec_int.try_push_back(2);
+  // GDB_CHECK: sso_vec_int => reloco::sso_vector of length 2, capacity 4 (inline, inline capacity 4)
+
+  // -- sso_flat_set --------------------------------------------------------
+  reloco::sso_flat_set<int, 4> sso_set_int;
+  (void)sso_set_int.try_insert(3);
+  (void)sso_set_int.try_insert(1);
+  // GDB_CHECK: sso_set_int => reloco::sso_flat_set of length 2, capacity 4
+
+  // -- sso_flat_map --------------------------------------------------------
+  reloco::sso_flat_map<int, int, 4> sso_map_int;
+  (void)sso_map_int.try_insert(2, 20);
+  // GDB_CHECK: sso_map_int => reloco::sso_flat_map of length 1, capacity 4
+
+  // -- sso_string ------------------------------------------------------------
+  auto sso_str_res = reloco::sso_string::try_create(reloco::string_view("hi"));
+  reloco::sso_string sso_str_hi = sso_str_res ? std::move(sso_str_res.value()) : reloco::sso_string{};
+  // GDB_CHECK: sso_str_hi => "hi"
+
+  // -- cell / ref_cell ------------------------------------------------------
+  reloco::cell<int> cell_int(6);
+  // GDB_CHECK: cell_int => reloco::cell
+  reloco::ref_cell<int> ref_cell_free(9);
+  // GDB_CHECK: ref_cell_free => reloco::ref_cell [free]
+  reloco::ref_cell<int> ref_cell_borrowed(9);
+  auto ref_cell_guard = ref_cell_borrowed.try_borrow();
+  (void)ref_cell_guard;
+  // GDB_CHECK: ref_cell_borrowed => reloco::ref_cell [borrowed shared x1]
+
+  // -- non_zero --------------------------------------------------------------
+  auto non_zero_res = reloco::non_zero<int>::try_create(15);
+  reloco::non_zero<int> non_zero_int = non_zero_res ? non_zero_res.value() : reloco::non_zero<int>::unsafe_create(1);
+  // GDB_CHECK: non_zero_int => reloco::non_zero(15)
 
   // -- function_ref ------------------------------------------------------------
   reloco::function_ref<int(int)> fref_add_one(add_one);

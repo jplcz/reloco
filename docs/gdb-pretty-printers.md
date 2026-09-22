@@ -86,11 +86,15 @@ section of the GDB manual for details.
 ## Coverage
 
 Printers are registered for: `array`, `span`, `vector`, `inline_vector`,
-`flat_set`, `flat_map`, `inline_flat_set`, `inline_flat_map`,
-`basic_string`/`basic_string_view`/`basic_inline_string`, `optional`,
-`expected` (including the `void` specialization), `unique_ptr`,
-`shared_ptr`/`weak_ptr` (showing `use_count`/`weak_count`), `value_ptr`,
-`value_ref`, `checked_value`, and `function_ref`.
+`sso_vector`, `flat_set`, `flat_map`, `inline_flat_set`, `inline_flat_map`,
+`sso_flat_set`, `sso_flat_map`,
+`basic_string`/`basic_string_view`/`basic_inline_string`/`basic_sso_string`,
+`optional`, `expected` (including the `void` specialization), `unique_ptr`,
+`shared_ptr`/`weak_ptr` (showing `use_count`/`weak_count`), `rc`/`weak_rc`
+(same, but with plain non-atomic counts), `value_ptr`, `value_ref`,
+`checked_value`, `cell`, `ref_cell` (showing its borrow state), `non_zero`,
+`binary_heap`, `cow` (showing owned-vs-borrowed state), `boxed_slice`,
+`guarded_mutex`, and `function_ref`.
 
 `collection_view`/`container_ref` (the type-erased container views) are
 deliberately **not** covered: printing their size requires calling through
