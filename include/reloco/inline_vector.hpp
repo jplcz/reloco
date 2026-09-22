@@ -510,8 +510,17 @@ public:
   [[nodiscard]] const_reverse_iterator crend() const & noexcept RELOCO_LIFETIMEBOUND { return rend(); }
 
 private:
-  [[nodiscard]] T *slot(size_type index) noexcept { return reinterpret_cast<T *>(storage_) + index; }
-  [[nodiscard]] const T *slot(size_type index) const noexcept { return reinterpret_cast<const T *>(storage_) + index; }
+  // Compute the byte offset before casting to `T *` (rather than casting
+  // first and then applying `+ index`) so the pointer arithmetic is done on
+  // `std::byte`, avoiding a `cpp/suspicious-pointer-scaling` false positive
+  // from static analysis that otherwise sees scaling by `sizeof(T)` applied
+  // to what it believes is still byte-granular storage.
+  [[nodiscard]] T *slot(size_type index) noexcept {
+    return std::launder(reinterpret_cast<T *>(storage_ + index * sizeof(T)));
+  }
+  [[nodiscard]] const T *slot(size_type index) const noexcept {
+    return std::launder(reinterpret_cast<const T *>(storage_ + index * sizeof(T)));
+  }
 
   void relocate_from(inline_vector &other) noexcept {
     if constexpr (is_trivially_relocatable_v<T>) {
