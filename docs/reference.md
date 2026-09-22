@@ -40,6 +40,7 @@ where, not a tutorial.
 | `value_ptr.hpp` | `value_ptr<T>` | Nullable, non-owning pointer that rejects binding to prvalue temporaries |
 | `value_ref.hpp` | `value_ref<T>` | Non-null, non-owning reference wrapper that rejects binding to prvalue temporaries |
 | `checked_value.hpp` | `checked_value<T>` | Move-only wrapper with Rust-like use-after-move checks |
+| `cell.hpp` | `cell<T>`, `ref_cell<T>` | Interior-mutability wrappers matching Rust's `Cell<T>`/`RefCell<T>` |
 | `allocator.hpp` | `allocator_ref`, `allocator<Tag>`, `allocator_traits<Tag>`, `mem_block`, `usage_hint` | Type-erased allocator handle and the tag-based provider pattern backing it |
 | `heap_allocator.hpp` | `heap_allocator_tag` | Stateless `allocator_traits` backend over the process heap (`new`/`delete`) |
 | `default_allocator.hpp` | `default_allocator()`, `reloco_global_alloc` | Process-wide default allocator, overridable like Rust's `#[global_allocator]` |
@@ -1050,6 +1051,60 @@ further access asserts and traps, on every compiler; under Clang, `
 [Lifetime safety](lifetime-safety.md). `reloco::is_trivially_relocatable<
 checked_value<T>>` mirrors `T`'s own relocatability; `checked_value<T *>` is
 always relocatable (see [Trivial relocation](relocatable.md)).
+
+## `cell<T>` / `ref_cell<T>`
+
+`include/reloco/cell.hpp`
+
+Interior-mutability wrappers matching Rust's `std::cell::Cell<T>`/
+`std::cell::RefCell<T>`: both allow mutating the wrapped value through a
+shared (`const`) reference, deliberately opting out of the ordinary
+`const`/non-`const` reference rules every other reloco container enforces.
+Both are single-threaded only (`!Sync`, in Rust's terms); see `mutex.hpp`
+for a thread-safe alternative.
+
+`cell<T>` has no runtime bookkeeping: `set(T)`/`replace(T)` only ever move
+the value in and out, so they work for any `T`, callable through a `const
+cell<T>&`:
+
+```cpp
+const reloco::cell<int> c(1);
+c.set(2);                 // mutation through a const reference
+const int old = c.replace(3);
+assert(old == 2 && c.get() == 3);
+```
+
+`get()` additionally requires a `noexcept` copy constructor (Rust's `T:
+Copy` bound), since it is the only accessor that hands back a copy rather
+than moving; `take()` requires `T` to be default constructible (Rust's `T:
+Default` bound on `Cell::take`) and replaces the value with `T()`,
+returning the previous one.
+
+`ref_cell<T>` instead borrows a reference to `T` in place, tracking the
+borrow state at runtime: at most one exclusive borrow (`mut_guard`), or any
+number of concurrent shared borrows (`ref_guard`), may be outstanding at
+once. `try_borrow()`/`try_borrow_mut()` are the fallible tier, returning
+`result<ref_guard>`/`result<mut_guard>` with `error::busy` on conflict;
+`borrow()`/`borrow_mut()` are the checked tier that `RELOCO_ASSERT` instead,
+matching Rust's own panicking `RefCell::borrow()`/`borrow_mut()`. Both guard
+types are move-only RAII types that release their borrow on destruction,
+and are `RELOCO_CONSUMABLE`-tagged so Clang's `-Wconsumed` flags
+use-after-move of a guard at compile time, same as `checked_value<T>`.
+`get_mut()` bypasses borrow tracking entirely for callers that already hold
+an exclusive `ref_cell&` (Rust's `RefCell::get_mut()`, which borrows `&mut
+self` at compile time instead).
+
+```cpp
+reloco::ref_cell<std::string> rc(std::string("hello"));
+{
+  auto shared = rc.try_borrow();
+  assert(shared.has_value() && **shared == "hello");
+  auto conflict = rc.try_borrow_mut();
+  assert(!conflict.has_value() && conflict.error() == reloco::error::busy);
+}
+auto exclusive = rc.borrow_mut(); // checked tier: traps instead of failing
+*exclusive = "world";
+```
 
 ## `allocator_ref` / `allocator<Tag>` / `allocator_traits<Tag>`
 

@@ -192,6 +192,55 @@ public:
     return std::cref(found->get().second);
   }
 
+  /**
+   * @brief Rust `HashMap::entry(key).or_insert(default_value)`
+   * equivalent: returns a reference to the existing mapped value for
+   * @p key, or inserts @p default_value and returns a reference to that.
+   * Only fails if the insertion itself fails (e.g.
+   * `error::allocation_failed`/`error::capacity_exceeded`, depending on
+   * the concrete map type); an existing key is never overwritten.
+   */
+  [[nodiscard]] result<std::reference_wrapper<mapped_type>>
+  try_entry_or_insert(key_type key, mapped_type default_value) & noexcept RELOCO_LIFETIMEBOUND {
+    auto found = try_at(key);
+    if (found)
+      return found;
+    return try_insert(std::move(key), std::move(default_value));
+  }
+
+  /**
+   * @brief Rust `HashMap::entry(key).or_insert_with(f)` equivalent: like
+   * `try_entry_or_insert`, but only invokes @p default_factory (and
+   * constructs the mapped value) when @p key is actually absent.
+   */
+  template <typename F>
+  [[nodiscard]] result<std::reference_wrapper<mapped_type>>
+  try_entry_or_insert_with(key_type key, F &&default_factory) & noexcept RELOCO_LIFETIMEBOUND {
+    auto found = try_at(key);
+    if (found)
+      return found;
+    return try_insert(std::move(key), default_factory());
+  }
+
+  /**
+   * @brief Rust `HashMap::entry(key).and_modify(f)` equivalent: invokes
+   * @p modify with a mutable reference to the mapped value for @p key if
+   * present, returning that reference; otherwise fails with
+   * `error::not_found` without inserting anything. Combine with
+   * `try_entry_or_insert`/`try_entry_or_insert_with` to replicate Rust's
+   * `.and_modify(f).or_insert(v)` chain:
+   * `auto slot = m.try_entry_and_modify(k, f); if (!slot) slot =
+   * m.try_entry_or_insert(k, v);`
+   */
+  template <typename K, typename F>
+  [[nodiscard]] result<std::reference_wrapper<mapped_type>> try_entry_and_modify(const K &key, F &&modify) & noexcept
+      RELOCO_LIFETIMEBOUND {
+    auto found = try_at(key);
+    if (found)
+      modify(found->get());
+    return found;
+  }
+
 private:
   explicit inline_flat_map(base &&b) noexcept : base(std::move(b)) {}
 };

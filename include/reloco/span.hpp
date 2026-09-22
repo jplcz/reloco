@@ -17,6 +17,7 @@
 #include <functional>
 #include <iterator>
 #include <type_traits>
+#include <utility>
 
 // This class is the checked boundary around the raw pointer arithmetic needed
 // to implement a C++17-compatible contiguous view.
@@ -36,6 +37,156 @@ namespace reloco {
  *
  * @tparam T Element type, optionally const-qualified.
  */
+template <typename T> class span;
+
+/**
+ * @brief Rust `slice::chunks` equivalent: a lazy, non-overlapping forward
+ * range of `span<T>` sub-views, each of at most `chunk_size` elements (the
+ * final chunk may be shorter). Never allocates; each dereference produces
+ * a fresh `span<T>` computed from the current position.
+ */
+template <typename T> class RELOCO_POINTER span_chunks {
+public:
+  class iterator {
+  public:
+    using value_type = span<T>;
+    using difference_type = std::ptrdiff_t;
+    using iterator_category = std::forward_iterator_tag;
+
+    constexpr iterator(T *ptr, std::size_t remaining, std::size_t chunk_size) noexcept
+        : m_ptr(ptr), m_remaining(remaining), m_chunk_size(chunk_size) {}
+
+    [[nodiscard]] constexpr span<T> operator*() const noexcept RELOCO_LIFETIMEBOUND {
+      return span<T>(m_ptr, m_remaining < m_chunk_size ? m_remaining : m_chunk_size);
+    }
+
+    constexpr iterator &operator++() noexcept {
+      const std::size_t step = m_remaining < m_chunk_size ? m_remaining : m_chunk_size;
+      m_ptr += step;
+      m_remaining -= step;
+      return *this;
+    }
+
+    constexpr iterator operator++(int) noexcept {
+      iterator tmp = *this;
+      ++(*this);
+      return tmp;
+    }
+
+    [[nodiscard]] constexpr bool operator==(const iterator &other) const noexcept {
+      return m_remaining == other.m_remaining;
+    }
+
+    [[nodiscard]] constexpr bool operator!=(const iterator &other) const noexcept { return !(*this == other); }
+
+  private:
+    T *m_ptr;
+    std::size_t m_remaining;
+    std::size_t m_chunk_size;
+  };
+
+  RELOCO_BLOCK_RVALUE_ACCESS(T);
+
+  constexpr span_chunks(T *ptr, std::size_t size, std::size_t chunk_size) noexcept
+      : m_ptr(ptr), m_size(size), m_chunk_size(chunk_size) {}
+
+  [[nodiscard]] constexpr iterator begin() & noexcept RELOCO_LIFETIMEBOUND {
+    return iterator(m_ptr, m_size, m_chunk_size);
+  }
+  [[nodiscard]] constexpr iterator begin() const & noexcept RELOCO_LIFETIMEBOUND {
+    return iterator(m_ptr, m_size, m_chunk_size);
+  }
+  [[nodiscard]] constexpr iterator end() & noexcept RELOCO_LIFETIMEBOUND {
+    return iterator(m_ptr + m_size, 0, m_chunk_size);
+  }
+  [[nodiscard]] constexpr iterator end() const & noexcept RELOCO_LIFETIMEBOUND {
+    return iterator(m_ptr + m_size, 0, m_chunk_size);
+  }
+
+  [[nodiscard]] constexpr std::size_t size() const noexcept {
+    return m_chunk_size == 0 ? 0 : (m_size + m_chunk_size - 1) / m_chunk_size;
+  }
+
+  [[nodiscard]] constexpr bool empty() const noexcept { return m_size == 0; }
+
+private:
+  T *m_ptr;
+  std::size_t m_size;
+  std::size_t m_chunk_size;
+};
+
+/**
+ * @brief Rust `slice::windows` equivalent: a lazy forward range of
+ * overlapping `span<T>` sub-views, each exactly `window_size` elements,
+ * sliding forward by one element at a time. Empty if `window_size` is `0`
+ * or exceeds the span's size.
+ */
+template <typename T> class RELOCO_POINTER span_windows {
+public:
+  class iterator {
+  public:
+    using value_type = span<T>;
+    using difference_type = std::ptrdiff_t;
+    using iterator_category = std::forward_iterator_tag;
+
+    constexpr iterator(T *ptr, std::size_t remaining_windows, std::size_t window_size) noexcept
+        : m_ptr(ptr), m_remaining_windows(remaining_windows), m_window_size(window_size) {}
+
+    [[nodiscard]] constexpr span<T> operator*() const noexcept RELOCO_LIFETIMEBOUND { return span<T>(m_ptr, m_window_size); }
+
+    constexpr iterator &operator++() noexcept {
+      ++m_ptr;
+      --m_remaining_windows;
+      return *this;
+    }
+
+    constexpr iterator operator++(int) noexcept {
+      iterator tmp = *this;
+      ++(*this);
+      return tmp;
+    }
+
+    [[nodiscard]] constexpr bool operator==(const iterator &other) const noexcept {
+      return m_remaining_windows == other.m_remaining_windows;
+    }
+
+    [[nodiscard]] constexpr bool operator!=(const iterator &other) const noexcept { return !(*this == other); }
+
+  private:
+    T *m_ptr;
+    std::size_t m_remaining_windows;
+    std::size_t m_window_size;
+  };
+
+  RELOCO_BLOCK_RVALUE_ACCESS(T);
+
+  constexpr span_windows(T *ptr, std::size_t size, std::size_t window_size) noexcept
+      : m_ptr(ptr), m_count(window_size == 0 || window_size > size ? 0 : size - window_size + 1),
+        m_window_size(window_size) {}
+
+  [[nodiscard]] constexpr iterator begin() & noexcept RELOCO_LIFETIMEBOUND {
+    return iterator(m_ptr, m_count, m_window_size);
+  }
+  [[nodiscard]] constexpr iterator begin() const & noexcept RELOCO_LIFETIMEBOUND {
+    return iterator(m_ptr, m_count, m_window_size);
+  }
+  [[nodiscard]] constexpr iterator end() & noexcept RELOCO_LIFETIMEBOUND {
+    return iterator(m_ptr + m_count, 0, m_window_size);
+  }
+  [[nodiscard]] constexpr iterator end() const & noexcept RELOCO_LIFETIMEBOUND {
+    return iterator(m_ptr + m_count, 0, m_window_size);
+  }
+
+  [[nodiscard]] constexpr std::size_t size() const noexcept { return m_count; }
+
+  [[nodiscard]] constexpr bool empty() const noexcept { return m_count == 0; }
+
+private:
+  T *m_ptr;
+  std::size_t m_count;
+  std::size_t m_window_size;
+};
+
 template <typename T> class RELOCO_POINTER span {
 public:
   using element_type = T;
@@ -177,6 +328,47 @@ public:
     const std::size_t actual_count = count == static_cast<std::size_t>(-1) ? rem : count;
     RELOCO_DEBUG_ASSERT(actual_count <= rem, "subspan count exceeds remaining span size");
     return span<T>(pointer_at(offset), actual_count);
+  }
+
+  /**
+   * @brief Rust `slice::split_at` equivalent: splits the span into two
+   * adjacent sub-views at @p mid, `[0, mid)` and `[mid, size())`.
+   */
+  [[nodiscard]] constexpr std::pair<span<T>, span<T>>
+  split_at(std::size_t mid) const & noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT(mid <= m_size, "split_at index exceeds span size");
+    return {span<T>(m_ptr, mid), span<T>(pointer_at(mid), m_size - mid)};
+  }
+
+  /**
+   * @brief Attempts `split_at` without trapping.
+   */
+  [[nodiscard]] result<std::pair<span<T>, span<T>>>
+  try_split_at(std::size_t mid) const & noexcept RELOCO_LIFETIMEBOUND {
+    if (mid > m_size)
+      return unexpected(error::out_of_bounds);
+    return std::pair<span<T>, span<T>>(span<T>(m_ptr, mid), span<T>(pointer_at(mid), m_size - mid));
+  }
+
+  /**
+   * @brief Rust `slice::chunks` equivalent: a lazy range of non-overlapping
+   * `span<T>` sub-views of at most @p chunk_size elements each (the final
+   * chunk may be shorter).
+   */
+  [[nodiscard]] constexpr span_chunks<T> chunks(std::size_t chunk_size) const & noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT(chunk_size > 0, "chunks size must be non-zero");
+    return span_chunks<T>(m_ptr, m_size, chunk_size);
+  }
+
+  /**
+   * @brief Rust `slice::windows` equivalent: a lazy range of overlapping
+   * `span<T>` sub-views of exactly @p window_size elements each, sliding
+   * forward by one element. Empty if @p window_size is `0` or exceeds
+   * `size()`.
+   */
+  [[nodiscard]] constexpr span_windows<T> windows(std::size_t window_size) const & noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT(window_size > 0, "windows size must be non-zero");
+    return span_windows<T>(m_ptr, m_size, window_size);
   }
 
   /**

@@ -7,6 +7,7 @@
 #include "detail/assert.hpp"
 #include "error.hpp"
 #include "expected.hpp"
+#include "optional.hpp"
 #include <algorithm>
 #include <cstddef>
 #include <functional>
@@ -240,6 +241,85 @@ public:
   }
 
   [[nodiscard]] constexpr bool starts_with(CharT ch) const noexcept { return !empty() && TraitsT::eq(front(), ch); }
+
+  [[nodiscard]] constexpr bool ends_with(basic_string_view suffix) const noexcept {
+    return size_ >= suffix.size_ &&
+           (suffix.size_ == 0 || TraitsT::compare(data_ + (size_ - suffix.size_), suffix.data_, suffix.size_) == 0);
+  }
+
+  [[nodiscard]] constexpr bool ends_with(CharT ch) const noexcept { return !empty() && TraitsT::eq(back(), ch); }
+
+  /**
+   * @brief Rust `str::strip_prefix` equivalent: returns the view with
+   * @p prefix removed from the front, or an empty `optional` if this view
+   * does not start with @p prefix.
+   */
+  [[nodiscard]] constexpr optional<basic_string_view> strip_prefix(basic_string_view prefix) const noexcept
+      RELOCO_LIFETIMEBOUND {
+    if (!starts_with(prefix))
+      return nullopt;
+    return substr(prefix.size_);
+  }
+
+  /**
+   * @brief Rust `str::strip_suffix` equivalent: returns the view with
+   * @p suffix removed from the back, or an empty `optional` if this view
+   * does not end with @p suffix.
+   */
+  [[nodiscard]] constexpr optional<basic_string_view> strip_suffix(basic_string_view suffix) const noexcept
+      RELOCO_LIFETIMEBOUND {
+    if (!ends_with(suffix))
+      return nullopt;
+    return substr(0, size_ - suffix.size_);
+  }
+
+  /**
+   * @brief Returns `true` if @p ch is one of the default ASCII whitespace
+   * characters trimmed by `trim`/`trim_start`/`trim_end` (space, tab,
+   * newline, carriage return, form feed, vertical tab).
+   */
+  [[nodiscard]] static constexpr bool is_ascii_space(CharT ch) noexcept {
+    return TraitsT::eq(ch, CharT(' ')) || TraitsT::eq(ch, CharT('\t')) || TraitsT::eq(ch, CharT('\n')) ||
+           TraitsT::eq(ch, CharT('\r')) || TraitsT::eq(ch, CharT('\f')) || TraitsT::eq(ch, CharT('\v'));
+  }
+
+  /**
+   * @brief Rust `str::trim_start` equivalent: returns the view with every
+   * leading character satisfying @p pred (default: ASCII whitespace)
+   * removed.
+   */
+  template <typename Pred = decltype(&basic_string_view::is_ascii_space)>
+  [[nodiscard]] constexpr basic_string_view trim_start(Pred pred = &basic_string_view::is_ascii_space) const noexcept
+      RELOCO_LIFETIMEBOUND {
+    size_type i = 0;
+    while (i < size_ && pred(data_[i]))
+      ++i;
+    return substr(i);
+  }
+
+  /**
+   * @brief Rust `str::trim_end` equivalent: returns the view with every
+   * trailing character satisfying @p pred (default: ASCII whitespace)
+   * removed.
+   */
+  template <typename Pred = decltype(&basic_string_view::is_ascii_space)>
+  [[nodiscard]] constexpr basic_string_view trim_end(Pred pred = &basic_string_view::is_ascii_space) const noexcept
+      RELOCO_LIFETIMEBOUND {
+    size_type i = size_;
+    while (i > 0 && pred(data_[i - 1]))
+      --i;
+    return substr(0, i);
+  }
+
+  /**
+   * @brief Rust `str::trim` equivalent: removes both leading and trailing
+   * characters satisfying @p pred (default: ASCII whitespace).
+   */
+  template <typename Pred = decltype(&basic_string_view::is_ascii_space)>
+  [[nodiscard]] constexpr basic_string_view trim(Pred pred = &basic_string_view::is_ascii_space) const noexcept
+      RELOCO_LIFETIMEBOUND {
+    return trim_start(pred).trim_end(pred);
+  }
 
   [[nodiscard]] constexpr const_iterator begin() const noexcept RELOCO_LIFETIMEBOUND { return data_; }
   [[nodiscard]] constexpr const_iterator end() const noexcept RELOCO_LIFETIMEBOUND { return data_ + size_; }

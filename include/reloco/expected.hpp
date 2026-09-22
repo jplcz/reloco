@@ -136,6 +136,45 @@ public:
     return decltype(f(value()))(unexpected(m_error));
   }
 
+  /**
+   * @brief Rust `Result::map` alias: identical to `transform`, applying
+   * @p f to the contained value and leaving the error untouched.
+   */
+  template <typename F> auto map(F &&f) const noexcept { return transform(std::forward<F>(f)); }
+
+  /**
+   * @brief Rust `Result::map_err` equivalent: applies @p f to the
+   * contained error, leaving a present value untouched.
+   */
+  template <typename F> auto map_err(F &&f) const noexcept {
+    using NewError = decltype(f(error()));
+    if (m_has_value)
+      return expected<T, NewError>(m_value);
+    return expected<T, NewError>(unexpected(f(error())));
+  }
+
+  /**
+   * @brief Rust `Result::or_else` equivalent: if this holds a value,
+   * returns it unchanged (wrapped in @p f's `expected` return type);
+   * otherwise invokes @p f with the error and returns its result.
+   */
+  template <typename F> auto or_else(F &&f) const noexcept {
+    using Ret = decltype(f(error()));
+    if (m_has_value)
+      return Ret(m_value);
+    return f(error());
+  }
+
+  /**
+   * @brief Rust `Result::unwrap_or_else` equivalent: returns the value if
+   * present, otherwise invokes @p f with the error and returns its result.
+   */
+  template <typename F> T unwrap_or_else(F &&f) const noexcept {
+    if (m_has_value)
+      return m_value;
+    return f(error());
+  }
+
   constexpr T value_or(T &&fallback) const noexcept { return m_has_value ? m_value : std::move(fallback); }
 
   constexpr T *operator->() & noexcept RELOCO_LIFETIMEBOUND { return &value(); }
@@ -200,6 +239,40 @@ public:
   constexpr const E &&error() const && noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(!m_has_value, "Result does not contain an error");
     return std::move(m_error);
+  }
+
+  /**
+   * @brief Rust `Result::and_then` equivalent: if this holds a value,
+   * invokes @p f (which takes no arguments) and returns its `expected`
+   * result; otherwise propagates the current error unchanged.
+   */
+  template <typename F> auto and_then(F &&f) const noexcept {
+    if (m_has_value)
+      return f();
+    return decltype(f())(unexpected(m_error));
+  }
+
+  /**
+   * @brief Rust `Result::map_err` equivalent: applies @p f to the
+   * contained error, leaving success untouched.
+   */
+  template <typename F> auto map_err(F &&f) const noexcept {
+    using NewError = decltype(f(error()));
+    if (m_has_value)
+      return expected<void, NewError>();
+    return expected<void, NewError>(unexpected(f(error())));
+  }
+
+  /**
+   * @brief Rust `Result::or_else` equivalent: if this holds a value,
+   * returns success (wrapped in @p f's `expected` return type); otherwise
+   * invokes @p f with the error and returns its result.
+   */
+  template <typename F> auto or_else(F &&f) const noexcept {
+    using Ret = decltype(f(error()));
+    if (m_has_value)
+      return Ret();
+    return f(error());
   }
 
   constexpr bool operator==(const expected &other) const noexcept {

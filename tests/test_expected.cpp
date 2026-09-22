@@ -68,3 +68,67 @@ TEST(ExpectedTest, EqualityComparesValuesAndErrors) {
   EXPECT_EQ(a, b);
   EXPECT_NE(a, c);
 }
+
+TEST(ExpectedTest, MapIsAnAliasForTransform) {
+  reloco::expected<int, std::string> ok(21);
+  reloco::expected<int, std::string> err(reloco::unexpected<std::string>("bad"));
+
+  const auto mapped_ok = ok.map([](int value) { return value * 2; });
+  ASSERT_TRUE(mapped_ok.has_value());
+  EXPECT_EQ(mapped_ok.value(), 42);
+
+  const auto mapped_err = err.map([](int value) { return value * 2; });
+  ASSERT_FALSE(mapped_err.has_value());
+  EXPECT_EQ(mapped_err.error(), "bad");
+}
+
+TEST(ExpectedTest, MapErrTransformsOnlyTheError) {
+  reloco::expected<int, std::string> ok(5);
+  reloco::expected<int, std::string> err(reloco::unexpected<std::string>("bad"));
+
+  const auto mapped_ok = ok.map_err([](const std::string &e) { return e.size(); });
+  ASSERT_TRUE(mapped_ok.has_value());
+  EXPECT_EQ(mapped_ok.value(), 5);
+
+  const auto mapped_err = err.map_err([](const std::string &e) { return e.size(); });
+  ASSERT_FALSE(mapped_err.has_value());
+  EXPECT_EQ(mapped_err.error(), 3u);
+}
+
+TEST(ExpectedTest, OrElseRecoversFromAnError) {
+  reloco::expected<int, std::string> ok(5);
+  reloco::expected<int, std::string> err(reloco::unexpected<std::string>("bad"));
+
+  const auto recovered_ok = ok.or_else([](const std::string &) { return reloco::expected<int, std::string>(0); });
+  EXPECT_EQ(recovered_ok.value(), 5);
+
+  const auto recovered_err = err.or_else([](const std::string &) { return reloco::expected<int, std::string>(0); });
+  EXPECT_EQ(recovered_err.value(), 0);
+}
+
+TEST(ExpectedTest, UnwrapOrElseInvokesFallbackOnlyOnError) {
+  reloco::expected<int, std::string> ok(5);
+  reloco::expected<int, std::string> err(reloco::unexpected<std::string>("bad"));
+
+  EXPECT_EQ(ok.unwrap_or_else([](const std::string &) { return 99; }), 5);
+  EXPECT_EQ(err.unwrap_or_else([](const std::string &e) { return static_cast<int>(e.size()); }), 3);
+}
+
+TEST(ExpectedTest, VoidSpecializationSupportsAndThenMapErrAndOrElse) {
+  reloco::expected<void, std::string> ok;
+  reloco::expected<void, std::string> err(reloco::unexpected<std::string>("bad"));
+
+  const auto chained_ok = ok.and_then([]() { return reloco::expected<void, std::string>(); });
+  EXPECT_TRUE(chained_ok.has_value());
+
+  const auto chained_err = err.and_then([]() { return reloco::expected<void, std::string>(); });
+  ASSERT_FALSE(chained_err.has_value());
+  EXPECT_EQ(chained_err.error(), "bad");
+
+  const auto mapped_err = err.map_err([](const std::string &e) { return e.size(); });
+  ASSERT_FALSE(mapped_err.has_value());
+  EXPECT_EQ(mapped_err.error(), 3u);
+
+  const auto recovered = err.or_else([](const std::string &) { return reloco::expected<void, std::string>(); });
+  EXPECT_TRUE(recovered.has_value());
+}

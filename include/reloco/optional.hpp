@@ -202,6 +202,72 @@ public:
     return has_value_ ? std::move(value_) : static_cast<T>(std::forward<U>(default_value));
   }
 
+  /**
+   * @brief Rust `Option::map` equivalent: if a value is present, applies
+   * @p f to it and returns the result wrapped in a new `optional`;
+   * otherwise returns an empty `optional` of the mapped type.
+   */
+  template <typename F> [[nodiscard]] auto map(F &&f) const & noexcept {
+    using U = decltype(f(std::declval<const T &>()));
+    if (has_value_)
+      return optional<U>(f(value_));
+    return optional<U>(nullopt);
+  }
+
+  template <typename F> [[nodiscard]] auto map(F &&f) && noexcept {
+    using U = decltype(f(std::declval<T &&>()));
+    if (has_value_)
+      return optional<U>(f(std::move(value_)));
+    return optional<U>(nullopt);
+  }
+
+  /**
+   * @brief Rust `Option::and_then` equivalent: if a value is present,
+   * invokes @p f with it and returns its `optional` result directly
+   * (allowing flattening); otherwise returns an empty `optional`.
+   */
+  template <typename F> [[nodiscard]] auto and_then(F &&f) const & noexcept {
+    using Ret = decltype(f(std::declval<const T &>()));
+    if (has_value_)
+      return f(value_);
+    return Ret(nullopt);
+  }
+
+  template <typename F> [[nodiscard]] auto and_then(F &&f) && noexcept {
+    using Ret = decltype(f(std::declval<T &&>()));
+    if (has_value_)
+      return f(std::move(value_));
+    return Ret(nullopt);
+  }
+
+  /**
+   * @brief Rust `Option::or_else` equivalent: returns `*this` if a value
+   * is present, otherwise invokes @p f (which takes no arguments) and
+   * returns its `optional<T>` result.
+   */
+  template <typename F> [[nodiscard]] optional or_else(F &&f) const & noexcept {
+    if (has_value_)
+      return *this;
+    return f();
+  }
+
+  template <typename F> [[nodiscard]] optional or_else(F &&f) && noexcept {
+    if (has_value_)
+      return std::move(*this);
+    return f();
+  }
+
+  /**
+   * @brief Rust `Option::filter` equivalent: keeps the current value only
+   * if it is present and @p pred(value) is `true`; otherwise returns an
+   * empty `optional<T>`.
+   */
+  template <typename Pred> [[nodiscard]] optional filter(Pred &&pred) const & noexcept {
+    if (has_value_ && pred(std::as_const(value_)))
+      return *this;
+    return nullopt;
+  }
+
   [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE T &unsafe_value() & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(has_value_, "optional has no value");
     return value_;
@@ -342,6 +408,29 @@ template <typename T, typename U>
 template <typename T, typename U>
 [[nodiscard]] constexpr bool operator!=(const U &value, const optional<T> &opt) noexcept {
   return !(opt == value);
+}
+
+/**
+ * @brief Rust `Result::ok()` equivalent: converts a present value into
+ * `optional<T>`, discarding the error on failure. Named `Ok` (capitalized)
+ * to match Rust's `Result::Ok` variant casing rather than the lowercase
+ * accessor method.
+ */
+template <typename T, typename E> [[nodiscard]] optional<T> Ok(const expected<T, E> &e) noexcept {
+  if (e.has_value())
+    return e.value();
+  return nullopt;
+}
+
+/**
+ * @brief Rust `Result::err()` equivalent: converts a failure into
+ * `optional<E>`, discarding the value on success. Named `Err`
+ * (capitalized) to match Rust's `Result::Err` variant casing.
+ */
+template <typename T, typename E> [[nodiscard]] optional<E> Err(const expected<T, E> &e) noexcept {
+  if (!e.has_value())
+    return e.error();
+  return nullopt;
 }
 
 } // namespace reloco

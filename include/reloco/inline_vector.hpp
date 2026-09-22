@@ -410,6 +410,69 @@ public:
   }
 
   /**
+   * @brief Rust `Vec::retain` equivalent: keeps only the elements for
+   * which `pred(element)` returns `true`, destroying and compacting away
+   * the rest in a single forward pass. Never allocates and cannot fail.
+   */
+  template <typename Pred> void retain(Pred &&pred) & noexcept {
+    size_type write = 0;
+    for (size_type read = 0; read < size_; ++read) {
+      if (pred(std::as_const(*slot(read)))) {
+        if (write != read) {
+          if constexpr (is_trivially_relocatable_v<T>) {
+            std::memmove(slot(write), slot(read), sizeof(T));
+          } else {
+            new (slot(write)) T(std::move(*slot(read)));
+            if constexpr (!std::is_trivially_destructible_v<T>)
+              slot(read)->~T();
+          }
+        }
+        ++write;
+      } else if constexpr (!std::is_trivially_destructible_v<T>) {
+        slot(read)->~T();
+      }
+    }
+    size_ = write;
+  }
+
+  /**
+   * @brief Rust `Vec::dedup_by` equivalent: removes consecutive elements
+   * for which `same(prev, current)` returns `true`, keeping the first of
+   * each run.
+   */
+  template <typename BinPred> void dedup_by(BinPred &&same) & noexcept {
+    if (size_ < 2)
+      return;
+    size_type write = 1;
+    for (size_type read = 1; read < size_; ++read) {
+      if (same(std::as_const(*slot(write - 1)), std::as_const(*slot(read)))) {
+        if constexpr (!std::is_trivially_destructible_v<T>)
+          slot(read)->~T();
+        continue;
+      }
+      if (write != read) {
+        if constexpr (is_trivially_relocatable_v<T>) {
+          std::memmove(slot(write), slot(read), sizeof(T));
+        } else {
+          new (slot(write)) T(std::move(*slot(read)));
+          if constexpr (!std::is_trivially_destructible_v<T>)
+            slot(read)->~T();
+        }
+      }
+      ++write;
+    }
+    size_ = write;
+  }
+
+  /**
+   * @brief Rust `Vec::dedup` equivalent: removes consecutive elements
+   * that compare equal via `operator==`.
+   */
+  void dedup() & noexcept {
+    dedup_by([](const T &a, const T &b) noexcept { return a == b; });
+  }
+
+  /**
    * @brief Constructs a new element in place at @p index, shifting
    * subsequent elements up by one. Fails with `error::capacity_exceeded`
    * if `size() == Capacity`.
