@@ -176,7 +176,13 @@ public:
    */
   [[nodiscard]] result<std::reference_wrapper<value_type>>
   try_insert(value_type &&value) & noexcept RELOCO_LIFETIMEBOUND {
-    const key_type &key = KeyOf{}(value);
+    // Bind through a named functor instance (rather than calling operator() on
+    // a temporary `KeyOf{}`) to avoid a GCC -Wdangling-reference false
+    // positive: GCC's escape analysis conservatively assumes a reference
+    // returned from a call on a temporary object may dangle, even though
+    // `KeyOf::operator()` merely forwards a reference into `value`.
+    const KeyOf key_of{};
+    const key_type &key = key_of(value);
     auto it = find_pos(key);
     if (it != data_.end() && !comp_(key, KeyOf{}(*it))) {
       return unexpected(error::already_exists);
