@@ -268,6 +268,58 @@ public:
     return nullopt;
   }
 
+  /**
+   * @brief Rust `Option::take` equivalent: moves the value out into a
+   * freshly-returned `optional<T>`, leaving `*this` empty. Always
+   * callable, regardless of typestate (an empty `optional` simply
+   * returns another empty one), matching `reset()`.
+   */
+  [[nodiscard]] optional take() & noexcept(std::is_nothrow_move_constructible_v<T>) RELOCO_SET_TYPESTATE(consumed) {
+    if (!has_value_)
+      return optional(nullopt);
+    optional result(std::move(value_));
+    destroy();
+    return result;
+  }
+
+  /**
+   * @brief Rust `Option::replace` equivalent: moves @p value in, returning
+   * whatever `*this` held beforehand (empty or not) as a fresh
+   * `optional<T>`.
+   */
+  template <typename U = T>
+  optional replace(U &&value) & noexcept(std::is_nothrow_constructible_v<T, U &&> &&
+                                          std::is_nothrow_move_constructible_v<T>) RELOCO_SET_TYPESTATE(unconsumed) {
+    optional old = take();
+    construct(std::forward<U>(value));
+    return old;
+  }
+
+  /**
+   * @brief Rust `Option::get_or_insert` equivalent: if empty, moves
+   * @p value in; either way, returns a reference to the now-present
+   * value.
+   */
+  T &get_or_insert(T value) & noexcept(std::is_nothrow_move_constructible_v<T>) RELOCO_LIFETIMEBOUND
+      RELOCO_SET_TYPESTATE(unconsumed) {
+    if (!has_value_)
+      construct(std::move(value));
+    return value_;
+  }
+
+  /**
+   * @brief Rust `Option::get_or_insert_with` equivalent: if empty, invokes
+   * @p factory (which takes no arguments) and moves its result in --
+   * @p factory is never invoked when a value is already present; either
+   * way, returns a reference to the now-present value.
+   */
+  template <typename F>
+  T &get_or_insert_with(F &&factory) & noexcept RELOCO_LIFETIMEBOUND RELOCO_SET_TYPESTATE(unconsumed) {
+    if (!has_value_)
+      construct(factory());
+    return value_;
+  }
+
   [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE T &unsafe_value() & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(has_value_, "optional has no value");
     return value_;
@@ -431,6 +483,34 @@ template <typename T, typename E> [[nodiscard]] optional<E> Err(const expected<T
   if (!e.has_value())
     return e.error();
   return nullopt;
+}
+
+/**
+ * @brief Rust `bool::then` equivalent: if @p condition is `true`, invokes
+ * @p f (which takes no arguments) and returns its result wrapped in a new
+ * `optional`; otherwise returns an empty `optional` of the same type,
+ * without invoking @p f.
+ */
+template <typename F> [[nodiscard]] auto then(bool condition, F &&f) noexcept {
+  using U = decltype(f());
+  if (condition)
+    return optional<U>(f());
+  return optional<U>(nullopt);
+}
+
+/**
+ * @brief Rust `bool::then_some` equivalent: if @p condition is `true`,
+ * moves @p value into a new `optional<T>`; otherwise returns an empty
+ * `optional<T>`, without evaluating @p value further. Unlike `then()`,
+ * @p value is always constructed regardless of @p condition (it is an
+ * ordinary function argument, not a lazily-invoked callable); prefer
+ * `then()` when constructing the value has a cost worth skipping.
+ */
+template <typename T>
+[[nodiscard]] optional<T> then_some(bool condition, T value) noexcept(std::is_nothrow_move_constructible_v<T>) {
+  if (condition)
+    return optional<T>(std::move(value));
+  return optional<T>(nullopt);
 }
 
 } // namespace reloco

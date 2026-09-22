@@ -12,7 +12,9 @@
 #include "error.hpp"
 #include "expected.hpp"
 #include "lifetime.hpp"
+#include "optional.hpp"
 #include "rvalue_safety.hpp"
+#include <algorithm>
 #include <cstddef>
 #include <functional>
 #include <iterator>
@@ -369,6 +371,73 @@ public:
   [[nodiscard]] constexpr span_windows<T> windows(std::size_t window_size) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(window_size > 0, "windows size must be non-zero");
     return span_windows<T>(m_ptr, m_size, window_size);
+  }
+
+  /**
+   * @brief Rust `slice::contains` equivalent: `true` if any element
+   * compares equal to @p value via `operator==`.
+   */
+  [[nodiscard]] constexpr bool contains(const T &value) const noexcept {
+    for (std::size_t i = 0; i < m_size; ++i) {
+      if (m_ptr[i] == value)
+        return true;
+    }
+    return false;
+  }
+
+  /**
+   * @brief Rust `slice::sort` equivalent: sorts the elements in place
+   * using `operator<`, preserving the relative order of equal elements
+   * (a stable sort, matching Rust's default `sort`).
+   */
+  void sort() const & noexcept { std::stable_sort(begin(), end()); }
+
+  /**
+   * @brief Rust `slice::sort_by` equivalent: sorts the elements in place
+   * using the strict-weak-order predicate @p comp, preserving the
+   * relative order of equivalent elements.
+   */
+  template <typename Compare> void sort_by(Compare comp) const & noexcept { std::stable_sort(begin(), end(), comp); }
+
+  /**
+   * @brief Rust `slice::sort_unstable` equivalent: sorts the elements in
+   * place using `operator<` without any ordering guarantee among equal
+   * elements, which may be faster than `sort()`.
+   */
+  void sort_unstable() const & noexcept { std::sort(begin(), end()); }
+
+  /**
+   * @brief Rust `slice::binary_search` equivalent: assumes the span is
+   * already sorted (ascending, by `operator<`) and returns the index of
+   * an element equal to @p value, or an empty `optional` if none is
+   * found. Behavior is unspecified (though never unsafe) if the span is
+   * not actually sorted.
+   */
+  [[nodiscard]] optional<std::size_t> binary_search(const T &value) const noexcept {
+    return binary_search_by(value, [](const T &element, const T &target) { return element < target; });
+  }
+
+  /**
+   * @brief Rust `slice::binary_search_by` equivalent: assumes the span is
+   * already sorted with respect to @p less (a strict-weak-order predicate
+   * comparing an element to @p value) and returns the index of an element
+   * equal to @p value under that ordering, or an empty `optional` if none
+   * is found.
+   */
+  template <typename Compare>
+  [[nodiscard]] optional<std::size_t> binary_search_by(const T &value, Compare less) const noexcept {
+    std::size_t lo = 0;
+    std::size_t hi = m_size;
+    while (lo < hi) {
+      const std::size_t mid = lo + (hi - lo) / 2;
+      if (less(m_ptr[mid], value))
+        lo = mid + 1;
+      else
+        hi = mid;
+    }
+    if (lo < m_size && !less(value, m_ptr[lo]) && !less(m_ptr[lo], value))
+      return optional<std::size_t>(lo);
+    return optional<std::size_t>(nullopt);
   }
 
   /**

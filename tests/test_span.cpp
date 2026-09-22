@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 #include <reloco/span.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <type_traits>
 #include <utility>
@@ -149,6 +150,60 @@ TEST(SpanTest, ProvidesCheckedAndFallibleSubviews) {
   EXPECT_EQ(const_view.data(), values);
   EXPECT_EQ(const_view.size_bytes(), sizeof(values));
   RELOCO_END_UNSAFE_BUFFER_USAGE;
+}
+
+TEST(SpanTest, Contains) {
+  int values[] = {1, 2, 3, 4, 5};
+  reloco::span<int> view(values);
+
+  EXPECT_TRUE(view.contains(3));
+  EXPECT_FALSE(view.contains(42));
+}
+
+TEST(SpanTest, Sort) {
+  int values[] = {5, 3, 1, 4, 2};
+  reloco::span<int> view(values);
+  view.sort();
+  EXPECT_TRUE(std::is_sorted(view.begin(), view.end()));
+  EXPECT_EQ(values[0], 1);
+  EXPECT_EQ(values[4], 5);
+}
+
+TEST(SpanTest, SortBy) {
+  int values[] = {5, 3, 1, 4, 2};
+  reloco::span<int> view(values);
+  view.sort_by([](int a, int b) { return a > b; });
+  EXPECT_EQ(values[0], 5);
+  EXPECT_EQ(values[4], 1);
+}
+
+TEST(SpanTest, SortUnstable) {
+  int values[] = {5, 3, 1, 4, 2};
+  reloco::span<int> view(values);
+  view.sort_unstable();
+  EXPECT_TRUE(std::is_sorted(view.begin(), view.end()));
+}
+
+TEST(SpanTest, BinarySearch) {
+  int values[] = {1, 2, 3, 4, 5};
+  reloco::span<int> view(values);
+
+  const auto found = view.binary_search(3);
+  ASSERT_TRUE(found.has_value());
+  EXPECT_EQ(*found, 2u);
+
+  EXPECT_FALSE(view.binary_search(42).has_value());
+}
+
+TEST(SpanTest, BinarySearchBy) {
+  int values[] = {5, 4, 3, 2, 1};
+  reloco::span<int> view(values);
+
+  const auto found = view.binary_search_by(3, [](int a, int b) { return a > b; });
+  ASSERT_TRUE(found.has_value());
+  EXPECT_EQ(*found, 2u);
+
+  EXPECT_FALSE(view.binary_search_by(42, [](int a, int b) { return a > b; }).has_value());
 }
 
 #if RELOCO_HAS_STD_SPAN

@@ -41,6 +41,7 @@ where, not a tutorial.
 | `value_ref.hpp` | `value_ref<T>` | Non-null, non-owning reference wrapper that rejects binding to prvalue temporaries |
 | `checked_value.hpp` | `checked_value<T>` | Move-only wrapper with Rust-like use-after-move checks |
 | `cell.hpp` | `cell<T>`, `ref_cell<T>` | Interior-mutability wrappers matching Rust's `Cell<T>`/`RefCell<T>` |
+| `non_zero.hpp` | `non_zero<T>` | Integral wrapper statically known to never be `0`, matching Rust's `NonZero*` family |
 | `allocator.hpp` | `allocator_ref`, `allocator<Tag>`, `allocator_traits<Tag>`, `mem_block`, `usage_hint` | Type-erased allocator handle and the tag-based provider pattern backing it |
 | `heap_allocator.hpp` | `heap_allocator_tag` | Stateless `allocator_traits` backend over the process heap (`new`/`delete`) |
 | `default_allocator.hpp` | `default_allocator()`, `reloco_global_alloc` | Process-wide default allocator, overridable like Rust's `#[global_allocator]` |
@@ -188,6 +189,22 @@ Non-owning view over a contiguous range of `T`, with the checked/`try_*`/
 `unsafe_*` tri-tier convention on every element/subrange accessor
 (`operator[]`/`at()`, `try_at()`/`try_first()`/`try_last()`/`try_subspan()`,
 `unsafe_at()`/...). See [Hardened containers](hardened-containers.md).
+
+Rust `slice`-inspired algorithms operate directly on the viewed buffer (no
+copy): `contains(value)` does a linear scan; `sort()`/`sort_by(Compare)`
+sort in place with `std::stable_sort` (preserving relative order of equal
+elements); `sort_unstable()` uses `std::sort` when stability isn't needed;
+`binary_search(value)`/`binary_search_by(value, less)` assume the span is
+already sorted and return an `optional<std::size_t>` index of a matching
+element (empty if none is found).
+
+```cpp
+int values[] = {5, 3, 1, 4, 2};
+reloco::span<int> view(values);
+view.sort();
+assert(view.contains(3));
+assert(*view.binary_search(3) == 2);
+```
 
 ## `array<T, N>`
 
@@ -756,6 +773,32 @@ one in place, returning a borrowed reference to it.
 `reloco::is_trivially_relocatable<optional<T>>` follows `T`'s own
 relocatability.
 
+Rust `Option`-inspired methods round out the fallible/`&`-qualified
+mutation surface: `take()` moves the value out, leaving `*this` empty, and
+returns it as a fresh `optional<T>`; `replace(value)` moves `value` in and
+returns whatever was previously held (empty or not); `get_or_insert(value)`/
+`get_or_insert_with(factory)` insert only if empty (the latter's `factory`
+is never invoked when a value is already present) and return a reference to
+the now-present value.
+
+```cpp
+reloco::optional<int> opt;
+int &v = opt.get_or_insert_with([] { return 42; });
+assert(v == 42);
+reloco::optional<int> old = opt.replace(7);
+assert(*old == 42 && *opt == 7);
+```
+
+Two free functions mirror Rust's `bool::then`/`bool::then_some`:
+`then(condition, f)` invokes `f()` only if `condition` is `true`, wrapping
+its result in an `optional`; `then_some(condition, value)` always evaluates
+`value` (an ordinary argument) but only keeps it if `condition` is `true` --
+prefer `then()` when constructing the value has a cost worth skipping.
+
+```cpp
+reloco::optional<int> maybe = reloco::then(x > 0, [&] { return compute(x); });
+```
+
 ## `function_ref<R(Args...)>`
 
 `include/reloco/function_ref.hpp`
@@ -1104,6 +1147,27 @@ reloco::ref_cell<std::string> rc(std::string("hello"));
 }
 auto exclusive = rc.borrow_mut(); // checked tier: traps instead of failing
 *exclusive = "world";
+```
+
+## `non_zero<T>`
+
+`include/reloco/non_zero.hpp`
+
+Rust `NonZeroU8`/`NonZeroI32`/... equivalent: wraps an integral `T` that is
+statically known to never be `0`. The invariant is checked once, at
+construction, rather than re-checked on every use, so it also documents
+"this parameter is never zero" directly in a function signature. Follows
+reloco's tri-tier construction convention: `try_create(value)` returns
+`result<non_zero<T>>`, failing with `error::invalid_argument` for a `0`
+argument; `unsafe_create(value)` is a debug-only-checked escape hatch for a
+caller that has already proven the value is non-zero. `get()` and the
+implicit conversion to `T` are always sound and `constexpr`.
+
+```cpp
+auto nz = reloco::non_zero<int>::try_create(4);
+assert(nz.has_value());
+int quotient = 100 / nz.value(); // implicit conversion to T
+assert(!reloco::non_zero<int>::try_create(0).has_value());
 ```
 
 ## `allocator_ref` / `allocator<Tag>` / `allocator_traits<Tag>`

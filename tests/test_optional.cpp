@@ -191,6 +191,87 @@ TEST_F(OptionalTest, TypestateAsKnownEscapeHatch) {
   EXPECT_EQ(c_opt.as_known().value(), 88);
 }
 
+TEST_F(OptionalTest, Take) {
+  optional<int> full(42);
+  optional<int> taken = full.take();
+  EXPECT_TRUE(taken.has_value());
+  EXPECT_EQ(*taken.as_known(), 42);
+  EXPECT_FALSE(full.has_value());
+
+  optional<int> empty;
+  optional<int> taken_empty = empty.take();
+  EXPECT_FALSE(taken_empty.has_value());
+}
+
+TEST_F(OptionalTest, Replace) {
+  optional<int> full(1);
+  optional<int> old = full.replace(2);
+  EXPECT_TRUE(old.has_value());
+  EXPECT_EQ(*old.as_known(), 1);
+  EXPECT_TRUE(full.has_value());
+  EXPECT_EQ(*full.as_known(), 2);
+
+  optional<int> empty;
+  optional<int> old_empty = empty.replace(9);
+  EXPECT_FALSE(old_empty.has_value());
+  EXPECT_TRUE(empty.has_value());
+  EXPECT_EQ(*empty.as_known(), 9);
+}
+
+TEST_F(OptionalTest, GetOrInsert) {
+  optional<int> empty;
+  int &ref = empty.get_or_insert(5);
+  EXPECT_EQ(ref, 5);
+  EXPECT_TRUE(empty.has_value());
+
+  optional<int> full(10);
+  int &ref2 = full.get_or_insert(20);
+  EXPECT_EQ(ref2, 10);
+  EXPECT_EQ(*full.as_known(), 10);
+}
+
+TEST_F(OptionalTest, GetOrInsertWith) {
+  optional<int> empty;
+  int calls = 0;
+  int &ref = empty.get_or_insert_with([&calls]() {
+    ++calls;
+    return 7;
+  });
+  EXPECT_EQ(ref, 7);
+  EXPECT_EQ(calls, 1);
+
+  optional<int> full(3);
+  int &ref2 = full.get_or_insert_with([&calls]() {
+    ++calls;
+    return 99;
+  });
+  EXPECT_EQ(ref2, 3);
+  EXPECT_EQ(calls, 1); // factory must not be invoked when already present
+}
+
+TEST_F(OptionalTest, Then) {
+  optional<int> yes = then(true, []() { return 42; });
+  ASSERT_TRUE(yes.has_value());
+  EXPECT_EQ(*yes.as_known(), 42);
+
+  bool invoked = false;
+  optional<int> no = then(false, [&invoked]() {
+    invoked = true;
+    return 42;
+  });
+  EXPECT_FALSE(no.has_value());
+  EXPECT_FALSE(invoked); // f must not be invoked when condition is false
+}
+
+TEST_F(OptionalTest, ThenSome) {
+  optional<int> yes = then_some(true, 5);
+  ASSERT_TRUE(yes.has_value());
+  EXPECT_EQ(*yes.as_known(), 5);
+
+  optional<int> no = then_some(false, 5);
+  EXPECT_FALSE(no.has_value());
+}
+
 // Ensure the traits propagate cleanly at compile time
 static_assert(is_trivially_relocatable<optional<int>>::value, "optional<int> should be trivially relocatable");
 
