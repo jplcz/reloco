@@ -140,7 +140,7 @@ TEST(SsoFlatSetTest, TryRemoveWhileHeapBackedShiftsElements) {
   auto &set = *set_res;
 
   for (int i = 0; i < 6; ++i)
-    ASSERT_TRUE(set.try_insert(int(i)));
+    ASSERT_TRUE(set.try_insert(static_cast<int>(i)));
   ASSERT_GT(set.capacity(), 2);
 
   ASSERT_TRUE(set.try_remove(0));
