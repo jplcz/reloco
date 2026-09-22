@@ -33,6 +33,10 @@ where, not a tutorial.
 | `stack_allocator.hpp` | `stack_allocator`, `stack_allocator_tag`, `stack_allocator_context` | Bump-pointer `allocator_traits` backend over a caller-owned buffer |
 | `unique_ptr.hpp` | `unique_ptr<T>` | Move-only, allocator-backed smart pointer with fallible construction |
 | `shared_ptr.hpp` | `shared_ptr<T>`, `weak_ptr<T>`, `enable_shared_from_this<T>` | Reference-counted, allocator-backed smart pointer with fallible construction |
+| `rc.hpp` | `rc<T>`, `weak_rc<T>`, `enable_rc_from_this<T>` | Single-threaded (non-atomic) reference-counted smart pointer, matching Rust's `Rc<T>`/`Weak<T>` |
+| `binary_heap.hpp` | `binary_heap<T, Compare>` | Allocator-backed priority queue matching Rust's `BinaryHeap<T>`, built on `vector<T>` |
+| `boxed_slice.hpp` | `boxed_slice<T>` | Fixed-size, allocator-backed owned array with no spare capacity, matching Rust's `Box<[T]>` |
+| `cow.hpp` | `cow<T>`, `cow_traits<T>` | Clone-on-write wrapper matching Rust's `Cow<'a, T>`, with a user-specializable clone customization point |
 | `function.hpp` | `function<R(Args...)>` | Type-erased, allocator-backed callable wrapper with fallible construction |
 | `collection_view.hpp` | `collection_view<T>`, `mutable_collection_view<T>`, `collection_view_traits<Container>` | Type-erased, non-owning views over an adapted sequence container |
 | `container_ref.hpp` | `mutable_container_ref<T, Key = void>`, `container_ref_traits<Container>` | Type-erased handle for structurally mutating (growing/inserting/erasing) an adapted sequence or associative container |
@@ -510,6 +514,58 @@ the old location -- the same rationale `basic_sso_string` (see
 [`basic_sso_string`](#basic_sso_stringcchart-traitst-sso_string-wsso_string))
 documents for its own specialization.
 
+## `boxed_slice<T>`
+
+`include/reloco/boxed_slice.hpp`
+
+Fixed-size, allocator-backed owned array with no spare capacity, matching
+Rust's `Box<[T]>`. The allocation-free-of-slack counterpart to `vector<T>`:
+once constructed, `boxed_slice<T>` can never grow/shrink and holds exactly
+`size()` elements, so it never wastes capacity headroom and is one word
+smaller than `vector<T>` (no separate capacity field). Move-only, with the
+same checked/`try_*`/`unsafe_*` tri-tier element access as every other
+reloco container.
+
+```cpp
+auto bs = reloco::boxed_slice<int>::try_create(4, 0); // 4 elements, all 0
+```
+
+Construct via `try_allocate`/`try_create` (default-constructs every
+element), their `(count, value)` overloads (copy-constructs `value` into
+every element), or `try_from_vector(vector<T> &&)` (Rust's
+`Vec::into_boxed_slice`), which moves an already-built `vector<T>`'s
+elements into a freshly, exactly-sized allocation and drops any spare
+capacity it was holding.
+
+## `binary_heap<T, Compare = std::less<T>>`
+
+`include/reloco/binary_heap.hpp`
+
+Allocator-backed priority queue matching Rust's
+`std::collections::BinaryHeap<T>`: a thin wrapper around `vector<T>`
+maintaining the standard binary heap invariant via `<algorithm>`'s
+`push_heap`/`pop_heap`/`make_heap`/`sort_heap`. With the default
+`Compare = std::less<T>` it's a max-heap (`try_pop()`/`peek()` return the
+greatest element first, matching both `std::priority_queue` and Rust's
+`BinaryHeap` defaults); pass `std::greater<T>` for a min-heap.
+
+```cpp
+auto heap = reloco::binary_heap<int>::try_create();
+heap.value().try_push(5);
+heap.value().try_push(9);
+assert(heap.value().peek() == 9);
+auto top = heap.value().try_pop(); // 9, restoring the heap invariant
+```
+
+`try_push(value)` inserts and restores the invariant; `try_pop()` removes
+and returns the top element, failing with `error::container_empty` when
+empty; `peek()`/`try_peek()` are the checked/fallible tier for reading the
+top without removing it. `into_sorted_vec()` consumes the heap and returns
+its elements as a `vector<T>` in ascending order. Iteration
+(`begin()`/`end()`) walks unspecified heap order, not sorted order,
+matching Rust's `BinaryHeap::iter()`, and is `const`-only since mutating an
+element in place could silently break the invariant.
+
 ## `flat_set<T, Compare = std::less<T>>`
 
 `include/reloco/flat_set.hpp`
@@ -927,6 +983,34 @@ returns `result<T *>`. `reloco::is_trivially_relocatable<shared_ptr<T>>`
 and `<weak_ptr<T>>` are always `true`, regardless of `T` (see
 [Trivial relocation](relocatable.md)).
 
+## `rc<T>` / `weak_rc<T>` / `enable_rc_from_this<T>`
+
+`include/reloco/rc.hpp`
+
+Single-threaded reference-counted, allocator-backed smart pointer,
+matching Rust's `std::rc::Rc<T>`/`std::rc::Weak<T>`. Structurally identical
+to `shared_ptr<T>`/`weak_ptr<T>` -- same two allocation layouts
+(`try_allocate_rc`/`try_create_rc` for a separate control block,
+`try_allocate_combined_rc`/`try_create_combined_rc` for a single
+allocation), same checked/fallible/unsafe access tiers, same
+`static_pointer_cast`/`dynamic_pointer_cast`/`const_pointer_cast`/
+`reinterpret_pointer_cast` overloads, same `enable_rc_from_this<T>`/
+`rc_from_this()` self-borrow idiom -- except its refcounts are plain
+`std::size_t` increments/decrements instead of `std::atomic<std::size_t>`
+operations, which is unsound if an `rc<T>`/`weak_rc<T>` is ever shared
+across threads but noticeably cheaper when it never is.
+
+```cpp
+auto ptr = reloco::try_create_combined_rc<widget>(arg1, arg2);
+reloco::rc<widget> shared = ptr.value();
+reloco::weak_rc<widget> observer = shared;
+```
+
+Pick `rc<T>` over `shared_ptr<T>` purely for performance, whenever the
+shared object only ever lives on one thread; switch to `shared_ptr<T>` the
+moment it might cross a thread boundary. The two are unrelated types with
+independent control blocks and cannot share ownership of the same object.
+
 ## `function<R(Args...)>`
 
 `include/reloco/function.hpp`
@@ -1147,6 +1231,57 @@ reloco::ref_cell<std::string> rc(std::string("hello"));
 }
 auto exclusive = rc.borrow_mut(); // checked tier: traps instead of failing
 *exclusive = "world";
+```
+
+## `cow<T>` / `cow_traits<T>`
+
+`include/reloco/cow.hpp`
+
+Clone-on-write wrapper matching Rust's `std::borrow::Cow<'a, T>`: holds
+either a borrowed reference to a `T` it doesn't own, or an owned `T` it
+does, and defers the (fallible) clone until the borrowed case is actually
+mutated. Move-only -- copying a `cow<T>` would either have to silently
+clone (fallible, surprising for a copy constructor) or silently alias
+(unsound), so `try_clone()` provides an explicit fallible deep copy
+instead.
+
+Which state a `cow<T>` starts in is selected by overload resolution, not a
+tag type:
+
+```cpp
+std::string original = "hello";
+reloco::cow<std::string> borrowed(original);            // const T&: borrowed
+reloco::cow<std::string> owned(std::string("owned"));   // T&&: owned
+
+assert(borrowed.is_borrowed());
+assert(owned.is_owned());
+
+auto &mutated = borrowed.to_mut(); // clones on first mutation, then owned
+mutated += " world";
+assert(borrowed.is_owned());
+```
+
+`get()`/`operator*`/`operator->` read through either state without
+cloning. `to_mut()` clones-if-borrowed and returns a mutable reference,
+transitioning `*this` to owned. `into_owned()` is rvalue-qualified and
+consumes `*this`, returning a `T` by value (cloning only if still
+borrowed). `try_clone()` performs an explicit deep copy regardless of
+state.
+
+The clone step itself is a customization point: `cow_traits<T>::try_clone`
+defaults to forwarding to `construction_helpers::try_clone<T>` (the same
+tiered `try_clone(alloc)`/`try_clone()`/copy-construct dispatch used
+elsewhere in reloco), but can be specialized per-`T` to override how (or
+whether) a borrowed value is cloned into an owned one:
+
+```cpp
+template <>
+struct reloco::cow_traits<my_type> {
+  static reloco::result<my_type> try_clone(reloco::allocator_ref alloc,
+                                            const my_type &source) {
+    return my_custom_clone(alloc, source);
+  }
+};
 ```
 
 ## `non_zero<T>`

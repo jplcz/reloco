@@ -211,6 +211,10 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_fallible_singleton.cpp
         tests/test_mutex.cpp
         tests/test_shared_ptr.cpp
+        tests/test_rc.cpp
+        tests/test_binary_heap.cpp
+        tests/test_boxed_slice.cpp
+        tests/test_cow.cpp
         tests/test_function.cpp
         tests/test_collection_view.cpp
         tests/test_container_ref.cpp
