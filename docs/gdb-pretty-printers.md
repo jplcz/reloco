@@ -93,7 +93,7 @@ Printers are registered for: `array`, `span`, `vector`, `inline_vector`,
 `shared_ptr`/`weak_ptr` (showing `use_count`/`weak_count`), `rc`/`weak_rc`
 (same, but with plain non-atomic counts), `value_ptr`, `value_ref`,
 `checked_value`, `cell`, `ref_cell` (showing its borrow state), `non_zero`,
-`wrapping`, `saturating`,
+`wrapping`, `saturating`, `checked`,
 `binary_heap`, `cow` (showing owned-vs-borrowed state), `boxed_slice`,
 `guarded_mutex`, and `function_ref`.
 

@@ -15,6 +15,7 @@
 #include <reloco/binary_heap.hpp>
 #include <reloco/boxed_slice.hpp>
 #include <reloco/cell.hpp>
+#include <reloco/checked.hpp>
 #include <reloco/checked_value.hpp>
 #include <reloco/cow.hpp>
 #include <reloco/expected.hpp>
@@ -211,11 +212,13 @@ int main() {
   reloco::non_zero<int> non_zero_int = non_zero_res ? non_zero_res.value() : reloco::non_zero<int>::unsafe_create(1);
   // GDB_CHECK: non_zero_int => reloco::non_zero(15)
 
-  // -- wrapping / saturating ------------------------------------------------
+  // -- wrapping / saturating / checked ---------------------------------------
   reloco::wrapping<int> wrapping_int(17);
   // GDB_CHECK: wrapping_int => reloco::wrapping(17)
   reloco::saturating<int> saturating_int(19);
   // GDB_CHECK: saturating_int => reloco::saturating(19)
+  reloco::checked<int> checked_wrapper_int(21);
+  // GDB_CHECK: checked_wrapper_int => reloco::checked(21)
 
   // -- function_ref ------------------------------------------------------------
   reloco::function_ref<int(int)> fref_add_one(add_one);

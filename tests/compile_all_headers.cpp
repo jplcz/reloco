@@ -7,6 +7,7 @@
 
 #include <reloco/allocator.hpp>
 #include <reloco/array.hpp>
+#include <reloco/checked.hpp>
 #include <reloco/checked_value.hpp>
 #include <reloco/collection_view.hpp>
 #include <reloco/concepts.hpp>
@@ -27,6 +28,7 @@
 #include <reloco/inline_string.hpp>
 #include <reloco/inline_vector.hpp>
 #include <reloco/inplace_function.hpp>
+#include <reloco/int_ops.hpp>
 #include <reloco/lifetime.hpp>
 #include <reloco/optional.hpp>
 #include <reloco/relocatable.hpp>

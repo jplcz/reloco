@@ -48,6 +48,7 @@ where, not a tutorial.
 | `non_zero.hpp` | `non_zero<T>` | Integral wrapper statically known to never be `0`, matching Rust's `NonZero*` family |
 | `wrapping.hpp` | `wrapping<T>` | Integral newtype whose arithmetic operators always wrap on overflow, matching Rust's `std::num::Wrapping<T>` |
 | `saturating.hpp` | `saturating<T>` | Integral newtype whose arithmetic operators always clamp on overflow, matching Rust's `std::num::Saturating<T>` |
+| `checked.hpp` | `checked<T>` | Integral newtype whose arithmetic is always explicitly fallible via `try_add/sub/mul/div/rem/neg/abs` returning `result<checked<T>>` |
 | `int_ops.hpp` | `checked_add/sub/mul/div/rem/neg/abs`, `wrapping_add/sub/mul`, `saturating_add/sub/mul`, `overflowing_add/sub/mul`, `overflowing_result<T>`, `checked_cast<To>` | Free-function Rust-style checked/wrapping/saturating/overflowing integer arithmetic and range-checked numeric casts |
 | `allocator.hpp` | `allocator_ref`, `allocator<Tag>`, `allocator_traits<Tag>`, `mem_block`, `usage_hint` | Type-erased allocator handle and the tag-based provider pattern backing it |
 | `heap_allocator.hpp` | `heap_allocator_tag` | Stateless `allocator_traits` backend over the process heap (`new`/`delete`) |
@@ -1401,6 +1402,35 @@ assert(counter.get() == 4); // wrapped, not UB or clamped
 reloco::saturating<uint8_t> health(200);
 health -= reloco::saturating<uint8_t>(255);
 assert(health.get() == 0); // clamped to the type's minimum
+```
+
+## `checked<T>`
+
+`include/reloco/checked.hpp`
+
+A third integral newtype alongside `wrapping<T>`/`saturating<T>`, for
+arithmetic that has no defined "always succeeds" answer worth baking into
+an operator overload. `checked<T>` wraps a `T` and exposes
+`try_add`/`try_sub`/`try_mul`/`try_div`/`try_rem`/`try_neg`/`try_abs`
+(mirroring `int_ops.hpp`'s `checked_*` free functions), each returning
+`result<checked<T>>` instead of a plain `checked<T>` -- deliberately named
+methods rather than operator overloads, so a caller can't silently drop
+the failure the way `a + b` discarding a `result<T>` return value would
+(reloco's `[[nodiscard]]` on `expected<T, E>` still catches that mistake,
+but a named `try_*` method reads as fallible at the call site the same way
+every other `try_*` operation in reloco does). `try_div`/`try_rem` fail
+with `error::division_by_zero` for a zero divisor; `try_abs` is signed-`T`
+only, matching Rust (which has no `checked_abs` for unsigned integers).
+
+```cpp
+reloco::checked<int32_t> a(std::numeric_limits<int32_t>::max());
+auto sum = a.try_add(reloco::checked<int32_t>(1));
+assert(!sum.has_value());
+assert(sum.error() == reloco::error::integer_overflow);
+
+auto chained = reloco::checked<int>(10).try_div(reloco::checked<int>(2)).and_then(
+    [](reloco::checked<int> half) { return half.try_mul(reloco::checked<int>(3)); });
+assert(chained.value().get() == 15);
 ```
 
 ## `allocator_ref` / `allocator<Tag>` / `allocator_traits<Tag>`
