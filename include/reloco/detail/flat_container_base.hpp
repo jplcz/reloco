@@ -173,9 +173,23 @@ public:
    * is already present, or with whatever `Storage::try_insert_at` itself
    * can fail with (e.g. `error::capacity_exceeded` for a full
    * `inline_vector`-backed container).
+   *
+   * Takes @p value by value (the same "sink parameter" convention used by
+   * `vector<T>::try_push_back`/`inline_vector<T,
+   * Capacity>::try_push_back`/`sso_vector<T, InlineCapacity>::
+   * try_push_back`), not by `value_type &&`: an rvalue-reference-only
+   * parameter accepts only rvalues, rejecting an lvalue like a loop
+   * variable outright and forcing callers to wrap every call site in an
+   * explicit `std::move`/cast just to construct one; some compilers (e.g.
+   * MSVC, for a same-type functional-style cast like `int(i)`) have also
+   * been observed to not treat such a cast as a true rvalue in this
+   * position. By-value sidesteps both problems: an rvalue argument moves
+   * into @p value with no extra copy, and an lvalue argument copies once,
+   * exactly as if `try_insert` had been written as two overloads (`const
+   * value_type &`/`value_type &&`).
    */
   [[nodiscard]] result<std::reference_wrapper<value_type>>
-  try_insert(value_type &&value) & noexcept RELOCO_LIFETIMEBOUND {
+  try_insert(value_type value) & noexcept RELOCO_LIFETIMEBOUND {
     // Bind through a named functor instance (rather than calling operator() on
     // a temporary `KeyOf{}`) to avoid a GCC -Wdangling-reference false
     // positive: GCC's escape analysis conservatively assumes a reference
