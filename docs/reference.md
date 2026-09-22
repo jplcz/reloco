@@ -429,6 +429,56 @@ conditional on `is_trivially_relocatable_v<T>` (see
 `inline_vector`'s storage is embedded directly in the object, so relocating
 it via `memcpy` is only safe when every contained `T` is too.
 
+## `sso_vector<T, InlineCapacity>`
+
+`include/reloco/sso_vector.hpp`
+
+Move-only, allocator-backed, growable dynamic array with a small-size
+optimization (SSO): up to `InlineCapacity` elements live directly inside
+the object, in the same kind of raw `alignas(reloco::effective_alignment_v<T>)
+std::byte` buffer `inline_vector<T, Capacity>` uses; growing past
+`InlineCapacity` transparently promotes to a heap allocation obtained
+through a bound `reloco::allocator_ref`, exactly like `vector<T>`, and
+`shrink_to_fit` demotes back to the inline buffer once `size()` fits within
+`InlineCapacity` again. It sits between `vector<T>` and `inline_vector<T,
+Capacity>`: unlike `inline_vector`, there is no hard capacity ceiling --
+`try_push_back`/`try_emplace_back`/`try_insert_at` never fail with
+`error::capacity_exceeded`, they simply grow onto the heap instead.
+`InlineCapacity` must be greater than zero, and is a required template
+parameter (there is no default), since a sensible inline capacity depends
+on `T`.
+
+```cpp
+reloco::sso_vector<int, 4> v; // no allocation yet
+auto ok = v.try_push_back(1); // still inline
+ok = v.try_push_back(2);
+assert(v.is_inline());
+```
+
+Construction, cloning, mutation, and element access all follow the same
+protocol/shape as `vector<T>` (`try_allocate`/`try_create`/
+`try_clone`/`try_clone_at`, `try_reserve`/`shrink_to_fit`,
+`try_emplace_back`/`try_push_back`/`try_pop_back`/`try_insert_at`/
+`try_erase_at`/`clear`, checked/`try_*`/`unsafe_*` tri-tier element
+access) -- see [`vector<T>`](#vectort) above for the full breakdown. The
+one addition is `is_inline()`, which reports whether `*this` currently
+holds its elements in the embedded buffer rather than a heap allocation.
+
+Because `try_reserve` has no existing heap allocation to
+`expand_in_place`/`reallocate` the first time it promotes from inline to
+heap, that particular growth step always allocates fresh and
+move/`memcpy`'s the (at most `InlineCapacity`) inline elements across, the
+same as `inline_vector`'s relocation logic; once heap-backed, growth
+behaves exactly like `vector<T>`.
+
+`reloco::is_trivially_relocatable<sso_vector<T, InlineCapacity>>` is always
+`false`, regardless of `T` (see [Trivial relocation](relocatable.md)): a
+small instance's internal pointer points into its own embedded buffer, so
+relocating the object via `memcpy` would leave that pointer dangling into
+the old location -- the same rationale `basic_sso_string` (see
+[`basic_sso_string`](#basic_sso_stringcchart-traitst-sso_string-wsso_string))
+documents for its own specialization.
+
 ## `flat_set<T, Compare = std::less<T>>`
 
 `include/reloco/flat_set.hpp`
