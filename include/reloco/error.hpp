@@ -76,6 +76,8 @@ enum class error : int {
                           // key/element.
   integer_overflow,       // An arithmetic computation (e.g. a size/capacity calculation) would overflow
                           // its integer type.
+  division_by_zero,       // A division or remainder operation was attempted with a zero divisor (e.g.
+                          // `checked_div`/`checked_rem`, see `int_ops.hpp`).
   capacity_exceeded,      // A fixed-capacity container (`inline_vector`, `inline_flat_set`, `inline_flat_map`,
                           // `inplace_function`, ...) has no room left for another element and, unlike a
                           // heap-backed container, cannot grow.

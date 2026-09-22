@@ -48,6 +48,7 @@ where, not a tutorial.
 | `non_zero.hpp` | `non_zero<T>` | Integral wrapper statically known to never be `0`, matching Rust's `NonZero*` family |
 | `wrapping.hpp` | `wrapping<T>` | Integral newtype whose arithmetic operators always wrap on overflow, matching Rust's `std::num::Wrapping<T>` |
 | `saturating.hpp` | `saturating<T>` | Integral newtype whose arithmetic operators always clamp on overflow, matching Rust's `std::num::Saturating<T>` |
+| `int_ops.hpp` | `checked_add/sub/mul/div/rem/neg/abs`, `wrapping_add/sub/mul`, `saturating_add/sub/mul`, `overflowing_add/sub/mul`, `overflowing_result<T>`, `checked_cast<To>` | Free-function Rust-style checked/wrapping/saturating/overflowing integer arithmetic and range-checked numeric casts |
 | `allocator.hpp` | `allocator_ref`, `allocator<Tag>`, `allocator_traits<Tag>`, `mem_block`, `usage_hint` | Type-erased allocator handle and the tag-based provider pattern backing it |
 | `heap_allocator.hpp` | `heap_allocator_tag` | Stateless `allocator_traits` backend over the process heap (`new`/`delete`) |
 | `default_allocator.hpp` | `default_allocator()`, `reloco_global_alloc` | Process-wide default allocator, overridable like Rust's `#[global_allocator]` |
@@ -111,6 +112,7 @@ so this is enforced rather than just a convention.
 | `container_empty` | An operation requiring at least one element (`front`/`back`/`pop_back`) was called on an empty container. |
 | `not_found` | A lookup (`flat_set::try_find`, `flat_map::try_find`, ...) found no matching key/element. |
 | `integer_overflow` | An arithmetic computation (a size/capacity calculation) would overflow its integer type. |
+| `division_by_zero` | A division or remainder operation was attempted with a zero divisor (`checked_div`/`checked_rem`, see `int_ops.hpp`). |
 | `capacity_exceeded` | A fixed-capacity container (`inline_vector`, `inline_flat_set`, `inline_flat_map`, `inplace_function`, ...) has no room left for another element and, unlike a heap-backed container, cannot grow. |
 | `invalid_state` | The operation is not valid given the object's current state (a moved-from object, or an operation attempted in the wrong phase of a multi-step protocol). |
 | `permission_denied` | An OS- or allocator-level access-control check failed (e.g. `mmap` with insufficient permissions). |
@@ -165,7 +167,7 @@ shared-library boundary.
 `already_exists`, `deadlock`, `timed_out`, `try_again`,
 `unsupported_operation`, `capacity_exceeded`, `permission_denied`,
 `interrupted`, `busy`, `io_error`, `operation_canceled`,
-`integer_overflow`) onto the closest matching `std::errc` value, so a
+`integer_overflow`, `division_by_zero`) onto the closest matching `std::errc` value, so a
 `reloco::error`-based `std::error_code` compares equal to that generic
 condition *and* to any other category's code that reports the same
 `errno`-derived condition (e.g. one built from `errno` via
@@ -1306,6 +1308,62 @@ assert(nz.has_value());
 int quotient = 100 / nz.value(); // implicit conversion to T
 assert(!reloco::non_zero<int>::try_create(0).has_value());
 ```
+
+## `int_ops.hpp`
+
+`include/reloco/int_ops.hpp`
+
+Free functions porting Rust's four explicit integer-arithmetic families to
+`result<T>`/plain-`T` return types, plus a generic range-checked numeric
+cast. No new class -- these mirror Rust's inherent integer methods
+(`i32::checked_add`, `checked_div`, ...) directly, the same way
+`wrapping<T>`/`saturating<T>` (below) build on top of them for
+operator-overloaded newtypes:
+
+- `checked_add/sub/mul/div/rem(a, b)` return `result<T>`, failing with
+  `error::integer_overflow` (or `error::division_by_zero` for `div`/`rem`
+  with a zero divisor) instead of invoking undefined behavior (signed) or
+  silently wrapping (unsigned).
+- `checked_neg(a)` returns `result<T>`, failing for signed
+  `numeric_limits<T>::min()` and for any nonzero unsigned `T`.
+- `checked_abs(a)` (signed `T` only) returns `result<T>`, failing for
+  `numeric_limits<T>::min()`.
+- `wrapping_add/sub/mul(a, b)` always return a `T`, with well-defined
+  modulo-2^N wraparound (applied to signed types via a two's-complement
+  bit-pattern reinterpretation, matching Rust's `wrapping_*`).
+- `saturating_add/sub/mul(a, b)` always return a `T`, clamped to
+  `[numeric_limits<T>::min(), numeric_limits<T>::max()]`.
+- `overflowing_add/sub/mul(a, b)` always return an `overflowing_result<T>`
+  (a `{T value; bool overflowed;}` pair).
+- `checked_cast<To>(from)` converts an integral value to a different
+  integral type `To`, failing with `error::integer_overflow` if it doesn't
+  fit, matching Rust's `TryFrom`/`TryInto` for integers. Correct across
+  every signed/unsigned and differing-width combination -- comparisons are
+  widened to `intmax_t`/`uintmax_t` rather than narrowed into `From`/`To`
+  directly, which would itself be able to overflow.
+
+There is deliberately no `checked_div`/`checked_rem`/`checked_cast`
+*operator* overload anywhere in reloco -- only `wrapping<T>`/`saturating<T>`
+overload `+`/`-`/`*` (see below), since division and casting have no
+sensible implicit wrap/saturate fallback.
+
+```cpp
+auto sum = reloco::checked_add<int32_t>(a, b);
+if (!sum.has_value()) { /* handle reloco::error::integer_overflow */ }
+
+auto q = reloco::checked_div<int>(10, 0);
+assert(q.error() == reloco::error::division_by_zero);
+
+auto narrowed = reloco::checked_cast<int8_t>(int32_t{300});
+assert(!narrowed.has_value()); // doesn't fit in int8_t
+```
+
+Note: like `wrapping<T>`/`saturating<T>` below, every function here is
+marked `constexpr` (always legal), but a call that goes through
+`result<T>`'s `expected<T, error>` internals can't actually be *evaluated*
+as a constant expression under C++17 specifically (`result<T>` isn't a
+C++17 literal type) -- only C++20 and later can `static_assert` on the
+outcome of e.g. `checked_add`.
 
 ## `wrapping<T>` / `saturating<T>`
 

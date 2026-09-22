@@ -30,6 +30,21 @@
  * - `overflowing_add/sub/mul(a, b)` always returns an `overflowing_result<T>`
  *   pairing the wrapped result with a `bool` reporting whether it wrapped,
  *   for callers that want the wrapped value *and* to know if it was exact.
+ * - `checked_div/rem(a, b)` return `result<T>`, failing with
+ *   `error::division_by_zero` for `b == 0` and `error::integer_overflow`
+ *   for the one signed corner case that overflows
+ *   (`numeric_limits<T>::min() / T{-1}`), matching Rust's `checked_div`/
+ *   `checked_rem`.
+ * - `checked_neg(a)` returns `result<T>`, failing with
+ *   `error::integer_overflow` for signed `numeric_limits<T>::min()` (whose
+ *   negation doesn't fit in `T`) and for any nonzero unsigned `T` (which
+ *   has no representable negative value), matching Rust's `checked_neg`.
+ * - `checked_abs(a)` (signed types only) returns `result<T>`, failing with
+ *   `error::integer_overflow` for `numeric_limits<T>::min()`, matching
+ *   Rust's `checked_abs`.
+ * - `checked_cast<To>(from)` converts an integral value to another
+ *   integral type, failing with `error::integer_overflow` if @p from
+ *   doesn't fit in `To`, matching Rust's `TryFrom`/`TryInto` for integers.
  *
  * All of the above are implemented with portable, standard-conforming
  * range/division checks (no `__builtin_*_overflow`/compiler intrinsics),
@@ -40,6 +55,7 @@
 #include "error.hpp"
 #include "expected.hpp"
 
+#include <cstdint>
 #include <limits>
 #include <type_traits>
 
@@ -240,6 +256,123 @@ template <typename T> [[nodiscard]] constexpr overflowing_result<T> overflowing_
 template <typename T> [[nodiscard]] constexpr overflowing_result<T> overflowing_mul(T a, T b) noexcept {
   detail::assert_supported_int<T>();
   return {wrapping_mul(a, b), !checked_mul(a, b).has_value()};
+}
+
+/**
+ * @brief Divides @p a by @p b, failing with `error::division_by_zero` for
+ * `b == 0` and `error::integer_overflow` for the one signed corner case
+ * that overflows (`numeric_limits<T>::min() / T{-1}`), matching Rust's
+ * `checked_div`.
+ */
+template <typename T> [[nodiscard]] constexpr result<T> checked_div(T a, T b) noexcept {
+  detail::assert_supported_int<T>();
+  if (b == 0)
+    return unexpected(error::division_by_zero);
+  if constexpr (std::is_signed_v<T>) {
+    if (a == std::numeric_limits<T>::min() && b == static_cast<T>(-1))
+      return unexpected(error::integer_overflow);
+  }
+  return static_cast<T>(a / b);
+}
+
+/**
+ * @brief Computes the remainder of @p a divided by @p b, failing with
+ * `error::division_by_zero` for `b == 0` and `error::integer_overflow` for
+ * the one signed corner case that overflows
+ * (`numeric_limits<T>::min() % T{-1}`), matching Rust's `checked_rem`.
+ */
+template <typename T> [[nodiscard]] constexpr result<T> checked_rem(T a, T b) noexcept {
+  detail::assert_supported_int<T>();
+  if (b == 0)
+    return unexpected(error::division_by_zero);
+  if constexpr (std::is_signed_v<T>) {
+    if (a == std::numeric_limits<T>::min() && b == static_cast<T>(-1))
+      return unexpected(error::integer_overflow);
+  }
+  return static_cast<T>(a % b);
+}
+
+/**
+ * @brief Negates @p a, failing with `error::integer_overflow` for signed
+ * `numeric_limits<T>::min()` (whose negation doesn't fit in `T`) and for
+ * any nonzero unsigned `T` (which has no representable negative value),
+ * matching Rust's `checked_neg`.
+ */
+template <typename T> [[nodiscard]] constexpr result<T> checked_neg(T a) noexcept {
+  detail::assert_supported_int<T>();
+  if constexpr (std::is_unsigned_v<T>) {
+    if (a != 0)
+      return unexpected(error::integer_overflow);
+    return static_cast<T>(0);
+  } else {
+    if (a == std::numeric_limits<T>::min())
+      return unexpected(error::integer_overflow);
+    return static_cast<T>(-a);
+  }
+}
+
+/**
+ * @brief Computes the absolute value of @p a, failing with
+ * `error::integer_overflow` for `numeric_limits<T>::min()` (whose
+ * absolute value doesn't fit in `T`), matching Rust's `checked_abs`.
+ *
+ * Only defined for signed `T`, matching Rust (which has no `checked_abs`
+ * for unsigned integers, since an unsigned value's absolute value is
+ * always itself).
+ */
+template <typename T> [[nodiscard]] constexpr result<T> checked_abs(T a) noexcept {
+  detail::assert_supported_int<T>();
+  static_assert(std::is_signed_v<T>, "checked_abs requires a signed integer type");
+  if (a == std::numeric_limits<T>::min())
+    return unexpected(error::integer_overflow);
+  return static_cast<T>(a < 0 ? -a : a);
+}
+
+/**
+ * @brief Converts @p from to `To`, failing with `error::integer_overflow`
+ * if the value doesn't fit in `To`, matching Rust's `TryFrom`/`TryInto`
+ * for integers.
+ *
+ * Compares via `intmax_t`/`uintmax_t` (rather than mixing signed/unsigned
+ * comparisons of `From`/`To` directly, which is exactly the kind of
+ * implicit conversion `-Wsign-conversion` warns about and can silently
+ * misbehave) so the check is correct across every signed/unsigned and
+ * differing-width `From`/`To` combination.
+ */
+template <typename To, typename From> [[nodiscard]] constexpr result<To> checked_cast(From from) noexcept {
+  detail::assert_supported_int<To>();
+  detail::assert_supported_int<From>();
+  if constexpr (std::is_same_v<To, From>) {
+    return from;
+  } else if constexpr (std::is_signed_v<From> && std::is_signed_v<To>) {
+    // Both signed: `intmax_t` is guaranteed at least as wide as any
+    // standard signed integer type, so widening either side to it (rather
+    // than casting one of `To`'s limits down into `From`, which can
+    // itself overflow when `To` is wider than `From`) never loses range.
+    if (static_cast<intmax_t>(from) < static_cast<intmax_t>(std::numeric_limits<To>::min()) ||
+        static_cast<intmax_t>(from) > static_cast<intmax_t>(std::numeric_limits<To>::max()))
+      return unexpected(error::integer_overflow);
+    return static_cast<To>(from);
+  } else if constexpr (!std::is_signed_v<From> && !std::is_signed_v<To>) {
+    // Both unsigned: same reasoning as above, but in `uintmax_t`.
+    if (static_cast<uintmax_t>(from) > static_cast<uintmax_t>(std::numeric_limits<To>::max()))
+      return unexpected(error::integer_overflow);
+    return static_cast<To>(from);
+  } else if constexpr (std::is_signed_v<From> && !std::is_signed_v<To>) {
+    // Signed source, unsigned destination: negative values never fit, and
+    // large positive values must still fit within `To`'s range.
+    if (from < 0 || static_cast<uintmax_t>(from) > static_cast<uintmax_t>(std::numeric_limits<To>::max()))
+      return unexpected(error::integer_overflow);
+    return static_cast<To>(from);
+  } else {
+    // Unsigned source, signed destination: `To`'s max is always
+    // non-negative, so comparing in `uintmax_t` (where it fits without
+    // truncation regardless of how `To` compares in width to `From`)
+    // covers every combination correctly.
+    if (static_cast<uintmax_t>(from) > static_cast<uintmax_t>(std::numeric_limits<To>::max()))
+      return unexpected(error::integer_overflow);
+    return static_cast<To>(from);
+  }
 }
 
 } // namespace reloco

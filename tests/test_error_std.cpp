@@ -52,6 +52,7 @@ TEST(ErrorStdTest, EveryEnumeratorHasADistinctNonEmptyMessage) {
       reloco::error::container_empty,
       reloco::error::not_found,
       reloco::error::integer_overflow,
+      reloco::error::division_by_zero,
       reloco::error::capacity_exceeded,
       reloco::error::invalid_state,
       reloco::error::permission_denied,

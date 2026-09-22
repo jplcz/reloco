@@ -135,6 +135,8 @@ public:
       return "a lookup found no matching key/element";
     case error::integer_overflow:
       return "an arithmetic computation would overflow its integer type";
+    case error::division_by_zero:
+      return "a division or remainder operation was attempted with a zero divisor";
     case error::capacity_exceeded:
       return "a fixed-capacity container has no room left for another element";
     case error::invalid_state:
@@ -201,6 +203,8 @@ public:
       return std::make_error_condition(std::errc::operation_canceled);
     case error::integer_overflow:
       return std::make_error_condition(std::errc::value_too_large);
+    case error::division_by_zero:
+      return std::make_error_condition(std::errc::argument_out_of_domain);
     case error::in_place_growth_failed:
     case error::empty_pointer:
     case error::pointer_expired:
