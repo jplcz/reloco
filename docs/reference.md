@@ -46,6 +46,8 @@ where, not a tutorial.
 | `checked_value.hpp` | `checked_value<T>` | Move-only wrapper with Rust-like use-after-move checks |
 | `cell.hpp` | `cell<T>`, `ref_cell<T>` | Interior-mutability wrappers matching Rust's `Cell<T>`/`RefCell<T>` |
 | `non_zero.hpp` | `non_zero<T>` | Integral wrapper statically known to never be `0`, matching Rust's `NonZero*` family |
+| `wrapping.hpp` | `wrapping<T>` | Integral newtype whose arithmetic operators always wrap on overflow, matching Rust's `std::num::Wrapping<T>` |
+| `saturating.hpp` | `saturating<T>` | Integral newtype whose arithmetic operators always clamp on overflow, matching Rust's `std::num::Saturating<T>` |
 | `allocator.hpp` | `allocator_ref`, `allocator<Tag>`, `allocator_traits<Tag>`, `mem_block`, `usage_hint` | Type-erased allocator handle and the tag-based provider pattern backing it |
 | `heap_allocator.hpp` | `heap_allocator_tag` | Stateless `allocator_traits` backend over the process heap (`new`/`delete`) |
 | `default_allocator.hpp` | `default_allocator()`, `reloco_global_alloc` | Process-wide default allocator, overridable like Rust's `#[global_allocator]` |
@@ -1303,6 +1305,44 @@ auto nz = reloco::non_zero<int>::try_create(4);
 assert(nz.has_value());
 int quotient = 100 / nz.value(); // implicit conversion to T
 assert(!reloco::non_zero<int>::try_create(0).has_value());
+```
+
+## `wrapping<T>` / `saturating<T>`
+
+`include/reloco/wrapping.hpp`, `include/reloco/saturating.hpp`
+
+Rust `std::num::Wrapping<T>`/`std::num::Saturating<T>` equivalents: integral
+newtypes whose `+`/`-`/`*`, unary `-`, and `++`/`--` operators always
+resolve overflow a specific way, instead of relying on the caller
+remembering to call the right free function from `int_ops.hpp` at every
+arithmetic expression:
+
+- `wrapping<T>` always wraps modulo-2^N (`wrapping_add`/`wrapping_sub`/
+  `wrapping_mul`), exactly like plain unsigned arithmetic, but also for a
+  signed `T` (avoiding the undefined behavior plain `T` arithmetic would
+  invoke on signed overflow).
+- `saturating<T>` always clamps to `[numeric_limits<T>::min(),
+  numeric_limits<T>::max()]` (`saturating_add`/`saturating_sub`/
+  `saturating_mul`) instead of overflowing.
+
+Both get `get()` and an implicit conversion to `T` (so they compare/print
+like a plain integer), a `std::hash` specialization, and are usable in a
+`constexpr` context for values within range (an overflowing/saturating
+operation internally goes through `checked_add`/`checked_sub`/
+`checked_mul`'s `result<T>`, which isn't a literal type under C++17, so
+only the non-overflowing, `get()`-only paths are guaranteed `constexpr`
+under C++17 specifically). Neither type overloads `/`/`%` (division by
+zero has no wrapping/saturating equivalent to fall back to) — use
+`int_ops.hpp`'s free functions directly for division.
+
+```cpp
+reloco::wrapping<uint8_t> counter(250);
+counter += reloco::wrapping<uint8_t>(10);
+assert(counter.get() == 4); // wrapped, not UB or clamped
+
+reloco::saturating<uint8_t> health(200);
+health -= reloco::saturating<uint8_t>(255);
+assert(health.get() == 0); // clamped to the type's minimum
 ```
 
 ## `allocator_ref` / `allocator<Tag>` / `allocator_traits<Tag>`

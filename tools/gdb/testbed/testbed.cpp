@@ -28,6 +28,7 @@
 #include <reloco/non_zero.hpp>
 #include <reloco/optional.hpp>
 #include <reloco/rc.hpp>
+#include <reloco/saturating.hpp>
 #include <reloco/shared_ptr.hpp>
 #include <reloco/span.hpp>
 #include <reloco/sso_flat_map.hpp>
@@ -40,6 +41,7 @@
 #include <reloco/value_ptr.hpp>
 #include <reloco/value_ref.hpp>
 #include <reloco/vector.hpp>
+#include <reloco/wrapping.hpp>
 
 namespace {
 
@@ -208,6 +210,12 @@ int main() {
   auto non_zero_res = reloco::non_zero<int>::try_create(15);
   reloco::non_zero<int> non_zero_int = non_zero_res ? non_zero_res.value() : reloco::non_zero<int>::unsafe_create(1);
   // GDB_CHECK: non_zero_int => reloco::non_zero(15)
+
+  // -- wrapping / saturating ------------------------------------------------
+  reloco::wrapping<int> wrapping_int(17);
+  // GDB_CHECK: wrapping_int => reloco::wrapping(17)
+  reloco::saturating<int> saturating_int(19);
+  // GDB_CHECK: saturating_int => reloco::saturating(19)
 
   // -- function_ref ------------------------------------------------------------
   reloco::function_ref<int(int)> fref_add_one(add_one);

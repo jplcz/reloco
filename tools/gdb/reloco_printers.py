@@ -529,6 +529,26 @@ class RelocoNonZeroPrinter:
         return "reloco::non_zero(%s)" % str(self.val["value_"])
 
 
+class RelocoWrappingPrinter:
+    """Pretty printer for `reloco::wrapping<T>`."""
+
+    def __init__(self, val):
+        self.val = val
+
+    def to_string(self):
+        return "reloco::wrapping(%s)" % str(self.val["value_"])
+
+
+class RelocoSaturatingPrinter:
+    """Pretty printer for `reloco::saturating<T>`."""
+
+    def __init__(self, val):
+        self.val = val
+
+    def to_string(self):
+        return "reloco::saturating(%s)" % str(self.val["value_"])
+
+
 class _RelocoSharedPtrPrinterBase:
     """Shared implementation for `reloco::shared_ptr<T>`/`reloco::weak_ptr<T>`."""
 
@@ -735,6 +755,8 @@ def _build_pretty_printer():
     pp.add_printer("reloco::cell", r"^reloco::cell<.*>$", RelocoCellPrinter)
     pp.add_printer("reloco::ref_cell", r"^reloco::ref_cell<.*>$", RelocoRefCellPrinter)
     pp.add_printer("reloco::non_zero", r"^reloco::non_zero<.*>$", RelocoNonZeroPrinter)
+    pp.add_printer("reloco::wrapping", r"^reloco::wrapping<.*>$", RelocoWrappingPrinter)
+    pp.add_printer("reloco::saturating", r"^reloco::saturating<.*>$", RelocoSaturatingPrinter)
     pp.add_printer("reloco::shared_ptr", r"^reloco::shared_ptr<.*>$", RelocoSharedPtrPrinter)
     pp.add_printer("reloco::weak_ptr", r"^reloco::weak_ptr<.*>$", RelocoWeakPtrPrinter)
     pp.add_printer("reloco::rc", r"^reloco::rc<.*>$", RelocoRcPrinter)

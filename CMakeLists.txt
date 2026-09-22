@@ -236,7 +236,9 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_inplace_function.cpp
         tests/test_function_ref.cpp
         tests/test_cell.cpp
-        tests/test_non_zero.cpp)
+        tests/test_non_zero.cpp
+        tests/test_wrapping.cpp
+        tests/test_saturating.cpp)
     target_link_libraries(jplcz_reloco_tests PRIVATE jplcz_reloco GTest::gtest_main)
     jplcz_reloco_enable_warnings(jplcz_reloco_tests)
     gtest_discover_tests(jplcz_reloco_tests)
