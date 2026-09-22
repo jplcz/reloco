@@ -127,3 +127,105 @@
 #else
 #define RELOCO_HAS_EXCEPTIONS 0
 #endif
+
+// Clang Thread Safety Analysis (-Wthread-safety): lets `mutex.hpp`'s types
+// and lock/unlock methods be statically checked for correct lock
+// acquire/release pairing and detect potential race conditions on
+// annotated data. Clang-only -- `RELOCO_HAS_ATTRIBUTE` correctly reports
+// `false` on GCC/MSVC, so these expand to nothing there and impose no
+// runtime cost or portability constraint on other compilers.
+#if RELOCO_HAS_ATTRIBUTE(capability)
+#define RELOCO_CAPABILITY(name) __attribute__((capability(name)))
+#else
+#define RELOCO_CAPABILITY(name)
+#endif
+
+#if RELOCO_HAS_ATTRIBUTE(scoped_lockable)
+#define RELOCO_SCOPED_CAPABILITY __attribute__((scoped_lockable))
+#else
+#define RELOCO_SCOPED_CAPABILITY
+#endif
+
+#if RELOCO_HAS_ATTRIBUTE(guarded_by)
+#define RELOCO_GUARDED_BY(x) __attribute__((guarded_by(x)))
+#else
+#define RELOCO_GUARDED_BY(x)
+#endif
+
+#if RELOCO_HAS_ATTRIBUTE(pt_guarded_by)
+#define RELOCO_PT_GUARDED_BY(x) __attribute__((pt_guarded_by(x)))
+#else
+#define RELOCO_PT_GUARDED_BY(x)
+#endif
+
+#if RELOCO_HAS_ATTRIBUTE(acquire_capability)
+#define RELOCO_ACQUIRE(...) __attribute__((acquire_capability(__VA_ARGS__)))
+#else
+#define RELOCO_ACQUIRE(...)
+#endif
+
+#if RELOCO_HAS_ATTRIBUTE(acquire_shared_capability)
+#define RELOCO_ACQUIRE_SHARED(...) __attribute__((acquire_shared_capability(__VA_ARGS__)))
+#else
+#define RELOCO_ACQUIRE_SHARED(...)
+#endif
+
+#if RELOCO_HAS_ATTRIBUTE(release_capability)
+#define RELOCO_RELEASE(...) __attribute__((release_capability(__VA_ARGS__)))
+#else
+#define RELOCO_RELEASE(...)
+#endif
+
+#if RELOCO_HAS_ATTRIBUTE(release_shared_capability)
+#define RELOCO_RELEASE_SHARED(...) __attribute__((release_shared_capability(__VA_ARGS__)))
+#else
+#define RELOCO_RELEASE_SHARED(...)
+#endif
+
+#if RELOCO_HAS_ATTRIBUTE(try_acquire_capability)
+#define RELOCO_TRY_ACQUIRE(...) __attribute__((try_acquire_capability(__VA_ARGS__)))
+#else
+#define RELOCO_TRY_ACQUIRE(...)
+#endif
+
+#if RELOCO_HAS_ATTRIBUTE(try_acquire_shared_capability)
+#define RELOCO_TRY_ACQUIRE_SHARED(...) __attribute__((try_acquire_shared_capability(__VA_ARGS__)))
+#else
+#define RELOCO_TRY_ACQUIRE_SHARED(...)
+#endif
+
+#if RELOCO_HAS_ATTRIBUTE(assert_capability)
+#define RELOCO_ASSERT_CAPABILITY(x) __attribute__((assert_capability(x)))
+#else
+#define RELOCO_ASSERT_CAPABILITY(x)
+#endif
+
+#if RELOCO_HAS_ATTRIBUTE(assert_shared_capability)
+#define RELOCO_ASSERT_SHARED_CAPABILITY(x) __attribute__((assert_shared_capability(x)))
+#else
+#define RELOCO_ASSERT_SHARED_CAPABILITY(x)
+#endif
+
+#if RELOCO_HAS_ATTRIBUTE(requires_capability)
+#define RELOCO_REQUIRES(...) __attribute__((requires_capability(__VA_ARGS__)))
+#else
+#define RELOCO_REQUIRES(...)
+#endif
+
+#if RELOCO_HAS_ATTRIBUTE(requires_shared_capability)
+#define RELOCO_REQUIRES_SHARED(...) __attribute__((requires_shared_capability(__VA_ARGS__)))
+#else
+#define RELOCO_REQUIRES_SHARED(...)
+#endif
+
+#if RELOCO_HAS_ATTRIBUTE(locks_excluded)
+#define RELOCO_LOCKS_EXCLUDED(...) __attribute__((locks_excluded(__VA_ARGS__)))
+#else
+#define RELOCO_LOCKS_EXCLUDED(...)
+#endif
+
+#if RELOCO_HAS_ATTRIBUTE(no_thread_safety_analysis)
+#define RELOCO_NO_THREAD_SAFETY_ANALYSIS __attribute__((no_thread_safety_analysis))
+#else
+#define RELOCO_NO_THREAD_SAFETY_ANALYSIS
+#endif

@@ -109,6 +109,7 @@ TEST(InlineVectorTest, TryPopBackFailsOnEmpty) {
 }
 
 TEST(InlineVectorTest, ClearDestroysElementsAndResetsSize) {
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE;
   bool destroyed[3] = {false, false, false};
   inline_vector<move_only, 4> v;
   ASSERT_TRUE(v.try_emplace_back(1, &destroyed[0]));
@@ -119,6 +120,7 @@ TEST(InlineVectorTest, ClearDestroysElementsAndResetsSize) {
   EXPECT_TRUE(destroyed[0]);
   EXPECT_TRUE(destroyed[1]);
   EXPECT_TRUE(destroyed[2]);
+  RELOCO_END_UNSAFE_BUFFER_USAGE;
 }
 
 TEST(InlineVectorTest, TryInsertAtShiftsElementsRight) {
@@ -202,9 +204,11 @@ TEST(InlineVectorTest, TryEraseAtOutOfBoundsFails) {
 TEST(InlineVectorTest, TryEraseAtNonRelocatableDestroysAndMoves) {
   bool destroyed[3] = {false, false, false};
   inline_vector<move_only, 4> v;
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE;
   ASSERT_TRUE(v.try_emplace_back(1, &destroyed[0]));
   ASSERT_TRUE(v.try_emplace_back(2, &destroyed[1]));
   ASSERT_TRUE(v.try_emplace_back(3, &destroyed[2]));
+  RELOCO_END_UNSAFE_BUFFER_USAGE;
 
   ASSERT_TRUE(v.try_erase_at(0));
   EXPECT_TRUE(destroyed[0]);
@@ -302,8 +306,10 @@ TEST(InlineVectorTest, MoveConstructionTransfersOwnership) {
 TEST(InlineVectorTest, MoveConstructionNonRelocatableMovesElements) {
   bool destroyed[2] = {false, false};
   inline_vector<move_only, 4> v;
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE;
   ASSERT_TRUE(v.try_emplace_back(1, &destroyed[0]));
   ASSERT_TRUE(v.try_emplace_back(2, &destroyed[1]));
+  RELOCO_END_UNSAFE_BUFFER_USAGE;
 
   inline_vector<move_only, 4> moved(std::move(v));
   EXPECT_EQ(moved.size(), 2u);

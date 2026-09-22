@@ -12,19 +12,17 @@
 
 TEST(MutexTest, LockUnlockRoundTrips) {
   reloco::mutex m;
-  auto lock_res = m.lock();
-  ASSERT_TRUE(lock_res);
-  auto unlock_res = m.unlock();
-  ASSERT_TRUE(unlock_res);
+  m.lock();
+  m.unlock();
 }
 
 TEST(MutexTest, TryLockFailsWhileHeld) {
   reloco::mutex m;
-  ASSERT_TRUE(m.lock());
+  m.lock();
   EXPECT_FALSE(m.try_lock());
-  ASSERT_TRUE(m.unlock());
+  m.unlock();
   EXPECT_TRUE(m.try_lock());
-  ASSERT_TRUE(m.unlock());
+  m.unlock();
 }
 
 TEST(MutexTest, MutualExclusionAcrossThreads) {
@@ -34,9 +32,9 @@ TEST(MutexTest, MutualExclusionAcrossThreads) {
   for (int i = 0; i < 8; ++i) {
     threads.emplace_back([&]() {
       for (int j = 0; j < 1000; ++j) {
-        ASSERT_TRUE(m.lock());
+        m.lock();
         ++counter;
-        ASSERT_TRUE(m.unlock());
+        m.unlock();
       }
     });
   }
@@ -47,12 +45,12 @@ TEST(MutexTest, MutualExclusionAcrossThreads) {
 
 TEST(RecursiveMutexTest, SameThreadCanLockMultipleTimes) {
   reloco::recursive_mutex m;
-  ASSERT_TRUE(m.lock());
-  ASSERT_TRUE(m.lock());
-  ASSERT_TRUE(m.unlock());
-  ASSERT_TRUE(m.unlock());
+  m.lock();
+  m.lock();
+  m.unlock();
+  m.unlock();
   EXPECT_TRUE(m.try_lock());
-  ASSERT_TRUE(m.unlock());
+  m.unlock();
 }
 
 TEST(ErrorCheckingMutexTest, RelockingFromSameThreadFailsWithDeadlock) {
@@ -91,19 +89,19 @@ TEST(ErrorCheckingMutexTest, TryLockFromSameThreadFailsWhileHeld) {
 
 TEST(SharedMutexTest, ExclusiveLockExcludesEverything) {
   reloco::shared_mutex m;
-  ASSERT_TRUE(m.lock());
+  m.lock();
   EXPECT_FALSE(m.try_lock());
   EXPECT_FALSE(m.try_lock_shared());
-  ASSERT_TRUE(m.unlock());
+  m.unlock();
 }
 
 TEST(SharedMutexTest, MultipleReadersAllowedConcurrently) {
   reloco::shared_mutex m;
-  ASSERT_TRUE(m.lock_shared());
+  m.lock_shared();
   EXPECT_TRUE(m.try_lock_shared());
   EXPECT_FALSE(m.try_lock());
-  ASSERT_TRUE(m.unlock_shared());
-  ASSERT_TRUE(m.unlock_shared());
+  m.unlock_shared();
+  m.unlock_shared();
 }
 
 TEST(ConditionVariableTest, NotifyOneWakesWaitingThread) {
@@ -113,7 +111,7 @@ TEST(ConditionVariableTest, NotifyOneWakesWaitingThread) {
   bool woke = false;
 
   std::thread waiter([&]() {
-    ASSERT_TRUE(m.lock());
+    m.lock();
     std::unique_lock<reloco::mutex> locker(m, std::adopt_lock);
     auto res = cv.wait(locker, [&]() { return ready; });
     ASSERT_TRUE(res);
@@ -121,7 +119,7 @@ TEST(ConditionVariableTest, NotifyOneWakesWaitingThread) {
   });
 
   {
-    ASSERT_TRUE(m.lock());
+    m.lock();
     std::unique_lock<reloco::mutex> locker(m, std::adopt_lock);
     ready = true;
   }

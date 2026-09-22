@@ -994,29 +994,38 @@ initialization hasn't completed yet. See
 [Fallible construction](fallible-construction.md#lazy-singletons-fallible_singleton-atomic_fallible_singleton)
 for the full explanation. `LockTraits::lock_type` can be any of the
 `mutex`/`recursive_mutex`/`error_checking_mutex` types below (via a thin
-adapter satisfying `has_lock_traits_v`, since `lock()`/`unlock()` return
-`result<void>` rather than `void`) or an application's own mutex/spinlock.
+adapter satisfying `has_lock_traits_v`, since it requires `static void
+lock(lock_type &)`/`static void unlock(lock_type &)` free functions, not
+member functions) or an application's own mutex/spinlock.
 
 ## `mutex` / `recursive_mutex` / `error_checking_mutex` / `shared_mutex` / `condition_variable`
 
 `include/reloco/mutex.hpp`
 
-Backend-selectable synchronization primitives, all with the fallible
-`[[nodiscard]] result<void> lock()`/`unlock()` shape (`result<void>
-lock_shared()`/`unlock_shared()` for `shared_mutex`) instead of throwing,
-plus `[[nodiscard]] bool try_lock()` and a `native_handle()` escape hatch.
+Backend-selectable synchronization primitives. `mutex`/`recursive_mutex`/
+`shared_mutex` have an infallible `void lock()`/`unlock()` shape (`void
+lock_shared()`/`unlock_shared()` for `shared_mutex`): any underlying OS/library
+failure indicates a programming error (relocking a non-recursive mutex
+already held by the calling thread, unlocking one not held, ...) -- undefined
+behavior per the standard in the first place -- and is reported via
+`RELOCO_ASSERT` rather than a `result<void>`, so they drop in cleanly as
+`std::unique_lock<T>`'s `Mutex` template parameter (whose destructor calls
+`unlock()` unconditionally, with no way to check a return value). Plus
+`[[nodiscard]] bool try_lock()` and a `native_handle()` escape hatch.
 Two built-in backends are selected automatically -- `RELOCO_MUTEX_BACKEND_PTHREAD`
 (POSIX `pthread_mutex_t`/`pthread_rwlock_t`/`pthread_cond_t`) when
 `<pthread.h>` is available, else `RELOCO_MUTEX_BACKEND_STD`
 (`std::mutex`/`std::shared_mutex`/`std::condition_variable`, which covers
 Windows out of the box) -- or forced by defining exactly one of them in
-`reloco_user_config.hpp`. `error_checking_mutex` is implemented once,
-generically, on top of whichever `mutex` backend is active plus an
-`std::atomic<std::thread::id>` owner tag, so it's fully portable (no
-glibc-specific `PTHREAD_MUTEX_ERRORCHECK`/`_NP` initializer macros): its
-`lock()` returns `error::deadlock` when the calling thread already owns it,
-`unlock()` returns `error::invalid_owner` from a non-owning thread, and
-`try_lock()` returns `false` (not an error) when self-owned.
+`reloco_user_config.hpp`. `error_checking_mutex` is the deliberate exception:
+implemented once, generically, on top of whichever `mutex` backend is active
+plus an `std::atomic<std::thread::id>` owner tag, so it's fully portable (no
+glibc-specific `PTHREAD_MUTEX_ERRORCHECK`/`_NP` initializer macros), its
+`[[nodiscard]] result<void> lock()` returns `error::deadlock` when the
+calling thread already owns it, `unlock()` returns `error::invalid_owner`
+from a non-owning thread, and `try_lock()` returns `false` (not an error)
+when self-owned -- turning exactly the misuses that `mutex` asserts on into
+a reportable, recoverable error instead.
 
 Under `-fno-exceptions`, the `RELOCO_MUTEX_BACKEND_STD` backend's internal
 `std::system_error` translation is compiled out (detected via the
@@ -1034,6 +1043,23 @@ Win32 `SRWLOCK`/`CRITICAL_SECTION`/`CONDITION_VARIABLE` or an RTOS's native
 primitives (not ported here by design -- see the header's file-level doc
 comment). See `RELOCO_MUTEX_BACKEND_STD`/`_PTHREAD`/`_CUSTOM` in
 `reloco_config.hpp` for the exact selection mechanism.
+
+`mutex`/`recursive_mutex`/`error_checking_mutex`/`shared_mutex` (both
+backends) are annotated for
+[Clang Thread Safety Analysis](https://clang.llvm.org/docs/ThreadSafetyAnalysis.html)
+via the `RELOCO_CAPABILITY`/`RELOCO_ACQUIRE`/`RELOCO_RELEASE`/
+`RELOCO_TRY_ACQUIRE` (and `_SHARED` variants) macros in `detail/compat.hpp`:
+building with `-Wthread-safety` on Clang statically flags mismatched
+lock/unlock pairs (e.g. a `lock()` with no matching `unlock()` on some
+path, or an `unlock()` on a mutex not currently held) at compile time. On
+GCC/MSVC, `RELOCO_HAS_ATTRIBUTE` reports these attributes as unsupported,
+so the macros expand to nothing there -- zero cost, zero portability
+impact. `detail/compat.hpp` also exposes `RELOCO_GUARDED_BY`/
+`RELOCO_PT_GUARDED_BY`/`RELOCO_REQUIRES`/`RELOCO_REQUIRES_SHARED`/
+`RELOCO_LOCKS_EXCLUDED`/`RELOCO_ASSERT_CAPABILITY`/
+`RELOCO_ASSERT_SHARED_CAPABILITY`/`RELOCO_SCOPED_CAPABILITY`/
+`RELOCO_NO_THREAD_SAFETY_ANALYSIS` for annotating application code that
+guards its own data with these mutex types.
 
 ## `is_trivially_relocatable<T>`
 
