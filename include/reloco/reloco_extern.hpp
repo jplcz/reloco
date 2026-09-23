@@ -116,6 +116,20 @@
  * unaffected -- this only matters when the *outermost* name is itself a
  * typedef/alias rather than the template-id.
  *
+ * On the `RELOCO_SHARED_BUILD` side, the explicit instantiation definition
+ * is itself annotated `__attribute__((visibility("default")))` on GCC/
+ * Clang (`__declspec(dllexport)` on MSVC), so every member it generates is
+ * exported regardless of `Type`'s own visibility or the building TU's
+ * `-fvisibility` default: unlike an ordinary declaration, GCC/Clang honor
+ * a `visibility` attribute placed directly on an explicit instantiation,
+ * without discounting it by any template argument's own visibility (see
+ * `RELOCO_EXPORT` in `detail/compat.hpp` for that latter, ordinary rule,
+ * which still applies to implicit instantiations and to any other use of
+ * `Type` outside this header). There is therefore no need to separately
+ * mark `Type` itself (or its template parameters) with `RELOCO_EXPORT` (or
+ * an equivalent `-fvisibility=default` override) purely for
+ * `RELOCO_TYPE_INSTANCE` to export correctly.
+ *
  * Keeping both call sites in sync is the caller's responsibility, exactly
  * as for `MICROFMT_FORMATTER_INSTANCE`: naming a `Type` with
  * `RELOCO_TYPE_INSTANCE` in a `RELOCO_SHARED` consumer without a matching
@@ -129,6 +143,16 @@
 #if defined(RELOCO_SHARED_BUILD)
 #if defined(_MSC_VER)
 #define RELOCO_TYPE_INSTANCE_DLLSPEC __declspec(dllexport)
+#elif RELOCO_HAS_ATTRIBUTE(visibility)
+// GCC/Clang: an explicit instantiation *definition* under `-fvisibility=
+// hidden` (a common shared-library default) would otherwise emit every
+// member with hidden visibility -- unlike ordinary declarations, GCC/Clang
+// both accept (and, unlike the class template's own visibility, do not
+// discount by any template argument's visibility) a `visibility` attribute
+// directly on the explicit instantiation itself, so this alone is
+// sufficient to guarantee the definition below is exported regardless of
+// `Type`'s own visibility or the building TU's `-fvisibility` default.
+#define RELOCO_TYPE_INSTANCE_DLLSPEC __attribute__((visibility("default")))
 #else
 #define RELOCO_TYPE_INSTANCE_DLLSPEC
 #endif
