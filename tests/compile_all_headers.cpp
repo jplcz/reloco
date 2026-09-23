@@ -39,6 +39,7 @@
 #include <reloco/stack_allocator.hpp>
 #include <reloco/string.hpp>
 #include <reloco/string_view.hpp>
+#include <reloco/type_id.hpp>
 #include <reloco/unique_ptr.hpp>
 #include <reloco/value_ptr.hpp>
 #include <reloco/value_ref.hpp>

@@ -269,4 +269,77 @@ TEST(AnyTest, TryCloneDispatchesToACustomTryCloneViaConstructionHelpers) {
   EXPECT_EQ(a->get<custom_cloneable_value>().value, 9);
 }
 
+TEST(AnyTest, TypeIdReturnsTheHeldTypesIdentity) {
+  auto a = reloco::any::try_create(42);
+  ASSERT_TRUE(a);
+  EXPECT_EQ(a->type_id(), reloco::type_id::of<int>());
+  EXPECT_NE(a->type_id(), reloco::type_id::of<double>());
+}
+
+TEST(AnyTest, TypeIdOnAnEmptyInstanceIsTheNoTypeSentinel) {
+  reloco::any a;
+  EXPECT_FALSE(a.type_id());
+  EXPECT_EQ(a.type_id(), reloco::type_id());
+}
+
+TEST(AnyTest, DowncastMutReturnsAWritablePointerOnMatch) {
+  auto a = reloco::any::try_create(42);
+  ASSERT_TRUE(a);
+  int *ptr = a->template downcast_mut<int>();
+  ASSERT_NE(ptr, nullptr);
+  *ptr = 7;
+  EXPECT_EQ(a->template get<int>(), 7);
+}
+
+TEST(AnyTest, DowncastMutReturnsNullptrOnTypeMismatchOrEmpty) {
+  auto a = reloco::any::try_create(42);
+  ASSERT_TRUE(a);
+  EXPECT_EQ(a->template downcast_mut<double>(), nullptr);
+
+  reloco::any empty;
+  EXPECT_EQ(empty.downcast_mut<int>(), nullptr);
+}
+
+TEST(AnyTest, DowncastRefReturnsAReadOnlyPointerOnMatch) {
+  auto created = reloco::any::try_create(42);
+  ASSERT_TRUE(created);
+  const reloco::any a = std::move(*created);
+  const int *ptr = a.downcast_ref<int>();
+  ASSERT_NE(ptr, nullptr);
+  EXPECT_EQ(*ptr, 42);
+}
+
+TEST(AnyTest, DowncastRefReturnsNullptrOnTypeMismatchOrEmpty) {
+  auto created = reloco::any::try_create(42);
+  ASSERT_TRUE(created);
+  const reloco::any a = std::move(*created);
+  EXPECT_EQ(a.downcast_ref<double>(), nullptr);
+
+  const reloco::any empty;
+  EXPECT_EQ(empty.downcast_ref<int>(), nullptr);
+}
+
+TEST(AnyTest, DowncastMovesTheValueOutOnMatch) {
+  auto a = reloco::any::try_create(std::string("movable"));
+  ASSERT_TRUE(a);
+  auto res = std::move(*a).downcast<std::string>();
+  ASSERT_TRUE(res);
+  EXPECT_EQ(*res, "movable");
+}
+
+TEST(AnyTest, DowncastFailsWithContainerEmptyOnAnEmptyInstance) {
+  reloco::any a;
+  auto res = std::move(a).downcast<int>();
+  ASSERT_FALSE(res);
+  EXPECT_EQ(res.error(), reloco::error::container_empty);
+}
+
+TEST(AnyTest, DowncastFailsWithInvalidArgumentOnTypeMismatch) {
+  auto a = reloco::any::try_create(42);
+  ASSERT_TRUE(a);
+  auto res = std::move(*a).downcast<double>();
+  ASSERT_FALSE(res);
+  EXPECT_EQ(res.error(), reloco::error::invalid_argument);
+}
+
 TEST(AnyTest, IsNotTriviallyRelocatable) { static_assert(!reloco::is_trivially_relocatable_v<reloco::any>); }

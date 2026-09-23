@@ -38,6 +38,7 @@ where, not a tutorial.
 | `boxed_slice.hpp` | `boxed_slice<T>` | Fixed-size, allocator-backed owned array with no spare capacity, matching Rust's `Box<[T]>` |
 | `cow.hpp` | `cow<T>`, `cow_traits<T>` | Clone-on-write wrapper matching Rust's `Cow<'a, T>`, with a user-specializable clone customization point |
 | `function.hpp` | `function<R(Args...)>` | Type-erased, allocator-backed callable wrapper with fallible construction |
+| `type_id.hpp` | `type_id`, `type_id_of<T>()` | Process-wide type identity established without RTTI, matching Rust's `std::any::TypeId` |
 | `any.hpp` | `any` | Type-erased, allocator-backed single-value container with fallible construction and no RTTI dependency |
 | `collection_view.hpp` | `collection_view<T>`, `mutable_collection_view<T>`, `collection_view_traits<Container>` | Type-erased, non-owning views over an adapted sequence container |
 | `container_ref.hpp` | `mutable_container_ref<T, Key = void>`, `container_ref_traits<Container>` | Type-erased handle for structurally mutating (growing/inserting/erasing) an adapted sequence or associative container |
@@ -1049,13 +1050,42 @@ always `false`: the captured callable may live inline in the SOO buffer, so
 relocating the wrapper by copying bytes is only as safe as the (erased)
 captured type itself (see [Trivial relocation](relocatable.md)).
 
+## `type_id` / `type_id_of<T>()`
+
+`include/reloco/type_id.hpp`
+
+Opaque, process-wide type identity established without RTTI, matching
+Rust's `std::any::TypeId`. `type_id::of<T>()` (or the free-function alias
+`type_id_of<T>()`) returns the address of a per-instantiation static data
+member as `T`'s identity -- no `typeid`/`<typeinfo>`, no mangled-name
+string, no runtime registration. `T` is never decayed for you (unlike
+`any::is<T>()`), so `type_id::of<int>()` and `type_id::of<const int>()` are
+distinct identities.
+
+```cpp
+auto id = reloco::type_id::of<int>();
+if (id == reloco::type_id::of<int>())
+  // ...
+```
+
+A default-constructed `type_id` is a distinct "no type" sentinel
+(`operator bool()` is `false`), never equal to `type_id::of<T>()` for any
+`T` -- what a type-erased container like `any` returns from its own
+`type_id()` accessor when empty. Unlike Rust's own `TypeId` (deliberately
+`Eq`/`Hash` only, no `Ord`), reloco also provides
+`operator<`/`operator<=`/`operator>`/`operator>=` (via `std::less<const
+void *>`, so ordering is at least well-defined and total within a process)
+so a `type_id` can be used directly as a `flat_set`/`flat_map` key;
+`std::hash<reloco::type_id>` is specialized too, for
+`std::unordered_map`/`unordered_set` interop.
+
 ## `any`
 
 `include/reloco/any.hpp`
 
 Type-erased, allocator-backed single-value container (reloco's `std::any`
-counterpart), with no dependency on RTTI: type identity is established by
-comparing the address of a per-instantiation static data member instead of
+counterpart), with no dependency on RTTI: type identity is established via
+`reloco::type_id` (see `type_id.hpp` above) instead of
 `typeid`/`<typeinfo>`. `try_allocate(allocator_ref, T)`/`try_create(T)` wrap
 a copy/move of any decayed, constructible type, choosing the cheapest
 storage tier at construction time: a small-object-optimization inline
@@ -1086,6 +1116,20 @@ on a type mismatch); `unsafe_get<T>()` skips the check entirely (only a
 `false`: the held value may live inline in the SOO buffer, so relocating
 the wrapper by copying bytes is only as safe as the (erased) held type
 itself (see [Trivial relocation](relocatable.md)).
+
+A parallel, Rust-flavored surface mirrors Rust's `std::any::Any` trait on
+top of the same dispatch: `type_id()` (Rust's `Any::type_id`) returns the
+held value's `reloco::type_id` (the "no type" sentinel if empty);
+`downcast_ref<T>()`/`downcast_mut<T>()` (Rust's `Any::downcast_ref`/
+`downcast_mut`) return a nullable `const T *`/`T *` instead of asserting --
+reloco's usual analog of Rust's `Option<&T>`/`Option<&mut T>` for a
+checked-but-non-asserting accessor (compare `flat_map::find`); and
+`downcast<T>() &&` (Rust's `Any::downcast`, consuming) moves the held `T`
+out into a `result<T>` (`error::container_empty`/`error::invalid_argument`
+on failure) rather than Rust's `Result<Box<T>, Box<dyn Any>>`, since every
+fallible reloco operation returns `reloco::result<T>` and handing back the
+original, differently-typed `any` on failure would require a second error
+type.
 
 ## `collection_view<T>` / `mutable_collection_view<T>` / `collection_view_traits<Container>`
 

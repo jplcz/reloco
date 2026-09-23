@@ -218,6 +218,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_cow.cpp
         tests/test_function.cpp
         tests/test_any.cpp
+        tests/test_type_id.cpp
         tests/test_collection_view.cpp
         tests/test_container_ref.cpp
         tests/test_vector.cpp

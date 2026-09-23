@@ -20,19 +20,14 @@
  *   allocator block, exactly like `function::try_allocate`/
  *   `unique_ptr::try_allocate`.
  *
- * The vtable itself is a plain struct of function pointers and one `const
- * void *` type-identity field (no virtual dispatch, no `<typeinfo>`, no
+ * The vtable itself is a plain struct of function pointers and one
+ * `reloco::type_id` field (no virtual dispatch, no `<typeinfo>`, no
  * `dynamic_cast`, no `typeid`) -- the same customization-point shape
  * `allocator.hpp`/`function.hpp` use for their own backend dispatch. Type
- * identity is established without RTTI by taking the address of a
- * per-instantiation static data member (`detail::any_type_tag<T>::tag`):
- * every translation unit that instantiates `any_type_tag<T>` for the same
- * `T` refers to the same (implicitly `inline`, since C++17) symbol, so its
- * address is a stable, process-wide, per-type identity that two `any`
- * values can compare by pointer equality -- no type name string, hash, or
- * runtime registration involved. One `static constexpr vtable` instance per
- * storage strategy and stored type is selected once at construction and
- * never branched on again.
+ * identity is established without RTTI via `reloco::type_id` (see
+ * `type_id.hpp`), matching Rust's `std::any::TypeId`. One `static constexpr
+ * vtable` instance per storage strategy and stored type is selected once
+ * at construction and never branched on again.
  *
  * Every fallible entry point returns `reloco::result<T>` (see `error.hpp`).
  * Move-only by default: use `try_clone()` for an explicit deep copy, which
@@ -49,6 +44,20 @@
  * if empty, or `error::invalid_argument` on a type mismatch); `unsafe_get<T>()`
  * skips the check entirely (only a `RELOCO_DEBUG_ASSERT`).
  *
+ * A parallel, Rust-flavored surface mirrors Rust's `std::any::Any` trait
+ * directly on top of the same underlying dispatch: `type_id()` (Rust's
+ * `Any::type_id`) returns the held value's `reloco::type_id` (the "no
+ * type" sentinel, `type_id{}`, if empty); `downcast_ref<T>()`/
+ * `downcast_mut<T>()` (Rust's `Any::downcast_ref`/`downcast_mut`) return a
+ * nullable `const T *`/`T *` instead of asserting, reloco's usual analog
+ * of Rust's `Option<&T>`/`Option<&mut T>` for a checked-but-non-asserting
+ * accessor (see e.g. `flat_map`'s `find`); and `downcast<T>() &&` (Rust's
+ * `Any::downcast`, consuming) moves the held `T` out into a `result<T>` --
+ * `error::container_empty`/`error::invalid_argument` on failure, rather
+ * than Rust's `Result<Box<T>, Box<dyn Any>>`, since every fallible reloco
+ * operation returns `reloco::result<T>` (see `error.hpp`) and handing back
+ * the original, differently-typed `any` would require a second error type.
+ *
  * Like `function.hpp`/`unique_ptr.hpp`, this file's `namespace reloco` body
  * is wrapped in `RELOCO_BEGIN_UNSAFE_BUFFER_USAGE`/
  * `RELOCO_END_UNSAFE_BUFFER_USAGE`: the vtable functions placement-new/
@@ -63,6 +72,7 @@
 #include "error.hpp"
 #include "lifetime.hpp"
 #include "relocatable.hpp"
+#include "type_id.hpp"
 
 #include <cstddef>
 #include <functional>
@@ -73,26 +83,6 @@
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
 namespace reloco {
-
-namespace detail {
-
-/**
- * @brief Per-instantiation static storage whose address serves as `T`'s
- * type identity (see the file-level docs above for why this needs no
- * RTTI).
- */
-template <typename T> struct any_type_tag {
-  static constexpr char tag = 0;
-};
-
-/**
- * @brief Returns a stable, process-wide identity for `T`, without RTTI.
- */
-template <typename T> [[nodiscard]] constexpr const void *any_type_id() noexcept {
-  return static_cast<const void *>(&any_type_tag<T>::tag);
-}
-
-} // namespace detail
 
 /**
  * @brief Type-erased, allocator-backed single-value container.
@@ -182,10 +172,59 @@ public:
 
   /**
    * @brief Reports whether this instance is non-empty and holds exactly
-   * `std::decay_t<T>`, established without RTTI (see the file-level docs).
+   * `std::decay_t<T>`, established without RTTI (see `type_id.hpp`).
    */
   template <typename T> [[nodiscard]] constexpr bool is() const noexcept {
-    return vtable_ != nullptr && vtable_->type_id == detail::any_type_id<std::decay_t<T>>();
+    return vtable_ != nullptr && vtable_->type_id == reloco::type_id::of<std::decay_t<T>>();
+  }
+
+  /**
+   * @brief Rust `Any::type_id` equivalent: the held value's `reloco::type_id`
+   * (see `type_id.hpp`), or the "no type" sentinel (`type_id{}`, `!bool()`)
+   * if this instance is empty.
+   */
+  [[nodiscard]] constexpr reloco::type_id type_id() const noexcept {
+    return vtable_ != nullptr ? vtable_->type_id : reloco::type_id();
+  }
+
+  /**
+   * @brief Rust `Any::downcast_mut` equivalent: a mutable pointer to the
+   * held `std::decay_t<T>`, or `nullptr` if this instance is empty or
+   * holds a different type -- reloco's usual nullable-pointer analog of
+   * Rust's `Option<&mut T>` for a checked, non-asserting accessor (see
+   * e.g. `flat_map::find`). See `get<T>()`/`try_get<T>()` for the
+   * asserted/`result`-returning tiers.
+   */
+  template <typename T> [[nodiscard]] T *downcast_mut() noexcept RELOCO_LIFETIMEBOUND {
+    using decayed = std::decay_t<T>;
+    return is<decayed>() ? static_cast<decayed *>(vtable_->data(&storage_)) : nullptr;
+  }
+
+  /**
+   * @brief Rust `Any::downcast_ref` equivalent: a `const` pointer to the
+   * held `std::decay_t<T>`, or `nullptr` if this instance is empty or
+   * holds a different type. See @ref downcast_mut for details.
+   */
+  template <typename T> [[nodiscard]] const T *downcast_ref() const noexcept RELOCO_LIFETIMEBOUND {
+    using decayed = std::decay_t<T>;
+    return is<decayed>() ? static_cast<const decayed *>(vtable_->data(const_cast<storage *>(&storage_))) : nullptr;
+  }
+
+  /**
+   * @brief Rust `Any::downcast` equivalent (consuming): moves the held
+   * `std::decay_t<T>` out, failing with `error::container_empty` on an
+   * empty instance or `error::invalid_argument` on a type mismatch,
+   * instead of Rust's `Result<Box<T>, Box<dyn Any>>` -- see the file-level
+   * docs for why the mismatch case cannot also hand back the original
+   * `any`. Equivalent to a checked `std::move(*this).get<T>()`.
+   */
+  template <typename T> [[nodiscard]] result<std::decay_t<T>> downcast() && noexcept {
+    using decayed = std::decay_t<T>;
+    if (!vtable_)
+      RELOCO_UNLIKELY { return unexpected(error::container_empty); }
+    if (!is<decayed>())
+      RELOCO_UNLIKELY { return unexpected(error::invalid_argument); }
+    return result<decayed>(std::move(*static_cast<decayed *>(vtable_->data(&storage_))));
   }
 
   /** @brief Destroys the held value (releasing any heap allocation) and
@@ -289,7 +328,7 @@ private:
   };
 
   struct vtable {
-    const void *type_id;
+    reloco::type_id type_id;
     void (*destroy)(storage *, allocator_ref);
     void (*move_and_destroy)(storage *src, storage *dest);
     // Constructs a clone of `src`'s held value directly into uninitialized
@@ -335,7 +374,7 @@ private:
                                       has_try_create_v<T, const T &> || std::is_nothrow_copy_constructible_v<T>;
 
     static constexpr vtable soo_instance = {
-        detail::any_type_id<T>(),
+        reloco::type_id::of<T>(),
         [](storage *s, allocator_ref) noexcept { reinterpret_cast<T *>(s->buffer)->~T(); },
         [](storage *src, storage *dest) noexcept {
           new (dest->buffer) T(std::move(*reinterpret_cast<T *>(src->buffer)));
@@ -353,7 +392,7 @@ private:
     };
 
     static constexpr vtable heap_instance = {
-        detail::any_type_id<T>(),
+        reloco::type_id::of<T>(),
         [](storage *s, allocator_ref alloc) noexcept {
           static_cast<T *>(s->heap_ptr)->~T();
           alloc.deallocate(s->heap_ptr, sizeof(T));
