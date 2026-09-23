@@ -6,6 +6,7 @@
 // Used by RELOCO_BUILD_HEADER_CHECKS and scripts/check-unsafe-buffer-usage.sh.
 
 #include <reloco/allocator.hpp>
+#include <reloco/any.hpp>
 #include <reloco/array.hpp>
 #include <reloco/checked.hpp>
 #include <reloco/checked_value.hpp>

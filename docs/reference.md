@@ -38,6 +38,7 @@ where, not a tutorial.
 | `boxed_slice.hpp` | `boxed_slice<T>` | Fixed-size, allocator-backed owned array with no spare capacity, matching Rust's `Box<[T]>` |
 | `cow.hpp` | `cow<T>`, `cow_traits<T>` | Clone-on-write wrapper matching Rust's `Cow<'a, T>`, with a user-specializable clone customization point |
 | `function.hpp` | `function<R(Args...)>` | Type-erased, allocator-backed callable wrapper with fallible construction |
+| `any.hpp` | `any` | Type-erased, allocator-backed single-value container with fallible construction and no RTTI dependency |
 | `collection_view.hpp` | `collection_view<T>`, `mutable_collection_view<T>`, `collection_view_traits<Container>` | Type-erased, non-owning views over an adapted sequence container |
 | `container_ref.hpp` | `mutable_container_ref<T, Key = void>`, `container_ref_traits<Container>` | Type-erased handle for structurally mutating (growing/inserting/erasing) an adapted sequence or associative container |
 | `container_ref_std.hpp` | `container_ref_traits<std::vector<T>>`, `container_ref_traits<std::map<Key, Value>>` | Opt-in `container_ref_traits` adapters for `std::vector`/`std::map` |
@@ -1047,6 +1048,44 @@ double-wrapped. `reloco::is_trivially_relocatable<function<R(Args...)>>` is
 always `false`: the captured callable may live inline in the SOO buffer, so
 relocating the wrapper by copying bytes is only as safe as the (erased)
 captured type itself (see [Trivial relocation](relocatable.md)).
+
+## `any`
+
+`include/reloco/any.hpp`
+
+Type-erased, allocator-backed single-value container (reloco's `std::any`
+counterpart), with no dependency on RTTI: type identity is established by
+comparing the address of a per-instantiation static data member instead of
+`typeid`/`<typeinfo>`. `try_allocate(allocator_ref, T)`/`try_create(T)` wrap
+a copy/move of any decayed, constructible type, choosing the cheapest
+storage tier at construction time: a small-object-optimization inline
+buffer (`any::soo_capacity` bytes, alignment up to
+`alignof(std::max_align_t)`), or a single heap allocation for anything
+larger. `try_allocate(allocator_ref, std::in_place_type<T>, args...)`/
+`try_create(std::in_place_type<T>, args...)` construct `T` in place instead,
+avoiding the extra move/copy.
+
+```cpp
+auto value = reloco::any::try_create(42);
+if (value && value->is<int>())
+  int n = value->get<int>();
+```
+
+Move-only: `try_clone()` performs an explicit fallible deep copy, dispatching
+through `construction_helpers::try_clone_at` (see `construction_helpers.hpp`)
+-- the held type's own `try_clone`/`try_allocate`/`try_create` if it
+implements one, falling back to plain nothrow copy-construction -- and
+failing with `error::unsupported_operation` if none of those apply (or if
+the instance is empty). `is<T>()` reports whether the instance is non-empty
+and holds exactly `std::decay_t<T>`. Access follows the usual tri-tier
+convention: `get<T>()` asserts non-empty and type-matching; `try_get<T>()` is
+the checked alternative, returning `result<std::reference_wrapper<T>>`
+(failing with `error::container_empty` if empty, or `error::invalid_argument`
+on a type mismatch); `unsafe_get<T>()` skips the check entirely (only a
+`RELOCO_DEBUG_ASSERT`). `reloco::is_trivially_relocatable<any>` is always
+`false`: the held value may live inline in the SOO buffer, so relocating
+the wrapper by copying bytes is only as safe as the (erased) held type
+itself (see [Trivial relocation](relocatable.md)).
 
 ## `collection_view<T>` / `mutable_collection_view<T>` / `collection_view_traits<Container>`
 
