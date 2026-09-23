@@ -46,8 +46,18 @@ RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
 namespace reloco {
 
+/**
+ * @brief Represents a raw memory block with its pointer and actual allocated size.
+ *
+ * Returned by allocator backends and type-erased allocator handles. The `size`
+ * field represents the **actual** available capacity of the block, which is
+ * guaranteed to be greater than or equal to the originally requested size
+ * (e.g., due to alignment padding, slab binning, or page-size rounding).
+ */
 struct [[nodiscard]] mem_block {
+  /** Pointer to the start of the allocated memory block, or `nullptr` if empty. */
   void *ptr;
+  /** Actual capacity of the memory block in bytes (guaranteed to be >= requested size). */
   std::size_t size;
 };
 
@@ -74,9 +84,51 @@ enum class usage_hint {
  * process heap), declare `using context_type = void;` and drop the
  * `value_ref<context_type>` parameter from every operation.
  *
+ * Contract:
+ * - Functions returning `result<mem_block>` (`allocate`, `reallocate`) are
+ *   guaranteed to return a block whose `size` is **at least** the requested
+ *   `bytes` size (e.g., alignment padding, page sizing, or SLAB binning).
+ *
  * @tparam Tag Tag identifying the allocator implementation.
+ *
  */
 template <typename Tag> struct allocator_traits;
+
+// --- Mandatory Operations ---
+
+/**
+ * @brief Allocates a memory block of at least `bytes` with the specified `alignment`.
+ * @return result<mem_block> containing the pointer and the *actual* allocated size (>= bytes).
+ */
+// static constexpr result<mem_block> allocate(std::size_t bytes, std::size_t alignment) noexcept;
+// Stateful overload: static constexpr result<mem_block> allocate(context_type &ctx, std::size_t bytes, std::size_t
+// alignment) noexcept;
+
+/**
+ * @brief Deallocates a previously allocated block.
+ */
+// static constexpr void deallocate(void *ptr, std::size_t bytes) noexcept;
+// Stateful overload: static constexpr void deallocate(context_type &ctx, void *ptr, std::size_t bytes) noexcept;
+
+// --- Optional Operations (can be omitted or defaulted) ---
+
+/**
+ * @brief Attempts to expand a block in-place without moving its address.
+ * @return result<std::size_t> representing the new total size, or an error if it failed.
+ */
+// static constexpr result<std::size_t> expand_in_place(void *ptr, std::size_t old_size, std::size_t new_size) noexcept;
+
+/**
+ * @brief Reallocates a block, potentially moving it and changing its size/alignment.
+ * @return result<mem_block> with the new block (size >= new_size).
+ */
+// static constexpr result<mem_block> reallocate(void *ptr, std::size_t old_size, std::size_t new_size, std::size_t
+// alignment) noexcept;
+
+/**
+ * @brief Provides memory usage hints to the backend/OS (e.g., madvise).
+ */
+// static constexpr void advise(void *ptr, std::size_t bytes, usage_hint hint) noexcept;
 
 namespace detail {
 

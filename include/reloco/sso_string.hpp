@@ -219,12 +219,14 @@ public:
       auto *new_data = static_cast<CharT *>(res->ptr);
       TraitsT::copy(new_data, sso_buf_, size_ + 1);
       data_ = new_data;
-      cap_ = new_cap;
+      // Absorb any extra capacity provided by the allocator (e.g. SLAB bin sizing)
+      cap_ = (res->size / sizeof(CharT)) - 1;
       return {};
     }
 
+    // expand_in_place returns result<std::size_t> representing the actual new size in bytes
     if (auto res = alloc_.expand_in_place(data_, (cap_ + 1) * sizeof(CharT), required_bytes); res) {
-      cap_ = new_cap;
+      cap_ = (*res / sizeof(CharT)) - 1;
       return {};
     }
 
@@ -233,7 +235,7 @@ public:
       return unexpected(res.error());
 
     data_ = static_cast<CharT *>(res->ptr);
-    cap_ = new_cap;
+    cap_ = (res->size / sizeof(CharT)) - 1;
     data_[size_] = CharT();
     return {};
   }

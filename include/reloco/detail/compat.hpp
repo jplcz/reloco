@@ -401,3 +401,38 @@
 #else
 #define RELOCO_ENUM_EXTENSIBILITY(val)
 #endif
+
+/**
+ * Informs the compiler that a function returning a pointer is guaranteed
+ * never to return nullptr.
+ */
+#if RELOCO_HAS_ATTRIBUTE(returns_nonnull)
+#define RELOCO_RETURNS_NONNULL __attribute__((returns_nonnull))
+#else
+#define RELOCO_RETURNS_NONNULL
+#endif
+
+/**
+ * Informs the compiler that the function returns a newly allocated buffer
+ * whose size is determined by the specified parameter index(es).
+ * @param pos1 1-based index of the size argument.
+ * @param pos2 Optional 2-based index of the element size argument.
+ */
+#if RELOCO_HAS_ATTRIBUTE(alloc_size)
+#define RELOCO_ATTR_ALLOC_SIZE(pos1) __attribute__((alloc_size(pos1)))
+#define RELOCO_ATTR_ALLOC_SIZE2(pos1, pos2) __attribute__((alloc_size(pos1, pos2)))
+#else
+#define RELOCO_ATTR_ALLOC_SIZE(pos1)
+#define RELOCO_ATTR_ALLOC_SIZE2(pos1, pos2)
+#endif
+
+/**
+ * Informs the compiler that the returned pointer of an allocation function
+ * is aligned to the byte boundary specified by the parameter at the given index.
+ * @param pos 1-based index of the alignment argument.
+ */
+#if RELOCO_HAS_ATTRIBUTE(alloc_align)
+#define RELOCO_ATTR_ALLOC_ALIGN(pos) __attribute__((alloc_align(pos)))
+#else
+#define RELOCO_ATTR_ALLOC_ALIGN(pos)
+#endif

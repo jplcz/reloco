@@ -194,7 +194,8 @@ public:
 
     if (cap_ > 0) {
       if (auto res = alloc_.expand_in_place(data_, (cap_ + 1) * sizeof(CharT), required_bytes); res) {
-        cap_ = new_cap;
+        // Absorb the actual expanded size in bytes returned by expand_in_place
+        cap_ = (*res / sizeof(CharT)) - 1;
         return {};
       }
     }
@@ -205,7 +206,8 @@ public:
       return unexpected(res.error());
 
     data_ = static_cast<CharT *>(res->ptr);
-    cap_ = new_cap;
+    // Absorb the actual allocated block size from the returned mem_block
+    cap_ = (res->size / sizeof(CharT)) - 1;
     data_[size_] = CharT();
     return {};
   }

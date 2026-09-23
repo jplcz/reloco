@@ -256,12 +256,14 @@ public:
         }
       }
       data_ = new_data;
-      cap_ = new_cap;
+      // Absorb any excess capacity returned by the allocator block
+      cap_ = res->size / sizeof(T);
       return {};
     }
 
     if (auto res = alloc_.expand_in_place(data_, cap_ * sizeof(T), required_bytes); res) {
-      cap_ = new_cap;
+      // Absorb the actual expanded byte size returned by expand_in_place
+      cap_ = *res / sizeof(T);
       return {};
     }
 
@@ -270,7 +272,8 @@ public:
       if (!res)
         return unexpected(res.error());
       data_ = static_cast<T *>(res->ptr);
-      cap_ = new_cap;
+      // Absorb any excess capacity from the reallocated mem_block
+      cap_ = res->size / sizeof(T);
     } else {
       auto res = alloc_.allocate(required_bytes, effective_alignment_v<T>);
       if (!res)
@@ -285,7 +288,8 @@ public:
       }
       alloc_.deallocate(data_, cap_ * sizeof(T));
       data_ = new_data;
-      cap_ = new_cap;
+      // Absorb any excess capacity from the fresh allocation block
+      cap_ = res->size / sizeof(T);
     }
     return {};
   }
