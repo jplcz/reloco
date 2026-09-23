@@ -176,6 +176,11 @@ public:
     return *this;
   }
 
+  const checked_value &as_known() const & noexcept RELOCO_RETURN_TYPESTATE(unconsumed) {
+    RELOCO_ASSERT(!moved_from_, "checked_value: as_known() after move");
+    return *this;
+  }
+
 private:
   static constexpr T take_from(checked_value &other) noexcept {
     RELOCO_ASSERT(!other.moved_from_, "checked_value: move from an already moved-from value");
@@ -332,6 +337,11 @@ public:
    * the full explanation.
    */
   checked_value &as_known() & noexcept RELOCO_RETURN_TYPESTATE(unconsumed) {
+    RELOCO_ASSERT(!moved_from_, "checked_value: as_known() after move");
+    return *this;
+  }
+
+  const checked_value &as_known() const & noexcept RELOCO_RETURN_TYPESTATE(unconsumed) {
     RELOCO_ASSERT(!moved_from_, "checked_value: as_known() after move");
     return *this;
   }
