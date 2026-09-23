@@ -21,6 +21,15 @@ this pattern in reloco; `include/reloco/heap_allocator.hpp` is a concrete
 stateless backend (`heap_allocator_tag`) built against it. Read both
 alongside this page as a complete, real example.
 
+If your `allocate`/`expand_in_place`/`reallocate` implementation ever
+reports back a `mem_block::size` (or `expand_in_place`/`reallocate` size)
+larger than what was requested, read
+[Allocator capacity absorption](allocator-capacity-absorption.md) first:
+containers absorb that extra size into their own capacity and round-trip
+it back to your backend on every later call for that block, which has
+specific implications for arena/slab backends, for wrapping a system
+allocator's own usable-size query, and for sanitizer builds.
+
 `allocator_ref`'s every operational method (`allocate`, `deallocate`,
 `expand_in_place`, `reallocate`, `advise`) is marked `RELOCO_UNSAFE_BUFFER_USAGE`
 and must be called from inside a `RELOCO_BEGIN_UNSAFE_BUFFER_USAGE`/

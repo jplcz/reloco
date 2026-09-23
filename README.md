@@ -35,6 +35,7 @@ Start with the guide that matches what you are building:
 | [Lifetime safety](docs/lifetime-safety.md) | Borrowed values and pointers, lifetime annotations, consumed-value tracking, and compiler diagnostics |
 | [Container contract](docs/container-contract.md) | Copy-paste template and checklist for lifetime annotations, rvalue protection, and the tri-tier accessor convention on a new container |
 | [Extending reloco](docs/extending.md) | The tag + `*_traits<Tag>` + `context_type` provider pattern used by `allocator_ref` and future pluggable backends |
+| [Allocator capacity absorption](docs/allocator-capacity-absorption.md) | Binding `mem_block::size` to your allocator's real granularity: rationale, the `old_size`/`bytes` round-trip contract, arena/slab vs. system-allocator use, and the sanitizer caveat |
 | [API reference](docs/reference.md) | Per-type quick reference for every public header |
 | [GDB pretty printers](docs/gdb-pretty-printers.md) | Formatting reloco containers/views/smart pointers in GDB: source, auto-load, or embed |
 | [Package-manager integration](docs/package-managers.md) | Conan 2, vcpkg overlays, CPM.cmake, CPack packaging, and CMake-based dependency managers |
