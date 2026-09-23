@@ -11,6 +11,7 @@
 // main(), runs a print command for each variable, and checks that the
 // printed output contains the expected substring.
 
+#include <reloco/any.hpp>
 #include <reloco/array.hpp>
 #include <reloco/binary_heap.hpp>
 #include <reloco/boxed_slice.hpp>
@@ -38,6 +39,7 @@
 #include <reloco/sso_vector.hpp>
 #include <reloco/string.hpp>
 #include <reloco/string_view.hpp>
+#include <reloco/type_id.hpp>
 #include <reloco/unique_ptr.hpp>
 #include <reloco/value_ptr.hpp>
 #include <reloco/value_ref.hpp>
@@ -48,7 +50,14 @@ namespace {
 
 int add_one(int x) { return x + 1; }
 
+struct labeled_point {
+  int x;
+  int y;
+};
+
 } // namespace
+
+RELOCO_TYPE_ID_NAME(labeled_point, "labeled_point");
 
 int main() {
   // -- array -----------------------------------------------------------
@@ -223,6 +232,19 @@ int main() {
   // -- function_ref ------------------------------------------------------------
   reloco::function_ref<int(int)> fref_add_one(add_one);
   // GDB_CHECK: fref_add_one => reloco::function_ref bound at
+
+  // -- type_id -------------------------------------------------------------
+  reloco::type_id type_id_int = reloco::type_id::of<int>();
+  // GDB_CHECK: type_id_int => reloco::type_id = int
+  reloco::type_id type_id_none;
+  // GDB_CHECK: type_id_none => reloco::type_id [none]
+
+  // -- any -------------------------------------------------------------------
+  reloco::any any_empty;
+  // GDB_CHECK: any_empty => reloco::any [empty]
+  auto any_res = reloco::any::try_create(labeled_point{7, 8});
+  reloco::any any_point = any_res ? std::move(any_res.value()) : reloco::any{};
+  // GDB_CHECK: any_point => reloco::any holding labeled_point
 
   // ADD_NEW_CASE_HERE: declare your new type's test variable above this
   // line, with its own `// GDB_CHECK:` comment, before the GDB_BREAK marker.

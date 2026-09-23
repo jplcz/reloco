@@ -95,7 +95,18 @@ Printers are registered for: `array`, `span`, `vector`, `inline_vector`,
 `checked_value`, `cell`, `ref_cell` (showing its borrow state), `non_zero`,
 `wrapping`, `saturating`, `checked`,
 `binary_heap`, `cow` (showing owned-vs-borrowed state), `boxed_slice`,
-`guarded_mutex`, and `function_ref`.
+`guarded_mutex`, `function_ref`, `type_id`, and `any`.
+
+`type_id`'s printer shows its registered debug name (see
+`RELOCO_TYPE_ID_NAME` in `type_id.hpp`) when one is present, or `[unnamed]`
+with the raw tag address otherwise, and `[none]` for a default-constructed
+sentinel `type_id`. `any`'s printer reuses this: since reloco uses no RTTI
+anywhere, the held value's concrete type is genuinely erased, so the
+printer can only report whether `any` is empty and, if not, the held
+type's registered debug name (if any) -- it never attempts to read or
+format the held value itself, which (like `collection_view`/`container_ref`
+below) would require calling through the private vtable's function
+pointers from Python.
 
 `collection_view`/`container_ref` (the type-erased container views) are
 deliberately **not** covered: printing their size requires calling through

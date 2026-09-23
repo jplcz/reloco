@@ -739,6 +739,74 @@ class RelocoFunctionRefPrinter:
         return "reloco::function_ref bound at %s" % str(callback)
 
 
+class RelocoTypeIdPrinter:
+    """Pretty printer for `reloco::type_id` (see `type_id.hpp`).
+
+    ``name_`` is only ever a debug-naming aid registered via
+    ``RELOCO_TYPE_ID_NAME`` (or left null); it never affects equality,
+    ordering, or hashing, so this printer shows it purely for information --
+    a null name is not an error.
+    """
+
+    def __init__(self, val):
+        self.val = val
+
+    def to_string(self):
+        tag = self.val["tag_"]
+        if int(tag) == 0:
+            return "reloco::type_id [none]"
+        name = self.val["name_"]
+        if int(name) != 0:
+            try:
+                return "reloco::type_id = %s" % name.string()
+            except gdb.error:
+                pass
+        return "reloco::type_id [unnamed] at %s" % str(tag)
+
+
+class RelocoAnyPrinter:
+    """Pretty printer for `reloco::any` (see `any.hpp`).
+
+    The held value's type is genuinely erased (no RTTI is used anywhere in
+    reloco), so this printer can only report whether `any` holds a value and,
+    if the held type registered a debug name via `RELOCO_TYPE_ID_NAME` (see
+    `type_id.hpp`), that name -- it never attempts to read or format the
+    held value itself, since doing so would require calling through the
+    private vtable's function pointers from Python (the same reason
+    `reloco::collection_view`/`reloco::container_ref` are not given
+    printers; see docs/gdb-pretty-printers.md).
+    """
+
+    def __init__(self, val):
+        self.val = val
+
+    def _type_id(self):
+        vtable = self.val["vtable_"]
+        if int(vtable) == 0:
+            return None
+        try:
+            return vtable.dereference()["type_id"]
+        except gdb.error:
+            return None
+
+    def to_string(self):
+        type_id = self._type_id()
+        if type_id is None:
+            return "reloco::any [empty]"
+        name = type_id["name_"]
+        if int(name) != 0:
+            try:
+                return "reloco::any holding %s" % name.string()
+            except gdb.error:
+                pass
+        return "reloco::any [holds an unnamed type; see RELOCO_TYPE_ID_NAME]"
+
+    def children(self):
+        type_id = self._type_id()
+        if type_id is not None:
+            yield ("type_id", type_id)
+
+
 def _build_pretty_printer():
     pp = gdb.printing.RegexpCollectionPrettyPrinter("reloco")
     pp.add_printer("reloco::array", r"^reloco::array<.*>$", RelocoArrayPrinter)
@@ -777,6 +845,8 @@ def _build_pretty_printer():
     pp.add_printer("reloco::boxed_slice", r"^reloco::boxed_slice<.*>$", RelocoBoxedSlicePrinter)
     pp.add_printer("reloco::guarded_mutex", r"^reloco::guarded_mutex<.*>$", RelocoGuardedMutexPrinter)
     pp.add_printer("reloco::function_ref", r"^reloco::function_ref<.*>$", RelocoFunctionRefPrinter)
+    pp.add_printer("reloco::type_id", r"^reloco::type_id$", RelocoTypeIdPrinter)
+    pp.add_printer("reloco::any", r"^reloco::any$", RelocoAnyPrinter)
     return pp
 
 
