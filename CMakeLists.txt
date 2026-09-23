@@ -263,6 +263,16 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
     jplcz_reloco_enable_warnings(jplcz_reloco_checked_value_tests)
     gtest_discover_tests(jplcz_reloco_checked_value_tests
         TEST_PREFIX "CheckedValue.")
+
+    # RELOCO_IMPLICIT_TYPEID is defined only for this translation unit (see
+    # that file), so it never affects type_id::name() anywhere else in the
+    # suite.
+    add_executable(jplcz_reloco_implicit_typeid_tests tests/test_type_id_implicit_typeid.cpp)
+    target_link_libraries(jplcz_reloco_implicit_typeid_tests PRIVATE
+        jplcz_reloco GTest::gtest_main)
+    jplcz_reloco_enable_warnings(jplcz_reloco_implicit_typeid_tests)
+    gtest_discover_tests(jplcz_reloco_implicit_typeid_tests
+        TEST_PREFIX "ImplicitTypeId.")
 endif()
 
 if(JPLCZ_RELOCO_INSTALL)

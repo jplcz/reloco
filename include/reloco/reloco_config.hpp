@@ -178,3 +178,15 @@
 //     equivalent) too. Fundamental types (e.g. int) always qualify. This
 //     restriction does not apply to reloco_global_alloc, which is not a
 //     template.
+//
+// RELOCO_IMPLICIT_TYPEID
+//     Define (to any value) to let reloco/type_id.hpp's type_id::name()
+//     fall back to typeid(T).name() (implementation-defined, typically a
+//     mangled name) as a last resort for a T with no explicit
+//     RELOCO_TYPE_ID_NAME registration, instead of nullptr. Only takes
+//     effect if RTTI is also enabled in the translation unit (see
+//     RELOCO_HAS_RTTI in reloco/detail/compat.hpp) -- reloco never
+//     requires RTTI for anything, so -fno-rtti/`/GR-` keep working exactly
+//     as before regardless of this macro, and this macro alone (without
+//     RTTI enabled) changes nothing. An explicit RELOCO_TYPE_ID_NAME
+//     registration always wins over this fallback for the T it names.

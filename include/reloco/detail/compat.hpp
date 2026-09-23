@@ -78,6 +78,20 @@
 #define RELOCO_ALWAYS_INLINE
 #endif
 
+// Whether RTTI (`typeid`/`<typeinfo>`/`dynamic_cast`) is available in this
+// translation unit. `__cpp_rtti` is the portable feature-test macro GCC and
+// Clang only define when RTTI is enabled (i.e. undefined under
+// `-fno-rtti`); MSVC instead defines `_CPPRTTI` under its default `/GR`
+// (undefined under `/GR-`). reloco itself never requires RTTI for anything
+// -- this only exists to let a handful of explicitly opt-in, best-effort
+// features (see `RELOCO_IMPLICIT_TYPEID` in `type_id.hpp`) use it *if* the
+// consumer has it enabled, without ever requiring it.
+#if defined(__cpp_rtti) || defined(_CPPRTTI)
+#define RELOCO_HAS_RTTI 1
+#else
+#define RELOCO_HAS_RTTI 0
+#endif
+
 // Forces default (exported) symbol visibility on an entity regardless of
 // the translation unit's own `-fvisibility=hidden`/`-fvisibility-inlines-
 // hidden` default. Needed for any implicitly-`inline` (since C++17) static

@@ -42,13 +42,28 @@
  * doubles as an optional customization point for a human-readable debug
  * name, in the same non-RTTI, opt-in-registration style game engines (e.g.
  * Unreal, EnTT) use to give a type-erased identity a friendly name for
- * logging/debugging: `type_id_tag<T>::name` is `nullptr` unless a `T` has
- * one explicitly registered, via a full specialization of `type_id_tag<T>`
- * (see `RELOCO_TYPE_ID_NAME` below), and `type_id::name()` surfaces it.
- * Registering, or not registering, a name never changes `type_id`
- * equality/ordering/hashing -- those are based solely on `tag`'s address;
- * `name` is a pure debugging aid layered on top. See `RELOCO_TYPE_ID_NAME`
- * for the set of standard and reloco types named out of the box.
+ * logging/debugging: `type_id_tag<T>::name()` returns `nullptr` unless a
+ * `T` has one explicitly registered, via a full specialization of
+ * `type_id_tag<T>` (see `RELOCO_TYPE_ID_NAME` below), and `type_id::name()`
+ * surfaces it. Registering, or not registering, a name never changes
+ * `type_id` equality/ordering/hashing -- those are based solely on `tag`'s
+ * address; `name` is a pure debugging aid layered on top. See
+ * `RELOCO_TYPE_ID_NAME` for the set of standard and reloco types named out
+ * of the box.
+ *
+ * @def RELOCO_IMPLICIT_TYPEID
+ * @brief Optional, opt-in fallback: if defined *and* RTTI is enabled (see
+ * `RELOCO_HAS_RTTI` in `detail/compat.hpp`), a `T` with no explicit
+ * `RELOCO_TYPE_ID_NAME` registration falls back to `typeid(T).name()`
+ * (implementation-defined, typically a mangled name) as a last resort,
+ * instead of `nullptr`. reloco itself defines neither RTTI nor
+ * `RELOCO_IMPLICIT_TYPEID` -- both remain entirely off unless the
+ * consumer opts in to each independently (`-fno-rtti`/`/GR-` still work
+ * exactly as before regardless of this macro; without RTTI enabled,
+ * defining `RELOCO_IMPLICIT_TYPEID` alone changes nothing). An explicitly
+ * registered `RELOCO_TYPE_ID_NAME` always takes priority over this
+ * fallback, since it's a full specialization of `type_id_tag<T>` and so
+ * replaces the primary template's `name()` entirely for that `T`.
  *
  * `type_id_tag<T>` is marked `RELOCO_EXPORT` (see `detail/compat.hpp`) so
  * its address-as-identity trick can survive being compiled into a
@@ -93,6 +108,10 @@
 #include <cstddef>
 #include <functional>
 
+#if defined(RELOCO_IMPLICIT_TYPEID) && RELOCO_HAS_RTTI
+#include <typeinfo>
+#endif
+
 namespace reloco {
 
 /**
@@ -102,12 +121,30 @@ namespace reloco {
  * A full specialization of this template (typically written via
  * `RELOCO_TYPE_ID_NAME` rather than by hand) must keep `tag` exactly as
  * `static constexpr char tag = 0;` -- its *address*, not its value, is
- * what `type_id::of<T>()` uses as `T`'s identity -- and may set `name` to
- * any string literal (or other `constexpr const char *`) naming `T`.
+ * what `type_id::of<T>()` uses as `T`'s identity -- and may implement
+ * `name()` to return any string naming `T`.
+ *
+ * The primary template's `name()` returns `nullptr` unless
+ * `RELOCO_IMPLICIT_TYPEID` is defined and RTTI is enabled (see
+ * `RELOCO_HAS_RTTI` in `detail/compat.hpp`), in which case it falls back
+ * to `typeid(T).name()` as a last resort for a `T` with no explicitly
+ * registered name -- see `RELOCO_IMPLICIT_TYPEID` below.
  */
 template <typename T> struct RELOCO_EXPORT type_id_tag {
   static constexpr char tag = 0;
-  static constexpr const char *name = nullptr;
+
+#if defined(RELOCO_IMPLICIT_TYPEID) && RELOCO_HAS_RTTI
+  // Not constexpr: std::type_info::name() is not usable in a constant
+  // expression on any mainstream implementation. type_id::of<T>() is
+  // still marked constexpr for the common case (no explicit
+  // RELOCO_TYPE_ID_NAME, RELOCO_IMPLICIT_TYPEID not defined); it simply
+  // can't be evaluated at compile time for a T that falls through to this
+  // fallback, exactly like any other constexpr function called with
+  // arguments that force a non-constant code path.
+  static const char *name() noexcept { return typeid(T).name(); }
+#else
+  static constexpr const char *name() noexcept { return nullptr; }
+#endif
 };
 
 /**
@@ -133,7 +170,7 @@ template <typename T> struct RELOCO_EXPORT type_id_tag {
 #define RELOCO_TYPE_ID_NAME(T, name_str)                                                                             \
   template <> struct reloco::type_id_tag<T> {                                                                        \
     static constexpr char tag = 0;                                                                                   \
-    static constexpr const char *name = name_str;                                                                   \
+    static constexpr const char *name() noexcept { return name_str; }                                                \
   }
 
 /**
@@ -154,7 +191,7 @@ public:
    * translation unit.
    */
   template <typename T> [[nodiscard]] static constexpr type_id of() noexcept {
-    return type_id(&type_id_tag<T>::tag, type_id_tag<T>::name);
+    return type_id(&type_id_tag<T>::tag, type_id_tag<T>::name());
   }
 
   /** @brief `false` for a default-constructed ("no type") instance, `true`
