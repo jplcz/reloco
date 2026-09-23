@@ -60,6 +60,7 @@
 #include "relocatable.hpp"
 #include "rvalue_safety.hpp"
 #include "string_view.hpp"
+#include "type_id.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -637,6 +638,12 @@ template <typename CharT, typename TraitsT>
 struct is_trivially_relocatable<basic_sso_string<CharT, TraitsT>> : std::false_type {};
 
 } // namespace reloco
+
+// See `type_id.hpp` for the full `RELOCO_TYPE_ID_NAME` rationale; only the
+// two common instantiations are named here, not the generic
+// `basic_sso_string<CharT, TraitsT>` template itself.
+RELOCO_TYPE_ID_NAME(reloco::sso_string, "reloco::sso_string");
+RELOCO_TYPE_ID_NAME(reloco::wsso_string, "reloco::wsso_string");
 
 RELOCO_END_UNSAFE_BUFFER_USAGE
 

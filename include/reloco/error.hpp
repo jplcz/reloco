@@ -22,6 +22,7 @@
  */
 
 #include "expected.hpp"
+#include "type_id.hpp"
 
 namespace reloco {
 
@@ -104,3 +105,9 @@ enum class error : int {
 template <typename T> using result = expected<T, error>;
 
 } // namespace reloco
+
+// Registered here, alongside `error`'s own definition, matching how this
+// codebase's `std::hash<reloco::X>` specializations are defined alongside
+// each `X` rather than centralized in one place (see `type_id.hpp` for the
+// full `RELOCO_TYPE_ID_NAME` rationale).
+RELOCO_TYPE_ID_NAME(reloco::error, "reloco::error");

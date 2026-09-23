@@ -16,6 +16,8 @@
  * boilerplate -- exactly what Rust's `Ordering::then`/`then_with` are for.
  */
 
+#include "type_id.hpp"
+
 #include <cstdint>
 
 namespace reloco {
@@ -80,3 +82,8 @@ template <typename F> [[nodiscard]] constexpr ordering then_with(ordering first,
 }
 
 } // namespace reloco
+
+// See `type_id.hpp` for the full `RELOCO_TYPE_ID_NAME` rationale; defined
+// here, alongside `ordering`'s own definition, matching how this codebase's
+// `std::hash<reloco::X>` specializations are defined alongside each `X`.
+RELOCO_TYPE_ID_NAME(reloco::ordering, "reloco::ordering");

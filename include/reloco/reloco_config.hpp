@@ -142,7 +142,7 @@
 //     points at, or of a function-local static inside an inline function
 //     -- reloco relies on being the same across every translation unit
 //     that instantiates/defines them for the same template argument(s):
-//       - reloco/type_id.hpp's detail::type_id_tag<T>, backing
+//       - reloco/type_id.hpp's type_id_tag<T>, backing
 //         reloco::type_id (and reloco::any built on it) identifying a type
 //         without RTTI by that address.
 //       - reloco/fallible_singleton.hpp's fallible_singleton<T> and

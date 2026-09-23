@@ -61,7 +61,7 @@
  * `type_id.hpp`, which has the same concern): their whole point is that
  * every caller of `instance()` for a given `T` shares one storage/state
  * pair, but each `static inline` data member backing that is, like
- * `type_id.hpp`'s `detail::type_id_tag<T>::tag`, only guaranteed to be one
+ * `type_id.hpp`'s `type_id_tag<T>::tag`, only guaranteed to be one
  * merged symbol if it keeps default visibility. Under
  * `-fvisibility=hidden` (a common shared-library default) without this,
  * two shared objects instantiating `fallible_singleton<T>`/

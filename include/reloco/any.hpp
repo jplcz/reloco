@@ -47,7 +47,10 @@
  * A parallel, Rust-flavored surface mirrors Rust's `std::any::Any` trait
  * directly on top of the same underlying dispatch: `type_id()` (Rust's
  * `Any::type_id`) returns the held value's `reloco::type_id` (the "no
- * type" sentinel, `type_id{}`, if empty); `downcast_ref<T>()`/
+ * type" sentinel, `type_id{}`, if empty) -- `type_id().name()` additionally
+ * gives an optional, game-engine-style debug name if one was registered
+ * for the held type via `RELOCO_TYPE_ID_NAME` (see `type_id.hpp`),
+ * `nullptr` otherwise; `downcast_ref<T>()`/
  * `downcast_mut<T>()` (Rust's `Any::downcast_ref`/`downcast_mut`) return a
  * nullable `const T *`/`T *` instead of asserting, reloco's usual analog
  * of Rust's `Option<&T>`/`Option<&mut T>` for a checked-but-non-asserting

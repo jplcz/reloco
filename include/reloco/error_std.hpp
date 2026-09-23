@@ -89,7 +89,7 @@ namespace detail {
  * Not meant to be named directly -- go through `reloco::error_category()`,
  * which returns a reference to the single process-wide instance.
  */
-class error_category_impl final : public std::error_category {
+class RELOCO_EXPORT error_category_impl final : public std::error_category {
 public:
   [[nodiscard]] const char *name() const noexcept override { return "reloco"; }
 
@@ -291,7 +291,7 @@ public:
  * `name()` is `"reloco"`; `message(int)` returns the one-line description
  * documented for each `reloco::error` member in `docs/reference.md`.
  */
-[[nodiscard]] inline const std::error_category &error_category() noexcept {
+[[nodiscard]] RELOCO_EXPORT inline const std::error_category &error_category() noexcept {
   static const detail::error_category_impl instance;
   return instance;
 }
@@ -304,7 +304,7 @@ public:
  * implicitly convertible to `std::error_code` wherever the standard library
  * expects one.
  */
-[[nodiscard]] inline std::error_code make_error_code(error e) noexcept {
+[[nodiscard]] RELOCO_EXPORT inline std::error_code make_error_code(error e) noexcept {
   return {static_cast<int>(e), error_category()};
 }
 
@@ -318,7 +318,7 @@ public:
  * comparable against any `std::error_code` via `equivalent()` (see the
  * file-level docs).
  */
-[[nodiscard]] inline std::error_condition make_error_condition(error e) noexcept {
+[[nodiscard]] RELOCO_EXPORT inline std::error_condition make_error_condition(error e) noexcept {
   return {static_cast<int>(e), error_category()};
 }
 

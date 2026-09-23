@@ -3,16 +3,25 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 #include <gtest/gtest.h>
+#include <reloco/error.hpp>
+#include <reloco/ordering.hpp>
+#include <reloco/sso_string.hpp>
+#include <reloco/string.hpp>
+#include <reloco/string_view.hpp>
 #include <reloco/type_id.hpp>
 
+#include <cstring>
 #include <unordered_set>
 
 namespace {
 
 struct alpha {};
 struct beta {};
+struct unnamed_type {};
 
 } // namespace
+
+RELOCO_TYPE_ID_NAME(alpha, "alpha");
 
 TEST(TypeIdTest, SameTypeCompareEqual) {
   EXPECT_EQ(reloco::type_id::of<alpha>(), reloco::type_id::of<alpha>());
@@ -61,4 +70,44 @@ TEST(TypeIdTest, UsableAsAnUnorderedSetKeyViaStdHashSpecialization) {
   EXPECT_EQ(ids.size(), 2u);
   EXPECT_EQ(ids.count(reloco::type_id::of<alpha>()), 1u);
   EXPECT_EQ(ids.count(reloco::type_id::of<beta>()), 1u);
+}
+
+TEST(TypeIdTest, NameIsNullptrForATypeWithNoRegisteredName) {
+  EXPECT_EQ(reloco::type_id::of<unnamed_type>().name(), nullptr);
+}
+
+TEST(TypeIdTest, NameIsNullptrForTheNoTypeSentinel) {
+  EXPECT_EQ(reloco::type_id().name(), nullptr);
+}
+
+TEST(TypeIdTest, RelocoTypeIdNameRegistersACustomDebugName) {
+  const char *name = reloco::type_id::of<alpha>().name();
+  ASSERT_NE(name, nullptr);
+  EXPECT_STREQ(name, "alpha");
+}
+
+TEST(TypeIdTest, NameDoesNotAffectEqualityOrOrdering) {
+  // `alpha` (named) and `beta` (unnamed) still compare exactly like any
+  // other pair of distinct types; a registered name is a pure add-on.
+  EXPECT_NE(reloco::type_id::of<alpha>(), reloco::type_id::of<beta>());
+  EXPECT_EQ(reloco::type_id::of<alpha>(), reloco::type_id::of<alpha>());
+}
+
+TEST(TypeIdTest, FundamentalTypesHaveRegisteredNames) {
+  EXPECT_STREQ(reloco::type_id::of<bool>().name(), "bool");
+  EXPECT_STREQ(reloco::type_id::of<int>().name(), "int");
+  EXPECT_STREQ(reloco::type_id::of<unsigned int>().name(), "unsigned int");
+  EXPECT_STREQ(reloco::type_id::of<long long>().name(), "long long");
+  EXPECT_STREQ(reloco::type_id::of<float>().name(), "float");
+  EXPECT_STREQ(reloco::type_id::of<double>().name(), "double");
+  EXPECT_STREQ(reloco::type_id::of<std::nullptr_t>().name(), "std::nullptr_t");
+}
+
+TEST(TypeIdTest, ClassicRelocoTypesHaveRegisteredNames) {
+  EXPECT_STREQ(reloco::type_id::of<reloco::type_id>().name(), "reloco::type_id");
+  EXPECT_STREQ(reloco::type_id::of<reloco::error>().name(), "reloco::error");
+  EXPECT_STREQ(reloco::type_id::of<reloco::ordering>().name(), "reloco::ordering");
+  EXPECT_STREQ(reloco::type_id::of<reloco::string>().name(), "reloco::string");
+  EXPECT_STREQ(reloco::type_id::of<reloco::string_view>().name(), "reloco::string_view");
+  EXPECT_STREQ(reloco::type_id::of<reloco::sso_string>().name(), "reloco::sso_string");
 }

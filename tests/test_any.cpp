@@ -282,6 +282,12 @@ TEST(AnyTest, TypeIdOnAnEmptyInstanceIsTheNoTypeSentinel) {
   EXPECT_EQ(a.type_id(), reloco::type_id());
 }
 
+TEST(AnyTest, TypeIdNameSurfacesTheHeldTypesRegisteredDebugName) {
+  auto a = reloco::any::try_create(42);
+  ASSERT_TRUE(a);
+  EXPECT_STREQ(a->type_id().name(), "int");
+}
+
 TEST(AnyTest, DowncastMutReturnsAWritablePointerOnMatch) {
   auto a = reloco::any::try_create(42);
   ASSERT_TRUE(a);

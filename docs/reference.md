@@ -38,7 +38,7 @@ where, not a tutorial.
 | `boxed_slice.hpp` | `boxed_slice<T>` | Fixed-size, allocator-backed owned array with no spare capacity, matching Rust's `Box<[T]>` |
 | `cow.hpp` | `cow<T>`, `cow_traits<T>` | Clone-on-write wrapper matching Rust's `Cow<'a, T>`, with a user-specializable clone customization point |
 | `function.hpp` | `function<R(Args...)>` | Type-erased, allocator-backed callable wrapper with fallible construction |
-| `type_id.hpp` | `type_id`, `type_id_of<T>()` | Process-wide type identity established without RTTI, matching Rust's `std::any::TypeId` |
+| `type_id.hpp` | `type_id`, `type_id_of<T>()`, `RELOCO_TYPE_ID_NAME` | Process-wide type identity established without RTTI, matching Rust's `std::any::TypeId`, with optional debug names |
 | `any.hpp` | `any` | Type-erased, allocator-backed single-value container with fallible construction and no RTTI dependency |
 | `collection_view.hpp` | `collection_view<T>`, `mutable_collection_view<T>`, `collection_view_traits<Container>` | Type-erased, non-owning views over an adapted sequence container |
 | `container_ref.hpp` | `mutable_container_ref<T, Key = void>`, `container_ref_traits<Container>` | Type-erased handle for structurally mutating (growing/inserting/erasing) an adapted sequence or associative container |
@@ -1079,8 +1079,38 @@ so a `type_id` can be used directly as a `flat_set`/`flat_map` key;
 `std::hash<reloco::type_id>` is specialized too, for
 `std::unordered_map`/`unordered_set` interop.
 
+`type_id::name()` returns an optional, game-engine-style (Unreal/EnTT
+convention) human-readable debug name for `T`, or `nullptr` if none is
+registered -- registering a name is always opt-in, never automatic (no
+`__PRETTY_FUNCTION__`/`__FUNCSIG__` string-mangling trick), and never
+affects equality/ordering/hashing, which are always based solely on the
+identity, not the name:
+
+```cpp
+reloco::type_id::of<int>().name();          // "int"
+reloco::type_id::of<my_widget>().name();    // nullptr, unless registered
+```
+
+Register a name for a type with `RELOCO_TYPE_ID_NAME(T, "name")` (usable
+at namespace scope, inside or outside `namespace reloco`; does not end in
+`;` -- add one at the call site):
+
+```cpp
+RELOCO_TYPE_ID_NAME(my_widget, "my_widget");
+```
+
+Names are already registered out of the box for every fundamental type
+(`bool`, the integer/character types, `float`/`double`/`long double`,
+`std::nullptr_t`), for `reloco::type_id` itself, and for a handful of
+"classic" reloco types: `reloco::error`, `reloco::ordering`,
+`reloco::string`/`wstring`, `reloco::string_view`/`wstring_view`, and
+`reloco::sso_string`/`wsso_string` (each registered alongside its own
+type's definition, in its own header, not centralized in `type_id.hpp`,
+matching how this codebase's `std::hash<reloco::X>` specializations are
+likewise defined alongside each `X`).
+
 The identity trick relies on every translation unit that instantiates
-`detail::type_id_tag<T>` for the same `T` sharing one symbol; a consumer
+`type_id_tag<T>` for the same `T` sharing one symbol; a consumer
 building a shared library with `-fvisibility=hidden` can otherwise end up
 with a separate, non-merged copy per shared object, silently breaking
 `type_id`/`any::is<T>()` equality for a `T` shared across that boundary.
@@ -1135,8 +1165,10 @@ itself (see [Trivial relocation](relocatable.md)).
 
 A parallel, Rust-flavored surface mirrors Rust's `std::any::Any` trait on
 top of the same dispatch: `type_id()` (Rust's `Any::type_id`) returns the
-held value's `reloco::type_id` (the "no type" sentinel if empty);
-`downcast_ref<T>()`/`downcast_mut<T>()` (Rust's `Any::downcast_ref`/
+held value's `reloco::type_id` (the "no type" sentinel if empty) --
+`type_id().name()` additionally gives an optional debug name if one was
+registered for the held type (see [`type_id`](#type_id--type_id_oft)
+above), `nullptr` otherwise; `downcast_ref<T>()`/`downcast_mut<T>()` (Rust's `Any::downcast_ref`/
 `downcast_mut`) return a nullable `const T *`/`T *` instead of asserting --
 reloco's usual analog of Rust's `Option<&T>`/`Option<&mut T>` for a
 checked-but-non-asserting accessor (compare `flat_map::find`); and

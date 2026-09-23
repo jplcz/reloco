@@ -58,6 +58,7 @@
 #include "relocatable.hpp"
 #include "rvalue_safety.hpp"
 #include "string_view.hpp"
+#include "type_id.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -592,6 +593,12 @@ template <typename CharT, typename TraitsT>
 struct is_trivially_relocatable<basic_string<CharT, TraitsT>> : std::true_type {};
 
 } // namespace reloco
+
+// See `type_id.hpp` for the full `RELOCO_TYPE_ID_NAME` rationale; only the
+// two common instantiations are named here, not the generic
+// `basic_string<CharT, TraitsT>` template itself.
+RELOCO_TYPE_ID_NAME(reloco::string, "reloco::string");
+RELOCO_TYPE_ID_NAME(reloco::wstring, "reloco::wstring");
 
 RELOCO_END_UNSAFE_BUFFER_USAGE
 

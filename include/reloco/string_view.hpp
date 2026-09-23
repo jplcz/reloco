@@ -8,6 +8,7 @@
 #include "error.hpp"
 #include "expected.hpp"
 #include "optional.hpp"
+#include "type_id.hpp"
 #include <algorithm>
 #include <cstddef>
 #include <functional>
@@ -408,6 +409,12 @@ using wstring_view = basic_string_view<wchar_t>;
 RELOCO_END_UNSAFE_BUFFER_USAGE
 
 } // namespace reloco
+
+// See `type_id.hpp` for the full `RELOCO_TYPE_ID_NAME` rationale; only the
+// two common instantiations are named here, not the generic
+// `basic_string_view<CharT, TraitsT>` template itself.
+RELOCO_TYPE_ID_NAME(reloco::string_view, "reloco::string_view");
+RELOCO_TYPE_ID_NAME(reloco::wstring_view, "reloco::wstring_view");
 
 namespace std {
 
