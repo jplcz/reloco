@@ -56,6 +56,29 @@
  * cover that call, matching `unique_ptr.hpp`. The public `instance()` API
  * itself is not marked unsafe: it never exposes caller-supplied storage or
  * a raw allocator call directly.
+ *
+ * Both classes are `RELOCO_EXPORT`-annotated (see `detail/compat.hpp` and
+ * `type_id.hpp`, which has the same concern): their whole point is that
+ * every caller of `instance()` for a given `T` shares one storage/state
+ * pair, but each `static inline` data member backing that is, like
+ * `type_id.hpp`'s `detail::type_id_tag<T>::tag`, only guaranteed to be one
+ * merged symbol if it keeps default visibility. Under
+ * `-fvisibility=hidden` (a common shared-library default) without this,
+ * two shared objects instantiating `fallible_singleton<T>`/
+ * `atomic_fallible_singleton<T, LockTraits>` for the same, otherwise
+ * externally-visible `T` would each silently get their own private,
+ * separately-initialized instance instead of sharing one -- defeating the
+ * purpose of a singleton across that boundary. As with `type_id.hpp`, this
+ * is opt-in: it does nothing unless the consumer defines
+ * `RELOCO_ENABLE_EXPORT`, since it only matters if `instance()` is
+ * actually called for a shared `T` from more than one shared object. It
+ * is also, like `type_id.hpp`'s, only effective for a `T` that itself has
+ * default visibility -- GCC/Clang compute a template instantiation's
+ * visibility as the minimum of the template's own visibility and each
+ * template argument's, so a consumer-defined `T` needs its own
+ * `__attribute__((visibility("default")))` (or equivalent) for its
+ * `fallible_singleton<T>` to actually share one instance across a
+ * `-fvisibility=hidden` shared-object boundary.
  */
 
 #include "alignment.hpp"
@@ -115,7 +138,7 @@ concept lock_traits = has_lock_traits_v<T>;
  * @warning Not thread-safe. See @ref atomic_fallible_singleton for a
  * version safe to call from multiple threads.
  */
-template <typename T> class fallible_singleton {
+template <typename T> class RELOCO_EXPORT fallible_singleton {
 public:
   fallible_singleton() = delete;
 
@@ -191,7 +214,7 @@ private:
  * allocates or owns a lock, keeping it usable on freestanding/kernel
  * targets that have no `std::mutex`.
  */
-template <typename T, typename LockTraits> class atomic_fallible_singleton {
+template <typename T, typename LockTraits> class RELOCO_EXPORT atomic_fallible_singleton {
   static_assert(has_lock_traits_v<LockTraits>,
                 "LockTraits must provide lock_type plus static lock(lock_type&)/unlock(lock_type&)");
 

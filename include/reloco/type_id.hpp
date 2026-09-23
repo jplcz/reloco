@@ -50,7 +50,19 @@
  * anonymous namespace, or explicitly hidden) is unaffected either way:
  * its `type_id_tag<T>` instantiation correctly stays hidden too, since
  * GCC/Clang compute template instantiation visibility as the minimum of
- * the template's own visibility and each template argument's.
+ * the template's own visibility and each template argument's -- which also
+ * means `RELOCO_EXPORT` on `type_id_tag<T>` only takes effect for a `T`
+ * that *itself* has default visibility. A fundamental type like `int`
+ * always qualifies; an ordinary consumer-defined class does not
+ * automatically, under `-fvisibility=hidden`, unless the consumer also
+ * gives that specific `T` its own `__attribute__((visibility("default")))`
+ * (or an equivalent, e.g. via a `-fvisibility=default` override on its
+ * translation unit). This is not a reloco limitation to work around: it is
+ * the same, correct minimum-visibility rule that keeps a genuinely
+ * TU-local `T` correctly TU-local; a consumer that wants a specific `T`'s
+ * `type_id` to compare equal across a shared-object boundary must
+ * explicitly mark that `T` exported too, exactly as they already would for
+ * any other symbol of `T`'s they intend to share across that boundary.
  *
  * `RELOCO_EXPORT` is opt-in (see `reloco_config.hpp`): it does nothing
  * unless the consumer defines `RELOCO_ENABLE_EXPORT` before including any

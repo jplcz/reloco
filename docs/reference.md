@@ -1089,6 +1089,11 @@ keeping that symbol at default visibility regardless of the ambient
 `-fvisibility` setting; it is opt-in, and a no-op on backends without an
 equivalent attribute (e.g. MSVC), since it only matters when `type_id`/
 `any` values for a shared `T` actually cross a shared-object boundary.
+This only takes effect for a `T` that itself has default visibility (a
+fundamental type like `int` always qualifies; an ordinary consumer class
+under `-fvisibility=hidden` needs its own explicit default-visibility
+annotation too), since a template instantiation's visibility is the
+minimum of the template's own and each argument's.
 
 ## `any`
 
@@ -1586,6 +1591,13 @@ for the full explanation. `LockTraits::lock_type` can be any of the
 adapter satisfying `has_lock_traits_v`, since it requires `static void
 lock(lock_type &)`/`static void unlock(lock_type &)` free functions, not
 member functions) or an application's own mutex/spinlock.
+
+Both classes are `RELOCO_EXPORT`-annotated so their storage stays one
+shared, process-wide instance per `T` even across a `-fvisibility=hidden`
+shared-library boundary -- see the [`type_id`](#type_id--type_id_oft) note
+above and `RELOCO_ENABLE_EXPORT` in `reloco_config.hpp`; opt in with that
+macro if `instance()` for a shared `T` is called from more than one shared
+object.
 
 ## `mutex` / `recursive_mutex` / `error_checking_mutex` / `shared_mutex` / `condition_variable`
 
