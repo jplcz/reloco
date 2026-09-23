@@ -130,8 +130,16 @@
 // default and does nothing unless the consumer defines
 // `RELOCO_ENABLE_EXPORT` (to any value, before including any reloco
 // header) to acknowledge they want these specific symbols kept exported.
-// See `reloco_config.hpp` for the customization point.
-#if defined(RELOCO_ENABLE_EXPORT) && RELOCO_HAS_ATTRIBUTE(visibility)
+// See `reloco_config.hpp` for the customization point. It is also forced
+// on, regardless of `RELOCO_ENABLE_EXPORT`, whenever `RELOCO_SHARED_BUILD`
+// is defined (see reloco_extern.hpp/reloco_compile.hpp): the one
+// translation unit building an actual `RELOCO_SHARED` library always
+// wants every non-template reloco type it defines kept at default
+// visibility, since any of them may end up crossing that library's own
+// shared-object boundary (as a parameter/return of a `RELOCO_API`
+// function, a member of a `RELOCO_TYPE_INSTANCE`-covered class template,
+// ...), not just the specific address-identity cases below.
+#if (defined(RELOCO_ENABLE_EXPORT) || defined(RELOCO_SHARED_BUILD)) && RELOCO_HAS_ATTRIBUTE(visibility)
 #define RELOCO_EXPORT __attribute__((visibility("default")))
 #else
 #define RELOCO_EXPORT

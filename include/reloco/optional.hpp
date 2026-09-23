@@ -37,7 +37,7 @@
 
 namespace reloco {
 
-struct nullopt_t {
+struct RELOCO_EXPORT nullopt_t {
   struct init {};
   constexpr explicit nullopt_t(init) noexcept {}
 };

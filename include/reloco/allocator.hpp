@@ -54,7 +54,7 @@ namespace reloco {
  * guaranteed to be greater than or equal to the originally requested size
  * (e.g., due to alignment padding, slab binning, or page-size rounding).
  */
-struct [[nodiscard]] mem_block {
+struct RELOCO_EXPORT [[nodiscard]] mem_block {
   /** Pointer to the start of the allocated memory block, or `nullptr` if empty. */
   void *ptr;
   /** Actual capacity of the memory block in bytes (guaranteed to be >= requested size). */
@@ -201,7 +201,7 @@ struct has_stateless_allocator_advise<
  * base class, no RTTI, and no allocation of its own. The bound context (for
  * stateful tags) must outlive every `allocator_ref` built from it.
  */
-class RELOCO_POINTER allocator_ref {
+class RELOCO_EXPORT RELOCO_POINTER allocator_ref {
 public:
   struct vtable {
     result<mem_block> (*allocate)(void *ctx, std::size_t bytes, std::size_t alignment) noexcept;

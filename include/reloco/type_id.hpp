@@ -177,7 +177,7 @@ template <typename T> struct RELOCO_EXPORT type_id_tag {
  * @brief Opaque, process-wide type identity established without RTTI,
  * matching Rust's `std::any::TypeId`. See the file-level docs for details.
  */
-class type_id {
+class RELOCO_EXPORT type_id {
 public:
   /** @brief The "no type" sentinel: `operator bool()` is `false`, and it
    * never compares equal to `type_id::of<T>()` for any `T`. */

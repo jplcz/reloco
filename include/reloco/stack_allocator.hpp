@@ -18,12 +18,12 @@ namespace reloco {
 /**
  * @brief Tag identifying the stack allocator backend.
  */
-struct stack_allocator_tag {};
+struct RELOCO_EXPORT stack_allocator_tag {};
 
 /**
  * @brief Context state for the stack allocator.
  */
-struct RELOCO_POINTER stack_allocator_context {
+struct RELOCO_EXPORT RELOCO_POINTER stack_allocator_context {
   std::byte *buffer;
   std::size_t capacity;
   std::size_t offset = 0;

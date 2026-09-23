@@ -80,7 +80,7 @@ namespace detail {
  * with one implicit weak reference, released once `shared_count_` reaches
  * zero, so the control block never outlives the last owner of either kind.
  */
-struct sp_control_block {
+struct RELOCO_EXPORT sp_control_block {
   std::atomic<std::size_t> shared_count_{1};
   std::atomic<std::size_t> weak_count_{1};
 
@@ -156,7 +156,7 @@ template <typename T> struct sp_control_block_combined final : sp_control_block 
   }
 };
 
-struct enable_shared_from_this_base {};
+struct RELOCO_EXPORT enable_shared_from_this_base {};
 
 } // namespace detail
 

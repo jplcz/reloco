@@ -96,7 +96,7 @@ namespace reloco {
  * `RELOCO_ASSERT`s (or `RELOCO_DEBUG_ASSERT`s), use `try_get<T>` for a
  * checked alternative that reports an error instead.
  */
-class RELOCO_OWNER any {
+class RELOCO_EXPORT RELOCO_OWNER any {
 public:
   /** @brief Inline capacity available to the small-object-optimization
    * storage tier, in bytes. */

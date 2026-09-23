@@ -49,7 +49,7 @@
  * class recursive_mutex { ... };  // try_lock() -> bool, native_handle();
  * class error_checking_mutex { ... }; // see mutex.hpp's built-in backends
  * class shared_mutex { ... };         // for the exact shape to match.
- * class condition_variable { ... };
+ * class RELOCO_EXPORT condition_variable { ... };
  * } // namespace reloco
  * @endcode
  *
@@ -97,7 +97,7 @@ namespace reloco {
 /**
  * @brief Non-recursive mutex backed directly by `pthread_mutex_t`.
  */
-class RELOCO_CAPABILITY("mutex") mutex {
+class RELOCO_EXPORT RELOCO_CAPABILITY("mutex") mutex {
 public:
   using native_handle_type = pthread_mutex_t *;
 
@@ -125,7 +125,7 @@ private:
  * `PTHREAD_MUTEX_RECURSIVE` via `pthread_mutexattr_t` -- portable to every
  * POSIX libc, unlike glibc's `PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP`.
  */
-class RELOCO_CAPABILITY("mutex") recursive_mutex {
+class RELOCO_EXPORT RELOCO_CAPABILITY("mutex") recursive_mutex {
 public:
   using native_handle_type = pthread_mutex_t *;
 
@@ -151,7 +151,7 @@ private:
 /**
  * @brief Reader/writer lock backed by `pthread_rwlock_t`.
  */
-class RELOCO_CAPABILITY("mutex") shared_mutex {
+class RELOCO_EXPORT RELOCO_CAPABILITY("mutex") shared_mutex {
 public:
   using native_handle_type = pthread_rwlock_t *;
 
@@ -190,7 +190,7 @@ private:
  * through `pthread_cond_wait`'s own native re-lock, not through `mutex`'s
  * checked `lock()`, exactly like legacy.
  */
-class condition_variable {
+class RELOCO_EXPORT condition_variable {
 public:
   using native_handle_type = pthread_cond_t *;
 
@@ -259,7 +259,7 @@ namespace reloco {
 /**
  * @brief Non-recursive mutex wrapping `std::mutex`.
  */
-class RELOCO_CAPABILITY("mutex") mutex {
+class RELOCO_EXPORT RELOCO_CAPABILITY("mutex") mutex {
 public:
   using native_handle_type = std::mutex *;
 
@@ -283,7 +283,7 @@ private:
 /**
  * @brief Recursive mutex wrapping `std::recursive_mutex`.
  */
-class RELOCO_CAPABILITY("mutex") recursive_mutex {
+class RELOCO_EXPORT RELOCO_CAPABILITY("mutex") recursive_mutex {
 public:
   using native_handle_type = std::recursive_mutex *;
 
@@ -307,7 +307,7 @@ private:
 /**
  * @brief Reader/writer lock wrapping `std::shared_mutex`.
  */
-class RELOCO_CAPABILITY("mutex") shared_mutex {
+class RELOCO_EXPORT RELOCO_CAPABILITY("mutex") shared_mutex {
 public:
   using native_handle_type = std::shared_mutex *;
 
@@ -347,7 +347,7 @@ private:
  * `std::condition_variable`'s own native re-lock, not through `mutex`'s
  * checked `lock()`, exactly like the PTHREAD backend.
  */
-class condition_variable {
+class RELOCO_EXPORT condition_variable {
 public:
   using native_handle_type = std::condition_variable *;
 
@@ -401,7 +401,7 @@ namespace reloco {
  * non-portable `PTHREAD_MUTEX_ERRORCHECK`), so behavior is identical
  * between backends and portable to every POSIX libc.
  */
-class RELOCO_CAPABILITY("mutex") error_checking_mutex {
+class RELOCO_EXPORT RELOCO_CAPABILITY("mutex") error_checking_mutex {
 public:
   using native_handle_type = mutex::native_handle_type;
 

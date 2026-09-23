@@ -67,7 +67,7 @@ namespace detail {
  * Never touched from more than one thread -- unlike `sp_control_block`,
  * plain (non-atomic) arithmetic is sound here.
  */
-struct rc_control_block {
+struct RELOCO_EXPORT rc_control_block {
   std::size_t shared_count_{1};
   std::size_t weak_count_{1};
 
@@ -141,7 +141,7 @@ template <typename T> struct rc_control_block_combined final : rc_control_block 
   }
 };
 
-struct enable_rc_from_this_base {};
+struct RELOCO_EXPORT enable_rc_from_this_base {};
 
 } // namespace detail
 

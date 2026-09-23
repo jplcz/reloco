@@ -26,7 +26,7 @@ public:
 
 template <typename E> unexpected(E) -> unexpected<E>;
 
-struct expected_tag_t {};
+struct RELOCO_EXPORT expected_tag_t {};
 
 template <typename T, typename E> class [[nodiscard]] expected : expected_tag_t {
   static_assert(std::is_nothrow_move_constructible_v<T>, "T must be nothrow move constructible");

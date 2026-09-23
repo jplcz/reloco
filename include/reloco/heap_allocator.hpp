@@ -26,7 +26,7 @@ namespace reloco {
 /**
  * @brief Tag for the built-in process-heap allocator backend.
  */
-struct heap_allocator_tag {};
+struct RELOCO_EXPORT heap_allocator_tag {};
 
 namespace detail {
 

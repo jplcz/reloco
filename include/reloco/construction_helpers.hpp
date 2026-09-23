@@ -42,7 +42,7 @@ RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
 namespace reloco {
 
-struct construction_helpers {
+struct RELOCO_EXPORT construction_helpers {
   /**
    * @brief High-level in-place constructor dispatcher for caller-owned
    * memory.
