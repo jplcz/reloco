@@ -50,11 +50,20 @@
  *
  * For a stateless backend, the hook can just return `allocator<Tag>::ref()`
  * directly, no static context needed.
+ *
+ * `reloco_global_alloc` is `RELOCO_EXPORT`-annotated so a stateful custom
+ * hook's function-local `static` (as in the example above) stays one
+ * shared, process-wide instance even across a `-fvisibility=hidden`
+ * shared-library boundary -- see `detail/compat.hpp` and
+ * `RELOCO_ENABLE_EXPORT` in `reloco_config.hpp` to opt in; the built-in,
+ * stateless heap-backed default below has no such state to share, so this
+ * only matters for a custom hook.
  */
 
 #include "reloco_config.hpp"
 
 #include "allocator.hpp"
+#include "detail/compat.hpp"
 
 namespace reloco {
 
@@ -66,8 +75,21 @@ namespace reloco {
  * one static member can be redefined out-of-line exactly once, either here
  * (the built-in heap-backed default) or by the application when
  * `RELOCO_DEFAULT_ALLOCATOR_CUSTOM` is defined.
+ *
+ * `RELOCO_EXPORT`-annotated (see `detail/compat.hpp`, `type_id.hpp`, and
+ * `fallible_singleton.hpp`, which have the same concern): a custom hook is
+ * expected to hold process-wide state via a function-local `static` (see
+ * the file-level doc comment's example), exactly like
+ * `fallible_singleton`'s storage -- an inline function's local statics are
+ * only guaranteed to be one merged instance across shared objects if the
+ * function itself keeps default visibility, so under `-fvisibility=hidden`
+ * without this, two shared objects would each silently get their own
+ * separate `default_allocator()` state instead of sharing one. Opt in with
+ * `RELOCO_ENABLE_EXPORT` (see `reloco_config.hpp`); as with the other
+ * `RELOCO_EXPORT` use sites, this is a no-op on a backend without an
+ * equivalent attribute (e.g. MSVC).
  */
-struct reloco_global_alloc {
+struct RELOCO_EXPORT reloco_global_alloc {
   [[nodiscard]] static allocator_ref default_allocator() noexcept;
 };
 

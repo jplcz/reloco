@@ -138,10 +138,10 @@
 //     compat.hpp) expand to __attribute__((visibility("default"))) on a
 //     backend that supports it (GCC/Clang), instead of its default no-op.
 //     RELOCO_EXPORT marks the handful of entities whose *address* -- of a
-//     static data member, or of the storage a class-wide static data
-//     member points at -- reloco relies on being the same across every
-//     translation unit that instantiates them for the same template
-//     argument(s):
+//     static data member, of the storage a class-wide static data member
+//     points at, or of a function-local static inside an inline function
+//     -- reloco relies on being the same across every translation unit
+//     that instantiates/defines them for the same template argument(s):
 //       - reloco/type_id.hpp's detail::type_id_tag<T>, backing
 //         reloco::type_id (and reloco::any built on it) identifying a type
 //         without RTTI by that address.
@@ -149,17 +149,25 @@
 //         atomic_fallible_singleton<T, LockTraits>, whose entire point is
 //         that every instance() caller for a given T shares one storage/
 //         state pair.
+//       - reloco/default_allocator.hpp's reloco_global_alloc, whose
+//         default_allocator() hook a custom (RELOCO_DEFAULT_ALLOCATOR_
+//         CUSTOM) implementation typically backs with a function-local
+//         static (see that header's example); an inline function's local
+//         statics need the function itself to keep default visibility to
+//         stay one merged instance.
 //     Left at its default, a consumer building with -fvisibility=hidden (a
 //     common default for shared libraries) would give each shared object
 //     its own private copy of these symbols, silently breaking type_id
-//     equality, or splitting one singleton into several, for any T shared
-//     across that boundary. This is opt-in, rather than always on,
-//     because it only matters if type_id/any values, or singleton
-//     instance() calls, for a shared T actually cross a shared-object
-//     boundary; a single binary, or a -fvisibility=hidden build with no
-//     such sharing, pays no cost either way and needs no override. No-op
-//     regardless on a backend without an equivalent attribute (e.g. MSVC);
-//     see reloco/type_id.hpp for the full rationale and Windows caveat.
+//     equality, splitting one singleton into several, or giving each
+//     shared object its own separate default-allocator state, for anything
+//     shared across that boundary. This is opt-in, rather than always on,
+//     because it only matters if type_id/any values, singleton instance()
+//     calls, or the default allocator, are actually shared across a
+//     shared-object boundary; a single binary, or a -fvisibility=hidden
+//     build with no such sharing, pays no cost either way and needs no
+//     override. No-op regardless on a backend without an equivalent
+//     attribute (e.g. MSVC); see reloco/type_id.hpp for the full rationale
+//     and Windows caveat.
 //
 //     Only takes effect for a given T if T itself also has default
 //     visibility: GCC/Clang compute a template instantiation's visibility
@@ -167,4 +175,6 @@
 //     argument's, so this alone does not make an ordinary consumer-defined
 //     class shared across -fvisibility=hidden shared objects -- that class
 //     needs its own __attribute__((visibility("default"))) (or
-//     equivalent) too. Fundamental types (e.g. int) always qualify.
+//     equivalent) too. Fundamental types (e.g. int) always qualify. This
+//     restriction does not apply to reloco_global_alloc, which is not a
+//     template.

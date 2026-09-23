@@ -1556,6 +1556,14 @@ heap backend, but an application can replace it wholesale by defining
 the exact override recipe (a customization-header include cycle makes it
 slightly more involved than a plain `reloco_user_config.hpp` define).
 
+`reloco_global_alloc` is `RELOCO_EXPORT`-annotated so a custom hook's
+function-local `static` state stays one shared instance across a
+`-fvisibility=hidden` shared-library boundary — see the
+[`type_id`](#type_id--type_id_oft) note above and `RELOCO_ENABLE_EXPORT` in
+`reloco_config.hpp`; the built-in, stateless heap-backed default has no
+such state to share, so this only matters for a custom hook shared across
+that boundary.
+
 ## Fallible construction: `concepts.hpp` / `construction_helpers.hpp`
 
 `include/reloco/concepts.hpp`, `include/reloco/construction_helpers.hpp`
