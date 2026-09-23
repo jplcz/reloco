@@ -36,7 +36,7 @@ namespace reloco {
  * `docs/reference.md`'s "`error`" section for a fuller description of each
  * member and which reloco operations return it today.
  */
-enum class error : int {
+enum class [[nodiscard]] error : int {
   allocation_failed = 1,  // The allocator failed to provide/grow/shrink a memory block.
   in_place_growth_failed, // `allocator_ref::expand_in_place` could not grow a block without moving it.
   unsupported_operation,  // The operation is not supported by this concrete type/backend (e.g. a

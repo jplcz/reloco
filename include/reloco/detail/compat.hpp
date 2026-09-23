@@ -387,3 +387,17 @@
 #else
 #define RELOCO_NO_THREAD_SAFETY_ANALYSIS
 #endif
+
+/** Marks an enum as a bitmask/flag type for enhanced static analysis. */
+#if RELOCO_HAS_ATTRIBUTE(flag_enum)
+#define RELOCO_FLAG_ENUM __attribute__((flag_enum))
+#else
+#define RELOCO_FLAG_ENUM
+#endif
+
+/** Restricts enum values for better switch-exhaustiveness checking. */
+#if RELOCO_HAS_ATTRIBUTE(enum_extensibility)
+#define RELOCO_ENUM_EXTENSIBILITY(val) __attribute__((enum_extensibility(val)))
+#else
+#define RELOCO_ENUM_EXTENSIBILITY(val)
+#endif
