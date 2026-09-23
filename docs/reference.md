@@ -1079,6 +1079,17 @@ so a `type_id` can be used directly as a `flat_set`/`flat_map` key;
 `std::hash<reloco::type_id>` is specialized too, for
 `std::unordered_map`/`unordered_set` interop.
 
+The identity trick relies on every translation unit that instantiates
+`detail::type_id_tag<T>` for the same `T` sharing one symbol; a consumer
+building a shared library with `-fvisibility=hidden` can otherwise end up
+with a separate, non-merged copy per shared object, silently breaking
+`type_id`/`any::is<T>()` equality for a `T` shared across that boundary.
+Define `RELOCO_ENABLE_EXPORT` (see `reloco_config.hpp`) to opt in to
+keeping that symbol at default visibility regardless of the ambient
+`-fvisibility` setting; it is opt-in, and a no-op on backends without an
+equivalent attribute (e.g. MSVC), since it only matters when `type_id`/
+`any` values for a shared `T` actually cross a shared-object boundary.
+
 ## `any`
 
 `include/reloco/any.hpp`

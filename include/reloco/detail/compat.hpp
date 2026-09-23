@@ -78,6 +78,40 @@
 #define RELOCO_ALWAYS_INLINE
 #endif
 
+// Forces default (exported) symbol visibility on an entity regardless of
+// the translation unit's own `-fvisibility=hidden`/`-fvisibility-inlines-
+// hidden` default. Needed for any implicitly-`inline` (since C++17) static
+// data member whose *address* -- not its value -- is load-bearing: with
+// hidden visibility, two shared objects (two plugins, an app and a shared
+// library, ...) that each implicitly instantiate the same template for the
+// same type get their own separate, non-merged copy of that symbol, so
+// comparing addresses across the shared-object boundary silently breaks.
+// `type_id.hpp`'s `detail::type_id_tag<T>` (backing `reloco::type_id`, and
+// through it `any.hpp`'s type-erasure) is exactly that case: see its own
+// docs. Reduces to a no-op (and does not otherwise affect the entity's
+// linkage/inlining) on a backend without an equivalent attribute, such as
+// MSVC, or a single-binary target where the concern does not apply, such
+// as most kernel/freestanding targets.
+//
+// This does not, on its own, make reloco safe to build as its own shared
+// library (that would additionally need a build-vs-consume
+// dllexport/dllimport split on Windows, which header-only reloco does not
+// provide): it only keeps a handful of specific address-identity symbols
+// mergeable when reloco's headers are compiled, as usual, directly into
+// each consumer's own binary/shared library.
+//
+// Opt-in: a `-fvisibility=hidden` build that never crosses a shared-object
+// boundary with a shared `T` pays no cost either way, so this is off by
+// default and does nothing unless the consumer defines
+// `RELOCO_ENABLE_EXPORT` (to any value, before including any reloco
+// header) to acknowledge they want these specific symbols kept exported.
+// See `reloco_config.hpp` for the customization point.
+#if defined(RELOCO_ENABLE_EXPORT) && RELOCO_HAS_ATTRIBUTE(visibility)
+#define RELOCO_EXPORT __attribute__((visibility("default")))
+#else
+#define RELOCO_EXPORT
+#endif
+
 #if !defined(RELOCO_TRAP)
 #if defined(__clang__) || defined(__GNUC__)
 #define RELOCO_TRAP() __builtin_trap()

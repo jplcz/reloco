@@ -36,7 +36,34 @@
  * guarantee that across unrelated objects) so a `type_id` can be used as
  * a `flat_set<type_id>`/`flat_map<type_id, V>` key directly; `std::hash`
  * is specialized too, for interop with `std::unordered_map`/`unordered_set`.
+ *
+ * `detail::type_id_tag<T>` is marked `RELOCO_EXPORT` (see
+ * `detail/compat.hpp`) so its address-as-identity trick can survive being
+ * compiled into a consumer built with `-fvisibility=hidden`/
+ * `-fvisibility-inlines-hidden` (a common default for shared libraries):
+ * without it, two shared objects that each implicitly instantiate
+ * `type_id_tag<T>` for the same, otherwise externally-visible `T` would
+ * each get their own separate, hidden copy of that symbol instead of the
+ * dynamic linker merging them into one, silently breaking `type_id`
+ * equality (and `any::is<T>()`/`is()` built on it) for any `T` shared
+ * across that boundary. A `T` that is itself TU-local (e.g. declared in an
+ * anonymous namespace, or explicitly hidden) is unaffected either way:
+ * its `type_id_tag<T>` instantiation correctly stays hidden too, since
+ * GCC/Clang compute template instantiation visibility as the minimum of
+ * the template's own visibility and each template argument's.
+ *
+ * `RELOCO_EXPORT` is opt-in (see `reloco_config.hpp`): it does nothing
+ * unless the consumer defines `RELOCO_ENABLE_EXPORT` before including any
+ * reloco header, since forcing default visibility on these symbols is
+ * only useful -- and only something a consumer should have to reason
+ * about -- if `type_id`/`any` values for a shared `T` actually do cross a
+ * shared-object boundary. On a backend without an equivalent attribute
+ * (e.g. MSVC), it is a no-op regardless; Windows' PE/COFF model has no
+ * equivalent to ELF's merged default-visibility symbols, so `type_id`
+ * equality is not guaranteed across separate DLLs there either way.
  */
+
+#include "detail/compat.hpp"
 
 #include <cstddef>
 #include <functional>
@@ -48,9 +75,9 @@ namespace detail {
 /**
  * @brief Per-instantiation static storage whose address serves as `T`'s
  * type identity (see the file-level docs above for why this needs no
- * RTTI).
+ * RTTI, and why it is `RELOCO_EXPORT`-annotated).
  */
-template <typename T> struct type_id_tag {
+template <typename T> struct RELOCO_EXPORT type_id_tag {
   static constexpr char tag = 0;
 };
 
