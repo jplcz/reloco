@@ -184,16 +184,20 @@ from both sides.
 
 4. **Link every consumer against the shared library** built in step 2.
 
-CMake sketch:
+CMake sketch, using the `jplcz_reloco::reloco-shared`/`jplcz_reloco::
+reloco-shared-export` INTERFACE targets reloco's own `CMakeLists.txt`
+provides (they only forward the `RELOCO_SHARED`/`RELOCO_SHARED_BUILD`
+compile definitions above -- reloco is header-only and does not build or
+export an actual shared object for you; `reloco_shared` below is *your*
+`SHARED` library target, built from your own `RELOCO_SHARED_BUILD`
+translation unit):
 
 ```cmake
 add_library(reloco_shared SHARED reloco_shared_lib.cpp)
-target_compile_definitions(reloco_shared PUBLIC RELOCO_SHARED)
-target_compile_definitions(reloco_shared PRIVATE RELOCO_SHARED_BUILD)
-target_link_libraries(reloco_shared PUBLIC jplcz_reloco::reloco)
+target_link_libraries(reloco_shared PUBLIC jplcz_reloco::reloco-shared-export)
 
 add_library(my_plugin SHARED my_plugin.cpp)
-target_link_libraries(my_plugin PRIVATE reloco_shared)
+target_link_libraries(my_plugin PRIVATE reloco_shared jplcz_reloco::reloco-shared)
 ```
 
 ### `reloco_compile.hpp`'s Part 2 coverage: reloco's own char-based string aliases
@@ -284,6 +288,10 @@ there is only one list to keep correct.
   1) and its char-based string aliases (Part 2).
 - [`reloco/reloco_config.hpp`](../include/reloco/reloco_config.hpp) --
   `RELOCO_SHARED`/`RELOCO_SHARED_BUILD`'s customization-point summary.
+- [`CMakeLists.txt`](../CMakeLists.txt) -- the `jplcz_reloco::
+  reloco-shared`/`jplcz_reloco::reloco-shared-export` INTERFACE targets
+  (`RELOCO_SHARED`/`RELOCO_SHARED_BUILD` forwarders, respectively) used in
+  the CMake sketch above.
 - [`jplcz_microfmt`'s shared-library guide](https://github.com/jplcz/microfmt/blob/main/docs/shared-library.md)
   -- the sibling mechanism this one mirrors, including
   `tools/codesize/testbed/` measurements of the underlying cross-`.so`

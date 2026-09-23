@@ -73,6 +73,29 @@ target_include_directories(jplcz_reloco INTERFACE
 
 add_library(jplcz_reloco::reloco ALIAS jplcz_reloco)
 
+# reloco is header-only and primarily targets embedded/single-binary
+# consumers, so these are plain INTERFACE forwarders for the
+# RELOCO_SHARED/RELOCO_SHARED_BUILD compile definitions (see
+# detail/compat.hpp and docs/shared-library.md) -- they do not build or
+# export an actual shared object themselves. A caller that wants a real
+# `.so`/`.dll` remains responsible for its own build target (typically a
+# single translation unit including reloco_compile.hpp) linked against
+# jplcz_reloco::reloco-shared-export, and every ordinary consumer of that
+# library links against jplcz_reloco::reloco-shared instead.
+add_library(jplcz_reloco_shared INTERFACE)
+target_link_libraries(jplcz_reloco_shared INTERFACE jplcz_reloco)
+target_compile_definitions(jplcz_reloco_shared INTERFACE RELOCO_SHARED)
+set_target_properties(jplcz_reloco_shared PROPERTIES EXPORT_NAME reloco-shared)
+
+add_library(jplcz_reloco::reloco-shared ALIAS jplcz_reloco_shared)
+
+add_library(jplcz_reloco_shared_export INTERFACE)
+target_link_libraries(jplcz_reloco_shared_export INTERFACE jplcz_reloco_shared)
+target_compile_definitions(jplcz_reloco_shared_export INTERFACE RELOCO_SHARED_BUILD)
+set_target_properties(jplcz_reloco_shared_export PROPERTIES EXPORT_NAME reloco-shared-export)
+
+add_library(jplcz_reloco::reloco-shared-export ALIAS jplcz_reloco_shared_export)
+
 add_library(jplcz_reloco_warnings INTERFACE)
 if(JPLCZ_RELOCO_ENABLE_UNSAFE_BUFFER_USAGE AND
    NOT JPLCZ_RELOCO_COMPILER_SUPPORTS_WUNSAFE_BUFFER_USAGE)
@@ -280,7 +303,7 @@ if(JPLCZ_RELOCO_INSTALL)
     include(CMakePackageConfigHelpers)
 
     install(
-        TARGETS jplcz_reloco
+        TARGETS jplcz_reloco jplcz_reloco_shared jplcz_reloco_shared_export
         EXPORT jplcz_relocoTargets
         INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
     )
