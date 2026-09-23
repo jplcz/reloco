@@ -35,13 +35,7 @@ namespace detail {
 // `std::aligned_alloc`-obtained memory satisfies that on every platform that
 // provides it; MSVC's STL does not provide `std::aligned_alloc`.
 #if !defined(_MSC_VER)
-inline void *heap_aligned_alloc(std::size_t alignment, std::size_t bytes) noexcept {
-  // std::aligned_alloc requires bytes to be a non-zero multiple of alignment.
-  std::size_t rounded = ((bytes + alignment - 1) / alignment) * alignment;
-  if (rounded == 0)
-    rounded = alignment;
-  return std::aligned_alloc(alignment, rounded);
-}
+RELOCO_API void *heap_aligned_alloc(std::size_t alignment, std::size_t bytes) noexcept;
 #endif
 
 } // namespace detail
@@ -72,68 +66,24 @@ template <> struct allocator_traits<heap_allocator_tag> {
    * @param alignment Requested alignment; must be a power of two.
    * @return The allocated block, or `error::allocation_failed`.
    */
-  static result<mem_block> allocate(std::size_t bytes, std::size_t alignment) noexcept {
-#if defined(_MSC_VER)
-    void *ptr = _aligned_malloc(bytes == 0 ? 1 : bytes, alignment);
-    if (!ptr)
-      return unexpected(error::allocation_failed);
-    return mem_block{ptr, bytes};
-#else
-    if (alignment <= alignof(std::max_align_t)) {
-      void *ptr = std::malloc(bytes == 0 ? 1 : bytes);
-      if (!ptr)
-        return unexpected(error::allocation_failed);
-      return mem_block{ptr, bytes};
-    }
-    void *ptr = detail::heap_aligned_alloc(alignment, bytes == 0 ? alignment : bytes);
-    if (!ptr)
-      return unexpected(error::allocation_failed);
-    return mem_block{ptr, bytes};
-#endif
-  }
+  [[nodiscard]] static RELOCO_API result<mem_block> allocate(std::size_t bytes, std::size_t alignment) noexcept;
 
   /**
    * @brief Frees a block previously returned by `allocate`/`reallocate`.
    */
-  static void deallocate(void *ptr, std::size_t) noexcept {
-#if defined(_MSC_VER)
-    _aligned_free(ptr);
-#else
-    std::free(ptr);
-#endif
-  }
+  static RELOCO_API void deallocate(void *ptr, std::size_t) noexcept;
 
   /**
    * @brief Resizes a block in place when possible, falling back to a fresh
    * allocation plus copy otherwise.
    */
-  static result<mem_block> reallocate(void *ptr, std::size_t old_size, std::size_t new_size,
-                                      std::size_t alignment) noexcept {
-#if defined(_MSC_VER)
-    (void)old_size; // _aligned_realloc doesn't need the previous size.
-    void *new_ptr = _aligned_realloc(ptr, new_size == 0 ? 1 : new_size, alignment);
-    if (!new_ptr)
-      return unexpected(error::allocation_failed);
-    return mem_block{new_ptr, new_size};
-#else
-    if (alignment <= alignof(std::max_align_t)) {
-      void *new_ptr = std::realloc(ptr, new_size == 0 ? 1 : new_size);
-      if (!new_ptr)
-        return unexpected(error::allocation_failed);
-      return mem_block{new_ptr, new_size};
-    }
-
-    auto block = allocate(new_size, alignment);
-    if (!block)
-      return block;
-    if (ptr != nullptr) {
-      std::memcpy(block->ptr, ptr, old_size < new_size ? old_size : new_size);
-      std::free(ptr);
-    }
-    return block;
-#endif
-  }
+  [[nodiscard]] static RELOCO_API result<mem_block> reallocate(void *ptr, std::size_t old_size, std::size_t new_size,
+                                                                std::size_t alignment) noexcept;
 };
+
+#if RELOCO_SHARED_PROVIDE_DEFINITIONS
+#include "heap_allocator.ipp"
+#endif
 
 } // namespace reloco
 

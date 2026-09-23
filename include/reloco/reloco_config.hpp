@@ -190,3 +190,33 @@
 //     as before regardless of this macro, and this macro alone (without
 //     RTTI enabled) changes nothing. An explicit RELOCO_TYPE_ID_NAME
 //     registration always wins over this fallback for the T it names.
+//
+// RELOCO_SHARED / RELOCO_SHARED_BUILD
+//     Opt in to deduplicating both (a) reloco's own non-template concrete
+//     backends -- mutex/recursive_mutex/shared_mutex/condition_variable/
+//     error_checking_mutex (mutex.hpp), the heap/stack allocator backends
+//     (heap_allocator.hpp/stack_allocator.hpp), the default allocator hook
+//     (default_allocator.hpp), and the std::error_code bridge
+//     (error_std.hpp, opt-in) -- via RELOCO_API/
+//     RELOCO_SHARED_PROVIDE_DEFINITIONS (see reloco/detail/compat.hpp),
+//     and (b) explicit reloco class-template instantiations
+//     (reloco::vector<MyType>, reloco::optional<MyType>,
+//     reloco::flat_map<K, V>, reloco's own basic_string<char>/
+//     basic_sso_string<char>/basic_string_view<char>, ...) via
+//     RELOCO_TYPE_INSTANCE, across a multi-`.so` deployment instead of
+//     each shared object compiling its own copy. RELOCO_SHARED must be
+//     defined consistently by every translation unit in the program;
+//     exactly one of them -- the one building the actual shared library --
+//     must additionally define RELOCO_SHARED_BUILD. See
+//     reloco/reloco_extern.hpp (RELOCO_TYPE_INSTANCE(Type)),
+//     reloco/reloco_compile.hpp (an umbrella covering both reloco's own
+//     concrete backends and its char-based string aliases -- not the
+//     wchar_t ones, and not error_std.hpp, both deliberately opt-in), and
+//     docs/shared-library.md for the full walkthrough.
+//
+//     RELOCO_SHARED alone (without also listing your own application
+//     types via RELOCO_TYPE_INSTANCE) still deduplicates reloco's own
+//     built-in concrete backends above, mirroring jplcz_microfmt's
+//     MICROFMT_SHARED for its own built-in formatters -- but has no
+//     effect on any application-supplied class-template instantiation
+//     until RELOCO_TYPE_INSTANCE lists it explicitly.

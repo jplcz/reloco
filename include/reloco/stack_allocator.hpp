@@ -5,6 +5,7 @@
 #pragma once
 
 #include "allocator.hpp"
+#include "detail/compat.hpp"
 #include "error.hpp"
 #include "expected.hpp"
 #include <cstddef>
@@ -43,37 +44,16 @@ struct RELOCO_POINTER stack_allocator_context {
 template <> struct allocator_traits<stack_allocator_tag> {
   using context_type = stack_allocator_context;
 
-  [[nodiscard]] static result<mem_block> allocate(value_ref<context_type> ctx, std::size_t bytes,
-                                                  std::size_t alignment) noexcept {
-    void *current_ptr = ctx->buffer + ctx->offset;
-    std::size_t space = ctx->capacity - ctx->offset;
-
-    // std::align automatically updates current_ptr and space if successful
-    void *aligned_ptr = std::align(alignment, bytes, current_ptr, space);
-    if (!aligned_ptr) {
-      return unexpected(error::allocation_failed);
-    }
-
-    ctx->offset = static_cast<std::size_t>(static_cast<std::byte *>(aligned_ptr) + bytes - ctx->buffer);
-    return mem_block{aligned_ptr, bytes};
-  }
+  [[nodiscard]] static RELOCO_API result<mem_block> allocate(value_ref<context_type> ctx, std::size_t bytes,
+                                                              std::size_t alignment) noexcept;
 
   static void deallocate(value_ref<context_type>, void *, std::size_t) noexcept {
     // Stack allocator doesn't free individual blocks. Reclaimed via reset() on the context.
   }
 
-  [[nodiscard]] static result<std::size_t> expand_in_place(value_ref<context_type> ctx, void *ptr, std::size_t old_size,
-                                                           std::size_t new_size) noexcept {
-    // If the pointer is the very last thing we allocated, we can just bump the offset
-    if (static_cast<std::byte *>(ptr) + old_size == ctx->buffer + ctx->offset) {
-      const std::size_t added = new_size - old_size;
-      if (ctx->offset + added <= ctx->capacity) {
-        ctx->offset += added;
-        return new_size;
-      }
-    }
-    return unexpected(error::allocation_failed);
-  }
+  [[nodiscard]] static RELOCO_API result<std::size_t> expand_in_place(value_ref<context_type> ctx, void *ptr,
+                                                                       std::size_t old_size,
+                                                                       std::size_t new_size) noexcept;
 
   // NOTE: `reallocate` and `advise` are intentionally omitted.
   // allocator_ref::can_reallocate() and can_advise() will detect their absence
@@ -95,6 +75,10 @@ template <> struct allocator_traits<stack_allocator_tag> {
  * @endcode
  */
 using stack_allocator = allocator<stack_allocator_tag>;
+
+#if RELOCO_SHARED_PROVIDE_DEFINITIONS
+#include "stack_allocator.ipp"
+#endif
 
 } // namespace reloco
 

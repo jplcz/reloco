@@ -137,6 +137,105 @@
 #define RELOCO_EXPORT
 #endif
 
+// ============================================================================
+// Shared-library build/consume support for reloco's own non-template
+// concrete entities (RELOCO_SHARED / RELOCO_SHARED_BUILD)
+// ============================================================================
+//
+// reloco is header-only: even a genuinely non-template, "heavy" member
+// function (e.g. `mutex::lock()`'s pthread/std::mutex call, `allocator_
+// traits<heap_allocator_tag>::allocate()`'s malloc/aligned_alloc plumbing,
+// `detail::error_category_impl::message()`'s long switch) is plain
+// `inline` and lives directly in its header (see e.g. `mutex.hpp`,
+// `heap_allocator.hpp`, `error_std.hpp`), so -- unlike a class *template*,
+// which `reloco_extern.hpp`'s `RELOCO_TYPE_INSTANCE` already covers --
+// every translation unit that `#include`s one of these headers still gets
+// its own copy, and the linker only merges duplicate copies within a
+// single link step, never across separate shared-object boundaries.
+//
+// This is the exact same problem `jplcz_microfmt`'s `MICROFMT_SHARED`/
+// `MICROFMT_API` solve for microfmt's own built-in concrete formatters,
+// applied to reloco's much smaller set of non-template concrete entities.
+// Every one of them still ships a matching `*.ipp` sibling (`mutex_
+// pthread.ipp`/`mutex_std.ipp`/`mutex_common.ipp`, `heap_allocator.ipp`,
+// `stack_allocator.ipp`, `error_std.ipp`) hosting its out-of-line bodies,
+// included directly from the owning header, guarded on
+// `RELOCO_SHARED_PROVIDE_DEFINITIONS` below -- there is no separate
+// umbrella header to hand-maintain beyond `reloco_compile.hpp` (see that
+// header and `docs/shared-library.md`).
+//
+// Define RELOCO_SHARED (to any value, before including any reloco header,
+// consistently across every translation unit in the program) to switch
+// every one of these entities to a plain declaration instead: ordinary
+// consumers then link against one shared definition rather than each
+// instantiating their own copy.
+//
+// Exactly one translation unit in the whole program -- the one building
+// the actual shared library meant to host these definitions, typically via
+// `#include <reloco/reloco_compile.hpp>` -- must additionally define
+// RELOCO_SHARED_BUILD (to any value) before including any reloco header.
+// That TU alone re-imports the `*.ipp` bodies as exported, out-of-line
+// definitions; every other TU (RELOCO_SHARED defined, RELOCO_SHARED_BUILD
+// not) only sees declarations and must be linked against that library.
+//
+// `RELOCO_API` decorates every entity affected by this split, mirroring
+// `MICROFMT_API` exactly:
+//   - RELOCO_SHARED not defined (default): `RELOCO_API` -> `inline`;
+//     current, unchanged header-only behavior.
+//   - RELOCO_SHARED defined, RELOCO_SHARED_BUILD not defined (consume):
+//     `RELOCO_API` -> plain declaration, no body (+ `__declspec(dllimport)`
+//     on MSVC).
+//   - RELOCO_SHARED and RELOCO_SHARED_BUILD both defined (build):
+//     `RELOCO_API` -> exported, out-of-line definition
+//     (`__declspec(dllexport)` on MSVC, default visibility elsewhere).
+//
+// `RELOCO_SHARED_PROVIDE_DEFINITIONS` is 1 exactly when the current TU
+// should pull in `*.ipp` bodies at all (default header-only mode, or the
+// RELOCO_SHARED_BUILD library-build TU) and 0 when it should only see
+// declarations (ordinary RELOCO_SHARED consumer).
+//
+// This is opt-in and off by default: a plain header-only build (the
+// overwhelming common case, and every existing consumer) is entirely
+// unaffected. It is also an entirely separate concern from RELOCO_EXPORT
+// above: RELOCO_EXPORT is about keeping one *address* (a static data
+// member's identity) merged across shared objects regardless of
+// `-fvisibility=hidden`; RELOCO_API is about not *duplicating* a
+// non-template function's compiled *body* into every shared object in the
+// first place.
+#if !defined(RELOCO_SHARED)
+#define RELOCO_API inline
+#define RELOCO_SHARED_PROVIDE_DEFINITIONS 1
+#elif defined(RELOCO_SHARED_BUILD)
+#if defined(_MSC_VER)
+#define RELOCO_API __declspec(dllexport)
+#elif RELOCO_HAS_ATTRIBUTE(visibility)
+#define RELOCO_API __attribute__((visibility("default")))
+#else
+#define RELOCO_API
+#endif
+#define RELOCO_SHARED_PROVIDE_DEFINITIONS 1
+#else
+#if defined(_MSC_VER)
+#define RELOCO_API __declspec(dllimport)
+#else
+#define RELOCO_API
+#endif
+#define RELOCO_SHARED_PROVIDE_DEFINITIONS 0
+#endif
+
+// RELOCO_API_CONSTEXPR is RELOCO_API for an entity that is `constexpr` in
+// the default header-only build (where RELOCO_API is plain `inline`, so
+// adding `constexpr` costs nothing and preserves compile-time callability
+// exactly as before) but must drop `constexpr` under RELOCO_SHARED: a
+// `constexpr` function is implicitly `inline`, which would force every
+// RELOCO_SHARED_BUILD-declared-only consumer to still carry a definition,
+// defeating the whole build/consume split.
+#if !defined(RELOCO_SHARED)
+#define RELOCO_API_CONSTEXPR constexpr RELOCO_API
+#else
+#define RELOCO_API_CONSTEXPR RELOCO_API
+#endif
+
 #if !defined(RELOCO_TRAP)
 #if defined(__clang__) || defined(__GNUC__)
 #define RELOCO_TRAP() __builtin_trap()

@@ -103,22 +103,16 @@ public:
 
   constexpr mutex() noexcept : handle_(PTHREAD_MUTEX_INITIALIZER) {}
 
-  ~mutex() noexcept { pthread_mutex_destroy(&handle_); }
+  RELOCO_API ~mutex() noexcept;
 
   mutex(const mutex &) = delete;
   mutex &operator=(const mutex &) = delete;
 
-  void lock() & noexcept RELOCO_ACQUIRE() {
-    int r = pthread_mutex_lock(&handle_);
-    RELOCO_ASSERT(r == 0, "pthread_mutex_lock failed");
-  }
+  RELOCO_API void lock() & noexcept RELOCO_ACQUIRE();
 
-  void unlock() & noexcept RELOCO_RELEASE() {
-    int r = pthread_mutex_unlock(&handle_);
-    RELOCO_ASSERT(r == 0, "pthread_mutex_unlock failed");
-  }
+  RELOCO_API void unlock() & noexcept RELOCO_RELEASE();
 
-  [[nodiscard]] bool try_lock() & noexcept RELOCO_TRY_ACQUIRE(true) { return pthread_mutex_trylock(&handle_) == 0; }
+  [[nodiscard]] RELOCO_API bool try_lock() & noexcept RELOCO_TRY_ACQUIRE(true);
 
   [[nodiscard]] native_handle_type native_handle() & noexcept { return &handle_; }
 
@@ -135,30 +129,18 @@ class RELOCO_CAPABILITY("mutex") recursive_mutex {
 public:
   using native_handle_type = pthread_mutex_t *;
 
-  recursive_mutex() noexcept {
-    pthread_mutexattr_t attr;
-    pthread_mutexattr_init(&attr);
-    pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
-    pthread_mutex_init(&handle_, &attr);
-    pthread_mutexattr_destroy(&attr);
-  }
+  RELOCO_API recursive_mutex() noexcept;
 
-  ~recursive_mutex() noexcept { pthread_mutex_destroy(&handle_); }
+  RELOCO_API ~recursive_mutex() noexcept;
 
   recursive_mutex(const recursive_mutex &) = delete;
   recursive_mutex &operator=(const recursive_mutex &) = delete;
 
-  void lock() & noexcept RELOCO_ACQUIRE() {
-    int r = pthread_mutex_lock(&handle_);
-    RELOCO_ASSERT(r == 0, "pthread_mutex_lock failed");
-  }
+  RELOCO_API void lock() & noexcept RELOCO_ACQUIRE();
 
-  void unlock() & noexcept RELOCO_RELEASE() {
-    int r = pthread_mutex_unlock(&handle_);
-    RELOCO_ASSERT(r == 0, "pthread_mutex_unlock failed");
-  }
+  RELOCO_API void unlock() & noexcept RELOCO_RELEASE();
 
-  [[nodiscard]] bool try_lock() & noexcept RELOCO_TRY_ACQUIRE(true) { return pthread_mutex_trylock(&handle_) == 0; }
+  [[nodiscard]] RELOCO_API bool try_lock() & noexcept RELOCO_TRY_ACQUIRE(true);
 
   [[nodiscard]] native_handle_type native_handle() & noexcept { return &handle_; }
 
@@ -175,36 +157,22 @@ public:
 
   constexpr shared_mutex() noexcept = default;
 
-  ~shared_mutex() noexcept { pthread_rwlock_destroy(&handle_); }
+  RELOCO_API ~shared_mutex() noexcept;
 
   shared_mutex(const shared_mutex &) = delete;
   shared_mutex &operator=(const shared_mutex &) = delete;
 
-  void lock() & noexcept RELOCO_ACQUIRE() {
-    int r = pthread_rwlock_wrlock(&handle_);
-    RELOCO_ASSERT(r == 0, "pthread_rwlock_wrlock failed");
-  }
+  RELOCO_API void lock() & noexcept RELOCO_ACQUIRE();
 
-  void unlock() & noexcept RELOCO_RELEASE() {
-    int r = pthread_rwlock_unlock(&handle_);
-    RELOCO_ASSERT(r == 0, "pthread_rwlock_unlock failed");
-  }
+  RELOCO_API void unlock() & noexcept RELOCO_RELEASE();
 
-  [[nodiscard]] bool try_lock() & noexcept RELOCO_TRY_ACQUIRE(true) { return pthread_rwlock_trywrlock(&handle_) == 0; }
+  [[nodiscard]] RELOCO_API bool try_lock() & noexcept RELOCO_TRY_ACQUIRE(true);
 
-  void lock_shared() & noexcept RELOCO_ACQUIRE_SHARED() {
-    int r = pthread_rwlock_rdlock(&handle_);
-    RELOCO_ASSERT(r == 0, "pthread_rwlock_rdlock failed");
-  }
+  RELOCO_API void lock_shared() & noexcept RELOCO_ACQUIRE_SHARED();
 
-  void unlock_shared() & noexcept RELOCO_RELEASE_SHARED() {
-    int r = pthread_rwlock_unlock(&handle_);
-    RELOCO_ASSERT(r == 0, "pthread_rwlock_unlock failed");
-  }
+  RELOCO_API void unlock_shared() & noexcept RELOCO_RELEASE_SHARED();
 
-  [[nodiscard]] bool try_lock_shared() & noexcept RELOCO_TRY_ACQUIRE_SHARED(true) {
-    return pthread_rwlock_tryrdlock(&handle_) == 0;
-  }
+  [[nodiscard]] RELOCO_API bool try_lock_shared() & noexcept RELOCO_TRY_ACQUIRE_SHARED(true);
 
   [[nodiscard]] native_handle_type native_handle() & noexcept { return &handle_; }
 
@@ -228,17 +196,12 @@ public:
 
   constexpr condition_variable() noexcept = default;
 
-  ~condition_variable() noexcept { pthread_cond_destroy(&cond_); }
+  RELOCO_API ~condition_variable() noexcept;
 
   condition_variable(const condition_variable &) = delete;
   condition_variable &operator=(const condition_variable &) = delete;
 
-  [[nodiscard]] result<void> wait(std::unique_lock<mutex> &locker) & noexcept {
-    if (!locker.owns_lock())
-      return unexpected(error::not_locked);
-    pthread_cond_wait(&cond_, locker.mutex()->native_handle());
-    return {};
-  }
+  [[nodiscard]] RELOCO_API result<void> wait(std::unique_lock<mutex> &locker) & noexcept;
 
   template <typename Predicate> result<void> wait(std::unique_lock<mutex> &locker, Predicate pred) & {
     if (!locker.owns_lock())
@@ -248,15 +211,19 @@ public:
     return {};
   }
 
-  void notify_one() & noexcept { pthread_cond_signal(&cond_); }
+  RELOCO_API void notify_one() & noexcept;
 
-  void notify_all() & noexcept { pthread_cond_broadcast(&cond_); }
+  RELOCO_API void notify_all() & noexcept;
 
   [[nodiscard]] native_handle_type native_handle() & noexcept { return &cond_; }
 
 private:
   pthread_cond_t cond_ = PTHREAD_COND_INITIALIZER;
 };
+
+#if RELOCO_SHARED_PROVIDE_DEFINITIONS
+#include "mutex_pthread.ipp"
+#endif
 
 } // namespace reloco
 
@@ -301,7 +268,7 @@ public:
   mutex(const mutex &) = delete;
   mutex &operator=(const mutex &) = delete;
 
-  void lock() & noexcept RELOCO_ACQUIRE() { RELOCO_DETAIL_MUTEX_LOCKING_CALL(lock) }
+  RELOCO_API void lock() & noexcept RELOCO_ACQUIRE();
 
   void unlock() & noexcept RELOCO_RELEASE() { handle_.unlock(); }
 
@@ -325,7 +292,7 @@ public:
   recursive_mutex(const recursive_mutex &) = delete;
   recursive_mutex &operator=(const recursive_mutex &) = delete;
 
-  void lock() & noexcept RELOCO_ACQUIRE() { RELOCO_DETAIL_MUTEX_LOCKING_CALL(lock) }
+  RELOCO_API void lock() & noexcept RELOCO_ACQUIRE();
 
   void unlock() & noexcept RELOCO_RELEASE() { handle_.unlock(); }
 
@@ -349,13 +316,13 @@ public:
   shared_mutex(const shared_mutex &) = delete;
   shared_mutex &operator=(const shared_mutex &) = delete;
 
-  void lock() & noexcept RELOCO_ACQUIRE() { RELOCO_DETAIL_MUTEX_LOCKING_CALL(lock) }
+  RELOCO_API void lock() & noexcept RELOCO_ACQUIRE();
 
   void unlock() & noexcept RELOCO_RELEASE() { handle_.unlock(); }
 
   [[nodiscard]] bool try_lock() & noexcept RELOCO_TRY_ACQUIRE(true) { return handle_.try_lock(); }
 
-  void lock_shared() & noexcept RELOCO_ACQUIRE_SHARED() { RELOCO_DETAIL_MUTEX_LOCKING_CALL(lock_shared) }
+  RELOCO_API void lock_shared() & noexcept RELOCO_ACQUIRE_SHARED();
 
   void unlock_shared() & noexcept RELOCO_RELEASE_SHARED() { handle_.unlock_shared(); }
 
@@ -366,8 +333,6 @@ public:
 private:
   std::shared_mutex handle_;
 };
-
-#undef RELOCO_DETAIL_MUTEX_LOCKING_CALL
 
 /**
  * @brief Condition variable wrapping `std::condition_variable`, usable
@@ -391,14 +356,7 @@ public:
   condition_variable(const condition_variable &) = delete;
   condition_variable &operator=(const condition_variable &) = delete;
 
-  [[nodiscard]] result<void> wait(std::unique_lock<mutex> &locker) & noexcept {
-    if (!locker.owns_lock())
-      return unexpected(error::not_locked);
-    std::unique_lock<std::mutex> native_lock(*locker.mutex()->native_handle(), std::adopt_lock);
-    cv_.wait(native_lock);
-    native_lock.release();
-    return {};
-  }
+  [[nodiscard]] RELOCO_API result<void> wait(std::unique_lock<mutex> &locker) & noexcept;
 
   template <typename Predicate> result<void> wait(std::unique_lock<mutex> &locker, Predicate pred) & {
     if (!locker.owns_lock())
@@ -409,15 +367,21 @@ public:
     return {};
   }
 
-  void notify_one() & noexcept { cv_.notify_one(); }
+  RELOCO_API void notify_one() & noexcept;
 
-  void notify_all() & noexcept { cv_.notify_all(); }
+  RELOCO_API void notify_all() & noexcept;
 
   [[nodiscard]] native_handle_type native_handle() & noexcept { return &cv_; }
 
 private:
   std::condition_variable cv_;
 };
+
+#if RELOCO_SHARED_PROVIDE_DEFINITIONS
+#include "mutex_std.ipp"
+#endif
+
+#undef RELOCO_DETAIL_MUTEX_LOCKING_CALL
 
 } // namespace reloco
 
@@ -446,32 +410,11 @@ public:
   error_checking_mutex(const error_checking_mutex &) = delete;
   error_checking_mutex &operator=(const error_checking_mutex &) = delete;
 
-  [[nodiscard]] result<void> lock() & noexcept RELOCO_ACQUIRE() {
-    auto self = std::this_thread::get_id();
-    if (owner_.load(std::memory_order_relaxed) == self)
-      return unexpected(error::deadlock);
-    mutex_.lock();
-    owner_.store(self, std::memory_order_release);
-    return {};
-  }
+  [[nodiscard]] RELOCO_API result<void> lock() & noexcept RELOCO_ACQUIRE();
 
-  [[nodiscard]] result<void> unlock() & noexcept RELOCO_RELEASE() {
-    if (owner_.load(std::memory_order_acquire) != std::this_thread::get_id())
-      return unexpected(error::invalid_owner);
-    owner_.store(std::thread::id{}, std::memory_order_relaxed);
-    mutex_.unlock();
-    return {};
-  }
+  [[nodiscard]] RELOCO_API result<void> unlock() & noexcept RELOCO_RELEASE();
 
-  [[nodiscard]] bool try_lock() & noexcept RELOCO_TRY_ACQUIRE(true) {
-    auto self = std::this_thread::get_id();
-    if (owner_.load(std::memory_order_relaxed) == self)
-      return false;
-    if (!mutex_.try_lock())
-      return false;
-    owner_.store(self, std::memory_order_release);
-    return true;
-  }
+  [[nodiscard]] RELOCO_API bool try_lock() & noexcept RELOCO_TRY_ACQUIRE(true);
 
   [[nodiscard]] native_handle_type native_handle() & noexcept { return mutex_.native_handle(); }
 
@@ -479,6 +422,10 @@ private:
   mutex mutex_;
   std::atomic<std::thread::id> owner_{};
 };
+
+#if RELOCO_SHARED_PROVIDE_DEFINITIONS
+#include "mutex_common.ipp"
+#endif
 
 } // namespace reloco
 

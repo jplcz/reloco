@@ -51,6 +51,26 @@
  * For a stateless backend, the hook can just return `allocator<Tag>::ref()`
  * directly, no static context needed.
  *
+ * The declaration above is `RELOCO_API`-decorated (see `detail/compat.hpp`),
+ * so a custom hook that also wants `RELOCO_SHARED`/`RELOCO_SHARED_BUILD`
+ * support (see `reloco_extern.hpp`/`docs/shared-library.md`) should define
+ * it as `RELOCO_API` instead of plain `inline`, guarded on
+ * `RELOCO_SHARED_PROVIDE_DEFINITIONS` so only the one `RELOCO_SHARED_BUILD`
+ * translation unit actually provides a body:
+ *
+ * @code
+ * #if RELOCO_SHARED_PROVIDE_DEFINITIONS
+ * RELOCO_API reloco::allocator_ref reloco::reloco_global_alloc::default_allocator() noexcept {
+ *   static my_arena arena;
+ *   return reloco::allocator<my_arena_tag>(arena).ref();
+ * }
+ * #endif
+ * @endcode
+ *
+ * A custom hook that never needs `RELOCO_SHARED` support at all can keep
+ * using plain `inline` as shown in the first example -- `RELOCO_API` is
+ * only needed to participate in the split.
+ *
  * `reloco_global_alloc` is `RELOCO_EXPORT`-annotated so a stateful custom
  * hook's function-local `static` (as in the example above) stays one
  * shared, process-wide instance even across a `-fvisibility=hidden`
@@ -90,7 +110,7 @@ namespace reloco {
  * equivalent attribute (e.g. MSVC).
  */
 struct RELOCO_EXPORT reloco_global_alloc {
-  [[nodiscard]] static allocator_ref default_allocator() noexcept;
+  [[nodiscard]] static RELOCO_API allocator_ref default_allocator() noexcept;
 };
 
 /**
@@ -108,9 +128,13 @@ struct RELOCO_EXPORT reloco_global_alloc {
 #if !defined(RELOCO_DEFAULT_ALLOCATOR_CUSTOM)
 #include "heap_allocator.hpp"
 
+#if RELOCO_SHARED_PROVIDE_DEFINITIONS
 namespace reloco {
 
-inline allocator_ref reloco_global_alloc::default_allocator() noexcept { return allocator<heap_allocator_tag>::ref(); }
+RELOCO_API allocator_ref reloco_global_alloc::default_allocator() noexcept {
+  return allocator<heap_allocator_tag>::ref();
+}
 
 } // namespace reloco
+#endif
 #endif
