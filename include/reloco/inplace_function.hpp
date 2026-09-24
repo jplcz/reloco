@@ -148,11 +148,9 @@ public:
     return *this;
   }
 
-  [[nodiscard]] constexpr bool has_value() const noexcept RELOCO_TEST_TYPESTATE(unconsumed) { return vptr_ != nullptr; }
+  [[nodiscard]] constexpr bool has_value() const noexcept { return vptr_ != nullptr; }
 
-  [[nodiscard]] constexpr explicit operator bool() const noexcept RELOCO_TEST_TYPESTATE(unconsumed) {
-    return vptr_ != nullptr;
-  }
+  [[nodiscard]] constexpr explicit operator bool() const noexcept { return vptr_ != nullptr; }
 
   /**
    * @brief Checked tier: Safely traps if the function is empty.
