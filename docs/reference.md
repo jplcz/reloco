@@ -67,6 +67,9 @@ where, not a tutorial.
 | `duration.hpp` | `duration`, `duration_converter<T>`, `duration_cast<T>` | Integer-only (no floating point), Rust `std::time::Duration`-like time span, convertible to `timespec`/`timeval`/kernel-specific types via a customization point |
 | `instant.hpp` | `instant`, `instant_clock_traits<Tag>` | Opaque, monotonically non-decreasing point in time built on `duration`, matching Rust's `std::time::Instant`; clock source selectable (`RELOCO_INSTANT_CLOCK_TAG`) between built-in `clock_gettime` and a custom OS/kernel backend |
 | `tls_provider.hpp` | `tls_provider<T, Tag>` | Tag-differentiated, fallible, allocator-aware thread-local storage, selectable (`RELOCO_TLS_MODEL`) between `thread_local`, pthread keys, a custom OS/kernel backend, or a single-threaded global |
+| `mutex.hpp` | `mutex`, `recursive_mutex`, `error_checking_mutex`, `shared_mutex`, `condition_variable` | Backend-selected (`pthread`/`std`/custom) mutex/reader-writer-lock/condvar primitives, annotated for compiler thread-safety analysis |
+| `guarded_mutex.hpp` | `guarded_mutex<T, MutexT>` | A mutex that owns the value it protects, matching Rust's `std::sync::Mutex<T>` |
+| `rw_lock.hpp` | `rw_lock<T, SharedMutexT>` | A reader-writer lock that owns the value it protects, matching Rust's `std::sync::RwLock<T>` |
 | `thread.hpp` | `thread`, `thread_id`, `this_thread::get_id/yield`, `spawn`, `join_handle<R>` | Backend-selected (`pthread`/`std`/custom) OS thread primitive plus a Rust-like `spawn`/`JoinHandle<T>` layer built on `is_send`/`is_sync` |
 | `channel.hpp` | `channel<T>`, `sender<T>`, `receiver<T>`, `sync_channel<T>`, `sync_sender<T>` | Multi-producer, single-consumer channel matching Rust's `std::sync::mpsc`, plus a bounded/rendezvous `sync_channel<T>` counterpart, built on `mutex.hpp` + `shared_ptr` + `is_send`/`is_sync` |
 | `park.hpp` | `thread_handle`, `this_thread::current/park/park_timeout/sleep_for` | Rust-like `thread::park`/`park_timeout`/`sleep`/`Thread`, built on `tls_provider.hpp` + `futex.hpp` + `instant.hpp` + `shared_ptr` |
@@ -2044,9 +2047,61 @@ any type providing `lock()`/`unlock()`/`try_lock()` with the same shape as
 `reloco::mutex` works, including `recursive_mutex`. Only exclusive access
 is modeled -- `shared_mutex`'s `lock_shared()`/`unlock_shared()` are not
 exposed through `guarded_mutex<T>`; use `shared_mutex` directly for
-reader/writer locking without an owned value. This is the thread-safe
+reader/writer locking without an owned value, or `rw_lock<T>` below for an
+owned value with reader/writer locking. This is the thread-safe
 counterpart of [`cell<T>`/`ref_cell<T>`](#celltref_cellt) above, which are
 `!Sync`-equivalent (single-threaded only) by design.
+
+## `rw_lock<T, SharedMutexT = shared_mutex>`
+
+`include/reloco/rw_lock.hpp`
+
+A reader-writer lock that owns the value it protects, matching Rust's
+`std::sync::RwLock<T>` -- `rw_lock<T>` is to `shared_mutex` exactly what
+`guarded_mutex<T>` is to `mutex`: the `T` lives inside the `rw_lock<T>`
+itself, reachable only through one of two RAII guards.
+
+```cpp
+reloco::rw_lock<int> value(0);
+{
+  auto g = value.write(); // blocks until the exclusive lock is acquired
+  *g += 1;
+} // lock released automatically here
+
+auto g = value.read(); // blocks until a shared lock is acquired
+use(*g);
+
+auto try_g = value.try_write(); // result<write_guard>, fails with error::busy if held
+if (try_g)
+  **try_g += 1;
+```
+
+`read()`/`write()` block until acquired and return a `read_guard`/
+`write_guard` respectively (the checked tier: cannot fail). `try_read()`/
+`try_write()` are the fallible tier, returning `result<read_guard>`/
+`result<write_guard>` and failing with `error::busy` if the lock is
+already held in a conflicting mode -- matching Rust's own
+`RwLock::try_read()`/`RwLock::try_write() -> Result<RwLock*Guard<T>,
+TryLockError<...>>`. Any number of `read_guard`s may be held concurrently
+across any number of threads, so long as no `write_guard` is held at the
+same time; `get_mut()` bypasses locking entirely for callers that already
+hold an exclusive `rw_lock&`, matching Rust's `RwLock::get_mut()`. Both
+guards are move-only and release their half of the lock automatically on
+destruction, matching Rust's `RwLockReadGuard<'a, T>`/
+`RwLockWriteGuard<'a, T>`.
+
+The lock backend is a template parameter (`SharedMutexT = shared_mutex` by
+default); any type providing `lock()`/`unlock()`/`try_lock()`/
+`lock_shared()`/`unlock_shared()`/`try_lock_shared()` with the same shape
+as `reloco::shared_mutex` works.
+
+Unlike `guarded_mutex<T>` (which only requires `is_send_v<T>`, since
+`Mutex<T>` only ever grants one thread at a time access), `rw_lock<T>`
+`static_assert`s both `is_send_v<T>` **and** `is_sync_v<T>`: `read()` may
+hand out any number of concurrent shared `const T &` references across
+threads at once, so `T` itself must tolerate concurrent access -- matching
+Rust's own `unsafe impl<T: ?Sized + Send + Sync> Sync for RwLock<T>`
+bound.
 
 ## `is_trivially_relocatable<T>`
 
@@ -2079,7 +2134,13 @@ for `cell<T>`/`ref_cell<T>` (unsynchronized interior mutability), and
 specializes both to `is_send<T> && is_sync<T>` for `shared_ptr<T>`/
 `weak_ptr<T>` (atomic refcount, but the shared `T` still needs to tolerate
 concurrent access). `guarded_mutex<T, MutexT>` (see `guarded_mutex.hpp`)
-`static_assert`s `is_send_v<T>`, matching Rust's `Mutex<T: Send>` bound. See
+`static_assert`s `is_send_v<T>`, matching Rust's `Mutex<T: Send>` bound.
+`rw_lock<T, SharedMutexT>` (see `rw_lock.hpp`) `static_assert`s both
+`is_send_v<T>` **and** `is_sync_v<T>`, matching Rust's
+`RwLock<T: Send + Sync>` bound -- `read()` may hand out concurrently-held
+shared references from multiple threads at once, so `T` itself must
+tolerate concurrent access, unlike `Mutex<T>`/`guarded_mutex<T>` which only
+ever grants one thread at a time access. See
 [Thread-transfer/-sharing safety](send-sync.md) for the full rationale and
 table.
 
