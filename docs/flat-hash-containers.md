@@ -40,6 +40,29 @@ non-fallible move-construction — rather than routing through
 function support several different *construction-argument* protocols;
 here there is only ever one already-built `T` to move in).
 
+## Why there is no `flat_hash_base.ipp`
+
+`tree_base` splits its non-template, `T`-independent logic into a `.ipp`
+file compiled once for the whole program (see [Tree containers](
+tree-containers.md#structural-helpers-small-inline-larger-out-of-line)):
+`bst_unlink`'s CLRS deletion and `bst_clear`'s iterative teardown never
+call `Compare` — they only relink/destroy `node_header` pointers, which is
+exactly as non-template as `node_base`'s own layout math.
+
+`flat_hash_base`'s two heaviest routines, `grow_to` (rehashing every live
+element into a larger array) and `erase_slot` (the backward-shift walk
+above), have no equivalent `Hash`-free structural core to peel off: both
+call `Hash{}(key_of(value))` on every single element they touch, since a
+slot's rehash target (`grow_to`) and a probe sequence's reachability test
+(`erase_slot`) are only knowable by actually hashing that element's key.
+Moving either routine to a single, `T`-independent `.ipp` definition would
+mean routing every one of those hash calls through a `void*`-erased
+function pointer — on the same amortized-`O(1)` hot path this whole
+design exists to keep inlined — which would cost more than the (typically
+small) template-instantiation duplication it would save, especially since
+`Hash`/`KeyEqual` are almost always small, stateless types with only a
+handful of distinct instantiations in any one program.
+
 ## Deletion: backward-shift, no tombstones
 
 Classic open-addressing implementations mark a removed slot with a
