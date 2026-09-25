@@ -63,6 +63,7 @@
 #include <reloco/unique_ptr.hpp>
 #include <reloco/value_ptr.hpp>
 #include <reloco/value_ref.hpp>
+#include <reloco/variant.hpp>
 #include <reloco/vector.hpp>
 
 #include <reloco/detail/assert.hpp>

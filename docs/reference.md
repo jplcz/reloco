@@ -32,6 +32,7 @@ where, not a tutorial.
 | `flat_hash_set.hpp` | `flat_hash_set<T, Hash, KeyEqual>` | Unordered, unique-element set backed by an open-addressing `vector<optional<T>>` hash table, with fallible insertion |
 | `flat_hash_map.hpp` | `flat_hash_map<Key, Mapped, Hash, KeyEqual>` | Unordered, unique-key map backed by an open-addressing `vector<optional<std::pair<Key, Mapped>>>` hash table, with fallible insertion |
 | `optional.hpp` | `optional<T>`, `nullopt_t`, `nullopt` | Zero-allocation, conditionally-present value wrapper with tri-tier access |
+| `variant.hpp` | `variant<Ts...>`, `overloaded<Fs...>` | `std::variant<Ts...>` with Rust-style `match()` and tri-tier access on top |
 | `function_ref.hpp` | `function_ref<R(Args...)>` | Non-owning, zero-allocation borrow of any callable |
 | `inplace_function.hpp` | `inplace_function<Signature, Capacity>` | Zero-allocation, fixed-capacity callable wrapper |
 | `stack_allocator.hpp` | `stack_allocator`, `stack_allocator_tag`, `stack_allocator_context` | Bump-pointer `allocator_traits` backend over a caller-owned buffer |
@@ -1149,6 +1150,68 @@ Further Rust `Option<T>`-parity additions round out the API:
   partially specialize a member function on `T` itself being an
   `optional`) collapsing a nested `optional<optional<T>>` into an
   `optional<T>`, empty if either layer is empty.
+
+## `variant<Ts...>` / `overloaded<Fs...>`
+
+`include/reloco/variant.hpp`
+
+A genuine `std::variant<Ts...>` (public inheritance, inherited
+constructors, no additional data members -- it converts to/from and
+interoperates with `std::variant<Ts...>` and everything that accepts one)
+with a small set of Rust-inspired ergonomics layered on top. Nothing
+`std::variant` already provides (`index()`, `get`/`get_if`,
+`holds_alternative`, `visit`, comparisons, exception-safe assignment) is
+re-derived; only genuine gaps are added:
+
+- `match(fs...)` — Rust `match`-expression equivalent: dispatches to
+  whichever callable in `fs...` accepts the currently active alternative,
+  built from an ad-hoc overload set and `std::visit` under the hood --
+  the "overloaded-lambda-set visitor" idiom every C++17 `std::variant`
+  user ends up hand-rolling. As with `std::visit`, the call is ill-formed
+  unless the overload set is callable with every alternative in `Ts...`
+  (no silent "no match" case, matching Rust's requirement that a `match`
+  be exhaustive). Available on `&`/`const &`/`&&` overloads.
+- `is<T>()` — alias of `std::holds_alternative<T>(*this)`, matching the
+  naming other Rust-inspired reloco APIs use (`is_ok`/`is_some`, etc.).
+  `is<T>(pred)` — Rust `Option::is_some_and`-style overload: `true` if
+  the active alternative is a `T` *and* `pred` applied to it returns
+  `true`; `pred` is not invoked otherwise.
+- The reloco checked/fallible/unsafe tri-tier access convention (see
+  `optional.hpp`), which `std::variant` itself only offers a
+  throwing/fallible pair for:
+  1. **Checked (Default):** `get<T>()` behaves like `std::get<T>(*this)`,
+     but uses `RELOCO_ASSERT` to trap on a mismatched alternative instead
+     of throwing `std::bad_variant_access` -- reloco is exception-averse
+     elsewhere, so a throwing-only checked accessor doesn't fit the rest
+     of the library. Available on `&`/`const &`/`&&` overloads.
+  2. **Fallible:** `as<T>()` — like `std::get_if<T>(this)`, but bridges
+     into `optional<std::reference_wrapper<T>>` (`const T` on the
+     `const &` overload) instead of a raw pointer, matching
+     `optional<T>::try_value()`'s established convention for "maybe
+     absent" reference-returning accessors.
+  3. **Unsafe:** `unsafe_get<T>()` is explicitly gated behind
+     `RELOCO_UNSAFE_BUFFER_USAGE` and only checked via
+     `RELOCO_DEBUG_ASSERT`, exactly like `optional<T>::unsafe_value()`.
+
+`reloco::overloaded<Fs...>` (with its deduction guide) -- the "ad-hoc
+overload set out of any number of callables" building block `match()`
+itself is built on -- is also exposed standalone, for direct use with
+`std::visit` on a plain `std::variant`.
+
+```cpp
+reloco::variant<int, std::string> v(42);
+
+int doubled = v.match([](int i) { return i * 2; }, [](const std::string &s) { return (int)s.size(); });
+assert(doubled == 84);
+
+if (auto as_int = v.as<int>())
+  assert(as_int.value().get() == 42);
+```
+
+`is_trivially_relocatable<variant<Ts...>>` follows every `Ts`'s own
+relocatability, exactly like `is_trivially_relocatable<std::variant<Ts...>>`
+(see `relocatable_std.hpp`), since `reloco::variant<Ts...>` adds no data
+members over the base.
 
 ## `function_ref<R(Args...)>`
 

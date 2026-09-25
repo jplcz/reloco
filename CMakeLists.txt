@@ -290,6 +290,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_inline_string.cpp
         tests/test_sso_string.cpp
         tests/test_optional.cpp
+        tests/test_variant.cpp
         tests/test_inplace_function.cpp
         tests/test_function_ref.cpp
         tests/test_cell.cpp
