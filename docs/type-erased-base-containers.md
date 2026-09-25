@@ -15,9 +15,11 @@ caller-owned span the container never allocates or frees). Rather than
 hand-rolling that logic four times over, all four are thin, strongly-typed
 wrappers around a single type-erased engine defined in
 `include/reloco/detail/vector_base.hpp` (out-of-line bodies in
-`vector_base.ipp`). This page explains that engine's two-layer design, how
-the four public containers plug into it, and what to do if you add a fifth
-vector flavor.
+`vector_base.ipp`), itself built on two lower headers,
+`detail/type_metadata.hpp` and `detail/type_operations.hpp`, that describe
+`T` alone rather than anything array-shaped. This page explains that
+engine's layered design, how the four public containers plug into it, and
+what to do if you add a fifth vector flavor.
 
 If you haven't already, read [Container contract](container-contract.md)
 first: it covers the lifetime/rvalue-safety/tri-tier-accessor rules every
@@ -76,6 +78,46 @@ engine for a node- or bucket-based container (a hash map, a list, ...)
 can `#include "type_metadata.hpp"` and reuse `metadata_for<T>` as-is,
 without depending on anything `vector_base.hpp` defines.
 
+The *per-element* construct/clone/destroy/relocate dispatch itself lives
+in its own header too, `detail/type_operations.hpp`, one layer below
+`vector_operations`:
+
+```cpp
+struct type_operations {
+  void (*destroy_one)(const type_metadata &, void *data) noexcept;
+  result<void> (*clone_one)(const type_metadata &, allocator_ref alloc, void *dest, const void *src) noexcept;
+  result<void> (*copy_construct_one)(const type_metadata &, allocator_ref alloc, void *dest,
+                                      const void *value_ptr) noexcept;
+  void (*relocate_one)(const type_metadata &, void *to, const void *from) noexcept;
+};
+```
+
+Unlike `vector_operations`, `type_operations` says nothing about *ranges*
+or contiguous shifting -- it only knows how to construct/clone/destroy/
+relocate *one* `T` at a caller-given address, which is exactly the set of
+facts a node-based container (each node holding one element) needs just as
+much as an array-based one. `get_type_operations_for<T>()` resolves it the
+same way `get_operations_for<T>()` resolves `vector_operations`: the
+shared `operations_for_trivial_element` table for `T` trivial enough to
+`memcpy` (`has_trivial_type_ops<T>`, also reused by `vector_base.hpp` as
+`has_trivial_vector_ops<T>`, since a *range* of such `T` qualifies for the
+whole-range fast path under the same condition), a `std::pair<T1, T2>`
+partial specialization sharing that table when both members independently
+qualify, or a per-`T` `type_operations_for<T>` table of compiler-generated
+closures otherwise.
+
+`vector_base.hpp`'s own non-trivial range resolvers (`clone_range`,
+`copy_construct_range`, `move_range`, `move_range_up`, `destroy_range`)
+loop over `get_type_operations_for<T>()`'s function pointers rather than
+duplicating that per-element tiered dispatch inline -- so the logic
+`construction_helpers` needs to construct/clone one `T` is written exactly
+once, in `type_operations.hpp`, and any future map/list engine reuses it
+unchanged. Only the *trivial* range fast path stays specific to
+`vector_operations`: for trivial `T`, one whole-range `memcpy`/`memset` via
+`trivial_operator_set` is strictly cheaper than looping a single-element
+function pointer once per index, so that path is not rebuilt on top of
+`type_operations`.
+
 `vector_operations` itself, layered on top in `vector_base.hpp`, is where
 the *array-shaped* per-`T` behavior lives:
 
@@ -101,10 +143,13 @@ of the others, to one of two implementations:
   operation (e.g. `copy_construct_range` can use the trivial path only when
   `T` is *both* trivially copyable *and* trivially default-constructible,
   independent of whether `destroy_range` needs the trivial or generic path).
-- A compiler-generated closure that loops element-by-element and calls
-  through `construction_helpers` (see `construction_helpers.hpp`) for
-  fallible per-element construction/cloning -- the exact same tiered
-  dispatch `construction_helpers` uses for a single element, just looped.
+- A loop over `get_type_operations_for<T>()`'s matching single-element
+  function pointer (`destroy_one`/`clone_one`/`copy_construct_one`/
+  `relocate_one`), which itself dispatches, per-`T`, through
+  `construction_helpers` (see `construction_helpers.hpp`) exactly the same
+  tiered logic `construction_helpers` uses for a single element -- just
+  resolved once in `type_operations.hpp` and shared, rather than
+  reimplemented in every range resolver.
 
 When every operation resolves to the trivial path (`has_trivial_vector_ops<T>`),
 `get_operations_for<T>()` returns the single shared `operations_for_trivial`
@@ -303,15 +348,19 @@ tri-tier access surface -- is inherited unchanged from `typed_vector_base`.
 
 `unowned_vector_base`'s heavier primitives (`try_reserve_base`,
 `try_resize_base`, `try_insert_at_base`, `try_erase_at_base`,
-`retain_base`, `dedup_by_base`, `shrink_to_fit_base`) and each storage
+`retain_base`, `dedup_by_base`, `shrink_to_fit_base`), each storage
 policy's `destroy_elements`/`move_construct_from_base`/
-`move_assign_from_base` (where non-trivial) are declared `RELOCO_API` in
-`vector_base.hpp` and defined out-of-line in `vector_base.ipp`, included
-from `vector_base.hpp` itself only when `RELOCO_SHARED_PROVIDE_DEFINITIONS`
-is set -- exactly like `heap_allocator.ipp`/`error_std.ipp` guard their own
-bodies. See [Shared-library deployments](shared-library.md) for what that
-macro means and when it's set for you automatically vs. requires
-`RELOCO_TYPE_INSTANCE`.
+`move_assign_from_base` (where non-trivial), and `trivial_operator_set`
+are declared `RELOCO_API` in `vector_base.hpp` and defined out-of-line in
+`vector_base.ipp`, included from `vector_base.hpp` itself only when
+`RELOCO_SHARED_PROVIDE_DEFINITIONS` is set -- exactly like
+`heap_allocator.ipp`/`error_std.ipp` guard their own bodies.
+`trivial_type_operations`'s bodies follow the identical pattern one layer
+down, declared in `type_operations.hpp` and defined in
+`type_operations.ipp`, included from `type_operations.hpp` itself under
+the same guard. See [Shared-library deployments](shared-library.md) for
+what that macro means and when it's set for you automatically vs.
+requires `RELOCO_TYPE_INSTANCE`.
 
 Because these bodies are untyped (`void*`/`type_metadata` instead of
 `T`/`T*`), they compile and link exactly once regardless of how many

@@ -50,6 +50,18 @@
  * type-erased engine for a node- or bucket-based container (map, list, ...)
  * can reuse `type_metadata` as-is instead of duplicating it.
  *
+ * The *per-element* construct/clone/destroy/relocate dispatch itself --
+ * tiered through `construction_helpers` for non-trivial `T` -- similarly
+ * lives in its own header, `type_operations.hpp`, as `type_operations`/
+ * `get_type_operations_for<T>()`: `vector_operations`'s non-trivial range
+ * resolvers below loop over that single-element table rather than
+ * duplicating the tiered dispatch inline, so the same logic is shared with
+ * any future node- or bucket-based container engine instead of being
+ * rewritten per engine. Only the *trivial* range fast path
+ * (`trivial_operator_set`, whole-range `memcpy`/`memset`) stays specific
+ * to this header -- looping a single-element operation once per index
+ * would be strictly slower than one range-wide `memcpy` for trivial `T`.
+ *
  * Like `flat_container_base.hpp`, this is deliberately not public API: it
  * lives in `reloco::detail` and is included only by the four vector
  * headers, guarded on `RELOCO_SHARED_PROVIDE_DEFINITIONS` for its
@@ -62,6 +74,7 @@
 #include "../function_ref.hpp"
 #include "../reloco_extern.hpp"
 #include "type_metadata.hpp"
+#include "type_operations.hpp"
 
 #include <cstddef>
 #include <cstring>
@@ -119,13 +132,25 @@ inline constexpr vector_operations operations_for_trivial = {
 
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
+// The four non-trivial range resolvers below all loop over
+// `get_type_operations_for<T>()`'s single-element function pointers rather
+// than re-implementing per-element tiered construction/cloning/destruction
+// dispatch inline: that dispatch is written exactly once, in
+// `type_operations.hpp`, and shared with any other type-erased container
+// engine (e.g. a future map/list) that needs the same per-element facts.
+// The *trivial* range fast path (`trivial_operator_set`, below) is
+// deliberately not rebuilt on top of `type_operations` -- one whole-range
+// `memcpy`/`memset` is strictly cheaper than looping a single-element
+// function pointer once per index.
+
 template <typename T, typename = void> struct destroy_range_resolver {
   static constexpr auto get() noexcept {
     if constexpr (!std::is_trivially_destructible_v<T>) {
-      return [](const type_metadata &, void *data, std::size_t from, std::size_t to) noexcept {
+      return [](const type_metadata &type, void *data, std::size_t from, std::size_t to) noexcept {
+        constexpr const type_operations *ops = get_type_operations_for<T>();
         T *ptr = static_cast<T *>(data);
         for (std::size_t i = from; i < to; ++i) {
-          ptr[i].~T();
+          ops->destroy_one(type, ptr + i);
         }
       };
     } else {
@@ -139,17 +164,18 @@ template <typename T, typename = void> struct clone_range_resolver {
     if constexpr (std::is_trivially_copyable_v<T>) {
       return &trivial_operator_set::clone_range;
     } else if constexpr (is_try_cloneable_v<T>) {
-      return [](const type_metadata &, const void *src, void *dest, std::size_t size,
+      return [](const type_metadata &type, const void *src, void *dest, std::size_t size,
                 allocator_ref alloc) noexcept -> result<void> {
+        constexpr const type_operations *ops = get_type_operations_for<T>();
         const T *s = static_cast<const T *>(src);
         T *d = static_cast<T *>(dest);
         std::size_t cloned = 0;
         for (std::size_t i = 0; i < size; ++i) {
-          auto elem_res = construction_helpers::try_clone_at(alloc, d + i, s[i]);
+          auto elem_res = ops->clone_one(type, alloc, d + i, s + i);
           if (!elem_res) {
-            if constexpr (!std::is_trivially_destructible_v<T>) {
+            if (ops->destroy_one) {
               for (std::size_t j = 0; j < cloned; ++j) {
-                d[j].~T();
+                ops->destroy_one(type, d + j);
               }
             }
             return unexpected(elem_res.error());
@@ -171,54 +197,20 @@ template <typename T> struct copy_construct_range_resolver {
     } else {
       return [](const type_metadata &type, allocator_ref alloc, void *data, std::size_t from, std::size_t to,
                 const void *value_ptr) noexcept -> result<void> {
+        constexpr const type_operations *ops = get_type_operations_for<T>();
         T *ptr = static_cast<T *>(data);
         std::size_t constructed = from;
-
-        if (!value_ptr) {
-          // --- Path A: Default construction ---
-          if constexpr (!std::is_default_constructible_v<T>) {
-            return unexpected(error::invalid_argument);
-          } else if constexpr (std::is_trivially_default_constructible_v<T>) {
-            std::memset(ptr + from, 0, (to - from) * type.element_size);
-          } else {
-            for (std::size_t i = from; i < to; ++i) {
-              auto ctor_res = construction_helpers::try_construct<T>(alloc, ptr + i);
-              if (!ctor_res) {
-                if constexpr (!std::is_trivially_destructible_v<T>) {
-                  for (std::size_t j = from; j < constructed; ++j) {
-                    ptr[j].~T();
-                  }
-                }
-                return unexpected(ctor_res.error());
-              }
-              ++constructed;
-            }
-          }
-        } else {
-          // --- Path B: Copy fill ---
-          if constexpr (!is_try_constructible_v<T, const T &> && !std::is_copy_constructible_v<T>) {
-            return unexpected(error::unsupported_operation);
-          } else {
-            const T &value = *static_cast<const T *>(value_ptr);
-            if constexpr (std::is_trivially_copyable_v<T>) {
-              for (std::size_t i = from; i < to; ++i) {
-                ptr[i] = value;
-              }
-            } else {
-              for (std::size_t i = from; i < to; ++i) {
-                auto ctor_res = construction_helpers::try_construct<T>(alloc, ptr + i, value);
-                if (!ctor_res) {
-                  if constexpr (!std::is_trivially_destructible_v<T>) {
-                    for (std::size_t j = from; j < constructed; ++j) {
-                      ptr[j].~T();
-                    }
-                  }
-                  return unexpected(ctor_res.error());
-                }
-                ++constructed;
+        for (std::size_t i = from; i < to; ++i) {
+          auto ctor_res = ops->copy_construct_one(type, alloc, ptr + i, value_ptr);
+          if (!ctor_res) {
+            if (ops->destroy_one) {
+              for (std::size_t j = from; j < constructed; ++j) {
+                ops->destroy_one(type, ptr + j);
               }
             }
+            return unexpected(ctor_res.error());
           }
+          ++constructed;
         }
         return {};
       };
@@ -232,14 +224,12 @@ template <typename T> struct move_range_resolver {
     if constexpr (is_trivially_relocatable_v<T>) {
       return &trivial_operator_set::move_range;
     } else {
-      return [](const type_metadata &, void *to, const void *from, std::size_t count) noexcept {
+      return [](const type_metadata &type, void *to, const void *from, std::size_t count) noexcept {
+        constexpr const type_operations *ops = get_type_operations_for<T>();
         T *d = static_cast<T *>(to);
-        T *s = const_cast<T *>(static_cast<const T *>(from));
+        const T *s = static_cast<const T *>(from);
         for (std::size_t i = 0; i < count; ++i) {
-          new (d + i) T(std::move(s[i]));
-          if constexpr (!std::is_trivially_destructible_v<T>) {
-            s[i].~T();
-          }
+          ops->relocate_one(type, d + i, s + i);
         }
       };
     }
@@ -252,14 +242,12 @@ template <typename T> struct move_range_up_resolver {
     if constexpr (is_trivially_relocatable_v<T>) {
       return &trivial_operator_set::move_range_up;
     } else {
-      return [](const type_metadata &, void *to, const void *from, std::size_t count) noexcept {
+      return [](const type_metadata &type, void *to, const void *from, std::size_t count) noexcept {
+        constexpr const type_operations *ops = get_type_operations_for<T>();
         T *d = static_cast<T *>(to);
-        T *s = const_cast<T *>(static_cast<const T *>(from));
+        const T *s = static_cast<const T *>(from);
         for (std::size_t i = count; i-- > 0;) {
-          new (d + i) T(std::move(s[i]));
-          if constexpr (!std::is_trivially_destructible_v<T>) {
-            s[i].~T();
-          }
+          ops->relocate_one(type, d + i, s + i);
         }
       };
     }
@@ -268,14 +256,15 @@ template <typename T> struct move_range_up_resolver {
 
 template <typename T>
 inline constexpr vector_operations vector_operations_for = {
-    // 1. destroy_range: nullptr if trivially destructible, else custom loop
+    // 1. destroy_range: nullptr if trivially destructible, else loops get_type_operations_for<T>()->destroy_one
     destroy_range_resolver<T>::get(),
 
-    // 2. clone_range: nullptr if not cloneable, trivial_operator_set if trivially copyable, else custom cloning via
-    // try_clone_at
+    // 2. clone_range: nullptr if not cloneable, trivial_operator_set if trivially copyable, else loops
+    // get_type_operations_for<T>()->clone_one
     clone_range_resolver<T>::get(),
 
-    // 3. copy_construct_range: Use trivial_operator_set if both copyable and default-constructible are trivial!
+    // 3. copy_construct_range: trivial_operator_set if both copyable and default-constructible are trivial, else
+    // loops get_type_operations_for<T>()->copy_construct_one
     copy_construct_range_resolver<T>::get(),
 
     // 4. move_range
@@ -285,9 +274,10 @@ inline constexpr vector_operations vector_operations_for = {
     move_range_up_resolver<T>::get(),
 };
 
-template <typename T>
-constexpr inline bool has_trivial_vector_ops =
-    std::is_trivially_destructible_v<T> && is_trivially_relocatable_v<T> && std::is_trivially_copyable_v<T>;
+// Reused from `type_operations.hpp`: a range of `T` can take the whole-range
+// `memcpy`/`memset` fast path under exactly the same condition that lets a
+// single `T` take the shared `operations_for_trivial_element` table.
+template <typename T> constexpr inline bool has_trivial_vector_ops = has_trivial_type_ops<T>;
 
 template <typename T, typename = void> struct vector_operations_maker {
   static constexpr const vector_operations *make() noexcept {
