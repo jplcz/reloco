@@ -146,7 +146,10 @@ public:
 
   /** @brief Invokes the wrapped callable. Asserts non-empty (see
    * `try_call` for a checked alternative, or `unsafe_call` to skip the
-   * check entirely). */
+   * check entirely). `const`-qualified like `std::function::operator()`,
+   * but the wrapped callable may still be a mutable lambda (or any type
+   * only invocable on a non-const lvalue) -- matching `std::function`'s
+   * own contract, `storage_` is `mutable`. */
   R operator()(Args... args) const {
     RELOCO_ASSERT(vtable_ != nullptr, "function: call to an empty function");
     return vtable_->invoke(&storage_, std::forward<Args>(args)...);
@@ -232,7 +235,7 @@ private:
   };
 
   struct vtable {
-    R (*invoke)(const storage *, Args...);
+    R (*invoke)(storage *, Args...);
     void (*destroy)(storage *, allocator_ref);
     void (*move_and_destroy)(storage *src, storage *dest);
     // Returns nullptr as a sentinel meaning "no allocation was needed; call
@@ -244,7 +247,7 @@ private:
 
   template <typename F> struct c_pointer_vtable_factory {
     static constexpr vtable instance = {
-        [](const storage *s, Args... args) -> R {
+        [](storage *s, Args... args) -> R {
           auto fp = reinterpret_cast<R (*)(Args...)>(s->func_ptr);
           return fp(std::forward<Args>(args)...);
         },
@@ -261,9 +264,7 @@ private:
 
   template <typename F> struct object_vtable_factory {
     static constexpr vtable soo_instance = {
-        [](const storage *s, Args... args) -> R {
-          return (*reinterpret_cast<const F *>(s->buffer))(std::forward<Args>(args)...);
-        },
+        [](storage *s, Args... args) -> R { return (*reinterpret_cast<F *>(s->buffer))(std::forward<Args>(args)...); },
         [](storage *s, allocator_ref) noexcept { reinterpret_cast<F *>(s->buffer)->~F(); },
         [](storage *src, storage *dest) noexcept {
           new (dest->buffer) F(std::move(*reinterpret_cast<F *>(src->buffer)));
@@ -286,9 +287,7 @@ private:
     };
 
     static constexpr vtable heap_instance = {
-        [](const storage *s, Args... args) -> R {
-          return (*static_cast<const F *>(s->heap_ptr))(std::forward<Args>(args)...);
-        },
+        [](storage *s, Args... args) -> R { return (*static_cast<F *>(s->heap_ptr))(std::forward<Args>(args)...); },
         [](storage *s, allocator_ref alloc) noexcept {
           static_cast<F *>(s->heap_ptr)->~F();
           alloc.deallocate(s->heap_ptr, sizeof(F));
@@ -312,7 +311,12 @@ private:
     };
   };
 
-  storage storage_{};
+  // `mutable`, matching std::function's `mutable _Any_data` member: the
+  // captured callable may itself be non-const-invocable (e.g. a mutable
+  // lambda), which does not violate function's own const-correctness --
+  // its identity/vtable/allocator never change via a const operator()/
+  // try_call, only the wrapped callable's internal state may.
+  mutable storage storage_{};
   const vtable *vtable_{nullptr};
   allocator_ref alloc_{};
 };

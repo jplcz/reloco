@@ -64,6 +64,7 @@ where, not a tutorial.
 | `construction_helpers.hpp` | `construction_helpers` | Compile-time dispatcher picking the best construction/clone strategy for a type |
 | `relocatable.hpp` | `is_trivially_relocatable<T>` (+ C++20 `trivially_relocatable`) | Marks types safely movable by copying bytes and abandoning the source |
 | `send_sync.hpp` | `is_send<T>`, `is_sync<T>` (+ C++20 `sendable`/`syncable`) | Marks types sound to transfer to another thread (`is_send`) or share concurrently (`is_sync`), matching Rust's `Send`/`Sync` |
+| `thread.hpp` | `thread`, `thread_id`, `this_thread::get_id/yield`, `spawn`, `join_handle<R>` | Backend-selected (`pthread`/`std`/custom) OS thread primitive plus a Rust-like `spawn`/`JoinHandle<T>` layer built on `is_send`/`is_sync` |
 | `lifetime.hpp` | `RELOCO_LIFETIMEBOUND`, `RELOCO_OWNER`, `RELOCO_POINTER`, `RELOCO_UNSAFE_BUFFER_USAGE`, ... | Compiler-specific lifetime/ownership/safe-buffers annotation macros |
 | `rvalue_safety.hpp` | `RELOCO_BLOCK_RVALUE_ACCESS` | Deletes rvalue accessors that would otherwise dangle past a temporary |
 | `reloco_config.hpp` | (user override header hook) | How to override library-wide defaults from `reloco_user_config.hpp` |
@@ -2057,6 +2058,48 @@ concurrent access). `guarded_mutex<T, MutexT>` (see `guarded_mutex.hpp`)
 `static_assert`s `is_send_v<T>`, matching Rust's `Mutex<T: Send>` bound. See
 [Thread-transfer/-sharing safety](send-sync.md) for the full rationale and
 table.
+
+## `thread` / `thread::spawn` / `join_handle<R>`
+
+`include/reloco/thread.hpp`
+
+An OS thread primitive with the same backend-selection shape as
+`mutex.hpp`: `RELOCO_THREAD_BACKEND_PTHREAD` (wraps `<pthread.h>`
+directly) or `RELOCO_THREAD_BACKEND_STD` (wraps `<thread>`), auto-selected
+via `RELOCO_HAS_INCLUDE(<pthread.h>)`, or `RELOCO_THREAD_BACKEND_CUSTOM` to
+suppress both -- for an application/kernel supplying its own
+`thread`/`thread_id`/`this_thread::get_id()`/`this_thread::yield()`
+matching the same public surface (an RTOS task API, a freestanding target,
+...).
+
+`thread::try_spawn(function<void()> &&, allocator_ref)` is the raw,
+fallible primitive (`result<thread>`, failing with
+`error::resource_exhausted` if the OS refuses to create a new thread).
+Move-only; the destructor/move-assignment `RELOCO_ASSERT`s if still
+joinable, matching `std::thread`'s "must join or detach first" contract
+as an assertion trap instead of an unconditional `std::terminate`.
+
+```cpp
+auto handle = reloco::spawn([]() noexcept -> int {
+  return 42;
+});
+if (handle) {
+  int result = std::move(*handle).join(); // blocks, returns 42
+}
+```
+
+`spawn(F &&, allocator_ref = default_allocator())` is the Rust-facing
+layer matching `std::thread::spawn`/`JoinHandle<T>`, built generically on
+top of `thread` + `function<void()>` (see `function.hpp`) so it needs no
+backend-specific code of its own. It `static_assert`s that `F` (and
+everything it captures) is `is_send_v`, and that `F`'s return type is too
+(see [`is_send<T>` / `is_sync<T>`](#is_sendtis_synct) above) --
+matching Rust's `F: Send + 'static, F::Output: Send` bound (reloco has no
+lifetime tracking to enforce the `'static` half). Unlike Rust (where
+dropping a `JoinHandle` silently detaches the thread), `join_handle<R>`'s
+destructor blocks and joins if still joinable, matching C++20
+`std::jthread`'s safer default; call `detach()` explicitly to opt in to
+Rust's original behavior.
 
 ## `alignment_of<T>`
 

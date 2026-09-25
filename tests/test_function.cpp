@@ -183,6 +183,18 @@ TEST(FunctionTest, UnsafeCallSkipsTheEmptyCheck) {
   RELOCO_END_UNSAFE_BUFFER_USAGE
 }
 
+// function's own operator() is const, but the wrapped callable may still
+// be a mutable lambda (matching std::function's own contract): each call
+// mutates the SOO-stored captured counter.
+TEST(FunctionTest, SupportsAMutableLambdaCapture) {
+  auto fn = reloco::function<int()>::try_create([count = 0]() mutable noexcept { return ++count; });
+  ASSERT_TRUE(fn);
+  const auto &const_fn = *fn;
+  EXPECT_EQ(const_fn(), 1);
+  EXPECT_EQ(const_fn(), 2);
+  EXPECT_EQ(const_fn(), 3);
+}
+
 TEST(FunctionTest, TryCallWrapsAPlainReturnValue) {
   auto fn = reloco::function<int(int)>::try_create(&plain_add_one);
   ASSERT_TRUE(fn);
