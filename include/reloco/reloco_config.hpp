@@ -220,3 +220,18 @@
 //     MICROFMT_SHARED for its own built-in formatters -- but has no
 //     effect on any application-supplied class-template instantiation
 //     until RELOCO_TYPE_INSTANCE lists it explicitly.
+//
+// RELOCO_DISABLE_SANITIZER_ANNOTATIONS
+//     Define (to any value) to force reloco/detail/sanitizer.hpp's memory
+//     poisoning annotations off even when AddressSanitizer is otherwise
+//     auto-detected (__SANITIZE_ADDRESS__ / __has_feature(address_sanitizer))
+//     and even if RELOCO_USE_VALGRIND is also defined.
+//
+// RELOCO_USE_VALGRIND
+//     Opt in to Valgrind/Memcheck memory annotations in
+//     reloco/detail/sanitizer.hpp (MAKE_MEM_NOACCESS/MAKE_MEM_UNDEFINED via
+//     <valgrind/memcheck.h>). Unlike AddressSanitizer, "running under
+//     Valgrind" cannot be auto-detected at compile time, and
+//     <valgrind/memcheck.h> is a separate, not-always-installed header, so
+//     this is opt-in only and degrades to a no-op if the header is not
+//     found on the include path.

@@ -21,16 +21,26 @@
  * It manages memory inline without dynamic allocation and natively integrates
  * with `is_trivially_relocatable<T>` to ensure zero-overhead swaps and moves
  * where the underlying type permits.
+ *
+ * When AddressSanitizer/Valgrind support is active (see
+ * reloco/detail/sanitizer.hpp), the inline `T` storage is poisoned
+ * whenever the optional is empty (from construction, and again after
+ * every `reset()`/`destroy()`) and unpoisoned right before it is
+ * (re)constructed, so reading/writing through `unsafe_ptr()`/
+ * `unsafe_value()` while empty is caught even in a release build with
+ * `RELOCO_DEBUG_ASSERT` compiled out.
  */
 
 #include "detail/assert.hpp"
 #include "detail/compat.hpp"
+#include "detail/sanitizer.hpp"
 #include "error.hpp"
 #include "expected.hpp"
 #include "lifetime.hpp"
 #include "relocatable.hpp"
 
 #include <functional>
+#include <memory>
 #include <new>
 #include <type_traits>
 #include <utility>
@@ -48,8 +58,12 @@ template <typename T> class RELOCO_CONSUMABLE(unconsumed) optional {
 public:
   using value_type = T;
 
-  constexpr optional() noexcept RELOCO_RETURN_TYPESTATE(consumed) : dummy_('\0'), has_value_(false) {}
-  constexpr optional(nullopt_t) noexcept RELOCO_RETURN_TYPESTATE(consumed) : dummy_('\0'), has_value_(false) {}
+  constexpr optional() noexcept RELOCO_RETURN_TYPESTATE(consumed) : dummy_('\0'), has_value_(false) {
+    detail::poison_memory_region(std::addressof(value_), sizeof(T));
+  }
+  constexpr optional(nullopt_t) noexcept RELOCO_RETURN_TYPESTATE(consumed) : dummy_('\0'), has_value_(false) {
+    detail::poison_memory_region(std::addressof(value_), sizeof(T));
+  }
 
   constexpr optional(const T &value) noexcept(std::is_nothrow_copy_constructible_v<T>) : has_value_(false) {
     construct(value);
@@ -289,7 +303,7 @@ public:
    */
   template <typename U = T>
   optional replace(U &&value) & noexcept(std::is_nothrow_constructible_v<T, U &&> &&
-                                          std::is_nothrow_move_constructible_v<T>) RELOCO_SET_TYPESTATE(unconsumed) {
+                                         std::is_nothrow_move_constructible_v<T>) RELOCO_SET_TYPESTATE(unconsumed) {
     optional old = take();
     construct(std::forward<U>(value));
     return old;
@@ -389,10 +403,12 @@ private:
         value_.~T();
       }
       has_value_ = false;
+      detail::poison_memory_region(std::addressof(value_), sizeof(T));
     }
   }
 
   template <typename... Args> void construct(Args &&...args) noexcept(std::is_nothrow_constructible_v<T, Args...>) {
+    detail::unpoison_memory_region(std::addressof(value_), sizeof(T));
     new (std::addressof(value_)) T(std::forward<Args>(args)...);
     has_value_ = true;
   }

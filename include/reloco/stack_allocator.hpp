@@ -6,6 +6,7 @@
 
 #include "allocator.hpp"
 #include "detail/compat.hpp"
+#include "detail/sanitizer.hpp"
 #include "error.hpp"
 #include "expected.hpp"
 #include <cstddef>
@@ -22,6 +23,13 @@ struct RELOCO_EXPORT stack_allocator_tag {};
 
 /**
  * @brief Context state for the stack allocator.
+ *
+ * When AddressSanitizer/Valgrind support is active (see
+ * reloco/detail/sanitizer.hpp), the whole buffer starts out poisoned and
+ * `allocate()`/`expand_in_place()` only unpoison the prefix handed out so
+ * far; `reset()` re-poisons it before rewinding, so a stale pointer into a
+ * block invalidated by a prior `reset()` is caught as a use-after-reset
+ * bug instead of silently reading/writing still-mapped memory.
  */
 struct RELOCO_EXPORT RELOCO_POINTER stack_allocator_context {
   std::byte *buffer;
@@ -29,13 +37,18 @@ struct RELOCO_EXPORT RELOCO_POINTER stack_allocator_context {
   std::size_t offset = 0;
 
   constexpr stack_allocator_context(void *ptr RELOCO_LIFETIME_CAPTURE_BY_THIS, std::size_t size) noexcept
-      : buffer(static_cast<std::byte *>(ptr)), capacity(size) {}
+      : buffer(static_cast<std::byte *>(ptr)), capacity(size) {
+    detail::poison_memory_region(buffer, capacity);
+  }
 
   /**
    * @brief Resets the allocator back to the beginning of the buffer.
    * All previously allocated blocks are invalidated.
    */
-  constexpr void reset() noexcept { offset = 0; }
+  constexpr void reset() noexcept {
+    detail::poison_memory_region(buffer, offset);
+    offset = 0;
+  }
 };
 
 /**
@@ -45,15 +58,14 @@ template <> struct allocator_traits<stack_allocator_tag> {
   using context_type = stack_allocator_context;
 
   [[nodiscard]] static RELOCO_API result<mem_block> allocate(value_ref<context_type> ctx, std::size_t bytes,
-                                                              std::size_t alignment) noexcept;
+                                                             std::size_t alignment) noexcept;
 
   static void deallocate(value_ref<context_type>, void *, std::size_t) noexcept {
     // Stack allocator doesn't free individual blocks. Reclaimed via reset() on the context.
   }
 
-  [[nodiscard]] static RELOCO_API result<std::size_t> expand_in_place(value_ref<context_type> ctx, void *ptr,
-                                                                       std::size_t old_size,
-                                                                       std::size_t new_size) noexcept;
+  [[nodiscard]] static RELOCO_API result<std::size_t>
+  expand_in_place(value_ref<context_type> ctx, void *ptr, std::size_t old_size, std::size_t new_size) noexcept;
 
   // NOTE: `reallocate` and `advise` are intentionally omitted.
   // allocator_ref::can_reallocate() and can_advise() will detect their absence
