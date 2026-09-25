@@ -5,6 +5,8 @@
 #include <atomic>
 #include <gtest/gtest.h>
 #include <reloco/channel.hpp>
+#include <reloco/duration.hpp>
+#include <reloco/park.hpp>
 #include <reloco/send_sync.hpp>
 #include <reloco/thread.hpp>
 #include <vector>
@@ -68,6 +70,58 @@ TEST(ChannelTest, RecvFailsWithContainerEmptyAfterAllSendersDropped) {
   auto value = rx.recv();
   ASSERT_FALSE(value);
   EXPECT_EQ(value.error(), reloco::error::container_empty);
+}
+
+TEST(ChannelTest, RecvTimeoutReturnsValueImmediatelyWhenAlreadyQueued) {
+  auto ends = reloco::channel<int>();
+  ASSERT_TRUE(ends);
+  auto &[tx, rx] = *ends;
+
+  ASSERT_TRUE(tx.try_send(7));
+  auto value = rx.recv_timeout(reloco::duration::from_secs(5));
+  ASSERT_TRUE(value);
+  EXPECT_EQ(*value, 7);
+}
+
+TEST(ChannelTest, RecvTimeoutFailsWithTimedOutWhenNothingIsSent) {
+  auto ends = reloco::channel<int>();
+  ASSERT_TRUE(ends);
+  auto &[tx, rx] = *ends;
+  (void)tx;
+
+  auto value = rx.recv_timeout(reloco::duration::from_millis(20));
+  ASSERT_FALSE(value);
+  EXPECT_EQ(value.error(), reloco::error::timed_out);
+}
+
+TEST(ChannelTest, RecvTimeoutFailsWithContainerEmptyAfterAllSendersDropped) {
+  auto ends = reloco::channel<int>();
+  ASSERT_TRUE(ends);
+  auto [tx, rx] = std::move(*ends);
+  {
+    auto dropped = std::move(tx);
+  }
+
+  auto value = rx.recv_timeout(reloco::duration::from_secs(5));
+  ASSERT_FALSE(value);
+  EXPECT_EQ(value.error(), reloco::error::container_empty);
+}
+
+TEST(ChannelTest, RecvTimeoutReturnsValueWhenSentBeforeTimeoutElapses) {
+  auto ends = reloco::channel<int>();
+  ASSERT_TRUE(ends);
+  auto [tx, rx] = std::move(*ends);
+
+  auto handle = reloco::spawn([tx = std::move(tx)]() mutable noexcept {
+    reloco::this_thread::sleep_for(reloco::duration::from_millis(10));
+    static_cast<void>(tx.try_send(99));
+  });
+  ASSERT_TRUE(handle);
+
+  auto value = rx.recv_timeout(reloco::duration::from_secs(5));
+  ASSERT_TRUE(value);
+  EXPECT_EQ(*value, 99);
+  std::move(*handle).join();
 }
 
 TEST(ChannelTest, TrySendFailsWithInvalidStateAfterReceiverDropped) {

@@ -27,6 +27,10 @@
  * - `receiver<T>::recv()` -> `result<T>`: blocks until a value is sent or
  *   every sender has been dropped, in which case it fails with
  *   `error::container_empty` (matching Rust's `RecvError`).
+ * - `receiver<T>::recv_timeout(duration)` -> `result<T>`: bounded
+ *   `recv()`; additionally fails with `error::timed_out` if `duration`
+ *   elapses first (matching Rust's `mpsc::Receiver::recv_timeout` and its
+ *   `RecvTimeoutError::Timeout`/`RecvTimeoutError::Disconnected` cases).
  * - `receiver<T>::try_recv()` -> `result<T>`: never blocks; fails with
  *   `error::try_again` if the queue is momentarily empty but senders remain
  *   (matching Rust's `TryRecvError::Empty`), or `error::container_empty` if
@@ -57,6 +61,7 @@
 
 #include "default_allocator.hpp"
 #include "detail/assert.hpp"
+#include "duration.hpp"
 #include "error.hpp"
 #include "expected.hpp"
 #include "lifetime.hpp"
@@ -232,6 +237,27 @@ public:
         lock, [this] { return static_cast<bool>(shared_->head) || shared_->sender_count == 0; });
     if (!wait_result)
       return unexpected(wait_result.error());
+    if (!shared_->head)
+      return unexpected(error::container_empty);
+    return result<T>(pop_front());
+  }
+
+  /**
+   * @brief Bounded `recv()`: blocks until a value is available, every
+   * `sender<T>` clone has been dropped (fails with
+   * `error::container_empty`), or `timeout` elapses first (fails with
+   * `error::timed_out`) -- matching Rust's `mpsc::Receiver::recv_timeout`
+   * (`RecvTimeoutError::Disconnected`/`RecvTimeoutError::Timeout`
+   * respectively).
+   */
+  [[nodiscard]] result<T> recv_timeout(duration timeout) noexcept {
+    std::unique_lock<mutex> lock(shared_->guard);
+    auto wait_result = shared_->not_empty.wait_for(
+        lock, timeout, [this] { return static_cast<bool>(shared_->head) || shared_->sender_count == 0; });
+    if (!wait_result)
+      return unexpected(wait_result.error());
+    if (!*wait_result)
+      return unexpected(error::timed_out);
     if (!shared_->head)
       return unexpected(error::container_empty);
     return result<T>(pop_front());

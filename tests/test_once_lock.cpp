@@ -80,6 +80,39 @@ TEST(OnceLockTest, GetOrTryInitPropagatesInitializerFailureAndAllowsRetry) {
   EXPECT_EQ(**retried, 5);
 }
 
+TEST(OnceLockTest, GetOrInitRunsInitializerExactlyOnceOnAnEmptyCell) {
+  reloco::once_lock<int> cell;
+  int init_calls = 0;
+
+  int &first = cell.get_or_init([&]() -> int {
+    ++init_calls;
+    return 7;
+  });
+  EXPECT_EQ(first, 7);
+  EXPECT_EQ(init_calls, 1);
+
+  int &second = cell.get_or_init([&]() -> int {
+    ++init_calls;
+    return 99;
+  });
+  EXPECT_EQ(second, 7);      // still the first value
+  EXPECT_EQ(&first, &second); // same underlying storage
+  EXPECT_EQ(init_calls, 1);  // initializer not called again
+}
+
+TEST(OnceLockTest, GetOrInitReturnsExistingValueWithoutCallingInitializer) {
+  reloco::once_lock<int> cell;
+  ASSERT_TRUE(cell.try_set(42));
+
+  bool called = false;
+  int &value = cell.get_or_init([&]() -> int {
+    called = true;
+    return 0;
+  });
+  EXPECT_EQ(value, 42);
+  EXPECT_FALSE(called);
+}
+
 TEST(OnceLockTest, TakeResetsAnInitializedCellAndReturnsThePreviousValue) {
   reloco::once_lock<int> cell;
   ASSERT_TRUE(cell.try_set(3));

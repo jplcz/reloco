@@ -36,6 +36,10 @@
  *   `F` and stores its result. If `F` fails, the cell reverts to empty so
  *   a later call (from any thread) may retry -- matching Rust's
  *   `OnceLock::get_or_try_init`.
+ * - `get_or_init(F)` -> `T &`, where `F` is invocable as `T()` (not
+ *   `result<T>()`) and assumed to never fail: infallible convenience
+ *   wrapper around `get_or_try_init`, matching Rust's stable
+ *   `OnceLock::get_or_init`.
  * - `get()`/`get_mut()` -> `T *`/`const T *`: `nullptr` if not yet
  *   initialized, never blocking.
  * - `take()` -> `result<T>`: resets the cell to empty and returns the
@@ -188,6 +192,21 @@ public:
     state_.store(ready, std::memory_order_release);
     futex_wake_all(state_);
     return ptr();
+  }
+
+  /**
+   * @brief Infallible variant of `get_or_try_init`: `f` must be invocable
+   * as `T()` (not `result<T>()`) and is assumed to never fail, matching
+   * Rust's stable `OnceLock::get_or_init(f: impl FnOnce() -> T) -> &T`.
+   * Returns a reference to the stored value (already-initialized, or
+   * freshly initialized by this call).
+   */
+  template <typename F> [[nodiscard]] T &get_or_init(F &&f) noexcept(std::is_nothrow_invocable_v<F &>) {
+    auto init_result = get_or_try_init([&f]() noexcept(std::is_nothrow_invocable_v<F &>) -> result<T> {
+      return result<T>(std::forward<F>(f)());
+    });
+    RELOCO_ASSERT(init_result.has_value(), "once_lock::get_or_init: unreachable -- wrapped closure never fails");
+    return **init_result;
   }
 
   /**

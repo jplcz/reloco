@@ -2290,13 +2290,18 @@ Rust's `SendError<T>`, minus recovering the un-sent value -- reloco's
 single `error` enum carries no payload).
 
 `receiver<T>` is move-only: exactly one consumer is ever meant to call
-`recv()`/`try_recv()`. `recv()` blocks until a value is sent or every
-`sender<T>` clone has been dropped, failing with `error::container_empty`
-in the latter case (matching Rust's `RecvError`). `try_recv()` never
-blocks: it fails with `error::try_again` if the queue is momentarily empty
-but at least one sender remains (matching `TryRecvError::Empty`), or
-`error::container_empty` if it is empty and every sender has already been
-dropped (matching `TryRecvError::Disconnected`).
+`recv()`/`try_recv()`/`recv_timeout()`. `recv()` blocks until a value is
+sent or every `sender<T>` clone has been dropped, failing with
+`error::container_empty` in the latter case (matching Rust's
+`RecvError`). `recv_timeout(duration)` is `recv()`'s bounded counterpart:
+additionally fails with `error::timed_out` if the duration elapses first,
+matching Rust's `mpsc::Receiver::recv_timeout` and its
+`RecvTimeoutError::Timeout`/`RecvTimeoutError::Disconnected` cases.
+`try_recv()` never blocks: it fails with `error::try_again` if the queue
+is momentarily empty but at least one sender remains (matching
+`TryRecvError::Empty`), or `error::container_empty` if it is empty and
+every sender has already been dropped (matching
+`TryRecvError::Disconnected`).
 
 `T` must be `std::is_nothrow_move_constructible_v`, like every other
 reloco container element requirement. `is_send<sender<T>>`/
@@ -2407,6 +2412,10 @@ if (entry)
   and stores its result. If `F` fails, the cell reverts to empty so a
   later call (from any thread) may retry, matching Rust's
   `OnceLock::get_or_try_init`.
+- `get_or_init(F)` -> `T &`, where `F` is invocable as `T()` (not
+  `result<T>()`) and assumed to never fail: infallible convenience
+  wrapper around `get_or_try_init`, matching Rust's stable
+  `OnceLock::get_or_init`.
 - `get()`/`get_mut()` -> `const T *`/`T *`: `nullptr` if not yet
   initialized, never blocking.
 - `take()` -> `result<T>`: resets the cell to empty and returns the
@@ -2418,11 +2427,12 @@ if (entry)
   ensure no other thread concurrently reads/writes the cell.
 
 Internally, a `futex_word` state (see `futex.hpp`) gives `get()`/
-`get_mut()`, and the fast path of `try_set`/`get_or_try_init`, a
-lock-free acquire-load once initialized; the slow path claims the
-`empty` -> `initializing` transition via a single `compare_exchange` and
-blocks on (or wakes via `futex_wake_all`) the same state word -- no lock
-is ever held. `T` must be `std::is_nothrow_move_constructible_v`, like
+`get_mut()`, and the fast path of `try_set`/`get_or_try_init`/
+`get_or_init`, a lock-free acquire-load once initialized; the slow path
+claims the `empty` -> `initializing` transition via a single
+`compare_exchange` and blocks on (or wakes via `futex_wake_all`) the same
+state word -- no lock is ever held. `T` must be
+`std::is_nothrow_move_constructible_v`, like
 every other reloco container element requirement. `once_lock<T>` is
 neither copyable nor movable.
 
