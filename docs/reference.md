@@ -64,6 +64,7 @@ where, not a tutorial.
 | `construction_helpers.hpp` | `construction_helpers` | Compile-time dispatcher picking the best construction/clone strategy for a type |
 | `relocatable.hpp` | `is_trivially_relocatable<T>` (+ C++20 `trivially_relocatable`) | Marks types safely movable by copying bytes and abandoning the source |
 | `send_sync.hpp` | `is_send<T>`, `is_sync<T>` (+ C++20 `sendable`/`syncable`) | Marks types sound to transfer to another thread (`is_send`) or share concurrently (`is_sync`), matching Rust's `Send`/`Sync` |
+| `duration.hpp` | `duration`, `duration_converter<T>`, `duration_cast<T>` | Integer-only (no floating point), Rust `std::time::Duration`-like time span, convertible to `timespec`/`timeval`/kernel-specific types via a customization point |
 | `thread.hpp` | `thread`, `thread_id`, `this_thread::get_id/yield`, `spawn`, `join_handle<R>` | Backend-selected (`pthread`/`std`/custom) OS thread primitive plus a Rust-like `spawn`/`JoinHandle<T>` layer built on `is_send`/`is_sync` |
 | `channel.hpp` | `channel<T>`, `sender<T>`, `receiver<T>` | Multi-producer, single-consumer channel matching Rust's `std::sync::mpsc`, built on `mutex.hpp` + `shared_ptr` + `is_send`/`is_sync` |
 | `once_lock.hpp` | `once_lock<T>` | Write-once, read-many-times cell matching Rust's `std::sync::OnceLock<T>`, usable as a plain field/local (unlike `fallible_singleton.hpp`'s static, one-per-`T` global) |
@@ -1963,6 +1964,23 @@ primitives (not ported here by design -- see the header's file-level doc
 comment). See `RELOCO_MUTEX_BACKEND_STD`/`_PTHREAD`/`_CUSTOM` in
 `reloco_config.hpp` for the exact selection mechanism.
 
+`condition_variable::wait_for(locker, timeout, pred)` is a bounded
+counterpart of `wait(locker, pred)`: blocks until `pred()` is `true` or a
+`reloco::duration timeout` (`duration.hpp`) elapses, whichever comes
+first, returning `result<bool>` (`pred()`'s final value, or
+`error::not_locked` if `locker` doesn't own its lock). The
+`RELOCO_MUTEX_BACKEND_PTHREAD` backend is built on `pthread_cond_timedwait`
+against an absolute deadline computed via `duration_cast<struct
+timespec>`; its underlying `pthread_cond_t` is initialized with
+`pthread_condattr_setclock(CLOCK_MONOTONIC)` whenever the platform
+advertises POSIX Clock Selection support (immune to concurrent wall-clock
+adjustments, unlike `CLOCK_REALTIME`), falling back to `CLOCK_REALTIME`
+where clock selection isn't supported (e.g. Darwin/macOS). Define
+`RELOCO_MUTEX_NO_MONOTONIC_CLOCK` (see `reloco_config.hpp`) to force
+`CLOCK_REALTIME` even where monotonic support would otherwise be detected.
+The `RELOCO_MUTEX_BACKEND_STD` backend delegates directly to
+`std::condition_variable::wait_for`.
+
 `mutex`/`recursive_mutex`/`error_checking_mutex`/`shared_mutex` (both
 backends) are annotated for
 [Clang Thread Safety Analysis](https://clang.llvm.org/docs/ThreadSafetyAnalysis.html)
@@ -2061,6 +2079,39 @@ concurrent access). `guarded_mutex<T, MutexT>` (see `guarded_mutex.hpp`)
 `static_assert`s `is_send_v<T>`, matching Rust's `Mutex<T: Send>` bound. See
 [Thread-transfer/-sharing safety](send-sync.md) for the full rationale and
 table.
+
+## `duration`
+
+`include/reloco/duration.hpp`
+
+An integer-only, non-negative time span matching Rust's
+`std::time::Duration`: a `(secs: std::uint64_t, subsec_nanos:
+std::uint32_t)` pair, built and read via `from_secs`/`from_millis`/
+`from_micros`/`from_nanos` factories and `as_secs`/`subsec_nanos`/
+`subsec_micros`/`subsec_millis`/`as_millis`/`as_micros`/`as_nanos`
+accessors, plus the usual comparison operators and `operator+`.
+Deliberately *not* `std::chrono::duration<Rep, Period>`-based: some
+`<chrono>` implementations compute a cross-`Period` conversion through a
+floating-point intermediate when the ratio between the two periods isn't
+exact, which is unusable in a kernel/freestanding build with no FPU (or
+with FPU use disabled), and `<chrono>` itself may not exist at all on such
+a target. `reloco::duration` only needs `<cstdint>` and every conversion
+is plain integer arithmetic.
+
+`duration_cast<T>(d)` converts a `duration` to a platform/target time type
+`T` via the `duration_converter<T>` customization point (same shape as
+`allocator_traits<Tag>`/`is_send<T>`/`alignment_of<T>`): the primary
+template has no generic definition, so a new `T` requires its own
+`duration_converter<T>` specialization exposing `static T convert(duration)
+noexcept`. Built in: `struct timespec` (guarded on `<time.h>`'s
+availability) and `struct timeval` (guarded on `<sys/time.h>`'s
+availability, truncating any sub-microsecond remainder). A kernel target
+can add its own specialization for a fixed-point type like FreeBSD's
+`sbintime_t` in its own header, exactly like the
+`RELOCO_MUTEX_BACKEND_CUSTOM`/`RELOCO_DEFAULT_ALLOCATOR_CUSTOM`
+extensibility pattern. `mutex.hpp`'s `condition_variable::wait_for` uses
+`duration`/`duration_cast<struct timespec>` for its timeout parameter and
+deadline computation, rather than `<chrono>`.
 
 ## `thread` / `thread::spawn` / `join_handle<R>`
 

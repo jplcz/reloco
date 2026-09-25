@@ -59,7 +59,7 @@
 #define RELOCO_DETAIL_DURATION_HAS_TIMESPEC 0
 #endif
 
-#if RELOCO_HAS_INCLUDE(<sys/time.h>)
+#if RELOCO_HAS_INCLUDE(<sys / time.h>)
 #include <sys/time.h>
 #define RELOCO_DETAIL_DURATION_HAS_TIMEVAL 1
 #else
@@ -182,7 +182,7 @@ template <typename T> [[nodiscard]] constexpr T duration_cast(duration d) noexce
 /** @brief Built-in `duration` -> `struct timespec` conversion. */
 template <> struct duration_converter<struct timespec> {
   [[nodiscard]] static constexpr struct timespec convert(duration d) noexcept {
-    struct timespec ts {};
+    struct timespec ts{};
     ts.tv_sec = static_cast<decltype(ts.tv_sec)>(d.as_secs());
     ts.tv_nsec = static_cast<decltype(ts.tv_nsec)>(d.subsec_nanos());
     return ts;
@@ -198,7 +198,7 @@ template <> struct duration_converter<struct timespec> {
  * `timeval`'s own resolution limit). */
 template <> struct duration_converter<struct timeval> {
   [[nodiscard]] static constexpr struct timeval convert(duration d) noexcept {
-    struct timeval tv {};
+    struct timeval tv{};
     tv.tv_sec = static_cast<decltype(tv.tv_sec)>(d.as_secs());
     tv.tv_usec = static_cast<decltype(tv.tv_usec)>(d.subsec_micros());
     return tv;

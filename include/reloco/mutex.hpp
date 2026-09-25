@@ -133,7 +133,7 @@ namespace detail {
  * a relative `duration_cast<struct timespec>(timeout)`, without going
  * through `<chrono>`. */
 [[nodiscard]] inline struct timespec add_timespec(struct timespec a, struct timespec b) noexcept {
-  struct timespec r {};
+  struct timespec r{};
   r.tv_sec = a.tv_sec + b.tv_sec;
   r.tv_nsec = a.tv_nsec + b.tv_nsec;
   if (r.tv_nsec >= 1'000'000'000L) {
@@ -302,7 +302,7 @@ public:
     if (!locker.owns_lock())
       return unexpected(error::not_locked);
 
-    struct timespec now {};
+    struct timespec now{};
     clock_gettime(RELOCO_DETAIL_MUTEX_COND_CLOCKID, &now);
     struct timespec deadline = detail::add_timespec(now, duration_cast<struct timespec>(timeout));
 
@@ -352,7 +352,7 @@ namespace reloco {
 // left for reloco to translate.
 #if RELOCO_HAS_EXCEPTIONS
 #define RELOCO_DETAIL_MUTEX_LOCKING_CALL(locking_call)                                                                 \
-  try {                                                                                                                 \
+  try {                                                                                                                \
     handle_.locking_call();                                                                                            \
   } catch (const std::system_error &) {                                                                                \
     RELOCO_ASSERT(false, #locking_call "() failed");                                                                   \
