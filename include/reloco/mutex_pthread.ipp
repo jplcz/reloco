@@ -67,6 +67,18 @@ RELOCO_API void shared_mutex::unlock_shared() & noexcept {
 
 RELOCO_API bool shared_mutex::try_lock_shared() & noexcept { return pthread_rwlock_tryrdlock(&handle_) == 0; }
 
+RELOCO_API condition_variable::condition_variable() noexcept {
+#if RELOCO_DETAIL_MUTEX_MONOTONIC_CLOCK
+  pthread_condattr_t attr;
+  pthread_condattr_init(&attr);
+  pthread_condattr_setclock(&attr, RELOCO_DETAIL_MUTEX_COND_CLOCKID);
+  pthread_cond_init(&cond_, &attr);
+  pthread_condattr_destroy(&attr);
+#else
+  pthread_cond_init(&cond_, nullptr);
+#endif
+}
+
 RELOCO_API condition_variable::~condition_variable() noexcept { pthread_cond_destroy(&cond_); }
 
 RELOCO_API result<void> condition_variable::wait(std::unique_lock<mutex> &locker) & noexcept {

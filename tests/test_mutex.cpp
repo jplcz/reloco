@@ -137,3 +137,49 @@ TEST(ConditionVariableTest, WaitFailsIfLockerDoesNotOwnLock) {
   ASSERT_FALSE(res);
   EXPECT_EQ(res.error(), reloco::error::not_locked);
 }
+
+TEST(ConditionVariableTest, WaitForFailsIfLockerDoesNotOwnLock) {
+  reloco::mutex m;
+  reloco::condition_variable cv;
+  std::unique_lock<reloco::mutex> locker(m, std::defer_lock);
+  auto res = cv.wait_for(locker, reloco::duration::from_millis(10), []() { return true; });
+  ASSERT_FALSE(res);
+  EXPECT_EQ(res.error(), reloco::error::not_locked);
+}
+
+TEST(ConditionVariableTest, WaitForTimesOutWhenPredicateNeverBecomesTrue) {
+  reloco::mutex m;
+  reloco::condition_variable cv;
+
+  m.lock();
+  std::unique_lock<reloco::mutex> locker(m, std::adopt_lock);
+  auto res = cv.wait_for(locker, reloco::duration::from_millis(20), []() { return false; });
+  ASSERT_TRUE(res);
+  EXPECT_FALSE(*res);
+  EXPECT_TRUE(locker.owns_lock());
+}
+
+TEST(ConditionVariableTest, WaitForReturnsTrueWhenPredicateBecomesTrueBeforeTimeout) {
+  reloco::mutex m;
+  reloco::condition_variable cv;
+  bool ready = false;
+  bool woke = false;
+
+  std::thread waiter([&]() {
+    m.lock();
+    std::unique_lock<reloco::mutex> locker(m, std::adopt_lock);
+    auto res = cv.wait_for(locker, reloco::duration::from_secs(10), [&]() { return ready; });
+    ASSERT_TRUE(res);
+    woke = *res;
+  });
+
+  {
+    m.lock();
+    std::unique_lock<reloco::mutex> locker(m, std::adopt_lock);
+    ready = true;
+  }
+  cv.notify_one();
+  waiter.join();
+
+  EXPECT_TRUE(woke);
+}

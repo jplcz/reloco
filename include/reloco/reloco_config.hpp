@@ -235,3 +235,13 @@
 //     <valgrind/memcheck.h> is a separate, not-always-installed header, so
 //     this is opt-in only and degrades to a no-op if the header is not
 //     found on the include path.
+//
+// RELOCO_MUTEX_NO_MONOTONIC_CLOCK
+//     Forces reloco/mutex.hpp's RELOCO_MUTEX_BACKEND_PTHREAD backend to
+//     initialize condition_variable's underlying pthread_cond_t against
+//     the default CLOCK_REALTIME, even on a platform that would otherwise
+//     be auto-detected as supporting pthread_condattr_setclock(CLOCK_
+//     MONOTONIC) (POSIX's optional "Clock Selection" feature). Has no
+//     effect on RELOCO_MUTEX_BACKEND_STD (always backed directly by
+//     std::condition_variable::wait_for, whose own clock is fixed by the
+//     standard library implementation).

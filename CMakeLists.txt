@@ -237,6 +237,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_once_lock.cpp
         tests/test_scope.cpp
         tests/test_fallible_singleton.cpp
+        tests/test_duration.cpp
         tests/test_mutex.cpp
         tests/test_guarded_mutex.cpp
         tests/test_shared_ptr.cpp
