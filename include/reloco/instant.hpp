@@ -178,8 +178,8 @@ namespace detail {
  * `duration`'s own total order, seconds compared before nanoseconds),
  * `lhs.as_secs() >= rhs.as_secs()` is already guaranteed, so the whole-
  * second subtraction never needs its own overflow check. */
-[[nodiscard]] RELOCO_CONSTEXPR20 result<duration> checked_duration_diff(const duration &lhs,
-                                                                        const duration &rhs) noexcept {
+[[nodiscard]] inline RELOCO_CONSTEXPR20 result<duration> checked_duration_diff(const duration &lhs,
+                                                                               const duration &rhs) noexcept {
   if (lhs < rhs)
     return unexpected(error::invalid_argument);
 

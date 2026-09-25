@@ -9,15 +9,25 @@
  * `thread_handle`/`this_thread::current()`, matching Rust's
  * `std::thread::park`/`park_timeout`/`sleep`/`Thread`/`thread::current()`.
  *
- * A *parker* (`detail::parker`) is a one-slot wake token guarded by one
- * `mutex` + `condition_variable` pair (see `mutex.hpp`), exactly like
- * `channel.hpp`'s own locking approach: `park()`/`park_timeout(duration)`
- * block until the token becomes available (consuming it) or, for the
- * latter, until the timeout elapses first; `unpark()` makes the token
- * available and wakes a blocked (or future) `park()`/`park_timeout()`
- * call. Tokens do not accumulate -- calling `unpark()` any number of times
+ * A *parker* (`detail::parker`) is a one-slot wake token: a single
+ * `futex_word` (see `futex.hpp`), `0` (no token available) or `1` (token
+ * available) -- `park()`/`park_timeout(duration)` block (via
+ * `futex_wait`/`futex_wait_timeout`) until the token becomes available
+ * (consuming it, via an atomic exchange back to `0`) or, for the latter,
+ * until the timeout elapses first; `unpark()` makes the token available
+ * (an atomic store of `1`) and wakes a blocked (or future) `park()`/
+ * `park_timeout()` call via `futex_wake_one` (at most one thread -- the
+ * parker's own owning thread -- ever waits on a given parker's word).
+ * Tokens do not accumulate -- calling `unpark()` any number of times
  * before the thread next parks is equivalent to calling it once, matching
  * Rust's own semantics exactly.
+ *
+ * `park_timeout`'s deadline is tracked with `instant.hpp`'s `instant`
+ * (captured once as `instant::now() + timeout` before the wait loop
+ * begins) rather than re-arming a fresh `timeout`-length
+ * `futex_wait_timeout` call after every spurious wakeup -- otherwise a
+ * thread repeatedly (if rarely) spuriously woken just before its deadline
+ * could be kept parked far longer than the caller asked for.
  *
  * Every OS thread lazily owns exactly one parker, created on first use by
  * `this_thread::current()`/`park()`/`park_timeout()`/`sleep_for()` and
@@ -31,31 +41,32 @@
  * `shared_ptr` keeps the parker itself alive regardless.
  *
  * `sleep_for(duration)` is unrelated to parking: it blocks the calling
- * thread for (at least) the given duration unconditionally, using a
- * throwaway, always-false-predicate `condition_variable::wait_for` (see
- * `mutex.hpp`) rather than `<chrono>`/`<thread>`'s own sleep, so it stays
- * available under every `mutex.hpp` backend, including
- * `RELOCO_MUTEX_BACKEND_PTHREAD`'s monotonic-clock-aware wait.
+ * thread for (at least) the given duration unconditionally, waiting on a
+ * throwaway, never-woken `futex_word` (see `futex.hpp`) rather than
+ * `<chrono>`/`<thread>`'s own sleep, so it stays available under every
+ * `futex.hpp` backend and never touches the calling thread's own park
+ * token.
  *
  * Unlike Rust's `park_timeout`/`park_deadline` (which return nothing --
  * the caller must re-check its own condition after either call returns),
  * `park_timeout` here returns `bool`: `true` if a token was consumed
  * (`unpark()` won the race), `false` if the timeout elapsed first --
- * matching `condition_variable::wait_for`'s own `result<bool>` outcome
- * shape elsewhere in reloco. Still safe to ignore, exactly like Rust's
- * spurious-wakeup-tolerant contract: a caller that ignores the return
- * value and simply re-checks its own condition afterward behaves
- * identically to Rust's version.
+ * matching `futex_wait_timeout`'s own boolean outcome shape. Still safe
+ * to ignore, exactly like Rust's spurious-wakeup-tolerant contract: a
+ * caller that ignores the return value and simply re-checks its own
+ * condition afterward behaves identically to Rust's version.
  */
 
+#include "detail/assert.hpp"
 #include "duration.hpp"
-#include "mutex.hpp"
+#include "futex.hpp"
+#include "instant.hpp"
 #include "send_sync.hpp"
 #include "shared_ptr.hpp"
 #include "thread.hpp"
 #include "tls_provider.hpp"
 
-#include <mutex>
+#include <atomic>
 
 namespace reloco {
 
@@ -68,11 +79,11 @@ namespace this_thread {
 namespace detail {
 
 /**
- * @brief One-slot wake token guarded by a `mutex` + `condition_variable`
- * pair. Not copyable/movable -- always accessed through a `shared_ptr`
- * (see `current_thread_parker()` below), so every clone of a
- * `thread_handle` (or the thread's own TLS slot) shares the exact same
- * instance.
+ * @brief One-slot wake token: a single `futex_word` (see `futex.hpp`),
+ * `0` (no token) or `1` (token available). Not copyable/movable --
+ * always accessed through a `shared_ptr` (see `current_thread_parker()`
+ * below), so every clone of a `thread_handle` (or the thread's own TLS
+ * slot) shares the exact same instance.
  */
 class parker {
 public:
@@ -83,48 +94,51 @@ public:
   /** @brief Blocks until a token is available, then consumes it. Returns
    * immediately (still consuming the token) if one was already available. */
   void park() noexcept {
-    std::unique_lock<mutex> lock(mutex_);
-    if (available_) {
-      available_ = false;
+    if (available_.exchange(0, std::memory_order_acquire) == 1)
       return;
+    for (;;) {
+      futex_wait(available_, 0);
+      if (available_.exchange(0, std::memory_order_acquire) == 1)
+        return;
     }
-    auto wait_result = cv_.wait(lock, [this] { return available_; });
-    RELOCO_ASSERT(wait_result.has_value(), "parker::park: condition_variable::wait failed");
-    available_ = false;
   }
 
   /** @brief Bounded `park()`. Returns `true` if a token was consumed
    * (available immediately, or `unpark()` won the race before `timeout`
    * elapsed), `false` if the timeout elapsed first (no token consumed). */
   [[nodiscard]] bool park_timeout(duration timeout) noexcept {
-    std::unique_lock<mutex> lock(mutex_);
-    if (available_) {
-      available_ = false;
+    if (available_.exchange(0, std::memory_order_acquire) == 1)
       return true;
+    // Captured once, up front: futex_wait_timeout's own timeout is
+    // relative, so re-arming a fresh timeout-length wait after every
+    // spurious wakeup would let a rarely-but-repeatedly-spuriously-woken
+    // thread stay parked far longer than timeout -- re-deriving the
+    // remaining time from a fixed deadline instead bounds the total wait
+    // correctly.
+    auto deadline = instant::now() + timeout;
+    for (;;) {
+      auto now = instant::now();
+      if (now >= deadline)
+        return available_.exchange(0, std::memory_order_acquire) == 1;
+      futex_wait_timeout(available_, 0, deadline - now);
+      if (available_.exchange(0, std::memory_order_acquire) == 1)
+        return true;
     }
-    auto wait_result = cv_.wait_for(lock, timeout, [this] { return available_; });
-    RELOCO_ASSERT(wait_result.has_value(), "parker::park_timeout: condition_variable::wait_for failed");
-    if (!*wait_result)
-      return false;
-    available_ = false;
-    return true;
   }
 
   /** @brief Makes a token available, waking a currently-blocked (or the
    * very next) `park()`/`park_timeout()` call. Idempotent: does not
    * accumulate beyond one outstanding token. */
   void unpark() noexcept {
-    {
-      std::lock_guard<mutex> lock(mutex_);
-      available_ = true;
-    }
-    cv_.notify_one();
+    available_.store(1, std::memory_order_release);
+    // At most one thread -- this parker's own owning thread -- ever
+    // waits on available_, so waking one is exactly as effective as
+    // waking all here, and cheaper.
+    futex_wake_one(available_);
   }
 
 private:
-  mutex mutex_;
-  condition_variable cv_;
-  bool available_ = false;
+  futex_word available_{0};
 };
 
 struct current_thread_parker_tag {};
@@ -204,15 +218,21 @@ inline void park() noexcept {
 
 /** @brief Blocks the calling thread for (at least) `timeout`,
  * unconditionally -- matching Rust's `std::thread::sleep`. Unrelated to
- * parking: uses a throwaway `mutex` + `condition_variable` pair private to
- * this call, so it never consumes or is affected by the calling thread's
- * own park token. */
+ * parking: waits on a throwaway, never-woken `futex_word` private to this
+ * call (so it never consumes or is affected by the calling thread's own
+ * park token), re-deriving the remaining time from a fixed deadline after
+ * every spurious wakeup -- exactly like `detail::parker::park_timeout`'s
+ * own deadline loop -- so the "at least `timeout`" guarantee holds even
+ * if `futex_wait_timeout` returns early. */
 inline void sleep_for(duration timeout) noexcept {
-  mutex sleep_mutex;
-  condition_variable sleep_cv;
-  std::unique_lock<mutex> lock(sleep_mutex);
-  auto wait_result = sleep_cv.wait_for(lock, timeout, [] { return false; });
-  RELOCO_ASSERT(wait_result.has_value(), "this_thread::sleep_for: condition_variable::wait_for failed");
+  futex_word never_woken{0};
+  auto deadline = instant::now() + timeout;
+  for (;;) {
+    auto now = instant::now();
+    if (now >= deadline)
+      return;
+    futex_wait_timeout(never_woken, 0, deadline - now);
+  }
 }
 
 } // namespace this_thread

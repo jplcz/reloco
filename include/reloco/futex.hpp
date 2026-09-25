@@ -13,9 +13,10 @@
  * full `mutex` + `condition_variable` pair (see `mutex.hpp`) when all
  * they actually need is "block until this word changes"/"wake whoever is
  * blocked on this word": `barrier.hpp`, `scope.hpp`, `once_lock.hpp`,
- * `fallible_singleton.hpp`'s `atomic_fallible_singleton<T>`, and
- * `tls_provider.hpp`'s `RELOCO_TLS_MODEL_PTHREAD` backend all use it
- * today.
+ * `fallible_singleton.hpp`'s `atomic_fallible_singleton<T>`,
+ * `tls_provider.hpp`'s `RELOCO_TLS_MODEL_PTHREAD` backend, and
+ * `park.hpp`'s `detail::parker` (backing `this_thread::park`/
+ * `park_timeout`) all use it today.
  *
  * Backend selection, mirroring `mutex.hpp`'s `RELOCO_MUTEX_BACKEND_*`
  * customization point -- select **at most one**: `RELOCO_FUTEX_BACKEND_

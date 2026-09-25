@@ -69,7 +69,7 @@ where, not a tutorial.
 | `tls_provider.hpp` | `tls_provider<T, Tag>` | Tag-differentiated, fallible, allocator-aware thread-local storage, selectable (`RELOCO_TLS_MODEL`) between `thread_local`, pthread keys, a custom OS/kernel backend, or a single-threaded global |
 | `thread.hpp` | `thread`, `thread_id`, `this_thread::get_id/yield`, `spawn`, `join_handle<R>` | Backend-selected (`pthread`/`std`/custom) OS thread primitive plus a Rust-like `spawn`/`JoinHandle<T>` layer built on `is_send`/`is_sync` |
 | `channel.hpp` | `channel<T>`, `sender<T>`, `receiver<T>` | Multi-producer, single-consumer channel matching Rust's `std::sync::mpsc`, built on `mutex.hpp` + `shared_ptr` + `is_send`/`is_sync` |
-| `park.hpp` | `thread_handle`, `this_thread::current/park/park_timeout/sleep_for` | Rust-like `thread::park`/`park_timeout`/`sleep`/`Thread`, built on `tls_provider.hpp` + `mutex.hpp` + `shared_ptr` |
+| `park.hpp` | `thread_handle`, `this_thread::current/park/park_timeout/sleep_for` | Rust-like `thread::park`/`park_timeout`/`sleep`/`Thread`, built on `tls_provider.hpp` + `futex.hpp` + `instant.hpp` + `shared_ptr` |
 | `once_lock.hpp` | `once_lock<T>` | Write-once, read-many-times cell matching Rust's `std::sync::OnceLock<T>`, usable as a plain field/local (unlike `fallible_singleton.hpp`'s static, one-per-`T` global) |
 | `scope.hpp` | `scope`, `thread_scope`, `scoped_join_handle<R>` | Matches Rust's `std::thread::scope`: spawns threads guaranteed to finish before `scope()` returns, so they may safely borrow references to the caller's stack frame |
 | `lifetime.hpp` | `RELOCO_LIFETIMEBOUND`, `RELOCO_OWNER`, `RELOCO_POINTER`, `RELOCO_UNSAFE_BUFFER_USAGE`, ... | Compiler-specific lifetime/ownership/safe-buffers annotation macros |
@@ -2332,8 +2332,7 @@ for (int value : rx.try_iter()) // try_recv() under the hood; never blocks
 
 Rust's `std::thread::park`/`park_timeout`/`sleep`/`Thread`/
 `thread::current()`. Every OS thread lazily owns exactly one *parker* --
-a one-slot wake token guarded by one `mutex` + `condition_variable` pair
-(see `mutex.hpp`), matching `channel.hpp`'s own locking approach --
+a one-slot wake token backed by a `futex_word` (see `futex.hpp`) --
 created on first use and cached for the thread's lifetime in a
 `tls_provider<shared_ptr<...>, ...>` (`RELOCO_TLS_MODEL`-selected, see
 `tls_provider.hpp`) slot.
@@ -2362,16 +2361,18 @@ until its token becomes available (consuming it), returning immediately
 `park_timeout`/`park_deadline` (which return nothing -- the caller must
 re-check its own condition after either call returns), `park_timeout`
 here returns `bool`: `true` if a token was consumed, `false` if the
-timeout elapsed first, matching `condition_variable::wait_for`'s own
-`result<bool>` outcome shape elsewhere in reloco. Still safe to ignore,
-exactly like Rust's spurious-wakeup-tolerant contract.
+timeout elapsed first, matching `futex_wait_timeout`'s/
+`condition_variable::wait_for`'s own boolean/`result<bool>` outcome shape
+elsewhere in reloco. Still safe to ignore, exactly like Rust's
+spurious-wakeup-tolerant contract.
 
 `this_thread::sleep_for(duration)` is unrelated to parking: it blocks the
-calling thread for (at least) the given duration unconditionally, via a
-throwaway, always-false-predicate `condition_variable::wait_for` private
-to the call, so it never consumes or is affected by the calling thread's
-own park token, and stays available under every `mutex.hpp` backend
-(including `RELOCO_MUTEX_BACKEND_PTHREAD`'s monotonic-clock-aware wait).
+calling thread for (at least) the given duration unconditionally, waiting
+on a throwaway, never-woken `futex_word` (see `futex.hpp`) private to the
+call -- re-deriving the remaining time from a fixed deadline
+(`instant::now() + timeout`) after every spurious wakeup -- so it never
+consumes or is affected by the calling thread's own park token, and stays
+available under every `futex.hpp` backend.
 
 ## `once_lock<T>`
 

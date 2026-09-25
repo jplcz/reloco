@@ -24,8 +24,10 @@ use instead of a full `mutex` + `condition_variable` pair (see
 [`mutex.hpp`](reference.md)) when all they actually need is "block until
 this word changes" / "wake whoever is blocked on this word":
 `barrier.hpp`, `scope.hpp`, `once_lock.hpp`, `fallible_singleton.hpp`'s
-`atomic_fallible_singleton<T>`, and `tls_provider.hpp`'s
-`RELOCO_TLS_MODEL_PTHREAD` backend all use it today.
+`atomic_fallible_singleton<T>`, `tls_provider.hpp`'s
+`RELOCO_TLS_MODEL_PTHREAD` backend, and `park.hpp`'s `detail::parker`/
+`this_thread::sleep_for` (backing `this_thread::park`/`park_timeout`/
+`sleep_for`) all use it today.
 
 `futex_wait` tolerates spurious wakeups (it may return even though `word`
 still equals `expected`), exactly like `condition_variable::wait` --
