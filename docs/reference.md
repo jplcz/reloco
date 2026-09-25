@@ -65,6 +65,7 @@ where, not a tutorial.
 | `relocatable.hpp` | `is_trivially_relocatable<T>` (+ C++20 `trivially_relocatable`) | Marks types safely movable by copying bytes and abandoning the source |
 | `send_sync.hpp` | `is_send<T>`, `is_sync<T>` (+ C++20 `sendable`/`syncable`) | Marks types sound to transfer to another thread (`is_send`) or share concurrently (`is_sync`), matching Rust's `Send`/`Sync` |
 | `thread.hpp` | `thread`, `thread_id`, `this_thread::get_id/yield`, `spawn`, `join_handle<R>` | Backend-selected (`pthread`/`std`/custom) OS thread primitive plus a Rust-like `spawn`/`JoinHandle<T>` layer built on `is_send`/`is_sync` |
+| `channel.hpp` | `channel<T>`, `sender<T>`, `receiver<T>` | Multi-producer, single-consumer channel matching Rust's `std::sync::mpsc`, built on `mutex.hpp` + `shared_ptr` + `is_send`/`is_sync` |
 | `lifetime.hpp` | `RELOCO_LIFETIMEBOUND`, `RELOCO_OWNER`, `RELOCO_POINTER`, `RELOCO_UNSAFE_BUFFER_USAGE`, ... | Compiler-specific lifetime/ownership/safe-buffers annotation macros |
 | `rvalue_safety.hpp` | `RELOCO_BLOCK_RVALUE_ACCESS` | Deletes rvalue accessors that would otherwise dangle past a temporary |
 | `reloco_config.hpp` | (user override header hook) | How to override library-wide defaults from `reloco_user_config.hpp` |
@@ -2100,6 +2101,53 @@ dropping a `JoinHandle` silently detaches the thread), `join_handle<R>`'s
 destructor blocks and joins if still joinable, matching C++20
 `std::jthread`'s safer default; call `detach()` explicitly to opt in to
 Rust's original behavior.
+
+## `channel<T>` / `sender<T>` / `receiver<T>`
+
+`include/reloco/channel.hpp`
+
+A multi-producer, single-consumer channel matching Rust's
+`std::sync::mpsc::channel`. `channel<T>(allocator_ref =
+default_allocator())` returns a `result<std::pair<sender<T>, receiver<T>>>`
+sharing one heap-allocated, intrusively-linked-list queue guarded by one
+`mutex` + `condition_variable` (see `mutex.hpp`), kept alive by an
+atomically-refcounted `shared_ptr` (not `rc<T>`, which is deliberately
+`!Send`/`!Sync` -- see `send_sync.hpp`).
+
+```cpp
+auto ends = reloco::channel<int>();
+if (ends) {
+  auto &[tx, rx] = *ends;
+  tx.try_send(42);              // result<void>
+  auto value = rx.recv();       // blocks; result<int>
+}
+```
+
+`sender<T>` is `Clone`-like via an ordinary copy constructor (matching
+`rc<T>`/`shared_ptr<T>`'s own copy-is-clone convention, see above) -- each
+clone increments a shared count and may call `try_send` from any thread,
+independently. `try_send(T)` never blocks the sender: it fails with the
+allocator's own error if the node allocation fails, or
+`error::invalid_state` if the receiver has already been dropped (matching
+Rust's `SendError<T>`, minus recovering the un-sent value -- reloco's
+single `error` enum carries no payload).
+
+`receiver<T>` is move-only: exactly one consumer is ever meant to call
+`recv()`/`try_recv()`. `recv()` blocks until a value is sent or every
+`sender<T>` clone has been dropped, failing with `error::container_empty`
+in the latter case (matching Rust's `RecvError`). `try_recv()` never
+blocks: it fails with `error::try_again` if the queue is momentarily empty
+but at least one sender remains (matching `TryRecvError::Empty`), or
+`error::container_empty` if it is empty and every sender has already been
+dropped (matching `TryRecvError::Disconnected`).
+
+`T` must be `std::is_nothrow_move_constructible_v`, like every other
+reloco container element requirement. `is_send<sender<T>>`/
+`is_send<receiver<T>>` forward to `is_send<T>`; `is_sync<sender<T>>` is
+`is_send<T>` too (every access is fully mutex-guarded, matching current
+Rust where `mpsc::Sender<T>: Sync` when `T: Send`); `is_sync<receiver<T>>`
+is always `false`, deliberately matching Rust's single-consumer API
+contract rather than the implementation's own (looser) actual guarantee.
 
 ## `alignment_of<T>`
 

@@ -9,6 +9,7 @@
 #include <reloco/any.hpp>
 #include <reloco/array.hpp>
 #include <reloco/bytes.hpp>
+#include <reloco/channel.hpp>
 #include <reloco/checked.hpp>
 #include <reloco/checked_value.hpp>
 #include <reloco/collection_view.hpp>
