@@ -94,41 +94,52 @@ RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
 namespace reloco {
 
-template <typename T, std::size_t Capacity> class RELOCO_OWNER inline_vector {
+namespace detail {
+
+template <typename T, std::size_t Capacity> struct inline_vector_storage {
+  alignas(effective_alignment_v<T>) std::byte storage_bytes_[sizeof(T) * Capacity];
+};
+
+} // namespace detail
+
+template <typename T, std::size_t Capacity>
+class RELOCO_OWNER inline_vector : detail::inline_vector_storage<T, Capacity>,
+                                   public detail::typed_vector_base<T, detail::inline_vector_base> {
   static_assert(Capacity > 0, "inline_vector requires a positive Capacity; there is no zero-capacity specialization "
                               "(see array<T, 0> for that shape).");
 
+  using base_t = detail::typed_vector_base<T, detail::inline_vector_base>;
+
 public:
-  using value_type = T;
-  using size_type = std::size_t;
-  using difference_type = std::ptrdiff_t;
-  using reference = T &;
-  using const_reference = const T &;
-  using pointer = T *;
-  using const_pointer = const T *;
-  using iterator = T *;
-  using const_iterator = const T *;
-  using reverse_iterator = std::reverse_iterator<iterator>;
-  using const_reverse_iterator = std::reverse_iterator<const_iterator>;
+  using typename base_t::allocator_type;
+  using typename base_t::const_iterator;
+  using typename base_t::const_pointer;
+  using typename base_t::const_reference;
+  using typename base_t::difference_type;
+  using typename base_t::iterator;
+  using typename base_t::pointer;
+  using typename base_t::reference;
+  using typename base_t::size_type;
+  using typename base_t::value_type;
 
-  RELOCO_BLOCK_RVALUE_ACCESS(T);
-
-  constexpr inline_vector() noexcept = default;
+  constexpr inline_vector() noexcept : base_t(this->storage_bytes_, Capacity) {}
 
   inline_vector(const inline_vector &) = delete;
   inline_vector &operator=(const inline_vector &) = delete;
 
-  inline_vector(inline_vector &&other) noexcept { relocate_from(other); }
+  inline_vector(inline_vector &&other) noexcept : base_t(this->storage_bytes_, Capacity) {
+    base_t::move_construct_from_base(detail::metadata_for<T>, std::move(other));
+  }
 
   inline_vector &operator=(inline_vector &&other) noexcept {
     if (this != &other) {
-      clear();
-      relocate_from(other);
+      this->clear();
+      base_t::move_assign_from_base(detail::metadata_for<T>, std::move(other));
     }
     return *this;
   }
 
-  ~inline_vector() noexcept { clear(); }
+  ~inline_vector() noexcept { this->destroy_elements(detail::metadata_for<T>); }
 
   // ---- fallible cloning (see concepts.hpp) ----
 
@@ -145,24 +156,22 @@ public:
    */
   [[nodiscard]] result<inline_vector> try_clone(allocator_ref alloc) const noexcept {
     inline_vector clone;
-    if constexpr (!has_try_clone_v<T> && std::is_trivially_copyable_v<T>) {
-      if (size_ > 0)
-        std::memcpy(clone.slot(0), slot(0), size_ * sizeof(T));
-      clone.size_ = size_;
-    } else {
-      for (size_type i = 0; i < size_; ++i) {
-        auto elem_res = construction_helpers::try_clone_at<T>(alloc, clone.slot(i), *slot(i));
-        if (!elem_res) {
-          if constexpr (!std::is_trivially_destructible_v<T>) {
-            for (size_type j = 0; j < clone.size_; ++j)
-              clone.slot(j)->~T();
-          }
-          clone.size_ = 0;
-          return unexpected(elem_res.error());
-        }
-        ++clone.size_;
+    if (this->size_ == 0)
+      return clone;
+
+    if (auto reserve_res = clone.try_reserve(this->size_); !reserve_res) {
+      return unexpected(reserve_res.error());
+    }
+
+    if (this->operations_->clone_range) {
+      if (auto clone_res =
+              this->operations_->clone_range(detail::metadata_for<T>, this->data_, clone.data_, this->size_, alloc);
+          !clone_res) {
+        return unexpected(clone_res.error());
       }
     }
+
+    clone.size_ = this->size_;
     return clone;
   }
 
@@ -193,12 +202,12 @@ public:
    * container.
    */
   [[nodiscard]] result<vector<T>> try_to_vector(allocator_ref alloc) const & noexcept {
-    auto vec_res = vector<T>::try_allocate(alloc, size_);
+    auto vec_res = vector<T>::try_allocate(alloc, this->size());
     if (!vec_res)
       return unexpected(vec_res.error());
     vector<T> vec = std::move(*vec_res);
-    for (size_type i = 0; i < size_; ++i) {
-      auto clone_res = construction_helpers::try_clone<T>(alloc, *slot(i));
+    for (size_type i = 0; i < this->size(); ++i) {
+      auto clone_res = construction_helpers::try_clone<T>(alloc, (*this)[i]);
       if (!clone_res)
         return unexpected(clone_res.error());
       auto push_res = vec.try_push_back(std::move(*clone_res));
@@ -220,20 +229,20 @@ public:
    * failure).
    */
   [[nodiscard]] result<vector<T>> try_to_vector(allocator_ref alloc) && noexcept {
-    auto vec_res = vector<T>::try_allocate(alloc, size_);
+    auto vec_res = vector<T>::try_allocate(alloc, this->size());
     if (!vec_res) {
-      clear();
+      this->clear();
       return unexpected(vec_res.error());
     }
     vector<T> vec = std::move(*vec_res);
-    for (size_type i = 0; i < size_; ++i) {
-      auto push_res = vec.try_push_back(std::move(*slot(i)));
+    for (size_type i = 0; i < this->size(); ++i) {
+      auto push_res = vec.try_push_back(std::move((*this)[i]));
       if (!push_res) {
-        clear();
+        this->clear();
         return unexpected(push_res.error());
       }
     }
-    clear();
+    this->clear();
     return vec;
   }
 
@@ -245,452 +254,8 @@ public:
     return std::move(*this).try_to_vector(default_allocator());
   }
 
-  // ---- capacity ----
-
   [[nodiscard]] static constexpr size_type capacity() noexcept { return Capacity; }
-  [[nodiscard]] constexpr size_type size() const noexcept { return size_; }
-  [[nodiscard]] constexpr bool empty() const noexcept { return size_ == 0; }
-  [[nodiscard]] constexpr bool full() const noexcept { return size_ == Capacity; }
-
-  // ---- mutation ----
-
-  /**
-   * @brief Constructs a new element in place at the end of the vector.
-   * Fails with `error::capacity_exceeded` if `size() == Capacity`.
-   */
-  template <typename... Args>
-  [[nodiscard]] result<std::reference_wrapper<T>> try_emplace_back(Args &&...args) & noexcept RELOCO_LIFETIMEBOUND {
-    if (size_ == Capacity)
-      return unexpected(error::capacity_exceeded);
-    T *ptr = slot(size_);
-    auto res = construction_helpers::try_construct<T>(default_allocator(), ptr, std::forward<Args>(args)...);
-    if (!res)
-      return unexpected(res.error());
-    ++size_;
-    return std::ref(*ptr);
-  }
-
-  /**
-   * @brief Move-appends @p value to the end of the vector. Fails with
-   * `error::capacity_exceeded` if `size() == Capacity`.
-   */
-  [[nodiscard]] result<std::reference_wrapper<T>> try_push_back(T value) & noexcept RELOCO_LIFETIMEBOUND {
-    return try_emplace_back(std::move(value));
-  }
-
-  /**
-   * @brief Removes the last element. Fails with `error::container_empty` if
-   * the vector is empty.
-   */
-  [[nodiscard]] result<void> try_pop_back() & noexcept {
-    if (size_ == 0)
-      return unexpected(error::container_empty);
-    --size_;
-    if constexpr (!std::is_trivially_destructible_v<T>)
-      slot(size_)->~T();
-    return {};
-  }
-
-  /**
-   * @brief Resizes the vector to contain @p count elements. Fails with
-   * `error::capacity_exceeded` if @p count > `Capacity`.
-   *
-   * If @p count < size(), the trailing elements are destroyed. If @p count >
-   * size(), each new slot is default-constructed. Requires `T` to be
-   * default-constructible; use `try_resize(count, value)` to fill new
-   * elements with a copy of @p value instead.
-   *
-   * When `T` is trivially default-constructible, the newly added range is
-   * bulk zero-filled with a single `std::memset` rather than looping a
-   * placement-new per element.
-   */
-  [[nodiscard]] result<void> try_resize(size_type count) & noexcept {
-    static_assert(std::is_default_constructible_v<T>,
-                  "try_resize(count) requires T to be default-constructible; use try_resize(count, value) instead.");
-    if (count <= size_) {
-      destroy_range(count, size_);
-      size_ = count;
-      return {};
-    }
-
-    if (count > Capacity)
-      return unexpected(error::capacity_exceeded);
-
-    if constexpr (std::is_trivially_default_constructible_v<T>) {
-      std::memset(static_cast<void *>(slot(size_)), 0, (count - size_) * sizeof(T));
-      size_ = count;
-    } else {
-      size_type i = size_;
-      for (; i < count; ++i) {
-        auto ctor_res = construction_helpers::try_construct<T>(default_allocator(), slot(i));
-        if (!ctor_res) {
-          destroy_range(size_, i);
-          return unexpected(ctor_res.error());
-        }
-      }
-      size_ = count;
-    }
-    return {};
-  }
-
-  /**
-   * @brief Resizes the vector to contain @p count elements, copy-constructing
-   * @p value into any newly added slots. Fails with
-   * `error::capacity_exceeded` if @p count > `Capacity`.
-   *
-   * When `T` is trivially copyable, the newly added range is filled via a
-   * plain assignment loop rather than going through the fallible
-   * construction dispatcher per element.
-   */
-  [[nodiscard]] result<void> try_resize(size_type count, const T &value) & noexcept {
-    if (count <= size_) {
-      destroy_range(count, size_);
-      size_ = count;
-      return {};
-    }
-
-    if (count > Capacity)
-      return unexpected(error::capacity_exceeded);
-
-    if constexpr (std::is_trivially_copyable_v<T>) {
-      for (size_type i = size_; i < count; ++i)
-        *slot(i) = value;
-      size_ = count;
-    } else {
-      size_type i = size_;
-      for (; i < count; ++i) {
-        auto ctor_res = construction_helpers::try_construct<T>(default_allocator(), slot(i), value);
-        if (!ctor_res) {
-          destroy_range(size_, i);
-          return unexpected(ctor_res.error());
-        }
-      }
-      size_ = count;
-    }
-    return {};
-  }
-
-  /**
-   * @brief Destroys every element and resets size to zero.
-   */
-  void clear() noexcept {
-    if constexpr (!std::is_trivially_destructible_v<T>) {
-      for (size_type i = 0; i < size_; ++i)
-        slot(i)->~T();
-    }
-    size_ = 0;
-  }
-
-  /**
-   * @brief Removes the element at @p index, shifting subsequent elements
-   * down by one.
-   */
-  [[nodiscard]] result<void> try_erase_at(size_type index) & noexcept {
-    if (index >= size_)
-      return unexpected(error::out_of_bounds);
-
-    if constexpr (!std::is_trivially_destructible_v<T>)
-      slot(index)->~T();
-
-    const size_type move_count = size_ - index - 1;
-    if (move_count > 0) {
-      if constexpr (is_trivially_relocatable_v<T>) {
-        std::memmove(slot(index), slot(index + 1), move_count * sizeof(T));
-      } else {
-        static_assert(std::is_nothrow_move_constructible_v<T>, "reloco requires noexcept move-construction.");
-        for (size_type i = index; i + 1 < size_; ++i) {
-          new (slot(i)) T(std::move(*slot(i + 1)));
-          if constexpr (!std::is_trivially_destructible_v<T>)
-            slot(i + 1)->~T();
-        }
-      }
-    }
-    --size_;
-    return {};
-  }
-
-  /**
-   * @brief Rust `Vec::retain` equivalent: keeps only the elements for
-   * which `pred(element)` returns `true`, destroying and compacting away
-   * the rest in a single forward pass. Never allocates and cannot fail.
-   */
-  template <typename Pred> void retain(Pred &&pred) & noexcept {
-    size_type write = 0;
-    for (size_type read = 0; read < size_; ++read) {
-      if (pred(std::as_const(*slot(read)))) {
-        if (write != read) {
-          if constexpr (is_trivially_relocatable_v<T>) {
-            std::memmove(slot(write), slot(read), sizeof(T));
-          } else {
-            new (slot(write)) T(std::move(*slot(read)));
-            if constexpr (!std::is_trivially_destructible_v<T>)
-              slot(read)->~T();
-          }
-        }
-        ++write;
-      } else if constexpr (!std::is_trivially_destructible_v<T>) {
-        slot(read)->~T();
-      }
-    }
-    size_ = write;
-  }
-
-  /**
-   * @brief Rust `Vec::dedup_by` equivalent: removes consecutive elements
-   * for which `same(prev, current)` returns `true`, keeping the first of
-   * each run.
-   */
-  template <typename BinPred> void dedup_by(BinPred &&same) & noexcept {
-    if (size_ < 2)
-      return;
-    size_type write = 1;
-    for (size_type read = 1; read < size_; ++read) {
-      if (same(std::as_const(*slot(write - 1)), std::as_const(*slot(read)))) {
-        if constexpr (!std::is_trivially_destructible_v<T>)
-          slot(read)->~T();
-        continue;
-      }
-      if (write != read) {
-        if constexpr (is_trivially_relocatable_v<T>) {
-          std::memmove(slot(write), slot(read), sizeof(T));
-        } else {
-          new (slot(write)) T(std::move(*slot(read)));
-          if constexpr (!std::is_trivially_destructible_v<T>)
-            slot(read)->~T();
-        }
-      }
-      ++write;
-    }
-    size_ = write;
-  }
-
-  /**
-   * @brief Rust `Vec::dedup` equivalent: removes consecutive elements
-   * that compare equal via `operator==`.
-   */
-  void dedup() & noexcept {
-    dedup_by([](const T &a, const T &b) noexcept { return a == b; });
-  }
-
-  /**
-   * @brief Constructs a new element in place at @p index, shifting
-   * subsequent elements up by one. Fails with `error::capacity_exceeded`
-   * if `size() == Capacity`.
-   *
-   * The new element is fully constructed off to the side (via
-   * `construction_helpers::try_allocate`) before any existing element is
-   * moved, so a construction failure leaves the vector completely
-   * unmodified.
-   */
-  template <typename... Args>
-  [[nodiscard]] result<std::reference_wrapper<T>> try_insert_at(size_type index,
-                                                                Args &&...args) & noexcept RELOCO_LIFETIMEBOUND {
-    if (index > size_)
-      return unexpected(error::out_of_bounds);
-    if (size_ == Capacity)
-      return unexpected(error::capacity_exceeded);
-
-    auto built = construction_helpers::try_allocate<T>(default_allocator(), std::forward<Args>(args)...);
-    if (!built)
-      return unexpected(built.error());
-
-    const size_type move_count = size_ - index;
-    if (move_count > 0) {
-      if constexpr (is_trivially_relocatable_v<T>) {
-        std::memmove(slot(index + 1), slot(index), move_count * sizeof(T));
-      } else {
-        static_assert(std::is_nothrow_move_constructible_v<T>, "reloco requires noexcept move-construction.");
-        for (size_type i = size_; i > index; --i) {
-          new (slot(i)) T(std::move(*slot(i - 1)));
-          if constexpr (!std::is_trivially_destructible_v<T>)
-            slot(i - 1)->~T();
-        }
-      }
-    }
-
-    static_assert(std::is_nothrow_move_constructible_v<T>, "reloco requires noexcept move-construction.");
-    T *ptr = new (slot(index)) T(std::move(*built));
-    ++size_;
-    return std::ref(*ptr);
-  }
-
-  // ---- element access ----
-
-  [[nodiscard]] result<std::reference_wrapper<T>> try_at(size_type index) & noexcept RELOCO_LIFETIMEBOUND {
-    if (index >= size_)
-      return unexpected(error::out_of_bounds);
-    return std::ref(*slot(index));
-  }
-
-  [[nodiscard]] result<std::reference_wrapper<const T>> try_at(size_type index) const & noexcept RELOCO_LIFETIMEBOUND {
-    if (index >= size_)
-      return unexpected(error::out_of_bounds);
-    return std::cref(*slot(index));
-  }
-
-  [[nodiscard]] T &operator[](size_type index) & noexcept RELOCO_LIFETIMEBOUND {
-    RELOCO_ASSERT(index < size_, "inline_vector index out of bounds");
-    return *slot(index);
-  }
-
-  [[nodiscard]] const T &operator[](size_type index) const & noexcept RELOCO_LIFETIMEBOUND {
-    RELOCO_ASSERT(index < size_, "inline_vector index out of bounds");
-    return *slot(index);
-  }
-
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE T &unsafe_at(size_type index) & noexcept RELOCO_LIFETIMEBOUND {
-    RELOCO_DEBUG_ASSERT(index < size_, "inline_vector index out of bounds");
-    return *slot(index);
-  }
-
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE const T &unsafe_at(size_type index) const & noexcept RELOCO_LIFETIMEBOUND {
-    RELOCO_DEBUG_ASSERT(index < size_, "inline_vector index out of bounds");
-    return *slot(index);
-  }
-
-  [[nodiscard]] T &front() & noexcept RELOCO_LIFETIMEBOUND {
-    RELOCO_ASSERT(!empty(), "inline_vector is empty");
-    return *slot(0);
-  }
-
-  [[nodiscard]] const T &front() const & noexcept RELOCO_LIFETIMEBOUND {
-    RELOCO_ASSERT(!empty(), "inline_vector is empty");
-    return *slot(0);
-  }
-
-  [[nodiscard]] T &back() & noexcept RELOCO_LIFETIMEBOUND {
-    RELOCO_ASSERT(!empty(), "inline_vector is empty");
-    return *slot(size_ - 1);
-  }
-
-  [[nodiscard]] const T &back() const & noexcept RELOCO_LIFETIMEBOUND {
-    RELOCO_ASSERT(!empty(), "inline_vector is empty");
-    return *slot(size_ - 1);
-  }
-
-  [[nodiscard]] result<std::reference_wrapper<T>> try_front() & noexcept RELOCO_LIFETIMEBOUND {
-    if (empty())
-      return unexpected(error::container_empty);
-    return std::ref(*slot(0));
-  }
-
-  [[nodiscard]] result<std::reference_wrapper<const T>> try_front() const & noexcept RELOCO_LIFETIMEBOUND {
-    if (empty())
-      return unexpected(error::container_empty);
-    return std::cref(*slot(0));
-  }
-
-  [[nodiscard]] result<std::reference_wrapper<T>> try_back() & noexcept RELOCO_LIFETIMEBOUND {
-    if (empty())
-      return unexpected(error::container_empty);
-    return std::ref(*slot(size_ - 1));
-  }
-
-  [[nodiscard]] result<std::reference_wrapper<const T>> try_back() const & noexcept RELOCO_LIFETIMEBOUND {
-    if (empty())
-      return unexpected(error::container_empty);
-    return std::cref(*slot(size_ - 1));
-  }
-
-  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) T *data() & noexcept RELOCO_LIFETIMEBOUND {
-    RELOCO_ASSERT(!empty(), "inline_vector is empty");
-    return slot(0);
-  }
-
-  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) const T *data() const & noexcept RELOCO_LIFETIMEBOUND {
-    RELOCO_ASSERT(!empty(), "inline_vector is empty");
-    return slot(0);
-  }
-
-  [[nodiscard]] result<T *> try_data() & noexcept RELOCO_LIFETIMEBOUND {
-    if (empty())
-      return unexpected(error::container_empty);
-    return slot(0);
-  }
-
-  [[nodiscard]] result<const T *> try_data() const & noexcept RELOCO_LIFETIMEBOUND {
-    if (empty())
-      return unexpected(error::container_empty);
-    return slot(0);
-  }
-
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE
-  RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) T *unsafe_data() & noexcept RELOCO_LIFETIMEBOUND {
-    RELOCO_DEBUG_ASSERT(!empty(), "inline_vector has no data");
-    return slot(0);
-  }
-
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE
-  RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) const T *unsafe_data() const & noexcept RELOCO_LIFETIMEBOUND {
-    RELOCO_DEBUG_ASSERT(!empty(), "inline_vector has no data");
-    return slot(0);
-  }
-
-  // ---- iteration ----
-
-  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) iterator begin() & noexcept RELOCO_LIFETIMEBOUND {
-    return slot(0);
-  }
-  [[nodiscard]] iterator end() & noexcept RELOCO_LIFETIMEBOUND { return slot(size_); }
-  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) const_iterator
-      begin() const & noexcept RELOCO_LIFETIMEBOUND {
-    return slot(0);
-  }
-  [[nodiscard]] const_iterator end() const & noexcept RELOCO_LIFETIMEBOUND { return slot(size_); }
-  [[nodiscard]] const_iterator cbegin() const & noexcept RELOCO_LIFETIMEBOUND { return slot(0); }
-  [[nodiscard]] const_iterator cend() const & noexcept RELOCO_LIFETIMEBOUND { return slot(size_); }
-
-  [[nodiscard]] reverse_iterator rbegin() & noexcept RELOCO_LIFETIMEBOUND { return reverse_iterator(end()); }
-  [[nodiscard]] reverse_iterator rend() & noexcept RELOCO_LIFETIMEBOUND { return reverse_iterator(begin()); }
-  [[nodiscard]] const_reverse_iterator rbegin() const & noexcept RELOCO_LIFETIMEBOUND {
-    return const_reverse_iterator(end());
-  }
-  [[nodiscard]] const_reverse_iterator rend() const & noexcept RELOCO_LIFETIMEBOUND {
-    return const_reverse_iterator(begin());
-  }
-  [[nodiscard]] const_reverse_iterator crbegin() const & noexcept RELOCO_LIFETIMEBOUND { return rbegin(); }
-  [[nodiscard]] const_reverse_iterator crend() const & noexcept RELOCO_LIFETIMEBOUND { return rend(); }
-
-private:
-  void destroy_range(size_type from, size_type to) noexcept {
-    if constexpr (!std::is_trivially_destructible_v<T>) {
-      for (size_type i = from; i < to; ++i)
-        slot(i)->~T();
-    }
-  }
-
-  // Cast the raw storage to `T *` once and then use ordinary `T *`
-  // pointer arithmetic (implicitly scaled by `sizeof(T)`) instead of
-  // manually multiplying `index * sizeof(T)` against a `std::byte *`.
-  // This avoids both a `cpp/suspicious-pointer-scaling` false positive
-  // (a `std::byte *` scaled as if it were `T *`) and a
-  // `cpp/suspicious-add-sizeof` false positive (an explicit `sizeof(T)`
-  // added to a pointer) from static analysis.
-  [[nodiscard]] T *slot(size_type index) noexcept {
-    return std::launder(static_cast<T *>(static_cast<void *>(storage_)) + index);
-  }
-  [[nodiscard]] const T *slot(size_type index) const noexcept {
-    return std::launder(static_cast<const T *>(static_cast<const void *>(storage_)) + index);
-  }
-
-  void relocate_from(inline_vector &other) noexcept {
-    if constexpr (is_trivially_relocatable_v<T>) {
-      if (other.size_ > 0)
-        std::memcpy(storage_, other.storage_, other.size_ * sizeof(T));
-    } else {
-      static_assert(std::is_nothrow_move_constructible_v<T>, "reloco requires noexcept move-construction.");
-      for (size_type i = 0; i < other.size_; ++i) {
-        new (slot(i)) T(std::move(*other.slot(i)));
-        if constexpr (!std::is_trivially_destructible_v<T>)
-          other.slot(i)->~T();
-      }
-    }
-    size_ = other.size_;
-    other.size_ = 0;
-  }
-
-  alignas(effective_alignment_v<T>) std::byte storage_[sizeof(T) * Capacity];
-  size_type size_ = 0;
+  [[nodiscard]] constexpr bool full() const noexcept { return this->size() == Capacity; }
 };
 
 /**

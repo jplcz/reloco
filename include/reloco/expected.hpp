@@ -6,6 +6,7 @@
 
 #include "detail/assert.hpp"
 #include "lifetime.hpp"
+#include "relocatable.hpp"
 #include "rvalue_safety.hpp"
 #include <memory>
 #include <new>

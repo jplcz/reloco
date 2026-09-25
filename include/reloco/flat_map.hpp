@@ -30,6 +30,7 @@
  */
 
 #include "detail/flat_container_base.hpp"
+#include "relocatable_std.hpp"
 #include "vector.hpp"
 
 #include <utility>
@@ -163,8 +164,8 @@ public:
    * m.try_entry_or_insert(k, v);`
    */
   template <typename K, typename F>
-  [[nodiscard]] result<std::reference_wrapper<mapped_type>> try_entry_and_modify(const K &key, F &&modify) & noexcept
-      RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] result<std::reference_wrapper<mapped_type>>
+  try_entry_and_modify(const K &key, F &&modify) & noexcept RELOCO_LIFETIMEBOUND {
     auto found = try_at(key);
     if (found)
       modify(found->get());

@@ -247,6 +247,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_vector.cpp
         tests/test_inline_vector.cpp
         tests/test_sso_vector.cpp
+        tests/test_outline_vector.cpp
         tests/test_alignment.cpp
         tests/test_flat_set.cpp
         tests/test_flat_map.cpp

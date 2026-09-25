@@ -521,6 +521,59 @@ the old location -- the same rationale `basic_sso_string` (see
 [`basic_sso_string`](#basic_sso_stringcchart-traitst-sso_string-wsso_string))
 documents for its own specialization.
 
+## `outline_vector<T>`
+
+`include/reloco/outline_vector.hpp`
+
+Non-owning, growable-up-to-capacity dynamic array over a caller-supplied
+byte buffer -- `vector<T>`'s non-owning counterpart, for backing bytes
+`reloco` doesn't control (a memory-mapped region, a hardware DMA buffer, an
+arena slab the caller manages directly, ...). Unlike every other reloco
+vector flavor, `outline_vector<T>` is bound to a `span<std::byte>` exactly
+once, at construction, and is afterwards **immovable and non-copyable**:
+there is no default constructor, no rebind/reset method, and no move
+constructor or move assignment operator either, since there is no
+well-defined way to "steal" a borrowed span out from under whoever actually
+owns it.
+
+```cpp
+alignas(reloco::effective_alignment_v<int>) std::byte buffer[sizeof(int) * 4];
+reloco::outline_vector<int> v(reloco::span<std::byte>(buffer));
+auto ok = v.try_push_back(1);
+ok = v.try_insert_at(0, 0);
+assert(v[0] == 0 && v[1] == 1);
+// buffer itself is still the caller's to reuse once `v` is destroyed.
+```
+
+The bound span's capacity (`storage.size() / sizeof(T)`, computed once at
+construction) is fixed for the object's entire lifetime:
+`try_reserve`/`try_emplace_back`/`try_push_back`/`try_insert_at`/
+`try_resize` fail with `error::capacity_exceeded` once `size() ==
+capacity()` (respectively `count > capacity()`), exactly like
+`inline_vector<T, Capacity>` -- there is no allocator to grow into.
+`storage.data()` must already satisfy `effective_alignment_v<T>`; this is
+checked with `RELOCO_ASSERT` (active even when `NDEBUG` is defined) at
+construction time, since -- unlike `allocator_ref::allocate` -- there is no
+allocator here to request a specific alignment from. Element construction
+delegates to `construction_helpers` exactly like `vector<T>`/
+`inline_vector<T, Capacity>`, passing `default_allocator()` for any nested
+`T` that implements its own fallible-construction protocol.
+
+Element access follows the same checked/`try_*`/`unsafe_*` tri-tier
+convention as `vector`/`inline_vector`/`span`/`array`.
+
+There is no `try_create`/`try_allocate`/`try_clone`/`try_clone_at`: binding
+a caller-owned span can never itself fail (there is nothing to allocate),
+so the plain constructor is sufficient, and a fallible deep copy would need
+a *second* caller-owned destination span the type has no way to ask for on
+its own.
+
+`reloco::is_trivially_relocatable<outline_vector<T>>` is deliberately *not*
+specialized: the primary template's `std::is_trivially_copyable<T>`
+fallback already evaluates to `false` (copy is deleted), correctly
+reporting that `outline_vector<T>` may neither be moved nor relocated by
+any means.
+
 ## `boxed_slice<T>`
 
 `include/reloco/boxed_slice.hpp`
