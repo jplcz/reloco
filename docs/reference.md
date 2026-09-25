@@ -38,6 +38,7 @@ where, not a tutorial.
 | `unique_ptr.hpp` | `unique_ptr<T>` | Move-only, allocator-backed smart pointer with fallible construction |
 | `shared_ptr.hpp` | `shared_ptr<T>`, `weak_ptr<T>`, `enable_shared_from_this<T>` | Reference-counted, allocator-backed smart pointer with fallible construction |
 | `rc.hpp` | `rc<T>`, `weak_rc<T>`, `enable_rc_from_this<T>` | Single-threaded (non-atomic) reference-counted smart pointer, matching Rust's `Rc<T>`/`Weak<T>` |
+| `bytes.hpp` | `bytes`, `bytes_mut` | Immutable, reference-counted, cheaply-cloneable byte buffer and its growable, exclusively-owned mutable counterpart, matching Rust's `bytes::Bytes`/`bytes::BytesMut` |
 | `binary_heap.hpp` | `binary_heap<T, Compare>` | Allocator-backed priority queue matching Rust's `BinaryHeap<T>`, built on `vector<T>` |
 | `boxed_slice.hpp` | `boxed_slice<T>` | Fixed-size, allocator-backed owned array with no spare capacity, matching Rust's `Box<[T]>` |
 | `cow.hpp` | `cow<T>`, `cow_traits<T>` | Clone-on-write wrapper matching Rust's `Cow<'a, T>`, with a user-specializable clone customization point |
@@ -1222,6 +1223,73 @@ Pick `rc<T>` over `shared_ptr<T>` purely for performance, whenever the
 shared object only ever lives on one thread; switch to `shared_ptr<T>` the
 moment it might cross a thread boundary. The two are unrelated types with
 independent control blocks and cannot share ownership of the same object.
+
+## `bytes` / `bytes_mut`
+
+`include/reloco/bytes.hpp`
+
+An immutable, reference-counted, cheaply-cloneable byte buffer (`bytes`)
+and its growable, exclusively-owned mutable counterpart (`bytes_mut`),
+matching the shape of Rust's `bytes` crate `Bytes`/`BytesMut`. Both are
+allocator-backed and hold no self-references, so `is_trivially_relocatable`
+is `true` for each.
+
+`bytes_mut` is a move-only, `std::byte` buffer that grows the same way
+`vector<T>` does for trivially relocatable `T` -- prefer
+`allocator_ref::expand_in_place`, then `allocator_ref::reallocate`, and
+only fall back to a fresh allocation + `memcpy` + deallocate:
+
+```cpp
+auto buf = reloco::bytes_mut::try_create(); // or try_allocate(alloc, initial_cap)
+if (buf) {
+  buf->try_put_u8(0xFF);
+  buf->try_put_u32_be(0xDEADBEEF);
+  buf->try_put_slice(reloco::span<const std::byte>(payload, payload_len));
+}
+```
+
+`try_push`, `try_put_slice`/`try_extend_from_slice`, and the endian-aware
+`try_put_u8`/`try_put_u16_le`/`try_put_u16_be`/`try_put_u32_le`/
+`try_put_u32_be`/`try_put_u64_le`/`try_put_u64_be` (Rust `BufMut`-flavored)
+all grow the buffer on demand via `try_reserve`, failing with
+`result<void>` on allocation failure rather than throwing. `data()`/
+`as_span()` expose the current contents; `clear()` resets the length
+without releasing the allocation.
+
+`bytes_mut::try_freeze() &&` consumes the buffer and converts it into an
+immutable `bytes` without copying the byte payload: it moves the existing
+heap pointer into a freshly allocated `rc<detail::bytes_storage>` control
+block (that small control-block allocation is itself unavoidable -- it is
+what makes the buffer shareable -- but the potentially large payload is
+never copied, unlike a plain `vector<T>`-to-owned-copy conversion):
+
+```cpp
+reloco::result<reloco::bytes> frozen = std::move(*buf).try_freeze();
+```
+
+`bytes` clones by bumping an `rc<T>` refcount (never copying the payload),
+and slices are the same O(1) operation, sharing the same backing
+allocation while only adjusting a local pointer/length pair:
+
+```cpp
+reloco::bytes clone = *frozen;              // refcount bump, no copy
+reloco::bytes view = frozen->slice(1, 4);    // shares storage
+reloco::bytes front = frozen->split_to(2);   // Rust Bytes::split_to
+reloco::bytes rest = frozen->split_off(2);   // Rust Bytes::split_off
+```
+
+`try_copy_from(span<const std::byte>, allocator_ref)` allocates a fresh
+`bytes` and copies the given span into it (the usual entry point when data
+does not already live in a `bytes_mut`). Checked `operator[]` and fallible
+`try_at`/`try_slice`/`try_split_to`/`try_split_off` round out bounds-safe
+access; `operator==`/`operator!=` compare contents, not identity.
+
+Unlike the real `bytes` crate, `bytes_mut` does not support
+`split_to`/`split_off`/`unsplit` (those would require the same shared,
+refcounted storage `bytes` uses, turning every mutation into an
+alias-check), and `bytes` has no `Buf`-style stateful advancing-cursor
+reader -- only the `BufMut`-style `try_put_*` writers on `bytes_mut`. Both
+gaps can be layered on top of `as_span()` if/when needed.
 
 ## `function<R(Args...)>`
 
