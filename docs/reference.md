@@ -1184,11 +1184,15 @@ re-derived; only genuine gaps are added:
      of throwing `std::bad_variant_access` -- reloco is exception-averse
      elsewhere, so a throwing-only checked accessor doesn't fit the rest
      of the library. Available on `&`/`const &`/`&&` overloads.
-  2. **Fallible:** `as<T>()` — like `std::get_if<T>(this)`, but bridges
-     into `optional<std::reference_wrapper<T>>` (`const T` on the
-     `const &` overload) instead of a raw pointer, matching
-     `optional<T>::try_value()`'s established convention for "maybe
-     absent" reference-returning accessors.
+  2. **Fallible:** `try_get<T>()` returns
+     `result<std::reference_wrapper<T>>` (`const T` on the `const &`
+     overload) -- present and bound to the active alternative if it
+     holds a `T`, `unexpected(error::not_found)` otherwise -- matching
+     `optional<T>::try_value()`'s established convention for bridging a
+     "maybe absent" reference-returning accessor into a `result<T>`
+     pipeline. `as<T>()` is the `optional`-returning sibling of the same
+     tier: like `std::get_if<T>(this)`, but bridges into
+     `optional<std::reference_wrapper<T>>` instead of a raw pointer.
   3. **Unsafe:** `unsafe_get<T>()` is explicitly gated behind
      `RELOCO_UNSAFE_BUFFER_USAGE` and only checked via
      `RELOCO_DEBUG_ASSERT`, exactly like `optional<T>::unsafe_value()`.
