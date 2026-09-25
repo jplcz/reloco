@@ -236,6 +236,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_guarded_mutex.cpp
         tests/test_shared_ptr.cpp
         tests/test_rc.cpp
+        tests/test_bytes.cpp
         tests/test_binary_heap.cpp
         tests/test_boxed_slice.cpp
         tests/test_cow.cpp
