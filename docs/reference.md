@@ -67,6 +67,7 @@ where, not a tutorial.
 | `thread.hpp` | `thread`, `thread_id`, `this_thread::get_id/yield`, `spawn`, `join_handle<R>` | Backend-selected (`pthread`/`std`/custom) OS thread primitive plus a Rust-like `spawn`/`JoinHandle<T>` layer built on `is_send`/`is_sync` |
 | `channel.hpp` | `channel<T>`, `sender<T>`, `receiver<T>` | Multi-producer, single-consumer channel matching Rust's `std::sync::mpsc`, built on `mutex.hpp` + `shared_ptr` + `is_send`/`is_sync` |
 | `once_lock.hpp` | `once_lock<T>` | Write-once, read-many-times cell matching Rust's `std::sync::OnceLock<T>`, usable as a plain field/local (unlike `fallible_singleton.hpp`'s static, one-per-`T` global) |
+| `scope.hpp` | `scope`, `thread_scope`, `scoped_join_handle<R>` | Matches Rust's `std::thread::scope`: spawns threads guaranteed to finish before `scope()` returns, so they may safely borrow references to the caller's stack frame |
 | `lifetime.hpp` | `RELOCO_LIFETIMEBOUND`, `RELOCO_OWNER`, `RELOCO_POINTER`, `RELOCO_UNSAFE_BUFFER_USAGE`, ... | Compiler-specific lifetime/ownership/safe-buffers annotation macros |
 | `rvalue_safety.hpp` | `RELOCO_BLOCK_RVALUE_ACCESS` | Deletes rvalue accessors that would otherwise dangle past a temporary |
 | `reloco_config.hpp` | (user override header hook) | How to override library-wide defaults from `reloco_user_config.hpp` |
@@ -2207,6 +2208,62 @@ requires both `is_send<T>` and `is_sync<T>`, matching Rust's `unsafe impl
 (`Mutex<T>`, only ever reached through an exclusive lock), a `const
 once_lock<T> &` hands out a bare `const T *` once ready, so concurrent
 readers need `T` itself to tolerate concurrent shared access.
+
+## `scope` / `thread_scope` / `scoped_join_handle<R>`
+
+`include/reloco/scope.hpp`
+
+Matches Rust's `std::thread::scope`: runs a closure that may spawn
+threads borrowing references to the caller's own stack frame, guaranteed
+to have all finished running before `scope()` itself returns. `thread.hpp`'s
+`spawn(F, allocator_ref)` requires `F: Send + 'static` (documented, not
+statically enforced -- reloco has no lifetime tracking, so nothing stops
+a captured reference from actually outliving the spawned thread if the
+caller gets it wrong); `scope()` closes that gap the same way Rust does.
+
+```cpp
+int local = 0;
+auto result = reloco::scope([&](reloco::thread_scope &s) {
+  auto handle = s.spawn([&local]() noexcept { local = 42; });
+  if (handle)
+    std::move(*handle).join();
+});
+// result: result<void>; local == 42 here, guaranteed.
+```
+
+- `reloco::scope(body, allocator_ref)` -> `result<R>`, where `R` is
+  `body`'s own return type (invoked as `body(thread_scope &)`): fails
+  only if allocating the internal shared completion-tracking state
+  fails; `body` is otherwise invoked unconditionally and its result is
+  forwarded as-is.
+- `thread_scope::spawn(F, allocator_ref)` -> `result<scoped_join_handle<R>>`,
+  where `R = std::invoke_result_t<F &>`, matching Rust's `Scope::spawn`.
+  `F` (and everything it captures) must be `is_send_v` (see
+  `send_sync.hpp`), same as `reloco::spawn` -- but, unlike
+  `reloco::spawn`, `F` may capture a reference to any value that outlives
+  the enclosing `scope()` call, since every thread spawned through a
+  `thread_scope` is guaranteed to have finished before `scope()` returns.
+- `scoped_join_handle<R>::join() &&` blocks until the thread finishes and
+  returns its result (consuming `*this`), matching Rust's
+  `ScopedJoinHandle::join()`. A handle the caller never explicitly joins
+  is still safely joined on its own destruction, exactly like
+  `join_handle<R>` (see `thread.hpp`).
+
+Internally, `scope()` allocates one shared, atomically-refcounted
+completion counter (guarded by a `mutex` + `condition_variable` pair, see
+`mutex.hpp`) that every `thread_scope::spawn()` call increments before
+handing its closure to `reloco::spawn()`, and decrements (waking up
+`~thread_scope()`, which blocks until it reaches zero) right after the
+closure returns, still running on the spawned thread. This matches Rust's
+own `std::thread::scope` implementation, which also does not literally
+join every spawned thread to know when it is safe to return, just waits
+for this kind of completion signal -- the OS-level join
+`scoped_join_handle<R>` performs is a separate, purely
+resource-reclamation concern from this borrow-safety guarantee.
+
+`is_send<scoped_join_handle<R>>` forwards to `is_send<R>`;
+`is_sync<scoped_join_handle<R>>` is always `true`, both matching
+`join_handle<R>`'s own specializations.
 
 ## `alignment_of<T>`
 
