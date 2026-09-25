@@ -1,3 +1,16 @@
+// SPDX-FileCopyrightText: 2026 Jarosław Pelczar <jarek@jpelczar.com>
+//
+// SPDX-License-Identifier: BSD-2-Clause
+
+/** @file vector_base.ipp
+ * @brief Out-of-line bodies for `trivial_operator_set` and the
+ * `*_base` growth/mutation primitives declared in `vector_base.hpp` (see
+ * `unowned_vector_base`, `heap_vector_base`, `inline_vector_base`,
+ * `mixed_vector_base`). Included from `vector_base.hpp` itself, guarded on
+ * `RELOCO_SHARED_PROVIDE_DEFINITIONS` (see `reloco/detail/compat.hpp`).
+ * Never included directly.
+ */
+
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
 RELOCO_API result<void> trivial_operator_set::clone_range(const type_metadata &type, const void *src, void *dest,

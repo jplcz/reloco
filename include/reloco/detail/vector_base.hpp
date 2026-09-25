@@ -1,4 +1,53 @@
+// SPDX-FileCopyrightText: 2026 Jarosław Pelczar <jarek@jpelczar.com>
+//
+// SPDX-License-Identifier: BSD-2-Clause
+
 #pragma once
+
+/** @file vector_base.hpp
+ * @brief Shared, type-erased implementation backing `vector<T>`,
+ * `inline_vector<T, Capacity>`, and `sso_vector<T, InlineCapacity>`.
+ *
+ * `vector_base.hpp` factors out every storage-management primitive the
+ * three vector flavors need -- growth, resize, insert/erase, retain/dedup,
+ * move construction/assignment, destruction -- into a single type-erased
+ * engine driven by a per-`T` `vector_operations` function-pointer table
+ * (`get_operations_for<T>()`), so the three public headers (`vector.hpp`,
+ * `inline_vector.hpp`, `sso_vector.hpp`) only need to declare thin,
+ * strongly-typed wrappers rather than re-implementing the same logic three
+ * times over.
+ *
+ * The design has two layers:
+ *
+ * - `unowned_vector_base`/`heap_vector_base`/`inline_vector_base`/
+ *   `mixed_vector_base`: untyped storage policies holding a `void*`/
+ *   `size_t size_`/`size_t cap_` triple (plus, respectively, nothing extra,
+ *   an `allocator_ref`, an inline capacity, or both). Each policy knows only
+ *   how to grow/shrink/move its *own* storage kind; all per-element logic is
+ *   forwarded through the `vector_operations` table so these bases never
+ *   need to know `T`.
+ * - `typed_vector_base<T, Base>`: the strongly-typed layer derived classes
+ *   (`vector<T>`, `inline_vector<T, Capacity>`, `sso_vector<T,
+ *   InlineCapacity>`) actually inherit from. It reintroduces `T`-aware
+ *   member types (`iterator`, `reference`, ...) and the full public
+ *   `try_*`/checked/`unsafe_*` mutation and access surface, delegating every
+ *   operation straight through to the untyped `Base` policy plus
+ *   `metadata_for<T>`.
+ *
+ * `vector_operations` resolves, per function pointer and per `T`, to either
+ * `trivial_operator_set`'s `memcpy`/`memset`-based implementations (for
+ * trivially destructible/relocatable/copyable `T`) or a compiler-generated
+ * closure that loops element-by-element through `construction_helpers`
+ * (see `construction_helpers.hpp`), exactly mirroring the tiered dispatch
+ * `construction_helpers` itself uses for individual elements.
+ *
+ * Like `flat_container_base.hpp`, this is deliberately not public API: it
+ * lives in `reloco::detail` and is included only by the three vector
+ * headers, guarded on `RELOCO_SHARED_PROVIDE_DEFINITIONS` for its
+ * out-of-line `vector_base.ipp` bodies exactly like `heap_allocator.hpp`/
+ * `error_std.hpp` guard theirs (see `docs/shared-library.md`).
+ */
+
 #include "../construction_helpers.hpp"
 #include "../error.hpp"
 #include "../function_ref.hpp"
@@ -16,6 +65,11 @@ namespace reloco {
 
 namespace detail {
 
+/**
+ * @brief Compile-time facts about `T` needed by the type-erased vector
+ * engine, captured once per `T` in `metadata_for<T>` so the untyped `*_base`
+ * classes never need a template parameter themselves.
+ */
 struct RELOCO_EXPORT type_metadata {
   std::size_t element_size;
   std::size_t element_alignment;
@@ -33,6 +87,11 @@ inline constexpr type_metadata metadata_for = {sizeof(T),
                                                std::is_trivially_copyable_v<T>,
                                                std::is_default_constructible_v<T>};
 
+/**
+ * @brief Per-`T` table of type-erased element operations the untyped
+ * `*_base` classes call through instead of knowing `T` directly; resolved
+ * once at compile time by `get_operations_for<T>()`.
+ */
 struct RELOCO_EXPORT vector_operations {
   /// @brief Destroy element range
   void (*destroy_range)(const type_metadata &type, void *data, std::size_t from, std::size_t to) noexcept;
@@ -48,6 +107,11 @@ struct RELOCO_EXPORT vector_operations {
   void (*move_range_up)(const type_metadata &type, void *to, const void *from, std::size_t count);
 };
 
+/**
+ * @brief `memcpy`/`memset`-based `vector_operations` bodies shared by every
+ * trivially destructible/relocatable/copyable `T`, avoiding a
+ * per-element loop entirely.
+ */
 struct RELOCO_EXPORT trivial_operator_set {
   RELOCO_API static result<void> clone_range(const type_metadata &type, const void *src, void *dest, std::size_t size,
                                              allocator_ref alloc) noexcept;
@@ -261,6 +325,14 @@ template <typename T> inline constexpr const vector_operations *get_operations_f
   return vector_operations_maker<T>::make();
 }
 
+/**
+ * @brief Untyped core shared by every storage policy: a `void*`/`size_t
+ * size_`/`size_t cap_` triple plus the `vector_operations` table, and every
+ * `try_*_base` primitive (`try_reserve_base`, `try_resize_base`,
+ * `try_insert_at_base`, `try_erase_at_base`, `retain_base`, `dedup_by_base`,
+ * ...) that operates purely in terms of byte offsets and the operations
+ * table, with no knowledge of `T` or of where the storage itself lives.
+ */
 class RELOCO_EXPORT unowned_vector_base {
 protected:
   constexpr explicit unowned_vector_base(const vector_operations *ops) noexcept : operations_(ops) {}
@@ -326,6 +398,11 @@ protected:
   std::size_t cap_ = 0;
 };
 
+/**
+ * @brief Storage policy backing `vector<T>`: an `allocator_ref`-owned heap
+ * allocation with no inline capacity, growable without bound (up to
+ * `max_capacity`).
+ */
 class RELOCO_EXPORT heap_vector_base : public unowned_vector_base {
 protected:
   constexpr explicit heap_vector_base(const vector_operations *ops, allocator_ref alloc = default_allocator()) noexcept
@@ -367,6 +444,11 @@ private:
   allocator_ref alloc_;
 };
 
+/**
+ * @brief Storage policy backing `inline_vector<T, Capacity>`: a
+ * fixed-capacity buffer embedded directly in the object, with no allocator
+ * and a hard `Capacity` ceiling that growth beyond fails against.
+ */
 class RELOCO_EXPORT inline_vector_base : public unowned_vector_base {
 protected:
   constexpr inline_vector_base(const vector_operations *ops, void *storage, std::size_t capacity) noexcept
@@ -394,6 +476,12 @@ public:
   [[nodiscard]] constexpr std::size_t max_capacity(const type_metadata &) noexcept { return cap_; }
 };
 
+/**
+ * @brief Storage policy backing `sso_vector<T, InlineCapacity>`: starts
+ * using an embedded inline buffer like `inline_vector_base`, but falls back
+ * to an `allocator_ref`-owned heap allocation once `InlineCapacity` is
+ * exceeded, mirroring `basic_string`'s small-string optimization.
+ */
 class RELOCO_EXPORT mixed_vector_base : public unowned_vector_base {
 private:
   void *inline_storage_;
@@ -428,6 +516,13 @@ public:
   }
 };
 
+/**
+ * @brief Strongly-typed layer `vector<T>`/`inline_vector<T, Capacity>`/
+ * `sso_vector<T, InlineCapacity>` actually derive from: reintroduces
+ * `T`-aware member types and the full checked/`try_*`/`unsafe_*` mutation
+ * and access surface (see `docs/hardened-containers.md`), delegating every
+ * operation to the untyped `Base` storage policy plus `metadata_for<T>`.
+ */
 template <typename T, typename Base> class RELOCO_EXPORT typed_vector_base : public Base {
 public:
   using value_type = T;
