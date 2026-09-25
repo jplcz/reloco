@@ -257,3 +257,171 @@ TEST(ChannelTest, TryIterDrainsOnlyWhatIsAlreadyQueuedWithoutBlocking) {
     received.push_back(value);
   EXPECT_TRUE(received.empty());
 }
+
+TEST(SyncChannelTest, SendThenRecvRoundTrips) {
+  auto ends = reloco::sync_channel<int>(2);
+  ASSERT_TRUE(ends);
+  auto &[tx, rx] = *ends;
+
+  ASSERT_TRUE(tx.send(42));
+  auto value = rx.recv();
+  ASSERT_TRUE(value);
+  EXPECT_EQ(*value, 42);
+}
+
+TEST(SyncChannelTest, TrySendFailsWithCapacityExceededWhenFull) {
+  auto ends = reloco::sync_channel<int>(2);
+  ASSERT_TRUE(ends);
+  auto &[tx, rx] = *ends;
+
+  ASSERT_TRUE(tx.try_send(1));
+  ASSERT_TRUE(tx.try_send(2));
+  auto overflow = tx.try_send(3);
+  ASSERT_FALSE(overflow);
+  EXPECT_EQ(overflow.error(), reloco::error::capacity_exceeded);
+
+  // Draining one slot makes room for another try_send().
+  auto v = rx.recv();
+  ASSERT_TRUE(v);
+  EXPECT_EQ(*v, 1);
+  ASSERT_TRUE(tx.try_send(3));
+}
+
+TEST(SyncChannelTest, SendBlocksUntilRoomFreesUp) {
+  auto ends = reloco::sync_channel<int>(1);
+  ASSERT_TRUE(ends);
+  auto [tx, rx] = std::move(*ends);
+
+  ASSERT_TRUE(tx.send(1)); // Fills the only slot without blocking.
+
+  auto handle = reloco::spawn([tx = std::move(tx)]() mutable noexcept {
+    static_cast<void>(tx.send(2)); // Must block until the slot below is drained.
+  });
+  ASSERT_TRUE(handle);
+
+  reloco::this_thread::sleep_for(reloco::duration::from_millis(20));
+
+  auto first = rx.recv();
+  ASSERT_TRUE(first);
+  EXPECT_EQ(*first, 1);
+
+  auto second = rx.recv();
+  ASSERT_TRUE(second);
+  EXPECT_EQ(*second, 2);
+
+  std::move(*handle).join();
+}
+
+TEST(SyncChannelTest, SendFailsWithInvalidStateAfterReceiverDropped) {
+  auto ends = reloco::sync_channel<int>(1);
+  ASSERT_TRUE(ends);
+  auto [tx, rx] = std::move(*ends);
+  {
+    auto dropped = std::move(rx);
+  }
+
+  auto sent = tx.send(1);
+  ASSERT_FALSE(sent);
+  EXPECT_EQ(sent.error(), reloco::error::invalid_state);
+}
+
+TEST(SyncChannelTest, SendUnblocksWithInvalidStateWhenReceiverDroppedWhileWaiting) {
+  auto ends = reloco::sync_channel<int>(1);
+  ASSERT_TRUE(ends);
+  auto [tx, rx] = std::move(*ends);
+
+  ASSERT_TRUE(tx.send(1)); // Fills the only slot.
+
+  reloco::result<void> send_result = reloco::unexpected(reloco::error::not_initialized);
+  auto handle = reloco::spawn([tx = std::move(tx), &send_result]() mutable noexcept {
+    send_result = tx.send(2); // Blocks for room that will never come.
+  });
+  ASSERT_TRUE(handle);
+
+  reloco::this_thread::sleep_for(reloco::duration::from_millis(20));
+  { auto dropped = std::move(rx); } // Wakes the blocked send() above with invalid_state.
+
+  std::move(*handle).join();
+  ASSERT_FALSE(send_result);
+  EXPECT_EQ(send_result.error(), reloco::error::invalid_state);
+}
+
+TEST(SyncChannelTest, RendezvousSendBlocksUntilConsumed) {
+  auto ends = reloco::sync_channel<int>(0);
+  ASSERT_TRUE(ends);
+  auto [tx, rx] = std::move(*ends);
+
+  std::atomic<bool> send_returned{false};
+  auto handle = reloco::spawn([tx = std::move(tx), &send_returned]() mutable noexcept {
+    static_cast<void>(tx.send(7));
+    send_returned.store(true, std::memory_order_release);
+  });
+  ASSERT_TRUE(handle);
+
+  // Give send() a chance to run: it must still be blocked (nothing has
+  // called recv() yet), since a rendezvous channel only unblocks send()
+  // once the value has actually been received.
+  reloco::this_thread::sleep_for(reloco::duration::from_millis(20));
+  EXPECT_FALSE(send_returned.load(std::memory_order_acquire));
+
+  auto value = rx.recv();
+  ASSERT_TRUE(value);
+  EXPECT_EQ(*value, 7);
+
+  std::move(*handle).join();
+  EXPECT_TRUE(send_returned.load(std::memory_order_acquire));
+}
+
+TEST(SyncChannelTest, RendezvousTrySendSucceedsOnlyWhenReceiverIsWaiting) {
+  auto ends = reloco::sync_channel<int>(0);
+  ASSERT_TRUE(ends);
+  auto [tx, rx] = std::move(*ends);
+
+  auto too_early = tx.try_send(1);
+  ASSERT_FALSE(too_early);
+  EXPECT_EQ(too_early.error(), reloco::error::capacity_exceeded);
+
+  int received_value = 0;
+  bool received_ok = false;
+  auto handle = reloco::spawn([rx = std::move(rx), &received_value, &received_ok]() mutable noexcept {
+    auto value = rx.recv();
+    received_ok = static_cast<bool>(value);
+    if (value)
+      received_value = *value;
+  });
+  ASSERT_TRUE(handle);
+  reloco::this_thread::sleep_for(reloco::duration::from_millis(20)); // Let recv() park.
+
+  auto sent = tx.try_send(2);
+  ASSERT_TRUE(sent);
+
+  std::move(*handle).join();
+  ASSERT_TRUE(received_ok);
+  EXPECT_EQ(received_value, 2);
+}
+
+TEST(SyncChannelTest, SyncSenderClonesShareOneQueue) {
+  auto ends = reloco::sync_channel<int>(4);
+  ASSERT_TRUE(ends);
+  auto &[tx, rx] = *ends;
+
+  reloco::sync_sender<int> tx2(tx); // NOLINT(performance-unnecessary-copy-initialization)
+  ASSERT_TRUE(tx.try_send(1));
+  ASSERT_TRUE(tx2.try_send(2));
+
+  {
+    auto v = rx.recv();
+    ASSERT_TRUE(v);
+    EXPECT_EQ(*v, 1);
+  }
+  {
+    auto v = rx.recv();
+    ASSERT_TRUE(v);
+    EXPECT_EQ(*v, 2);
+  }
+}
+
+TEST(SyncChannelTest, SyncSenderIsSendAndSyncWhenTIsSend) {
+  EXPECT_TRUE(reloco::is_send_v<reloco::sync_sender<int>>);
+  EXPECT_TRUE(reloco::is_sync_v<reloco::sync_sender<int>>);
+}

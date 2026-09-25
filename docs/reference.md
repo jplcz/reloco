@@ -68,7 +68,7 @@ where, not a tutorial.
 | `instant.hpp` | `instant`, `instant_clock_traits<Tag>` | Opaque, monotonically non-decreasing point in time built on `duration`, matching Rust's `std::time::Instant`; clock source selectable (`RELOCO_INSTANT_CLOCK_TAG`) between built-in `clock_gettime` and a custom OS/kernel backend |
 | `tls_provider.hpp` | `tls_provider<T, Tag>` | Tag-differentiated, fallible, allocator-aware thread-local storage, selectable (`RELOCO_TLS_MODEL`) between `thread_local`, pthread keys, a custom OS/kernel backend, or a single-threaded global |
 | `thread.hpp` | `thread`, `thread_id`, `this_thread::get_id/yield`, `spawn`, `join_handle<R>` | Backend-selected (`pthread`/`std`/custom) OS thread primitive plus a Rust-like `spawn`/`JoinHandle<T>` layer built on `is_send`/`is_sync` |
-| `channel.hpp` | `channel<T>`, `sender<T>`, `receiver<T>` | Multi-producer, single-consumer channel matching Rust's `std::sync::mpsc`, built on `mutex.hpp` + `shared_ptr` + `is_send`/`is_sync` |
+| `channel.hpp` | `channel<T>`, `sender<T>`, `receiver<T>`, `sync_channel<T>`, `sync_sender<T>` | Multi-producer, single-consumer channel matching Rust's `std::sync::mpsc`, plus a bounded/rendezvous `sync_channel<T>` counterpart, built on `mutex.hpp` + `shared_ptr` + `is_send`/`is_sync` |
 | `park.hpp` | `thread_handle`, `this_thread::current/park/park_timeout/sleep_for` | Rust-like `thread::park`/`park_timeout`/`sleep`/`Thread`, built on `tls_provider.hpp` + `futex.hpp` + `instant.hpp` + `shared_ptr` |
 | `once_lock.hpp` | `once_lock<T>` | Write-once, read-many-times cell matching Rust's `std::sync::OnceLock<T>`, usable as a plain field/local (unlike `fallible_singleton.hpp`'s static, one-per-`T` global) |
 | `scope.hpp` | `scope`, `thread_scope`, `scoped_join_handle<R>` | Matches Rust's `std::thread::scope`: spawns threads guaranteed to finish before `scope()` returns, so they may safely borrow references to the caller's stack frame |
@@ -2330,6 +2330,53 @@ arrive:
 for (int value : rx.try_iter()) // try_recv() under the hood; never blocks
   use(value);
 ```
+
+### `sync_channel<T>` / `sync_sender<T>`
+
+`sync_channel<T>(capacity, allocator_ref = default_allocator())` returns a
+`result<std::pair<sync_sender<T>, receiver<T>>>`, matching Rust's
+`std::sync::mpsc::sync_channel`: a bounded counterpart of `channel<T>`
+that reuses the exact same `receiver<T>` (`recv()`/`recv_timeout()`/
+`try_recv()`/iteration all behave identically), sharing the same
+`channel_shared<T>` internals plus a `not_full` condition variable and a
+`queue_len`/`capacity` pair.
+
+```cpp
+auto ends = reloco::sync_channel<int>(2); // capacity: at most 2 queued values
+if (ends) {
+  auto &[tx, rx] = *ends;
+  tx.send(1);                    // succeeds immediately (room available)
+  tx.send(2);                    // succeeds immediately (now full)
+  auto blocked = reloco::spawn([tx]() mutable noexcept { tx.send(3); }); // blocks until rx.recv() below
+  auto value = rx.recv();        // drains a slot, unblocking the send() above
+}
+```
+
+`sync_sender<T>` is `Clone`-like exactly like `sender<T>`; every clone
+shares the same `capacity`.
+
+- `send(T)` -> `result<void>`: blocks while the queue already holds
+  `capacity` values, until room frees up (matching
+  `SyncSender::send`); fails with `error::invalid_state` if the receiver
+  has been dropped (before or while blocked).
+- `try_send(T)` -> `result<void>`: never blocks; fails with
+  `error::capacity_exceeded` if the queue is currently full (matching
+  `TrySendError::Full`), or `error::invalid_state` if the receiver has
+  been dropped (`TrySendError::Disconnected`).
+
+A `capacity` of `0` is a *rendezvous* channel, matching
+`sync_channel(0)`: `send()` blocks not merely until there is queue room,
+but until the value it just handed over has actually been consumed by
+the receiver -- so a successful `send()` return means the value has
+provably already been received, not merely buffered. `try_send()` on a
+rendezvous channel only ever succeeds when a `recv()`/`recv_timeout()`
+call is already blocked waiting to receive it (tracked via an internal
+waiting-receiver counter); otherwise it fails with
+`error::capacity_exceeded`, exactly like any other momentarily-full
+bounded channel.
+
+`is_send<sync_sender<T>>`/`is_sync<sync_sender<T>>` match `sender<T>`'s
+own specializations exactly, for the same reasons.
 
 ## `thread_handle` / `this_thread::current/park/park_timeout/sleep_for`
 
