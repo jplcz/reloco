@@ -24,6 +24,8 @@ option(JPLCZ_RELOCO_BUILD_TESTS
 option(JPLCZ_RELOCO_BUILD_HEADER_CHECKS
     "Compile all public headers under each supported C++ standard"
     ${JPLCZ_RELOCO_DEVELOPMENT_DEFAULT})
+option(JPLCZ_RELOCO_BUILD_DEMOS
+    "Build demos/ (small standalone example programs)" ${JPLCZ_RELOCO_DEVELOPMENT_DEFAULT})
 option(JPLCZ_RELOCO_INSTALL
     "Install jplcz_reloco headers and CMake package metadata"
     ${JPLCZ_RELOCO_IS_TOP_LEVEL})
@@ -366,6 +368,16 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         jplcz_reloco_enable_warnings(jplcz_reloco_tls_pthread_tests)
         gtest_discover_tests(jplcz_reloco_tls_pthread_tests)
     endif()
+endif()
+
+if(JPLCZ_RELOCO_BUILD_DEMOS)
+    include(CheckIncludeFileCXX)
+    check_include_file_cxx("pthread.h" JPLCZ_RELOCO_HAVE_PTHREAD_H)
+    if(JPLCZ_RELOCO_HAVE_PTHREAD_H)
+        find_package(Threads QUIET)
+    endif()
+
+    add_subdirectory(demos)
 endif()
 
 if(JPLCZ_RELOCO_INSTALL)
