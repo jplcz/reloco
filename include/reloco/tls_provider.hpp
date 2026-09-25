@@ -28,7 +28,14 @@
  * - **`RELOCO_TLS_MODEL_PTHREAD`**: backed by `pthread_key_create`/
  *   `pthread_getspecific`/`pthread_setspecific`, for POSIX targets that
  *   for whatever reason want to avoid compiler `thread_local` support
- *   (e.g. matching an existing pthread-only codebase). Three internal
+ *   (e.g. matching an existing pthread-only codebase). The one-time key
+ *   creation every specialization shares (`detail::tls_key_holder<Tag>`)
+ *   is guarded by a `futex.hpp` `futex_word` rather than `pthread_once`:
+ *   a `compare_exchange` picks a single winner thread to call
+ *   `pthread_key_create`, every other concurrent caller blocks via
+ *   `futex_wait` until the winner publishes the outcome and wakes them
+ *   via `futex_wake_all` -- same "run exactly once, even if it fails"
+ *   contract `pthread_once` itself provides. Three internal
  *   specializations pick the cheapest representation for a given `T`:
  *     - a raw pointer (`T *`) stored directly as the key's value -- no
  *       heap allocation, `get()`/`set()` can only fail if the underlying
@@ -95,6 +102,9 @@
 #endif
 
 #if (RELOCO_TLS_MODEL == RELOCO_TLS_MODEL_PTHREAD)
+#include "futex.hpp"
+
+#include <cstdint>
 #include <pthread.h>
 #endif
 
@@ -171,15 +181,39 @@ template <typename U>
 constexpr inline bool tls_can_fit_in_pointer_v = std::is_trivial_v<U> && (sizeof(U) <= sizeof(void *));
 
 /** @brief One-time pthread TSD key holder shared by every specialization
- * below: `pthread_once` can only run a `void()` routine, so any
- * `pthread_key_create` failure is stashed in `key_create_failed` and
- * surfaced through `ensure()`'s `result<void>` the first time any caller
- * asks for it (every caller across every thread observes the same
- * outcome, since key creation happens exactly once process-wide). */
+ * below: key creation must run exactly once process-wide (per `Tag`), so
+ * `state_` (a `futex.hpp` `futex_word`) implements the same "claim the
+ * one-time init, block everyone else on it" pattern `once_lock<T>` uses
+ * -- `compare_exchange` from `empty` to `initializing` picks a single
+ * winner to call `pthread_key_create`, every other concurrent caller
+ * blocks on `futex_wait(state_, initializing)` until the winner publishes
+ * `ready` and wakes them via `futex_wake_all`. Any `pthread_key_create`
+ * failure is stashed in `key_create_failed_` and surfaced through
+ * `ensure()`'s `result<void>` from then on (every caller across every
+ * thread observes the same outcome, since the attempt itself only ever
+ * happens once, matching `pthread_once`'s own "run exactly once even if
+ * the routine fails" semantics -- there is deliberately no retry path). */
 template <typename Tag> struct tls_key_holder {
   [[nodiscard]] static result<void> ensure(void (*deleter)(void *)) noexcept {
-    deleter_ = deleter;
-    pthread_once(&once_, &init_routine);
+    std::uint32_t s = state_.load(std::memory_order_acquire);
+    if (s != ready) {
+      for (;;) {
+        std::uint32_t expected = empty;
+        if (state_.compare_exchange_strong(expected, initializing, std::memory_order_acq_rel,
+                                           std::memory_order_acquire)) {
+          deleter_ = deleter;
+          auto created = pt_helpers::create_key(key_, deleter_);
+          key_create_failed_ = !created.has_value();
+          state_.store(ready, std::memory_order_release);
+          futex_wake_all(state_);
+          break;
+        }
+        if (expected == ready)
+          break;
+        // expected == initializing: another thread is running create_key(); wait for it to publish `ready`.
+        futex_wait(state_, initializing);
+      }
+    }
     if (key_create_failed_)
       return unexpected(error::resource_exhausted);
     return {};
@@ -188,12 +222,11 @@ template <typename Tag> struct tls_key_holder {
   [[nodiscard]] static pthread_key_t key() noexcept { return key_; }
 
 private:
-  static void init_routine() noexcept {
-    auto created = pt_helpers::create_key(key_, deleter_);
-    key_create_failed_ = !created.has_value();
-  }
+  static constexpr std::uint32_t empty = 0;
+  static constexpr std::uint32_t initializing = 1;
+  static constexpr std::uint32_t ready = 2;
 
-  static inline pthread_once_t once_ = PTHREAD_ONCE_INIT;
+  static inline futex_word state_ = empty;
   static inline pthread_key_t key_ = 0;
   static inline bool key_create_failed_ = false;
   static inline void (*deleter_)(void *) = nullptr;
