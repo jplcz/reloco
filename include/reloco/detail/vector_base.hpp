@@ -6,33 +6,35 @@
 
 /** @file vector_base.hpp
  * @brief Shared, type-erased implementation backing `vector<T>`,
- * `inline_vector<T, Capacity>`, and `sso_vector<T, InlineCapacity>`.
+ * `inline_vector<T, Capacity>`, `sso_vector<T, InlineCapacity>`, and
+ * `outline_vector<T>`.
  *
  * `vector_base.hpp` factors out every storage-management primitive the
- * three vector flavors need -- growth, resize, insert/erase, retain/dedup,
- * move construction/assignment, destruction -- into a single type-erased
- * engine driven by a per-`T` `vector_operations` function-pointer table
- * (`get_operations_for<T>()`), so the three public headers (`vector.hpp`,
- * `inline_vector.hpp`, `sso_vector.hpp`) only need to declare thin,
- * strongly-typed wrappers rather than re-implementing the same logic three
- * times over.
+ * four vector flavors need -- growth, resize, insert/erase, retain/dedup,
+ * move construction/assignment (where supported), destruction -- into a
+ * single type-erased engine driven by a per-`T` `vector_operations`
+ * function-pointer table (`get_operations_for<T>()`), so the four public
+ * headers (`vector.hpp`, `inline_vector.hpp`, `sso_vector.hpp`,
+ * `outline_vector.hpp`) only need to declare thin, strongly-typed wrappers
+ * rather than re-implementing the same logic four times over.
  *
  * The design has two layers:
  *
  * - `unowned_vector_base`/`heap_vector_base`/`inline_vector_base`/
- *   `mixed_vector_base`: untyped storage policies holding a `void*`/
- *   `size_t size_`/`size_t cap_` triple (plus, respectively, nothing extra,
- *   an `allocator_ref`, an inline capacity, or both). Each policy knows only
- *   how to grow/shrink/move its *own* storage kind; all per-element logic is
+ *   `mixed_vector_base`/`outline_vector_base`: untyped storage policies
+ *   holding a `void*`/`size_t size_`/`size_t cap_` triple (plus,
+ *   respectively, nothing extra, an `allocator_ref`, an inline capacity,
+ *   both, or a caller-owned capacity). Each policy knows only how to
+ *   grow/shrink/move its *own* storage kind; all per-element logic is
  *   forwarded through the `vector_operations` table so these bases never
  *   need to know `T`.
  * - `typed_vector_base<T, Base>`: the strongly-typed layer derived classes
  *   (`vector<T>`, `inline_vector<T, Capacity>`, `sso_vector<T,
- *   InlineCapacity>`) actually inherit from. It reintroduces `T`-aware
- *   member types (`iterator`, `reference`, ...) and the full public
- *   `try_*`/checked/`unsafe_*` mutation and access surface, delegating every
- *   operation straight through to the untyped `Base` policy plus
- *   `metadata_for<T>`.
+ *   InlineCapacity>`, `outline_vector<T>`) actually inherit from. It
+ *   reintroduces `T`-aware member types (`iterator`, `reference`, ...) and
+ *   the full public `try_*`/checked/`unsafe_*` mutation and access surface,
+ *   delegating every operation straight through to the untyped `Base`
+ *   policy plus `metadata_for<T>`.
  *
  * `vector_operations` resolves, per function pointer and per `T`, to either
  * `trivial_operator_set`'s `memcpy`/`memset`-based implementations (for
@@ -42,7 +44,7 @@
  * `construction_helpers` itself uses for individual elements.
  *
  * Like `flat_container_base.hpp`, this is deliberately not public API: it
- * lives in `reloco::detail` and is included only by the three vector
+ * lives in `reloco::detail` and is included only by the four vector
  * headers, guarded on `RELOCO_SHARED_PROVIDE_DEFINITIONS` for its
  * out-of-line `vector_base.ipp` bodies exactly like `heap_allocator.hpp`/
  * `error_std.hpp` guard theirs (see `docs/shared-library.md`).
@@ -477,6 +479,43 @@ public:
 };
 
 /**
+ * @brief Storage policy backing `outline_vector<T>`: elements live in a
+ * caller-supplied, caller-owned byte span bound once at construction --
+ * never rebound, reallocated, or grown past that span's capacity. Unlike
+ * every other storage policy here, `outline_vector_base` supports no move
+ * (nor, transitively, relocation) at all: there is no well-defined way to
+ * "steal" a borrowed span out from under whoever actually owns it, the way
+ * `heap_vector_base` steals an owned heap pointer or `inline_vector_base`/
+ * `mixed_vector_base` relocate an embedded buffer's contents into another
+ * object's own embedded buffer.
+ */
+class RELOCO_EXPORT outline_vector_base : public unowned_vector_base {
+protected:
+  constexpr outline_vector_base(const vector_operations *ops, void *storage, std::size_t capacity) noexcept
+      : unowned_vector_base(ops, storage, 0, capacity) {}
+
+  ~outline_vector_base() noexcept = default;
+
+  RELOCO_API void destroy_elements(const type_metadata &type) noexcept;
+
+  [[nodiscard]] constexpr void *get_inline_storage() noexcept { return data_; }
+
+public:
+  // The caller-supplied span is external, not embedded in *this.
+  [[nodiscard]] constexpr static bool is_inline() noexcept { return false; }
+
+  // There's no real allocator with an outline vector; nested fallible `T`
+  // construction still needs one to forward to, exactly like inline_vector_base.
+  [[nodiscard]] static allocator_ref get_allocator() noexcept { return default_allocator(); }
+
+  [[nodiscard]] std::size_t inline_capacity() const noexcept { return cap_; }
+
+  // The bound span's capacity is fixed for the lifetime of *this: growth past it
+  // always fails with `error::capacity_exceeded`, never spills onto the heap.
+  [[nodiscard]] constexpr std::size_t max_capacity(const type_metadata &) noexcept { return cap_; }
+};
+
+/**
  * @brief Storage policy backing `sso_vector<T, InlineCapacity>`: starts
  * using an embedded inline buffer like `inline_vector_base`, but falls back
  * to an `allocator_ref`-owned heap allocation once `InlineCapacity` is
@@ -518,10 +557,11 @@ public:
 
 /**
  * @brief Strongly-typed layer `vector<T>`/`inline_vector<T, Capacity>`/
- * `sso_vector<T, InlineCapacity>` actually derive from: reintroduces
- * `T`-aware member types and the full checked/`try_*`/`unsafe_*` mutation
- * and access surface (see `docs/hardened-containers.md`), delegating every
- * operation to the untyped `Base` storage policy plus `metadata_for<T>`.
+ * `sso_vector<T, InlineCapacity>`/`outline_vector<T>` actually derive from:
+ * reintroduces `T`-aware member types and the full checked/`try_*`/
+ * `unsafe_*` mutation and access surface (see
+ * `docs/hardened-containers.md`), delegating every operation to the
+ * untyped `Base` storage policy plus `metadata_for<T>`.
  */
 template <typename T, typename Base> class RELOCO_EXPORT typed_vector_base : public Base {
 public:

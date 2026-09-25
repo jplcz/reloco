@@ -467,6 +467,15 @@ RELOCO_API void inline_vector_base::move_assign_from_base(const type_metadata &t
   move_construct_from_base(type, std::move(other));
 }
 
+RELOCO_API void outline_vector_base::destroy_elements(const type_metadata &type) noexcept {
+  if (data_ && size_ > 0) {
+    if (operations_->destroy_range) {
+      operations_->destroy_range(type, data_, 0, size_);
+    }
+    size_ = 0;
+  }
+}
+
 RELOCO_API void mixed_vector_base::destroy_elements(const type_metadata &type) noexcept {
   if (data_) {
     if (size_ > 0 && operations_ && operations_->destroy_range) {
