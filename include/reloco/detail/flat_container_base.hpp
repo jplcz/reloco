@@ -198,7 +198,7 @@ public:
     const KeyOf key_of{};
     const key_type &key = key_of(value);
     auto it = find_pos(key);
-    if (it != data_.end() && !comp_(key, KeyOf{}(*it))) {
+    if (it != data_.end() && !comp_(key, key_of(*it))) {
       return unexpected(error::already_exists);
     }
     const auto index = static_cast<size_type>(std::distance(data_.begin(), it));
@@ -207,14 +207,16 @@ public:
 
   template <typename Key> [[nodiscard]] bool contains(const Key &key) const noexcept {
     auto it = find_pos(key);
-    return it != data_.end() && !comp_(key, KeyOf{}(*it));
+    const KeyOf key_of{};
+    return it != data_.end() && !comp_(key, key_of(*it));
   }
 
   template <typename Key>
   [[nodiscard]] result<std::reference_wrapper<const value_type>>
   try_find(const Key &key) const & noexcept RELOCO_LIFETIMEBOUND {
     auto it = find_pos(key);
-    if (it != data_.end() && !comp_(key, KeyOf{}(*it))) {
+    const KeyOf keyOf;
+    if (it != data_.end() && !comp_(key, keyOf(*it))) {
       return std::cref(*it);
     }
     return unexpected(error::not_found);
@@ -222,7 +224,8 @@ public:
 
   template <typename Key> [[nodiscard]] result<void> try_remove(const Key &key) & noexcept {
     auto it = find_pos(key);
-    if (it == data_.end() || comp_(key, KeyOf{}(*it))) {
+    const KeyOf keyOf;
+    if (it == data_.end() || comp_(key, keyOf(*it))) {
       return unexpected(error::not_found);
     }
     const auto index = static_cast<size_type>(std::distance(data_.begin(), it));

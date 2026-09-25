@@ -31,6 +31,7 @@
  */
 
 #include "detail/flat_container_base.hpp"
+#include "relocatable_std.hpp"
 #include "sso_vector.hpp"
 
 #include <utility>
@@ -38,11 +39,10 @@
 namespace reloco {
 
 template <typename Key, typename Mapped, std::size_t InlineCapacity, typename Compare = std::less<Key>>
-class RELOCO_OWNER sso_flat_map
-    : public detail::flat_container_base<sso_vector<std::pair<Key, Mapped>, InlineCapacity>, Compare,
-                                        detail::pair_key_of> {
-  using base = detail::flat_container_base<sso_vector<std::pair<Key, Mapped>, InlineCapacity>, Compare,
-                                          detail::pair_key_of>;
+class RELOCO_OWNER sso_flat_map : public detail::flat_container_base<sso_vector<std::pair<Key, Mapped>, InlineCapacity>,
+                                                                     Compare, detail::pair_key_of> {
+  using base =
+      detail::flat_container_base<sso_vector<std::pair<Key, Mapped>, InlineCapacity>, Compare, detail::pair_key_of>;
 
 public:
   using key_type = Key;
@@ -167,8 +167,8 @@ public:
    * m.try_entry_or_insert(k, v);`
    */
   template <typename K, typename F>
-  [[nodiscard]] result<std::reference_wrapper<mapped_type>> try_entry_and_modify(const K &key, F &&modify) & noexcept
-      RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] result<std::reference_wrapper<mapped_type>>
+  try_entry_and_modify(const K &key, F &&modify) & noexcept RELOCO_LIFETIMEBOUND {
     auto found = try_at(key);
     if (found)
       modify(found->get());

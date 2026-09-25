@@ -13,6 +13,7 @@
 #include "expected.hpp"
 #include "lifetime.hpp"
 #include "optional.hpp"
+#include "relocatable_std.hpp"
 #include "rvalue_safety.hpp"
 #include <algorithm>
 #include <cstddef>
@@ -134,7 +135,9 @@ public:
     constexpr iterator(T *ptr, std::size_t remaining_windows, std::size_t window_size) noexcept
         : m_ptr(ptr), m_remaining_windows(remaining_windows), m_window_size(window_size) {}
 
-    [[nodiscard]] constexpr span<T> operator*() const noexcept RELOCO_LIFETIMEBOUND { return span<T>(m_ptr, m_window_size); }
+    [[nodiscard]] constexpr span<T> operator*() const noexcept RELOCO_LIFETIMEBOUND {
+      return span<T>(m_ptr, m_window_size);
+    }
 
     constexpr iterator &operator++() noexcept {
       ++m_ptr;
@@ -336,8 +339,7 @@ public:
    * @brief Rust `slice::split_at` equivalent: splits the span into two
    * adjacent sub-views at @p mid, `[0, mid)` and `[mid, size())`.
    */
-  [[nodiscard]] constexpr std::pair<span<T>, span<T>>
-  split_at(std::size_t mid) const & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] constexpr std::pair<span<T>, span<T>> split_at(std::size_t mid) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(mid <= m_size, "split_at index exceeds span size");
     return {span<T>(m_ptr, mid), span<T>(pointer_at(mid), m_size - mid)};
   }

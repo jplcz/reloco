@@ -37,12 +37,49 @@ RELOCO_API void trivial_operator_set::move_range_up(const type_metadata &type, v
 }
 
 RELOCO_API result<void> unowned_vector_base::try_reserve_base(allocator_ref alloc, const type_metadata &type,
-                                                              std::size_t new_cap) noexcept {
+                                                              std::size_t new_cap, void *inline_storage,
+                                                              std::size_t max_inline, std::size_t max_cap) noexcept {
   if (new_cap <= cap_)
     return {};
+  if (new_cap > max_cap)
+    return unexpected(error::capacity_exceeded);
 
   const std::size_t elem_size = type.element_size;
   const std::size_t required_bytes = new_cap * elem_size;
+
+  RELOCO_DEBUG_ASSERT(max_inline <= max_cap, "Inline capacity larger than heap capacity");
+
+  // We need special code path if container has either only or optional inline storage
+  if (inline_storage) {
+    RELOCO_DEBUG_ASSERT(max_inline != 0, "Non-empty inline storage with zero capacity");
+
+    // If we're in inline storage world now
+    if (data_ == inline_storage) {
+      // Grow to max inline capacity
+      if (new_cap <= max_inline) {
+        cap_ = max_inline;
+        return {};
+      }
+      // We have to relocate to heap world
+      auto res = alloc.allocate(required_bytes, type.element_alignment);
+      if (!res)
+        return unexpected(res.error());
+      if (size_ > 0) {
+        operations_->move_range(type, res->ptr, data_, size_);
+      }
+      // We don't have to "free" inline storage, just destroy the contents
+      if (!type.is_trivially_relocatable) {
+        // If type is trivially relocatable, then move_range has already killed source objects
+        // so we can't destroy them
+        destroy_elements_base(type);
+      }
+      data_ = res->ptr;
+      cap_ = res->size / elem_size;
+      return {};
+    }
+  } else {
+    RELOCO_DEBUG_ASSERT(inline_storage == nullptr, "Non-empty inline storage with zero capacity");
+  }
 
   if (data_) {
     if (auto res = alloc.expand_in_place(data_, cap_ * elem_size, required_bytes); res) {
@@ -77,7 +114,8 @@ RELOCO_API result<void> unowned_vector_base::try_reserve_base(allocator_ref allo
 }
 
 result<void> unowned_vector_base::try_resize_base(allocator_ref alloc, const type_metadata &type, std::size_t count,
-                                                  const void *value_ptr) noexcept {
+                                                  const void *value_ptr, void *inline_storage, std::size_t max_inline,
+                                                  std::size_t max_cap) noexcept {
   if (count <= size_) {
     if (operations_->destroy_range) {
       operations_->destroy_range(type, data_, count, size_);
@@ -86,7 +124,7 @@ result<void> unowned_vector_base::try_resize_base(allocator_ref alloc, const typ
     return {};
   }
 
-  auto res = try_reserve_base(alloc, type, count);
+  auto res = try_reserve_base(alloc, type, count, inline_storage, max_inline, max_cap);
   if (!res)
     return unexpected(res.error());
 
@@ -101,12 +139,44 @@ result<void> unowned_vector_base::try_resize_base(allocator_ref alloc, const typ
   return {};
 }
 
-RELOCO_API result<void> unowned_vector_base::shrink_to_fit_base(allocator_ref alloc,
-                                                                const type_metadata &type) noexcept {
+RELOCO_API result<void> unowned_vector_base::shrink_to_fit_base(allocator_ref alloc, const type_metadata &type,
+                                                                void *inline_storage, std::size_t max_inline) noexcept {
   if (cap_ <= size_)
     return {};
 
   const std::size_t elem_size = type.element_size;
+
+  // Special handling for case where inline storage exists
+  if (inline_storage) {
+    RELOCO_DEBUG_ASSERT(max_inline > 0, "Zero capacity inline storage");
+
+    // If we're already in inline storage world, then no need to do anything
+    if (data_ == inline_storage) {
+      RELOCO_DEBUG_ASSERT(cap_ <= max_inline, "Inline storage with invalid capacity");
+      return {};
+    }
+
+    // We might need to migrate to inline storage
+    if (size_ <= max_inline) {
+      if (size_ > 0) {
+        operations_->move_range(type, inline_storage, data_, size_);
+      }
+      // Destroy heap elements
+      if (!type.is_trivially_relocatable) {
+        // Only if they're not trivially relocatable. Trivial relocation prohibits source destruction
+        // from being ran
+        destroy_elements_base(type);
+      }
+      if (data_) {
+        alloc.deallocate(data_, cap_ * elem_size);
+      }
+      data_ = inline_storage;
+      cap_ = max_inline;
+      return {};
+    }
+  } else {
+    RELOCO_DEBUG_ASSERT(inline_storage == nullptr, "No inline storage, but non-empty inline capacity");
+  }
 
   if (size_ == 0) {
     if (data_) {
@@ -253,17 +323,32 @@ RELOCO_API void unowned_vector_base::dedup_by_base(const type_metadata &type,
   size_ = write;
 }
 
-RELOCO_API result<void *>
-unowned_vector_base::try_insert_at_base(allocator_ref alloc, const type_metadata &type, std::size_t index,
-                                        function_ref<result<void>(void *dest)> construct_fn) noexcept {
+RELOCO_API result<void *> unowned_vector_base::try_insert_at_base(allocator_ref alloc, const type_metadata &type,
+                                                                  std::size_t index,
+                                                                  function_ref<result<void>(void *dest)> construct_fn,
+                                                                  void *inline_storage, std::size_t max_inline,
+                                                                  std::size_t max_cap) noexcept {
 
   if (index > size_)
     return unexpected(error::out_of_bounds);
 
   // Ensure capacity first
   if (size_ == cap_) {
-    const std::size_t new_cap = cap_ == 0 ? std::size_t(8) : cap_ + (cap_ / 2);
-    if (auto res = try_reserve_base(alloc, type, new_cap); !res) {
+    // Can't exceed max capacity if we're already full
+    if (cap_ >= max_cap)
+      return unexpected(error::capacity_exceeded);
+
+    std::size_t new_cap;
+
+    if (max_inline && cap_ < max_inline) {
+      // Expand up to inline storage if we're below inline
+      new_cap = max_inline;
+    } else {
+      // Expand up to max storage
+      new_cap = std::min(cap_ == 0 ? std::size_t(8) : cap_ + ((cap_ + 1) / 2), max_cap);
+    }
+
+    if (auto res = try_reserve_base(alloc, type, new_cap, inline_storage, max_inline, max_cap); !res) {
       return unexpected(res.error());
     }
   }
@@ -346,7 +431,7 @@ RELOCO_API void inline_vector_base::destroy_elements(const type_metadata &type) 
 }
 
 RELOCO_API void inline_vector_base::move_construct_from_base(const type_metadata &type,
-                                                         inline_vector_base &&other) noexcept {
+                                                             inline_vector_base &&other) noexcept {
   operations_ = other.operations_;
 
   if (other.size_ > 0 && operations_->move_range) {
@@ -360,7 +445,8 @@ RELOCO_API void inline_vector_base::move_construct_from_base(const type_metadata
   other.size_ = 0;
 }
 
-RELOCO_API void inline_vector_base::move_assign_from_base(const type_metadata &type, inline_vector_base &&other) noexcept {
+RELOCO_API void inline_vector_base::move_assign_from_base(const type_metadata &type,
+                                                          inline_vector_base &&other) noexcept {
   if (this == &other)
     return;
 
@@ -382,7 +468,8 @@ RELOCO_API void mixed_vector_base::destroy_elements(const type_metadata &type) n
   }
 }
 
-RELOCO_API void mixed_vector_base::move_construct_from_base(const type_metadata &type, mixed_vector_base &&other) noexcept {
+RELOCO_API void mixed_vector_base::move_construct_from_base(const type_metadata &type,
+                                                            mixed_vector_base &&other) noexcept {
   operations_ = other.operations_;
   alloc_ = other.alloc_;
 
@@ -409,7 +496,8 @@ RELOCO_API void mixed_vector_base::move_construct_from_base(const type_metadata 
   }
 }
 
-RELOCO_API void mixed_vector_base::move_assign_from_base(const type_metadata &type, mixed_vector_base &&other) noexcept {
+RELOCO_API void mixed_vector_base::move_assign_from_base(const type_metadata &type,
+                                                         mixed_vector_base &&other) noexcept {
   if (this == &other)
     return;
 
