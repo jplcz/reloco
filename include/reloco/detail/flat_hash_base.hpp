@@ -48,6 +48,26 @@
  * pointers behind a `void*` boundary: every hash/equality comparison on
  * the hot `try_insert`/`try_find`/`try_remove` path can still be inlined,
  * and `Hash`/`KeyEqual` are almost always small, stateless types.
+ *
+ * Unlike `tree_base`, though, `flat_hash_base` has no `.ipp` file at all:
+ * `tree_base` could move its two heaviest routines (`bst_unlink`'s CLRS
+ * deletion, `bst_clear`'s iterative teardown) out of the header because
+ * neither one ever calls `Compare` -- they only relink/destroy
+ * `node_header` pointers, which is exactly as non-template as
+ * `node_base`'s own layout math. `grow_to` (rehashing every live element
+ * into a larger array) and `erase_slot` (the backward-shift walk above)
+ * have no such Compare-free structural core to peel off: both call
+ * `Hash{}(key_of(value))` on every single element they touch, since a
+ * slot's rehash target (`grow_to`) and a probe sequence's reachability
+ * test (`erase_slot`) are only knowable by actually hashing that
+ * element's key. Erasing either routine to a single, `T`-independent
+ * `.ipp` definition would mean routing every one of those hash calls
+ * through a `void*`-erased function pointer -- on the same amortized-O(1)
+ * hot path this whole design exists to keep inlined -- which would cost
+ * more than the (typically small) template-instantiation duplication it
+ * would save, especially since `Hash`/`KeyEqual` are almost always small
+ * stateless types with only a handful of distinct instantiations in any
+ * one program.
  */
 
 #include "../construction_helpers.hpp"
