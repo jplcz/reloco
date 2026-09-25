@@ -17,12 +17,14 @@
  * cells as it needs, each write-once-then-read-many, exactly like Rust's
  * `OnceLock<T>`.
  *
- * An `std::atomic<int>` state (`empty`/`initializing`/`ready`) gives every
- * `get()`/`get_mut()` call, and the fast path of every `try_set`/
- * `get_or_try_init` call, a lock-free acquire-load once initialization has
- * completed. The slow path (the first write, or any call contending with
- * an in-progress one) is serialized by one `mutex` + `condition_variable`
- * pair (see `mutex.hpp`), matching `channel.hpp`'s own locking approach.
+ * A `futex_word` state (`empty`/`initializing`/`ready`, see `futex.hpp`)
+ * gives every `get()`/`get_mut()` call, and the fast path of every
+ * `try_set`/`get_or_try_init` call, a lock-free acquire-load once
+ * initialization has completed. The slow path (the first write, or any
+ * call contending with an in-progress one) claims the transition from
+ * `empty` to `initializing` via a single `compare_exchange`, and blocks
+ * on (or wakes, via `futex_wake_all`) the same state word instead of a
+ * `mutex` + `condition_variable` pair -- no lock is ever held.
  *
  * - `try_set(T)` -> `result<void>`: fails with `error::already_exists` if
  *   the cell is already initialized (matching Rust's `OnceLock::set`,
@@ -46,9 +48,9 @@
  * `T` must be `std::is_nothrow_move_constructible_v`, like every other
  * reloco container element requirement.
  *
- * `once_lock<T>` is neither copyable nor movable (it embeds a `mutex` +
- * `condition_variable`, matching `guarded_mutex<T>`/`mutex`/
- * `condition_variable`'s own restriction).
+ * `once_lock<T>` is neither copyable nor movable (matching
+ * `guarded_mutex<T>`/`mutex`/`condition_variable`'s own restriction, even
+ * though this class no longer embeds either of those directly).
  *
  * `is_send<once_lock<T>>` forwards to `is_send<T>` (moving the whole,
  * empty-or-initialized cell to another thread is fine exactly when moving
@@ -67,13 +69,13 @@
 #include "detail/compat.hpp"
 #include "error.hpp"
 #include "expected.hpp"
+#include "futex.hpp"
 #include "lifetime.hpp"
-#include "mutex.hpp"
 #include "send_sync.hpp"
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
-#include <mutex>
 #include <type_traits>
 #include <utility>
 
@@ -134,17 +136,19 @@ public:
    * actually known).
    */
   [[nodiscard]] result<void> try_set(T value) noexcept {
-    std::unique_lock<mutex> lock(mutex_);
-    auto wait_result = cv_.wait(lock, [this] { return state_.load(std::memory_order_relaxed) != initializing; });
-    if (!wait_result)
-      return unexpected(wait_result.error());
-    if (state_.load(std::memory_order_relaxed) == ready)
-      return unexpected(error::already_exists);
+    for (;;) {
+      std::uint32_t expected = empty;
+      if (state_.compare_exchange_strong(expected, initializing, std::memory_order_acq_rel, std::memory_order_acquire))
+        break;
+      if (expected == ready)
+        return unexpected(error::already_exists);
+      // expected == initializing: wait for the racing call to settle, then retry the claim.
+      futex_wait(state_, initializing);
+    }
 
     ::new (static_cast<void *>(ptr())) T(std::move(value));
     state_.store(ready, std::memory_order_release);
-    lock.unlock();
-    cv_.notify_all();
+    futex_wake_all(state_);
     return {};
   }
 
@@ -162,31 +166,27 @@ public:
     if (state_.load(std::memory_order_acquire) == ready)
       return ptr();
 
-    std::unique_lock<mutex> lock(mutex_);
-    auto wait_result = cv_.wait(lock, [this] { return state_.load(std::memory_order_relaxed) != initializing; });
-    if (!wait_result)
-      return unexpected(wait_result.error());
-
-    if (state_.load(std::memory_order_relaxed) == ready)
-      return ptr();
-
-    state_.store(initializing, std::memory_order_relaxed);
-    lock.unlock();
+    for (;;) {
+      std::uint32_t expected = empty;
+      if (state_.compare_exchange_strong(expected, initializing, std::memory_order_acq_rel, std::memory_order_acquire))
+        break;
+      if (expected == ready)
+        return ptr();
+      // expected == initializing: wait for the racing call to settle, then retry the claim.
+      futex_wait(state_, initializing);
+    }
 
     result<T> init_result = f();
 
-    lock.lock();
     if (!init_result) {
-      state_.store(empty, std::memory_order_relaxed);
-      lock.unlock();
-      cv_.notify_all();
+      state_.store(empty, std::memory_order_release);
+      futex_wake_all(state_);
       return unexpected(init_result.error());
     }
 
     ::new (static_cast<void *>(ptr())) T(std::move(*init_result));
     state_.store(ready, std::memory_order_release);
-    lock.unlock();
-    cv_.notify_all();
+    futex_wake_all(state_);
     return ptr();
   }
 
@@ -198,20 +198,33 @@ public:
    * self)`.
    */
   [[nodiscard]] result<T> take() noexcept {
-    std::unique_lock<mutex> lock(mutex_);
-    auto wait_result = cv_.wait(lock, [this] { return state_.load(std::memory_order_relaxed) != initializing; });
-    if (!wait_result)
-      return unexpected(wait_result.error());
-    if (state_.load(std::memory_order_relaxed) != ready)
-      return unexpected(error::not_initialized);
+    for (;;) {
+      std::uint32_t settled = wait_until_settled();
+      if (settled != ready)
+        return unexpected(error::not_initialized);
 
-    result<T> taken(std::move(*ptr()));
-    ptr()->~T();
-    state_.store(empty, std::memory_order_relaxed);
-    return taken;
+      std::uint32_t expected = ready;
+      if (state_.compare_exchange_strong(expected, empty, std::memory_order_acq_rel, std::memory_order_acquire)) {
+        result<T> taken(std::move(*ptr()));
+        ptr()->~T();
+        return taken;
+      }
+      // Lost a race against a concurrent take() that already reset the cell; retry (will observe `empty`).
+    }
   }
 
 private:
+  // Blocks while `state_` is `initializing`, returning the settled value
+  // (`empty` or `ready`) once it changes.
+  [[nodiscard]] std::uint32_t wait_until_settled() const noexcept {
+    std::uint32_t s = state_.load(std::memory_order_acquire);
+    while (s == initializing) {
+      futex_wait(state_, s);
+      s = state_.load(std::memory_order_acquire);
+    }
+    return s;
+  }
+
   [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) T *ptr() noexcept {
     return std::addressof(storage_.value_);
   }
@@ -234,14 +247,12 @@ private:
     T value_;
   };
 
-  static constexpr int empty = 0;
-  static constexpr int initializing = 1;
-  static constexpr int ready = 2;
+  static constexpr std::uint32_t empty = 0;
+  static constexpr std::uint32_t initializing = 1;
+  static constexpr std::uint32_t ready = 2;
 
   alignas(effective_alignment_v<T>) storage_type storage_{};
-  mutex mutex_;
-  condition_variable cv_;
-  std::atomic<int> state_{empty};
+  futex_word state_{empty};
 };
 
 /**

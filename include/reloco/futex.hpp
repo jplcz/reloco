@@ -12,9 +12,10 @@
  * reloco primitives can use instead of a full `mutex` + `condition_
  * variable` pair (see `mutex.hpp`) when all they actually need is "block
  * until this word changes"/"wake whoever is blocked on this word":
- * `barrier.hpp` uses it today; `once_lock.hpp`, `fallible_singleton.hpp`,
- * and `tls_provider.hpp`'s `RELOCO_TLS_MODEL_PTHREAD` backend are natural
- * future users of the same primitive.
+ * `barrier.hpp`, `scope.hpp`, and `once_lock.hpp` all use it today;
+ * `fallible_singleton.hpp` and `tls_provider.hpp`'s
+ * `RELOCO_TLS_MODEL_PTHREAD` backend are natural future users of the same
+ * primitive.
  *
  * Backend selection, mirroring `mutex.hpp`'s `RELOCO_MUTEX_BACKEND_*`
  * customization point -- select **at most one**: `RELOCO_FUTEX_BACKEND_

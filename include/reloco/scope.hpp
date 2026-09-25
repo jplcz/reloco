@@ -26,15 +26,15 @@
  * not `F: Send + 'static`).
  *
  * Internally this is a completion counter (`detail::scope_data::
- * running_count`) guarded by one `mutex` + `condition_variable` pair (see
- * `mutex.hpp`), shared via `shared_ptr` so it outlives any individual
- * `spawn()` call. Each `thread_scope::spawn()` call increments the
- * counter before handing the closure to `reloco::spawn()`, and wraps it
- * so the counter is decremented (and the condition variable notified)
- * immediately after the closure returns, still running on the spawned
- * thread -- matching Rust's own `std::thread::scope` implementation,
- * which also does not literally join every spawned thread to know when
- * it is safe to return, just waits for this kind of completion signal.
+ * running_count`, a `futex.hpp` `futex_word`) shared via `shared_ptr` so
+ * it outlives any individual `spawn()` call. Each `thread_scope::spawn()`
+ * call increments the counter before handing the closure to
+ * `reloco::spawn()`, and wraps it so the counter is decremented (and
+ * every thread waiting on it woken via `futex_wake_all`) immediately
+ * after the closure returns, still running on the spawned thread --
+ * matching Rust's own `std::thread::scope` implementation, which also
+ * does not literally join every spawned thread to know when it is safe
+ * to return, just waits for this kind of completion signal.
  * `~thread_scope()` blocks until the counter reaches zero, which is what
  * makes `scope()` itself not return until every spawned closure has
  * finished running. Any `scoped_join_handle<R>` the caller keeps and
@@ -47,14 +47,12 @@
 #include "default_allocator.hpp"
 #include "detail/compat.hpp"
 #include "expected.hpp"
+#include "futex.hpp"
 #include "lifetime.hpp"
-#include "mutex.hpp"
 #include "send_sync.hpp"
 #include "shared_ptr.hpp"
 #include "thread.hpp"
 
-#include <cstddef>
-#include <mutex>
 #include <type_traits>
 #include <utility>
 
@@ -78,9 +76,7 @@ template <typename F, typename R = std::invoke_result_t<F &, thread_scope &>>
 namespace detail {
 
 struct scope_data {
-  mutex guard;
-  condition_variable done;
-  std::size_t running_count = 0;
+  futex_word running_count = 0;
 };
 
 } // namespace detail
@@ -151,8 +147,11 @@ public:
   thread_scope &operator=(thread_scope &&) = delete;
 
   ~thread_scope() noexcept {
-    std::unique_lock<mutex> lock(data_->guard);
-    static_cast<void>(data_->done.wait(lock, [this] { return data_->running_count == 0; }));
+    std::uint32_t count = data_->running_count.load(std::memory_order_acquire);
+    while (count != 0) {
+      futex_wait(data_->running_count, count);
+      count = data_->running_count.load(std::memory_order_acquire);
+    }
   }
 
   /**
@@ -172,10 +171,7 @@ public:
                   "thread_scope::spawn: F's return type must be Send -- it is moved back to the joining thread by "
                   "join()");
 
-    {
-      std::lock_guard<mutex> lock(data_->guard);
-      ++data_->running_count;
-    }
+    data_->running_count.fetch_add(1, std::memory_order_relaxed);
 
     auto data = data_; // shared_ptr copy: keeps scope_data alive for the wrapped closure below.
     auto wrapped = [captured_f = std::forward<F>(f), data]() noexcept -> R {
@@ -186,9 +182,8 @@ public:
         shared_ptr<detail::scope_data> shared_data;
 
         ~completion_guard() noexcept {
-          std::lock_guard<mutex> lock(shared_data->guard);
-          if (--shared_data->running_count == 0)
-            shared_data->done.notify_all();
+          if (shared_data->running_count.fetch_sub(1, std::memory_order_acq_rel) == 1)
+            futex_wake_all(shared_data->running_count);
         }
       } guard{data};
 
@@ -197,9 +192,8 @@ public:
 
     auto handle = reloco::spawn(std::move(wrapped), alloc);
     if (!handle) {
-      std::lock_guard<mutex> lock(data_->guard);
-      if (--data_->running_count == 0)
-        data_->done.notify_all();
+      if (data_->running_count.fetch_sub(1, std::memory_order_acq_rel) == 1)
+        futex_wake_all(data_->running_count);
       return unexpected(handle.error());
     }
     return scoped_join_handle<R>(std::move(*handle));

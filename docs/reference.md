@@ -2373,13 +2373,14 @@ if (entry)
   reloco operation). Like Rust's `&mut self` requirement, the caller must
   ensure no other thread concurrently reads/writes the cell.
 
-Internally, an `std::atomic<int>` state gives `get()`/`get_mut()`, and the
-fast path of `try_set`/`get_or_try_init`, a lock-free acquire-load once
-initialized; the slow path is serialized by one `mutex` +
-`condition_variable` pair (see `mutex.hpp`), matching `channel.hpp`'s own
-locking approach. `T` must be `std::is_nothrow_move_constructible_v`, like
+Internally, a `futex_word` state (see `futex.hpp`) gives `get()`/
+`get_mut()`, and the fast path of `try_set`/`get_or_try_init`, a
+lock-free acquire-load once initialized; the slow path claims the
+`empty` -> `initializing` transition via a single `compare_exchange` and
+blocks on (or wakes via `futex_wake_all`) the same state word -- no lock
+is ever held. `T` must be `std::is_nothrow_move_constructible_v`, like
 every other reloco container element requirement. `once_lock<T>` is
-neither copyable nor movable (it embeds a `mutex` + `condition_variable`).
+neither copyable nor movable.
 
 `is_send<once_lock<T>>` forwards to `is_send<T>`. `is_sync<once_lock<T>>`
 requires both `is_send<T>` and `is_sync<T>`, matching Rust's `unsafe impl
@@ -2429,10 +2430,10 @@ auto result = reloco::scope([&](reloco::thread_scope &s) {
   `join_handle<R>` (see `thread.hpp`).
 
 Internally, `scope()` allocates one shared, atomically-refcounted
-completion counter (guarded by a `mutex` + `condition_variable` pair, see
-`mutex.hpp`) that every `thread_scope::spawn()` call increments before
-handing its closure to `reloco::spawn()`, and decrements (waking up
-`~thread_scope()`, which blocks until it reaches zero) right after the
+completion counter (a `futex_word`, see `futex.hpp`) that
+every `thread_scope::spawn()` call increments before handing its closure
+to `reloco::spawn()`, and decrements (waking up `~thread_scope()`, which
+blocks until it reaches zero, via `futex_wake_all`) right after the
 closure returns, still running on the spawned thread. This matches Rust's
 own `std::thread::scope` implementation, which also does not literally
 join every spawned thread to know when it is safe to return, just waits
