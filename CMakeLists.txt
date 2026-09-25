@@ -248,6 +248,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_tls_provider.cpp
         tests/test_mutex.cpp
         tests/test_guarded_mutex.cpp
+        tests/test_barrier.cpp
         tests/test_shared_ptr.cpp
         tests/test_rc.cpp
         tests/test_bytes.cpp

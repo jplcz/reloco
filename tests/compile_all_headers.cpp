@@ -8,6 +8,7 @@
 #include <reloco/allocator.hpp>
 #include <reloco/any.hpp>
 #include <reloco/array.hpp>
+#include <reloco/barrier.hpp>
 #include <reloco/bytes.hpp>
 #include <reloco/channel.hpp>
 #include <reloco/checked.hpp>
@@ -28,6 +29,7 @@
 #include <reloco/flat_set.hpp>
 #include <reloco/function.hpp>
 #include <reloco/function_ref.hpp>
+#include <reloco/futex.hpp>
 #include <reloco/heap_allocator.hpp>
 #include <reloco/inline_flat_map.hpp>
 #include <reloco/inline_flat_set.hpp>
