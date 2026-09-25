@@ -4,22 +4,24 @@ SPDX-FileCopyrightText: 2026 Jarosław Pelczar <jarek@jpelczar.com>
 SPDX-License-Identifier: BSD-2-Clause
 -->
 
-# Type-erased base containers: sharing storage logic across `vector`/`inline_vector`/`sso_vector`
+# Type-erased base containers: sharing storage logic across `vector`/`inline_vector`/`sso_vector`/`outline_vector`
 
-`vector<T>`, `inline_vector<T, Capacity>`, and `sso_vector<T,
-InlineCapacity>` (`vector.hpp`, `inline_vector.hpp`, `sso_vector.hpp`) all
-need the exact same growth/resize/insert/erase/retain/dedup/move logic --
-only *where the bytes live* differs (heap-only, inline-only, or
-inline-with-heap-fallback). Rather than hand-rolling that logic three times
-over, all three are thin, strongly-typed wrappers around a single
-type-erased engine defined in `include/reloco/detail/vector_base.hpp`
-(out-of-line bodies in `vector_base.ipp`). This page explains that engine's
-two-layer design, how the three public containers plug into it, and what to
-do if you add a fourth vector flavor.
+`vector<T>`, `inline_vector<T, Capacity>`, `sso_vector<T, InlineCapacity>`,
+and `outline_vector<T>` (`vector.hpp`, `inline_vector.hpp`, `sso_vector.hpp`,
+`outline_vector.hpp`) all need the exact same growth/resize/insert/erase/
+retain/dedup logic -- only *where the bytes live*, and *who owns them*,
+differs (heap-only, inline-only, inline-with-heap-fallback, or a
+caller-owned span the container never allocates or frees). Rather than
+hand-rolling that logic four times over, all four are thin, strongly-typed
+wrappers around a single type-erased engine defined in
+`include/reloco/detail/vector_base.hpp` (out-of-line bodies in
+`vector_base.ipp`). This page explains that engine's two-layer design, how
+the four public containers plug into it, and what to do if you add a fifth
+vector flavor.
 
 If you haven't already, read [Container contract](container-contract.md)
 first: it covers the lifetime/rvalue-safety/tri-tier-accessor rules every
-reloco container follows, including the three described here.
+reloco container follows, including the four described here.
 `flat_container_base.hpp` (backing `flat_set`/`flat_map`/
 `inline_flat_set`/`inline_flat_map`) applies the same "shared base +
 storage-defining `Storage` parameter" idea one level up, on top of
@@ -53,6 +55,9 @@ resolves its table entirely at compile time, per `T`, via
 
 ## Layer 1: the `vector_operations` table
 
+`type_metadata`/`metadata_for<T>` live in their own header,
+`detail/type_metadata.hpp`, separate from `vector_base.hpp`:
+
 ```cpp
 struct type_metadata {
   std::size_t element_size;
@@ -62,7 +67,19 @@ struct type_metadata {
   bool is_trivially_copyable;
   bool is_default_constructible;
 };
+```
 
+`type_metadata` describes only `T` itself -- size, alignment, and a handful
+of triviality facts -- with nothing specific to *contiguous array* storage,
+so it isn't part of `vector_operations`' own header. A future type-erased
+engine for a node- or bucket-based container (a hash map, a list, ...)
+can `#include "type_metadata.hpp"` and reuse `metadata_for<T>` as-is,
+without depending on anything `vector_base.hpp` defines.
+
+`vector_operations` itself, layered on top in `vector_base.hpp`, is where
+the *array-shaped* per-`T` behavior lives:
+
+```cpp
 struct vector_operations {
   void (*destroy_range)(const type_metadata &, void *data, std::size_t from, std::size_t to) noexcept;
   result<void> (*clone_range)(const type_metadata &, const void *src, void *dest, std::size_t size,
@@ -106,38 +123,63 @@ to.
 
 ## Layer 2: untyped storage policies
 
-Four classes hold the actual `void* data_ / size_t size_ / size_t cap_`
+Five classes hold the actual `void* data_ / size_t size_ / size_t cap_`
 triple and the storage-*shape*-specific growth logic; none of them are
 templated on `T`:
 
 | Class | Backs | Storage shape |
 |---|---|---|
-| `unowned_vector_base` | (base of all three below) | Just the `data_`/`size_`/`cap_`/`operations_` fields and every operation expressible without knowing whether storage is inline, heap, or mixed (`try_resize_base`, `try_insert_at_base`, `try_erase_at_base`, `retain_base`, `dedup_by_base`, ...) |
+| `unowned_vector_base` | (base of all four below) | Just the `data_`/`size_`/`cap_`/`operations_` fields and every operation expressible without knowing whether storage is inline, heap, mixed, or caller-owned (`try_resize_base`, `try_insert_at_base`, `try_erase_at_base`, `retain_base`, `dedup_by_base`, ...) |
 | `heap_vector_base` | `vector<T>` | `allocator_ref`-owned heap allocation only; no inline buffer, unbounded growth (`try_reserve_base` may always call `allocator_ref::expand_in_place`/`reallocate`) |
 | `inline_vector_base` | `inline_vector<T, Capacity>` | Fixed-capacity buffer embedded in the object; no allocator; growth past `Capacity` fails with `error::capacity_exceeded` |
 | `mixed_vector_base` | `sso_vector<T, InlineCapacity>` | Starts in an embedded inline buffer like `inline_vector_base`, promotes to an `allocator_ref`-owned heap allocation once `InlineCapacity` is exceeded, exactly like `basic_string`'s small-string optimization |
+| `outline_vector_base` | `outline_vector<T>` | Fixed-capacity buffer the *caller* owns (a `span<std::byte>` bound once at construction); no allocator, no move support at all -- see below |
 
 Every `try_*_base` primitive on `unowned_vector_base` takes the caller's
 `inline_storage`/`max_inline`/`max_cap` explicitly as parameters rather than
 reading them through a virtual call, so `heap_vector_base` (which has no
 inline storage) simply passes `get_inline_storage() == nullptr` /
 `inline_capacity() == 0`, and the shared logic branches on those values
-instead of needing three separate reimplementations of, say,
+instead of needing four separate reimplementations of, say,
 "reserve" -- `try_reserve_base` handles going inline-to-heap (mixed),
-heap-only growth, and rejecting growth past a fixed `Capacity` (inline) all
-in one function body.
+heap-only growth, and rejecting growth past a fixed capacity (inline and
+outline alike) all in one function body. `inline_vector_base` and
+`outline_vector_base` are structurally near-identical from
+`unowned_vector_base`'s point of view -- both pass a fixed, non-reallocatable
+storage pointer as `inline_storage` with `max_inline == max_cap == cap_`, so
+`try_reserve_base` treats "growth past this pointer's capacity" identically
+for both; the only difference is *whose* buffer that pointer refers to.
 
 Each derived policy additionally implements the handful of operations that
 genuinely differ by storage shape and can't be expressed generically:
-`destroy_elements`, `move_construct_from_base`, `move_assign_from_base`,
-`get_inline_storage`, `is_inline`, `get_allocator`, `inline_capacity`,
-`max_capacity`. `heap_vector_base`'s `move_construct_from_base` is `constexpr`
-and trivial (steal the pointer + reset the source), while
-`inline_vector_base`/`mixed_vector_base`'s must actually relocate elements
-byte range by byte range since the destination is a *different* object's
-embedded storage, not a pointer that can simply be reassigned -- hence
-those two are `RELOCO_API`-declared and defined in `vector_base.ipp`
-instead of inlined here.
+`destroy_elements`, `get_inline_storage`, `is_inline`, `get_allocator`,
+`inline_capacity`, `max_capacity`, and -- for every policy except
+`outline_vector_base` -- `move_construct_from_base`/`move_assign_from_base`.
+`heap_vector_base`'s `move_construct_from_base` is `constexpr` and trivial
+(steal the pointer + reset the source), while `inline_vector_base`/
+`mixed_vector_base`'s must actually relocate elements byte range by byte
+range since the destination is a *different* object's embedded storage, not
+a pointer that can simply be reassigned -- hence those two are
+`RELOCO_API`-declared and defined in `vector_base.ipp` instead of inlined
+here. `outline_vector_base` implements neither: see "Why
+`outline_vector_base` has no move support" below.
+
+### Why `outline_vector_base` has no move support
+
+Every other storage policy's "move" has a well-defined destination to
+relocate *into*: `heap_vector_base` reassigns a pointer, `inline_vector_base`/
+`mixed_vector_base` copy element bytes into the destination object's *own*
+embedded buffer. `outline_vector_base` has no such destination -- its
+`data_` points at a span some *other* piece of code owns, and there is no
+second span for a hypothetical move target to relocate into; the only thing
+a "move" could steal is the pointer *value* itself, which would leave two
+live handles racing over how they each thought they'd bound that memory.
+Rather than pick an unsound behavior, `outline_vector_base` simply omits
+`move_construct_from_base`/`move_assign_from_base`, and `outline_vector<T>`
+explicitly `= delete`s its own move constructor/assignment (see
+"How the four public containers plug in" below) -- `unowned_vector_base`
+already deletes copy *and* move at the C++ special-member level, so this is
+enforced structurally, not just by convention.
 
 ## Layer 3: `typed_vector_base<T, Base>`
 
@@ -158,13 +200,14 @@ public:
 };
 ```
 
-This is the layer `vector<T>`, `inline_vector<T, Capacity>`, and
-`sso_vector<T, InlineCapacity>` actually derive from
+This is the layer `vector<T>`, `inline_vector<T, Capacity>`,
+`sso_vector<T, InlineCapacity>`, and `outline_vector<T>` actually derive from
 (`typed_vector_base<T, heap_vector_base>`, `typed_vector_base<T,
-inline_vector_base>`, `typed_vector_base<T, mixed_vector_base>`
-respectively). It reintroduces every `T`-aware surface a caller sees --
-member-type aliases, the checked/`try_*`/`unsafe_*` tri-tier accessors
-(see [Container contract](container-contract.md)), `try_emplace_back`,
+inline_vector_base>`, `typed_vector_base<T, mixed_vector_base>`,
+`typed_vector_base<T, outline_vector_base>` respectively). It reintroduces
+every `T`-aware surface a caller sees -- member-type aliases, the
+checked/`try_*`/`unsafe_*` tri-tier accessors (see
+[Container contract](container-contract.md)), `try_emplace_back`,
 `try_insert_at`, `retain`/`dedup_by` with strongly-typed predicates -- and
 every non-trivial member function does nothing but forward straight to the
 matching `Base::*_base` primitive, passing `metadata_for<T>` and the
@@ -173,10 +216,16 @@ policy's own `get_inline_storage()`/`inline_capacity()`/`max_capacity()` so
 
 `typed_vector_base` also owns the `RELOCO_BLOCK_RVALUE_ACCESS(T)` and
 `RELOCO_LIFETIMEBOUND` annotations for the whole tri-tier surface, so
-`vector<T>`/`inline_vector<T, Capacity>`/`sso_vector<T, InlineCapacity>`
-inherit them for free instead of repeating them three times.
+`vector<T>`/`inline_vector<T, Capacity>`/`sso_vector<T, InlineCapacity>`/
+`outline_vector<T>` inherit them for free instead of repeating them four
+times. Because `typed_vector_base<T, Base>` never itself declares a move
+constructor, a concrete container built on a `Base` whose own move ctor/
+assignment is deleted (`outline_vector_base`, transitively via
+`unowned_vector_base`) automatically ends up with an implicitly-deleted
+move constructor too -- `outline_vector<T>` doesn't need to do anything
+special to become immovable beyond not declaring one of its own.
 
-## How the three public containers plug in
+## How the four public containers plug in
 
 ```cpp
 // vector.hpp
@@ -192,6 +241,19 @@ class RELOCO_OWNER inline_vector : detail::inline_vector_storage<T, Capacity>,
 template <typename T, std::size_t InlineCapacity>
 class RELOCO_OWNER sso_vector : detail::inline_vector_storage<T, InlineCapacity>,
                                  public detail::typed_vector_base<T, detail::mixed_vector_base> { ... };
+
+// outline_vector.hpp -- RELOCO_POINTER, not RELOCO_OWNER: it never owns the bytes it manages elements in.
+template <typename T>
+class RELOCO_POINTER outline_vector : public detail::typed_vector_base<T, detail::outline_vector_base> {
+  constexpr explicit outline_vector(span<std::byte> storage RELOCO_LIFETIMEBOUND
+                                         RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
+      : /* typed_vector_base<T, outline_vector_base> */ base_t(storage.data(), storage.size() / sizeof(T)) {}
+
+  outline_vector(const outline_vector &) = delete;
+  outline_vector &operator=(const outline_vector &) = delete;
+  outline_vector(outline_vector &&) = delete;
+  outline_vector &operator=(outline_vector &&) = delete;
+};
 ```
 
 `inline_vector_storage<T, Capacity>` is just the `alignas(...) std::byte
@@ -200,21 +262,39 @@ inherited *before* `typed_vector_base` so its address is stable and known
 by the time the base class constructor runs, letting `inline_vector`/
 `sso_vector` pass `this->storage_bytes_` straight into
 `typed_vector_base`'s constructor (which forwards it down to
-`inline_vector_base`/`mixed_vector_base`).
+`inline_vector_base`/`mixed_vector_base`). `outline_vector<T>` needs no such
+mixin -- there is no embedded buffer to give an address to, since the bytes
+it uses live in the caller's `span<std::byte>` instead; it derives from
+`typed_vector_base<T, outline_vector_base>` alone.
+
+`outline_vector<T>` is tagged `RELOCO_POINTER`, unlike the other three
+`RELOCO_OWNER` flavors (see [Container contract](container-contract.md#class-declaration-template)):
+it manages *element* construction/destruction inside the bound span, but
+does not own the span's *bytes* -- the same distinction that makes
+`mutable_sequence_container_ref<T>` (see `container_ref.hpp`) `RELOCO_POINTER`
+despite mutating the container it's bound to.
 
 Each concrete container is responsible only for:
 
-- Constructors/destructor (wiring up the allocator or inline buffer,
-  calling `destroy_elements`/`move_construct_from_base`/
-  `move_assign_from_base` at the right lifecycle points).
+- Constructors/destructor (wiring up the allocator, inline buffer, or bound
+  span; calling `destroy_elements`/`move_construct_from_base`/
+  `move_assign_from_base` at the right lifecycle points, where the flavor
+  supports moving at all).
 - The `try_create`/`try_allocate`/`try_clone`/`try_clone_at` fallible
   construction protocol (see [Fallible construction](fallible-construction.md)),
   since that protocol is inherently container-specific (e.g. `vector<T>`
   takes an allocator up front, `inline_vector<T, Capacity>` never does).
+  `outline_vector<T>` implements none of it: binding an already-allocated
+  span can never itself fail, so its plain constructor is sufficient.
 - Anything genuinely unique to that flavor: `inline_vector`/`sso_vector`'s
   `try_to_vector()` upgrade path, `vector<T>`'s unconditional
   `is_trivially_relocatable` specialization vs. `inline_vector`/
-  `sso_vector`'s conditional ones (see [Trivial relocation](relocatable.md)).
+  `sso_vector`'s conditional ones (see [Trivial relocation](relocatable.md)),
+  `outline_vector<T>`'s explicitly deleted move constructor/assignment (and
+  its *lack* of an `is_trivially_relocatable` specialization at all -- the
+  primary template's `std::is_trivially_copyable<T>` fallback already
+  reports `false` once copy is deleted, correctly forbidding relocation
+  along with the move it would otherwise stand in for).
 
 Everything else -- growth, resize, insert/erase, retain/dedup, the full
 tri-tier access surface -- is inherited unchanged from `typed_vector_base`.
@@ -236,25 +316,37 @@ macro means and when it's set for you automatically vs. requires
 Because these bodies are untyped (`void*`/`type_metadata` instead of
 `T`/`T*`), they compile and link exactly once regardless of how many
 different `vector<T>`/`inline_vector<T, Capacity>`/`sso_vector<T,
-InlineCapacity>` instantiations a program uses -- the main reason this
-split exists, beyond code reuse: it keeps per-`T` template bloat in a
-multi-`.so` deployment down to just `typed_vector_base<T, Base>`'s thin
-forwarding wrappers.
+InlineCapacity>`/`outline_vector<T>` instantiations a program uses -- the
+main reason this split exists, beyond code reuse: it keeps per-`T` template
+bloat in a multi-`.so` deployment down to just `typed_vector_base<T,
+Base>`'s thin forwarding wrappers.
 
-## Adding a fourth vector flavor
+## Adding a fifth vector flavor
+
+`outline_vector_base`/`outline_vector<T>` is a fully worked, real example of
+this process (not a hypothetical) -- read it alongside these steps:
 
 1. Add a new untyped storage policy deriving from `unowned_vector_base`,
-   implementing `destroy_elements`, `move_construct_from_base`,
-   `move_assign_from_base`, `get_inline_storage`, `is_inline`,
+   implementing `destroy_elements`, `get_inline_storage`, `is_inline`,
    `get_allocator`, `inline_capacity`, `max_capacity` for the new storage
-   shape.
+   shape, plus `move_construct_from_base`/`move_assign_from_base` *if* the
+   new flavor supports moving -- it's fine to omit both, like
+   `outline_vector_base` does, if there is no sound way to relocate the new
+   storage shape (see "Why `outline_vector_base` has no move support"
+   above); the concrete container then simply doesn't declare a move
+   constructor/assignment of its own, and gets an implicitly-deleted one
+   for free.
 2. If any of those bodies are non-trivial, declare them `RELOCO_API` and
    define them in `vector_base.ipp`, following the existing
-   `inline_vector_base`/`mixed_vector_base` bodies as a template.
+   `inline_vector_base`/`mixed_vector_base`/`outline_vector_base` bodies as
+   a template.
 3. Declare the public container as `typed_vector_base<T, YourNewBase>`,
    plus whatever constructors/fallible-construction entry points and
-   flavor-specific extras it needs (following the "How the three public
-   containers plug in" section above).
+   flavor-specific extras it needs (following the "How the four public
+   containers plug in" section above). Tag it `RELOCO_OWNER` if it owns the
+   bytes its elements live in, or `RELOCO_POINTER` if -- like
+   `outline_vector<T>` -- it only owns the *elements*, not the underlying
+   storage (see [Container contract](container-contract.md#class-declaration-template)).
 4. Do **not** duplicate any `try_*` mutation/access method on the new
    container -- if you find yourself doing so, the missing primitive
    belongs on `unowned_vector_base` (parameterized over

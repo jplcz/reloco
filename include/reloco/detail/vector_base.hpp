@@ -43,6 +43,13 @@
  * (see `construction_helpers.hpp`), exactly mirroring the tiered dispatch
  * `construction_helpers` itself uses for individual elements.
  *
+ * `type_metadata`/`metadata_for<T>` -- the per-`T` size/alignment/
+ * triviality facts `vector_operations`' bodies are parameterized over --
+ * live in `type_metadata.hpp` rather than here: they describe `T` alone,
+ * with nothing specific to *contiguous array* storage, so a future
+ * type-erased engine for a node- or bucket-based container (map, list, ...)
+ * can reuse `type_metadata` as-is instead of duplicating it.
+ *
  * Like `flat_container_base.hpp`, this is deliberately not public API: it
  * lives in `reloco::detail` and is included only by the four vector
  * headers, guarded on `RELOCO_SHARED_PROVIDE_DEFINITIONS` for its
@@ -54,6 +61,7 @@
 #include "../error.hpp"
 #include "../function_ref.hpp"
 #include "../reloco_extern.hpp"
+#include "type_metadata.hpp"
 
 #include <cstddef>
 #include <cstring>
@@ -66,28 +74,6 @@
 namespace reloco {
 
 namespace detail {
-
-/**
- * @brief Compile-time facts about `T` needed by the type-erased vector
- * engine, captured once per `T` in `metadata_for<T>` so the untyped `*_base`
- * classes never need a template parameter themselves.
- */
-struct RELOCO_EXPORT type_metadata {
-  std::size_t element_size;
-  std::size_t element_alignment;
-  bool is_trivially_destructible;
-  bool is_trivially_relocatable;
-  bool is_trivially_copyable;
-  bool is_default_constructible;
-};
-
-template <typename T>
-inline constexpr type_metadata metadata_for = {sizeof(T),
-                                               effective_alignment_v<T>,
-                                               std::is_trivially_destructible_v<T>,
-                                               is_trivially_relocatable_v<T>,
-                                               std::is_trivially_copyable_v<T>,
-                                               std::is_default_constructible_v<T>};
 
 /**
  * @brief Per-`T` table of type-erased element operations the untyped
