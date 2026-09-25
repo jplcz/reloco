@@ -227,6 +227,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
     include(GoogleTest)
 
     add_executable(jplcz_reloco_tests
+        tests/test_atomic_ops.cpp
         tests/test_array.cpp
         tests/test_span.cpp
         tests/test_string_view.cpp

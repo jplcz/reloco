@@ -8,6 +8,7 @@
 #include <reloco/allocator.hpp>
 #include <reloco/any.hpp>
 #include <reloco/array.hpp>
+#include <reloco/atomic_ops.hpp>
 #include <reloco/barrier.hpp>
 #include <reloco/bytes.hpp>
 #include <reloco/channel.hpp>

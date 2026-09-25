@@ -57,6 +57,7 @@ where, not a tutorial.
 | `saturating.hpp` | `saturating<T>` | Integral newtype whose arithmetic operators always clamp on overflow, matching Rust's `std::num::Saturating<T>` |
 | `checked.hpp` | `checked<T>` | Integral newtype whose arithmetic is always explicitly fallible via `try_add/sub/mul/div/rem/neg/abs` returning `result<checked<T>>` |
 | `int_ops.hpp` | `checked_add/sub/mul/div/rem/neg/abs`, `wrapping_add/sub/mul`, `saturating_add/sub/mul`, `overflowing_add/sub/mul`, `overflowing_result<T>`, `checked_cast<To>` | Free-function Rust-style checked/wrapping/saturating/overflowing integer arithmetic and range-checked numeric casts |
+| `atomic_ops.hpp` | `atomic::fetch_max`, `atomic::fetch_min`, `atomic::fetch_update` | Free functions filling the gaps between C++17 `std::atomic<T>` and Rust's `std::sync::atomic::Atomic*` API |
 | `allocator.hpp` | `allocator_ref`, `allocator<Tag>`, `allocator_traits<Tag>`, `mem_block`, `usage_hint` | Type-erased allocator handle and the tag-based provider pattern backing it |
 | `heap_allocator.hpp` | `heap_allocator_tag` | Stateless `allocator_traits` backend over the process heap (`new`/`delete`) |
 | `default_allocator.hpp` | `default_allocator()`, `reloco_global_alloc` | Process-wide default allocator, overridable like Rust's `#[global_allocator]` |
@@ -1781,6 +1782,60 @@ marked `constexpr` (always legal), but a call that goes through
 as a constant expression under C++17 specifically (`result<T>` isn't a
 C++17 literal type) -- only C++20 and later can `static_assert` on the
 outcome of e.g. `checked_add`.
+
+## `atomic_ops.hpp`
+
+`include/reloco/atomic_ops.hpp`
+
+Free functions, in the `reloco::atomic` namespace, filling the handful of
+gaps between C++17 `std::atomic<T>` and Rust's
+`std::sync::atomic::Atomic*` API surface. There is deliberately no
+`reloco::atomic<T>` wrapper type: Rust's `load`/`store`/`swap`/
+`compare_exchange(_weak)`/`fetch_add`/`fetch_sub`/`fetch_and`/`fetch_or`/
+`fetch_xor` already exist on `std::atomic<T>` with equivalent semantics, so
+wrapping them again would add naming differences only, not capability --
+per this project's own rule, a Rust API that doesn't extend anything over
+what the standard library already provides isn't ported. Only the two
+genuine gaps are ported, as free functions taking a `std::atomic<T> &`:
+
+- `atomic::fetch_max(a, val, order)`/`atomic::fetch_min(a, val, order)`
+  atomically replace `*a` with `std::max(*a, val)`/`std::min(*a, val)`,
+  returning the *previous* value, matching Rust's `AtomicT::fetch_max`/
+  `fetch_min`. `std::atomic<T>::fetch_max`/`fetch_min` only became
+  standard in C++26; on an older standard library these fall back to a
+  portable `load`+`compare_exchange_weak` retry loop (and simply forward
+  to the native member function when it's already available). Defined for
+  integral and pointer `T`, exactly like `std::atomic<T>::fetch_add`.
+- `atomic::fetch_update(a, success_order, failure_order, f)` repeatedly
+  reads `*a`, calls `f(current)` -- a callable returning `optional<T>`
+  (see `optional.hpp`) -- and attempts to `compare_exchange_weak` the
+  result in, retrying with the freshly observed value on a CAS failure.
+  It stops immediately, without storing, if `f` returns an empty
+  `optional<T>` ("give up"), and returns `expected<T, T>`: the value
+  immediately before the successful update on success, or the last value
+  `f` was given when it gave up, as the "error" -- exactly matching Rust's
+  `AtomicT::fetch_update(set_order, fetch_order, f) -> Result<T, T>`
+  (`f: FnMut(T) -> Option<T>`). `std::atomic<T>` has no equivalent
+  CAS-loop convenience at any C++ version, so this one is a genuine
+  capability gap rather than a naming difference. Two convenience
+  overloads exist: a 3-argument one taking a single `order` used for both
+  the success and (downgraded, where required) failure order, and a
+  2-argument one defaulting to `std::memory_order_seq_cst`.
+
+```cpp
+std::atomic<int> counter{5};
+int previous = reloco::atomic::fetch_max(counter, 10); // previous == 5, counter == 10
+
+auto result = reloco::atomic::fetch_update(counter, [](int current) -> reloco::optional<int> {
+  if (current >= 20)
+    return reloco::optional<int>(); // give up, don't store
+  return reloco::optional<int>(current + 1);
+});
+if (result)
+  use(result.value()); // value immediately before the update
+else
+  use(result.error()); // last value `f` saw before giving up
+```
 
 ## `wrapping<T>` / `saturating<T>`
 
