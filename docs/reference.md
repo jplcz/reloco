@@ -66,6 +66,7 @@ where, not a tutorial.
 | `send_sync.hpp` | `is_send<T>`, `is_sync<T>` (+ C++20 `sendable`/`syncable`) | Marks types sound to transfer to another thread (`is_send`) or share concurrently (`is_sync`), matching Rust's `Send`/`Sync` |
 | `thread.hpp` | `thread`, `thread_id`, `this_thread::get_id/yield`, `spawn`, `join_handle<R>` | Backend-selected (`pthread`/`std`/custom) OS thread primitive plus a Rust-like `spawn`/`JoinHandle<T>` layer built on `is_send`/`is_sync` |
 | `channel.hpp` | `channel<T>`, `sender<T>`, `receiver<T>` | Multi-producer, single-consumer channel matching Rust's `std::sync::mpsc`, built on `mutex.hpp` + `shared_ptr` + `is_send`/`is_sync` |
+| `once_lock.hpp` | `once_lock<T>` | Write-once, read-many-times cell matching Rust's `std::sync::OnceLock<T>`, usable as a plain field/local (unlike `fallible_singleton.hpp`'s static, one-per-`T` global) |
 | `lifetime.hpp` | `RELOCO_LIFETIMEBOUND`, `RELOCO_OWNER`, `RELOCO_POINTER`, `RELOCO_UNSAFE_BUFFER_USAGE`, ... | Compiler-specific lifetime/ownership/safe-buffers annotation macros |
 | `rvalue_safety.hpp` | `RELOCO_BLOCK_RVALUE_ACCESS` | Deletes rvalue accessors that would otherwise dangle past a temporary |
 | `reloco_config.hpp` | (user override header hook) | How to override library-wide defaults from `reloco_user_config.hpp` |
@@ -2148,6 +2149,64 @@ reloco container element requirement. `is_send<sender<T>>`/
 Rust where `mpsc::Sender<T>: Sync` when `T: Send`); `is_sync<receiver<T>>`
 is always `false`, deliberately matching Rust's single-consumer API
 contract rather than the implementation's own (looser) actual guarantee.
+
+## `once_lock<T>`
+
+`include/reloco/once_lock.hpp`
+
+A cell that can be written at most once and read many times after that,
+matching Rust's `std::sync::OnceLock<T>`. Unlike `fallible_singleton<T>`/
+`atomic_fallible_singleton<T, LockTraits>` (`fallible_singleton.hpp`),
+which each provide exactly one static, process-wide instance per `T`,
+`once_lock<T>` is an ordinary value type -- usable as a struct field, a
+local, or a container element -- so a program can have as many
+independently-initialized cells as it needs.
+
+```cpp
+reloco::once_lock<reloco::string> config_path;
+
+// From any thread, any number of times:
+auto entry = config_path.get_or_try_init([]() -> reloco::result<reloco::string> {
+  return load_config_path(); // returns result<string>
+});
+if (entry)
+  use_path(**entry);
+```
+
+- `try_set(T)` -> `result<void>`: fails with `error::already_exists` if
+  the cell is already initialized (matching Rust's `OnceLock::set`, minus
+  recovering the rejected value -- reloco's single `error` enum carries no
+  payload).
+- `get_or_try_init(F)` -> `result<T *>`, where `F` is invocable as
+  `result<T>()`: returns the existing value if already initialized,
+  otherwise blocks concurrent callers while exactly one of them runs `F`
+  and stores its result. If `F` fails, the cell reverts to empty so a
+  later call (from any thread) may retry, matching Rust's
+  `OnceLock::get_or_try_init`.
+- `get()`/`get_mut()` -> `const T *`/`T *`: `nullptr` if not yet
+  initialized, never blocking.
+- `take()` -> `result<T>`: resets the cell to empty and returns the
+  previous value, failing with `error::not_initialized` if the cell was
+  already empty (matching Rust's `OnceLock::take(&mut self)`, which
+  returns `Option<T>` -- reloco represents "nothing to take" via the
+  file's own error case instead, consistent with every other fallible
+  reloco operation). Like Rust's `&mut self` requirement, the caller must
+  ensure no other thread concurrently reads/writes the cell.
+
+Internally, an `std::atomic<int>` state gives `get()`/`get_mut()`, and the
+fast path of `try_set`/`get_or_try_init`, a lock-free acquire-load once
+initialized; the slow path is serialized by one `mutex` +
+`condition_variable` pair (see `mutex.hpp`), matching `channel.hpp`'s own
+locking approach. `T` must be `std::is_nothrow_move_constructible_v`, like
+every other reloco container element requirement. `once_lock<T>` is
+neither copyable nor movable (it embeds a `mutex` + `condition_variable`).
+
+`is_send<once_lock<T>>` forwards to `is_send<T>`. `is_sync<once_lock<T>>`
+requires both `is_send<T>` and `is_sync<T>`, matching Rust's `unsafe impl
+<T: Send + Sync> Sync for OnceLock<T>`: unlike `guarded_mutex<T>`
+(`Mutex<T>`, only ever reached through an exclusive lock), a `const
+once_lock<T> &` hands out a bare `const T *` once ready, so concurrent
+readers need `T` itself to tolerate concurrent shared access.
 
 ## `alignment_of<T>`
 

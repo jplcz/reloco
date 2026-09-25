@@ -35,6 +35,7 @@
 #include <reloco/inplace_function.hpp>
 #include <reloco/int_ops.hpp>
 #include <reloco/lifetime.hpp>
+#include <reloco/once_lock.hpp>
 #include <reloco/optional.hpp>
 #include <reloco/relocatable.hpp>
 #include <reloco/rvalue_safety.hpp>
