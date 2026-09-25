@@ -7,6 +7,7 @@
 #include <reloco/channel.hpp>
 #include <reloco/send_sync.hpp>
 #include <reloco/thread.hpp>
+#include <vector>
 
 TEST(ChannelTest, SendThenRecvRoundTrips) {
   auto ends = reloco::channel<int>();
@@ -158,4 +159,47 @@ TEST(ChannelTest, SenderIsSendAndSyncWhenTIsSend) {
 TEST(ChannelTest, ReceiverIsSendButNeverSync) {
   EXPECT_TRUE(reloco::is_send_v<reloco::receiver<int>>);
   EXPECT_FALSE(reloco::is_sync_v<reloco::receiver<int>>);
+}
+
+TEST(ChannelTest, RangeForConsumesEveryValueUntilSendersDrop) {
+  auto ends = reloco::channel<int>();
+  ASSERT_TRUE(ends);
+  auto [tx, rx] = std::move(*ends);
+
+  auto handle = reloco::spawn([tx = std::move(tx)]() mutable noexcept {
+    for (int i = 0; i < 5; ++i)
+      static_cast<void>(tx.try_send(i));
+    // tx (and every clone) drops here, ending the range-for below.
+  });
+  ASSERT_TRUE(handle);
+
+  std::vector<int> received;
+  for (int value : rx)
+    received.push_back(value);
+
+  std::move(*handle).join();
+  EXPECT_EQ(received, (std::vector<int>{0, 1, 2, 3, 4}));
+}
+
+TEST(ChannelTest, TryIterDrainsOnlyWhatIsAlreadyQueuedWithoutBlocking) {
+  auto ends = reloco::channel<int>();
+  ASSERT_TRUE(ends);
+  auto &[tx, rx] = *ends;
+
+  ASSERT_TRUE(tx.try_send(1));
+  ASSERT_TRUE(tx.try_send(2));
+  ASSERT_TRUE(tx.try_send(3));
+
+  std::vector<int> received;
+  for (int value : rx.try_iter())
+    received.push_back(value);
+  EXPECT_EQ(received, (std::vector<int>{1, 2, 3}));
+
+  // The queue is now empty but the sender is still alive: try_iter() must
+  // stop without blocking rather than waiting for a value that may never
+  // come.
+  received.clear();
+  for (int value : rx.try_iter())
+    received.push_back(value);
+  EXPECT_TRUE(received.empty());
 }

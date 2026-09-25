@@ -2263,6 +2263,26 @@ Rust where `mpsc::Sender<T>: Sync` when `T: Send`); `is_sync<receiver<T>>`
 is always `false`, deliberately matching Rust's single-consumer API
 contract rather than the implementation's own (looser) actual guarantee.
 
+`receiver<T>` also supports range-`for` iteration, matching Rust's `impl
+Iterator for Receiver<T>` and `Receiver::try_iter()`. `begin()`/`end()`
+drive an input iterator via blocking `recv()` calls, stopping once every
+`sender<T>` clone has been dropped:
+
+```cpp
+for (int value : rx) // recv() under the hood; ends when every sender drops
+  use(value);
+```
+
+`try_iter()` returns a small view whose `begin()`/`end()` drive the same
+iterator shape via non-blocking `try_recv()` instead, draining only what
+is already queued without ever blocking for a value that may never
+arrive:
+
+```cpp
+for (int value : rx.try_iter()) // try_recv() under the hood; never blocks
+  use(value);
+```
+
 ## `thread_handle` / `this_thread::current/park/park_timeout/sleep_for`
 
 `include/reloco/park.hpp`

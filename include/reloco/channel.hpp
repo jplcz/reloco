@@ -32,6 +32,11 @@
  *   (matching Rust's `TryRecvError::Empty`), or `error::container_empty` if
  *   it is empty and permanently will be (matching
  *   `TryRecvError::Disconnected`).
+ * - `receiver<T>::begin()`/`end()` -> input iterators consuming the
+ *   channel via blocking `recv()` calls, matching Rust's `impl
+ *   Iterator for Receiver<T>`/`for value in rx`; `try_iter()` returns the
+ *   same iterator shape driven by non-blocking `try_recv()` instead,
+ *   matching `Receiver::try_iter()`.
  *
  * `T` must be `std::is_nothrow_move_constructible_v`, like every other
  * reloco container element requirement.
@@ -54,11 +59,15 @@
 #include "detail/assert.hpp"
 #include "error.hpp"
 #include "expected.hpp"
+#include "lifetime.hpp"
 #include "mutex.hpp"
+#include "optional.hpp"
 #include "send_sync.hpp"
 #include "shared_ptr.hpp"
 #include "unique_ptr.hpp"
 
+#include <cstddef>
+#include <iterator>
 #include <mutex>
 #include <type_traits>
 #include <utility>
@@ -240,6 +249,83 @@ public:
       return unexpected(shared_->sender_count == 0 ? error::container_empty : error::try_again);
     return result<T>(pop_front());
   }
+
+  /**
+   * @brief Single-pass input iterator over a `receiver<T>`, driven by
+   * either blocking `recv()` (see `receiver::begin()`/`end()`) or
+   * non-blocking `try_recv()` (see `receiver::try_iter()`) calls,
+   * advancing one value per increment. Reaches `end()` once the
+   * underlying `recv()`/`try_recv()` call fails (every sender dropped, or
+   * -- for the non-blocking flavor -- the queue is momentarily empty).
+   * Matches Rust's `impl Iterator for Receiver<T>`/`Receiver::try_iter()`.
+   */
+  class iterator {
+  public:
+    using iterator_category = std::input_iterator_tag;
+    using value_type = T;
+    using difference_type = std::ptrdiff_t;
+    using pointer = const T *;
+    using reference = const T &;
+
+    /** @brief Constructs the `end()` sentinel: never dereferenced, never advanced. */
+    iterator() noexcept = default;
+
+    [[nodiscard]] reference operator*() const noexcept RELOCO_LIFETIMEBOUND { return *current_; }
+    [[nodiscard]] pointer operator->() const noexcept RELOCO_LIFETIMEBOUND { return &*current_; }
+
+    iterator &operator++() noexcept {
+      advance();
+      return *this;
+    }
+
+    // Rust/range-for only ever discards the previous value, so the
+    // post-increment overload need not return a usable prior-state copy
+    // (T need not even be copyable).
+    void operator++(int) noexcept { advance(); }
+
+    [[nodiscard]] friend bool operator==(const iterator &a, const iterator &b) noexcept {
+      // Every live (non-end) iterator instance is only ever compared
+      // against end() in a range-for loop, never against another live
+      // iterator, so "both currently empty" is a sufficient definition of
+      // equality here (matching std::istream_iterator's own convention).
+      return !a.current_.has_value() && !b.current_.has_value();
+    }
+    [[nodiscard]] friend bool operator!=(const iterator &a, const iterator &b) noexcept { return !(a == b); }
+
+  private:
+    friend class receiver;
+
+    iterator(receiver *r, bool blocking) noexcept : receiver_(r), blocking_(blocking) { advance(); }
+
+    void advance() noexcept {
+      auto next = blocking_ ? receiver_->recv() : receiver_->try_recv();
+      if (next)
+        current_.emplace(std::move(*next));
+      else
+        current_.reset();
+    }
+
+    receiver *receiver_ = nullptr;
+    bool blocking_ = true;
+    optional<T> current_;
+  };
+
+  /** @brief Blocking iteration: `for (auto &&value : rx) { ... }` calls
+   * `recv()` under the hood, stopping once every `sender<T>` clone has
+   * been dropped -- matching Rust's `for value in rx`. */
+  [[nodiscard]] iterator begin() noexcept { return iterator(this, /*blocking=*/true); }
+  [[nodiscard]] iterator end() noexcept { return iterator(); }
+
+  /** @brief Non-blocking iteration view: `for (auto &&value :
+   * rx.try_iter()) { ... }` drains whatever is already queued via
+   * `try_recv()`, stopping (without blocking) once the queue is
+   * momentarily empty -- matching Rust's `Receiver::try_iter()`. */
+  struct try_iter_view {
+    receiver *rx;
+    [[nodiscard]] iterator begin() const noexcept { return iterator(rx, /*blocking=*/false); }
+    [[nodiscard]] iterator end() const noexcept { return iterator(); }
+  };
+  [[nodiscard]] try_iter_view try_iter() noexcept { return try_iter_view{this}; }
 
 private:
   friend result<std::pair<sender<T>, receiver<T>>> channel<T>(allocator_ref) noexcept;
