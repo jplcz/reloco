@@ -3,8 +3,10 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 // Linux RELOCO_FUTEX_BACKEND_LINUX implementation of reloco/futex.hpp's
-// futex_wait/futex_wake_one/futex_wake_all, via a direct futex(2) syscall
-// (no glibc futex wrapper exists or is required). Included only from
+// futex_wait/futex_wait_timeout/futex_wake_one/futex_wake_all, via a
+// direct futex(2) syscall (no glibc futex wrapper exists or is
+// required); futex_wait_timeout additionally passes FUTEX_WAIT's
+// relative struct timespec timeout argument. Included only from
 // futex.hpp itself when RELOCO_FUTEX_BACKEND_LINUX is defined -- never
 // include this file directly.
 //
@@ -12,6 +14,7 @@
 // (see futex.hpp's file-level documentation) -- review carefully before
 // relying on it in production.
 
+#include <cerrno>
 #include <climits>
 #include <cstdint>
 #include <linux/futex.h>
@@ -31,8 +34,8 @@ inline std::uint32_t *raw_addr(const futex_word &word) noexcept {
   return const_cast<std::uint32_t *>(reinterpret_cast<const std::uint32_t *>(&word));
 }
 
-inline long futex_syscall(std::uint32_t *addr, int futex_op, std::uint32_t val) noexcept {
-  return syscall(SYS_futex, addr, futex_op, val, nullptr, nullptr, 0);
+inline long futex_syscall(std::uint32_t *addr, int futex_op, std::uint32_t val, const struct timespec *timeout) noexcept {
+  return syscall(SYS_futex, addr, futex_op, val, timeout, nullptr, 0);
 }
 
 } // namespace detail
@@ -43,16 +46,30 @@ RELOCO_API void futex_wait(const futex_word &word, std::uint32_t expected) noexc
   // are all handled identically by the caller re-checking its own
   // condition after futex_wait() returns (see barrier.hpp) -- spurious
   // wakeups are always tolerated, exactly like condition_variable::wait.
-  static_cast<void>(detail::futex_syscall(detail::raw_addr(word), FUTEX_WAIT_PRIVATE, expected));
+  static_cast<void>(detail::futex_syscall(detail::raw_addr(word), FUTEX_WAIT_PRIVATE, expected, nullptr));
+}
+
+RELOCO_API bool futex_wait_timeout(const futex_word &word, std::uint32_t expected, duration timeout) noexcept {
+  // FUTEX_WAIT's timeout is *relative*, unlike FUTEX_WAIT_BITSET's
+  // (optionally) absolute one -- a plain duration_cast<struct timespec>
+  // is therefore exactly what the syscall wants here, no deadline/
+  // instant arithmetic required.
+  struct timespec ts = duration_cast<struct timespec>(timeout);
+  errno = 0;
+  long ret = detail::futex_syscall(detail::raw_addr(word), FUTEX_WAIT_PRIVATE, expected, &ts);
+  // EAGAIN (word had already changed), EINTR, and a genuine wake (ret ==
+  // 0) all mean "returned for a reason other than the timeout elapsing";
+  // only ETIMEDOUT means the timeout was definitely observed to elapse.
+  return !(ret == -1 && errno == ETIMEDOUT);
 }
 
 RELOCO_API void futex_wake_one(futex_word &word) noexcept {
-  static_cast<void>(detail::futex_syscall(detail::raw_addr(word), FUTEX_WAKE_PRIVATE, 1));
+  static_cast<void>(detail::futex_syscall(detail::raw_addr(word), FUTEX_WAKE_PRIVATE, 1, nullptr));
 }
 
 RELOCO_API void futex_wake_all(futex_word &word) noexcept {
   static_cast<void>(
-      detail::futex_syscall(detail::raw_addr(word), FUTEX_WAKE_PRIVATE, static_cast<std::uint32_t>(INT_MAX)));
+      detail::futex_syscall(detail::raw_addr(word), FUTEX_WAKE_PRIVATE, static_cast<std::uint32_t>(INT_MAX), nullptr));
 }
 
 } // namespace reloco

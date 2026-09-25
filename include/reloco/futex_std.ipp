@@ -63,6 +63,21 @@ RELOCO_API void futex_wait(const futex_word &word, std::uint32_t expected) noexc
   RELOCO_ASSERT(static_cast<bool>(wait_result), "futex_wait: condition_variable::wait failed");
 }
 
+RELOCO_API bool futex_wait_timeout(const futex_word &word, std::uint32_t expected, duration timeout) noexcept {
+  auto &bucket = detail::global_parking_lot().bucket_for(word);
+  std::unique_lock<mutex> lock(bucket.guard);
+  if (word.load(std::memory_order_acquire) != expected)
+    return true;
+  // The predicate re-checks word under the bucket's own mutex, so a
+  // collision with an unrelated futex_word in the same bucket only ever
+  // costs an extra, harmless re-check, exactly like futex_wait/
+  // futex_wake_*'s own collision-safety argument above.
+  auto wait_result =
+      bucket.cv.wait_for(lock, timeout, [&] { return word.load(std::memory_order_acquire) != expected; });
+  RELOCO_ASSERT(wait_result.has_value(), "futex_wait_timeout: condition_variable::wait_for failed");
+  return *wait_result;
+}
+
 RELOCO_API void futex_wake_one(futex_word &word) noexcept {
   auto &bucket = detail::global_parking_lot().bucket_for(word);
   std::unique_lock<mutex> lock(bucket.guard);

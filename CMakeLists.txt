@@ -246,6 +246,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_fallible_singleton.cpp
         tests/test_duration.cpp
         tests/test_instant.cpp
+        tests/test_futex.cpp
         tests/test_tls_provider.cpp
         tests/test_mutex.cpp
         tests/test_guarded_mutex.cpp

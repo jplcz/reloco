@@ -14,6 +14,7 @@ plus
 
 ```cpp
 void futex_wait(const futex_word &word, std::uint32_t expected) noexcept;
+bool futex_wait_timeout(const futex_word &word, std::uint32_t expected, duration timeout) noexcept;
 void futex_wake_one(futex_word &word) noexcept;
 void futex_wake_all(futex_word &word) noexcept;
 ```
@@ -32,6 +33,16 @@ callers must always re-check their own condition in a loop, never assume a
 single `futex_wait` call implies the word actually changed (see
 `barrier.hpp` for the expected calling pattern).
 
+`futex_wait_timeout(word, expected, timeout)` is `futex_wait`'s bounded
+counterpart, matching `condition_variable::wait_for`'s/`park_timeout`'s
+own "may return early" contract: it returns `true` if it returned for any
+reason *other* than the timeout definitely elapsing (a genuine wake, or a
+spurious wakeup -- `word` may still equal `expected`), and `false` only
+once `timeout` has definitely elapsed with no wake observed (`duration`
+from [`duration.hpp`](reference.md)). Exactly like `futex_wait`, callers
+must always re-check their own condition afterward regardless of the
+return value.
+
 ## Backend selection
 
 Backend selection mirrors `mutex.hpp`'s `RELOCO_MUTEX_BACKEND_*`
@@ -39,18 +50,22 @@ customization point -- select **at most one**:
 
 - **`RELOCO_FUTEX_BACKEND_LINUX`**: raw `futex(2)` syscall
   (`FUTEX_WAIT_PRIVATE`/`FUTEX_WAKE_PRIVATE`, via a direct `syscall()` call
-  -- no glibc futex wrapper is used or required). Implemented in
+  -- no glibc futex wrapper is used or required; `futex_wait_timeout`
+  passes `FUTEX_WAIT_PRIVATE`'s own *relative* `struct timespec` timeout
+  argument directly, via `duration_cast<struct timespec>`). Implemented in
   `futex_linux.ipp`. **Not exercised by this repository's test suite --
   review before relying on it in production.**
 - **`RELOCO_FUTEX_BACKEND_FREEBSD`**: `_umtx_op(2)`
-  (`UMTX_OP_WAIT_UINT`/`UMTX_OP_WAKE`). Implemented in
-  `futex_freebsd.ipp`. **Also not exercised by this repository's test
-  suite -- review before relying on it in production.**
+  (`UMTX_OP_WAIT_UINT`/`UMTX_OP_WAKE`; `futex_wait_timeout` additionally
+  passes a relative `struct _umtx_time` timeout, per `uaddr1`/`uaddr2`'s
+  size/pointer convention). Implemented in `futex_freebsd.ipp`. **Also not
+  exercised by this repository's test suite -- review before relying on
+  it in production.**
 - **`RELOCO_FUTEX_BACKEND_CUSTOM`**: suppresses the built-in
   declarations/definitions below entirely; the application/kernel
-  supplies its own `reloco::futex_word`/`futex_wait`/`futex_wake_one`/
-  `futex_wake_all` matching this exact API, in its own header, included
-  through the normal path -- the same escape hatch
+  supplies its own `reloco::futex_word`/`futex_wait`/`futex_wait_timeout`/
+  `futex_wake_one`/`futex_wake_all` matching this exact API, in its own
+  header, included through the normal path -- the same escape hatch
   `RELOCO_MUTEX_BACKEND_CUSTOM`/`RELOCO_DEFAULT_ALLOCATOR_CUSTOM` provide
   elsewhere. This is the intended path for a target `futex.hpp` has no
   built-in backend for at all, e.g. **FreeBSD kernel** code (as opposed to
@@ -64,10 +79,10 @@ customization point -- select **at most one**:
 
 // my_freebsd_kernel_futex.hpp -- included normally elsewhere, e.g.
 // from a source file, before any use of reloco::futex_wait/
-// futex_wake_one/futex_wake_all. Documentation/reference only: never
-// compiled or exercised by this repository (which targets hosted
-// userspace, not the FreeBSD kernel proper) -- review and adapt before
-// relying on it.
+// futex_wait_timeout/futex_wake_one/futex_wake_all. Documentation/
+// reference only: never compiled or exercised by this repository (which
+// targets hosted userspace, not the FreeBSD kernel proper) -- review and
+// adapt before relying on it.
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/lock.h>
@@ -86,6 +101,25 @@ inline void futex_wait(const futex_word &word, std::uint32_t expected) noexcept 
   if (word.load(std::memory_order_acquire) == expected)
     msleep(&word, &futex_kernel_lock, PPAUSE, "rlfutex", 0);
   mtx_unlock(&futex_kernel_lock);
+}
+
+inline bool futex_wait_timeout(const futex_word &word, std::uint32_t expected, duration timeout) noexcept {
+  // msleep_sbt(9) takes a relative sbintime_t (32.32 fixed-point seconds)
+  // rather than msleep(9)'s coarser, hz-scaled tick count -- the same
+  // sbintime_t conversion instant.hpp's own FreeBSD kernel example uses
+  // for sbinuptime(). Passing pr == 0 asks for exact (no coalescing)
+  // timer precision; flags == 0 keeps the timeout relative, matching
+  // FUTEX_WAIT/UMTX_OP_WAIT_UINT's own relative-timeout convention in
+  // userspace. EWOULDBLOCK means the timeout elapsed first, exactly like
+  // ETIMEDOUT there.
+  sbintime_t sbt = (static_cast<sbintime_t>(timeout.as_secs()) << 32) |
+                   static_cast<sbintime_t>((static_cast<std::uint64_t>(timeout.subsec_nanos()) << 32) / 1'000'000'000ULL);
+  mtx_lock(&futex_kernel_lock);
+  int error = 0;
+  if (word.load(std::memory_order_acquire) == expected)
+    error = msleep_sbt(&word, &futex_kernel_lock, PPAUSE, "rlfutex", sbt, 0, 0);
+  mtx_unlock(&futex_kernel_lock);
+  return error != EWOULDBLOCK;
 }
 
 inline void futex_wake_one(futex_word &word) noexcept {
@@ -120,7 +154,7 @@ one.)
 
 ## Shared-library participation
 
-Every `futex_wait`/`futex_wake_one`/`futex_wake_all` declaration is
+Every `futex_wait`/`futex_wait_timeout`/`futex_wake_one`/`futex_wake_all` declaration is
 `RELOCO_API`-decorated (see `detail/compat.hpp`) so the built-in fallback
 backend participates in reloco's header-only/`RELOCO_SHARED` split exactly
 like `mutex.hpp`'s own classes: out-of-line definitions live in
