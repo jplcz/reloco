@@ -85,6 +85,12 @@ public:
   constexpr bool has_value() const noexcept { return m_has_value; }
   constexpr explicit operator bool() const noexcept { return m_has_value; }
 
+  /** @brief Rust `Result::is_ok()` alias for `has_value()`. */
+  constexpr bool is_ok() const noexcept { return m_has_value; }
+
+  /** @brief Rust `Result::is_err()` alias for `!has_value()`. */
+  constexpr bool is_err() const noexcept { return !m_has_value; }
+
   constexpr T &value() & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(m_has_value, "Result does not contain a value");
     return m_value;
@@ -122,6 +128,74 @@ public:
 
   constexpr const E &&error() const && noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(!m_has_value, "Result does not contain an error");
+    return std::move(m_error);
+  }
+
+  /** @brief Rust `Result::unwrap()` alias for `value()`. */
+  constexpr T &unwrap() & noexcept RELOCO_LIFETIMEBOUND { return value(); }
+  /** @brief Rust `Result::unwrap()` alias for `value()`. */
+  constexpr T &&unwrap() && noexcept RELOCO_LIFETIMEBOUND { return std::move(*this).value(); }
+  /** @brief Rust `Result::unwrap()` alias for `value()`. */
+  constexpr const T &unwrap() const & noexcept RELOCO_LIFETIMEBOUND { return value(); }
+  /** @brief Rust `Result::unwrap()` alias for `value()`. */
+  constexpr const T &&unwrap() const && noexcept RELOCO_LIFETIMEBOUND { return std::move(*this).value(); }
+
+  /** @brief Rust `Result::unwrap_err()` alias for `error()`. */
+  constexpr E &unwrap_err() & noexcept RELOCO_LIFETIMEBOUND { return error(); }
+  /** @brief Rust `Result::unwrap_err()` alias for `error()`. */
+  constexpr E &&unwrap_err() && noexcept RELOCO_LIFETIMEBOUND { return std::move(*this).error(); }
+  /** @brief Rust `Result::unwrap_err()` alias for `error()`. */
+  constexpr const E &unwrap_err() const & noexcept RELOCO_LIFETIMEBOUND { return error(); }
+  /** @brief Rust `Result::unwrap_err()` alias for `error()`. */
+  constexpr const E &&unwrap_err() const && noexcept RELOCO_LIFETIMEBOUND { return std::move(*this).error(); }
+
+  /**
+   * @brief Rust `Result::expect(msg)` equivalent: like `value()`, but
+   * @p msg is used as the `RELOCO_ASSERT` failure message instead of a
+   * generic one, for a more actionable trap site.
+   */
+  constexpr T &expect(const char *msg) & noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT_MSG(m_has_value, msg);
+    return m_value;
+  }
+  /** @copydoc expect(const char *) & */
+  constexpr T &&expect(const char *msg) && noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT_MSG(m_has_value, msg);
+    return std::move(m_value);
+  }
+  /** @copydoc expect(const char *) & */
+  constexpr const T &expect(const char *msg) const & noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT_MSG(m_has_value, msg);
+    return m_value;
+  }
+  /** @copydoc expect(const char *) & */
+  constexpr const T &&expect(const char *msg) const && noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT_MSG(m_has_value, msg);
+    return std::move(m_value);
+  }
+
+  /**
+   * @brief Rust `Result::expect_err(msg)` equivalent: like `error()`, but
+   * @p msg is used as the `RELOCO_ASSERT` failure message instead of a
+   * generic one.
+   */
+  constexpr E &expect_err(const char *msg) & noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT_MSG(!m_has_value, msg);
+    return m_error;
+  }
+  /** @copydoc expect_err(const char *) & */
+  constexpr E &&expect_err(const char *msg) && noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT_MSG(!m_has_value, msg);
+    return std::move(m_error);
+  }
+  /** @copydoc expect_err(const char *) & */
+  constexpr const E &expect_err(const char *msg) const & noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT_MSG(!m_has_value, msg);
+    return m_error;
+  }
+  /** @copydoc expect_err(const char *) & */
+  constexpr const E &&expect_err(const char *msg) const && noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT_MSG(!m_has_value, msg);
     return std::move(m_error);
   }
 
@@ -177,7 +251,79 @@ public:
     return f(error());
   }
 
+  /**
+   * @brief Rust `Result::map_or` equivalent: applies @p f to the
+   * contained value and returns the result, or returns @p default_value
+   * unchanged if this holds an error instead.
+   */
+  template <typename U, typename F> U map_or(U default_value, F &&f) const noexcept {
+    if (m_has_value)
+      return f(m_value);
+    return default_value;
+  }
+
+  /**
+   * @brief Rust `Result::map_or_else` equivalent: applies @p f to the
+   * contained value if present, otherwise applies @p default_fn to the
+   * contained error; both branches must return the same type.
+   */
+  template <typename D, typename F> auto map_or_else(D &&default_fn, F &&f) const noexcept {
+    if (m_has_value)
+      return f(m_value);
+    return default_fn(m_error);
+  }
+
+  /**
+   * @brief Rust `Result::is_ok_and` equivalent: `true` if this holds a
+   * value and @p f returns `true` for it; `false` otherwise (@p f is not
+   * invoked on an error).
+   */
+  template <typename F> bool is_ok_and(F &&f) const noexcept { return m_has_value && f(m_value); }
+
+  /**
+   * @brief Rust `Result::is_err_and` equivalent: `true` if this holds an
+   * error and @p f returns `true` for it; `false` otherwise (@p f is not
+   * invoked on a value).
+   */
+  template <typename F> bool is_err_and(F &&f) const noexcept { return !m_has_value && f(m_error); }
+
+  /**
+   * @brief Rust `Result::inspect` equivalent: invokes @p f with a
+   * `const T &` if this holds a value, purely for a side effect (e.g.
+   * logging), without consuming or modifying `*this`. Unlike Rust's
+   * `inspect` (which consumes and returns `self` for chaining), this
+   * returns `void` -- `expected<T, E>` has no copy constructor (see
+   * `expect`/`unwrap` above), so there is nothing cheap to hand back.
+   */
+  template <typename F> void inspect(F &&f) const noexcept {
+    if (m_has_value)
+      f(m_value);
+  }
+
+  /**
+   * @brief Rust `Result::inspect_err` equivalent: invokes @p f with a
+   * `const E &` if this holds an error, purely for a side effect, without
+   * consuming or modifying `*this`. See `inspect` above for why this
+   * returns `void` instead of chaining.
+   */
+  template <typename F> void inspect_err(F &&f) const noexcept {
+    if (!m_has_value)
+      f(m_error);
+  }
+
   constexpr T value_or(T &&fallback) const noexcept { return m_has_value ? m_value : std::move(fallback); }
+
+  /** @brief Rust `Result::unwrap_or` alias for `value_or`. */
+  constexpr T unwrap_or(T fallback) const noexcept { return value_or(std::move(fallback)); }
+
+  /**
+   * @brief Rust `Result::unwrap_or_default` equivalent: returns the value
+   * if present, otherwise a default-constructed `T`.
+   */
+  template <typename U = T, std::enable_if_t<std::is_nothrow_default_constructible_v<U>, int> = 0>
+  constexpr T unwrap_or_default() const noexcept {
+    return m_has_value ? m_value : T();
+  }
 
   constexpr T *operator->() & noexcept RELOCO_LIFETIMEBOUND { return &value(); }
   constexpr const T *operator->() const & noexcept RELOCO_LIFETIMEBOUND { return &value(); }
@@ -221,7 +367,16 @@ public:
   constexpr bool has_value() const noexcept { return m_has_value; }
   constexpr explicit operator bool() const noexcept { return m_has_value; }
 
+  /** @brief Rust `Result::is_ok()` alias for `has_value()`. */
+  constexpr bool is_ok() const noexcept { return m_has_value; }
+
+  /** @brief Rust `Result::is_err()` alias for `!has_value()`. */
+  constexpr bool is_err() const noexcept { return !m_has_value; }
+
   void value() const noexcept { RELOCO_ASSERT(m_has_value, "Result contains an error"); }
+
+  /** @brief Rust `Result::unwrap()` alias for `value()`. */
+  void unwrap() const noexcept { value(); }
 
   constexpr E &error() & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(!m_has_value, "Result does not contain an error");
@@ -240,6 +395,47 @@ public:
 
   constexpr const E &&error() const && noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(!m_has_value, "Result does not contain an error");
+    return std::move(m_error);
+  }
+
+  /** @brief Rust `Result::unwrap_err()` alias for `error()`. */
+  constexpr E &unwrap_err() & noexcept RELOCO_LIFETIMEBOUND { return error(); }
+  /** @brief Rust `Result::unwrap_err()` alias for `error()`. */
+  constexpr E &&unwrap_err() && noexcept RELOCO_LIFETIMEBOUND { return std::move(*this).error(); }
+  /** @brief Rust `Result::unwrap_err()` alias for `error()`. */
+  constexpr const E &unwrap_err() const & noexcept RELOCO_LIFETIMEBOUND { return error(); }
+  /** @brief Rust `Result::unwrap_err()` alias for `error()`. */
+  constexpr const E &&unwrap_err() const && noexcept RELOCO_LIFETIMEBOUND { return std::move(*this).error(); }
+
+  /**
+   * @brief Rust `Result::expect(msg)` equivalent: like `value()`, but
+   * @p msg is used as the `RELOCO_ASSERT` failure message instead of a
+   * generic one.
+   */
+  void expect(const char *msg) const noexcept { RELOCO_ASSERT_MSG(m_has_value, msg); }
+
+  /**
+   * @brief Rust `Result::expect_err(msg)` equivalent: like `error()`, but
+   * @p msg is used as the `RELOCO_ASSERT` failure message instead of a
+   * generic one.
+   */
+  constexpr E &expect_err(const char *msg) & noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT_MSG(!m_has_value, msg);
+    return m_error;
+  }
+  /** @copydoc expect_err(const char *) & */
+  constexpr E &&expect_err(const char *msg) && noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT_MSG(!m_has_value, msg);
+    return std::move(m_error);
+  }
+  /** @copydoc expect_err(const char *) & */
+  constexpr const E &expect_err(const char *msg) const & noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT_MSG(!m_has_value, msg);
+    return m_error;
+  }
+  /** @copydoc expect_err(const char *) & */
+  constexpr const E &&expect_err(const char *msg) const && noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT_MSG(!m_has_value, msg);
     return std::move(m_error);
   }
 
@@ -275,6 +471,61 @@ public:
     if (m_has_value)
       return Ret();
     return f(error());
+  }
+
+  /**
+   * @brief Rust `Result::map_or` equivalent: invokes @p f (which takes no
+   * arguments) and returns its result if this holds a value, otherwise
+   * returns @p default_value unchanged.
+   */
+  template <typename U, typename F> U map_or(U default_value, F &&f) const noexcept {
+    if (m_has_value)
+      return f();
+    return default_value;
+  }
+
+  /**
+   * @brief Rust `Result::map_or_else` equivalent: invokes @p f if this
+   * holds a value, otherwise invokes @p default_fn with the error; both
+   * branches must return the same type.
+   */
+  template <typename D, typename F> auto map_or_else(D &&default_fn, F &&f) const noexcept {
+    if (m_has_value)
+      return f();
+    return default_fn(m_error);
+  }
+
+  /**
+   * @brief Rust `Result::is_ok_and` equivalent: `true` if this holds a
+   * value and @p f (which takes no arguments) returns `true`; `false`
+   * otherwise.
+   */
+  template <typename F> bool is_ok_and(F &&f) const noexcept { return m_has_value && f(); }
+
+  /**
+   * @brief Rust `Result::is_err_and` equivalent: `true` if this holds an
+   * error and @p f returns `true` for it; `false` otherwise.
+   */
+  template <typename F> bool is_err_and(F &&f) const noexcept { return !m_has_value && f(m_error); }
+
+  /**
+   * @brief Rust `Result::inspect` equivalent: invokes @p f (which takes
+   * no arguments) if this holds a value, purely for a side effect,
+   * without consuming or modifying `*this`.
+   */
+  template <typename F> void inspect(F &&f) const noexcept {
+    if (m_has_value)
+      f();
+  }
+
+  /**
+   * @brief Rust `Result::inspect_err` equivalent: invokes @p f with a
+   * `const E &` if this holds an error, purely for a side effect, without
+   * consuming or modifying `*this`.
+   */
+  template <typename F> void inspect_err(F &&f) const noexcept {
+    if (!m_has_value)
+      f(m_error);
   }
 
   constexpr bool operator==(const expected &other) const noexcept {

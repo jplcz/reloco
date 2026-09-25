@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 #include "reloco/error.hpp"
+#include "reloco/expected.hpp"
 #include "reloco/optional.hpp"
 #include <gtest/gtest.h>
 
@@ -100,6 +101,32 @@ TEST_F(OptionalTest, OkOrIntegration) {
   auto res2 = full.ok_or(error::invalid_argument);
   ASSERT_TRUE(res2.has_value());
   EXPECT_EQ(res2.value(), 99);
+}
+
+TEST_F(OptionalTest, OkConvertsSuccessToPresentOptional) {
+  expected<int, error> ok(42);
+  optional<int> opt = Ok(ok);
+  ASSERT_TRUE(opt.has_value());
+  EXPECT_EQ(*opt, 42);
+}
+
+TEST_F(OptionalTest, OkConvertsFailureToEmptyOptional) {
+  expected<int, error> err{unexpected(error::invalid_argument)};
+  optional<int> opt = Ok(err);
+  EXPECT_FALSE(opt.has_value());
+}
+
+TEST_F(OptionalTest, ErrConvertsFailureToPresentOptional) {
+  expected<int, error> err{unexpected(error::invalid_argument)};
+  optional<error> opt = Err(err);
+  ASSERT_TRUE(opt.has_value());
+  EXPECT_EQ(*opt, error::invalid_argument);
+}
+
+TEST_F(OptionalTest, ErrConvertsSuccessToEmptyOptional) {
+  expected<int, error> ok(42);
+  optional<error> opt = Err(ok);
+  EXPECT_FALSE(opt.has_value());
 }
 
 TEST_F(OptionalTest, InPlaceConstruction) {
@@ -270,6 +297,131 @@ TEST_F(OptionalTest, ThenSome) {
 
   optional<int> no = then_some(false, 5);
   EXPECT_FALSE(no.has_value());
+}
+
+TEST_F(OptionalTest, IsSomeIsNone) {
+  optional<int> full(1);
+  optional<int> empty;
+
+  EXPECT_TRUE(full.is_some());
+  EXPECT_FALSE(full.is_none());
+  EXPECT_FALSE(empty.is_some());
+  EXPECT_TRUE(empty.is_none());
+}
+
+TEST_F(OptionalTest, IsSomeAnd) {
+  optional<int> full(4);
+  optional<int> empty;
+
+  EXPECT_TRUE(full.is_some_and([](int v) { return v == 4; }));
+  EXPECT_FALSE(full.is_some_and([](int v) { return v == 5; }));
+
+  bool invoked = false;
+  EXPECT_FALSE(empty.is_some_and([&invoked](int) {
+    invoked = true;
+    return true;
+  }));
+  EXPECT_FALSE(invoked);
+}
+
+TEST_F(OptionalTest, UnwrapAndExpect) {
+  optional<int> full(7);
+  EXPECT_EQ(full.unwrap(), 7);
+  EXPECT_EQ(std::as_const(full).unwrap(), 7);
+
+  optional<int> full2(9);
+  EXPECT_EQ(full2.expect("must be present"), 9);
+  EXPECT_EQ(std::as_const(full2).expect("must be present"), 9);
+}
+
+TEST_F(OptionalTest, UnwrapOr) {
+  optional<int> full(3);
+  optional<int> empty;
+
+  EXPECT_EQ(full.unwrap_or(10), 3);
+  EXPECT_EQ(empty.unwrap_or(10), 10);
+  EXPECT_EQ(optional<int>(3).unwrap_or(10), 3);
+  EXPECT_EQ(optional<int>(nullopt).unwrap_or(10), 10);
+}
+
+TEST_F(OptionalTest, UnwrapOrDefault) {
+  optional<int> full(5);
+  optional<int> empty;
+
+  EXPECT_EQ(full.unwrap_or_default(), 5);
+  EXPECT_EQ(empty.unwrap_or_default(), 0);
+  EXPECT_EQ(std::move(full).unwrap_or_default(), 5);
+}
+
+TEST_F(OptionalTest, UnwrapOrElse) {
+  optional<int> full(6);
+  optional<int> empty;
+
+  EXPECT_EQ(full.unwrap_or_else([] { return 100; }), 6);
+  EXPECT_EQ(empty.unwrap_or_else([] { return 100; }), 100);
+}
+
+TEST_F(OptionalTest, MapOr) {
+  optional<int> full(2);
+  optional<int> empty;
+
+  EXPECT_EQ(full.map_or(-1, [](int v) { return v * 10; }), 20);
+  EXPECT_EQ(empty.map_or(-1, [](int v) { return v * 10; }), -1);
+}
+
+TEST_F(OptionalTest, MapOrElse) {
+  optional<int> full(2);
+  optional<int> empty;
+
+  EXPECT_EQ(full.map_or_else([] { return -1; }, [](int v) { return v * 10; }), 20);
+  EXPECT_EQ(empty.map_or_else([] { return -1; }, [](int v) { return v * 10; }), -1);
+}
+
+TEST_F(OptionalTest, Zip) {
+  optional<int> a(1);
+  optional<std::string> b("x");
+  optional<int> empty_a;
+
+  auto zipped = a.zip(b);
+  ASSERT_TRUE(zipped.has_value());
+  EXPECT_EQ(zipped->first, 1);
+  EXPECT_EQ(zipped->second, "x");
+
+  EXPECT_FALSE(empty_a.zip(b).has_value());
+}
+
+TEST_F(OptionalTest, LogicalXor) {
+  optional<int> a(1);
+  optional<int> b(2);
+  optional<int> empty;
+
+  EXPECT_FALSE(a.logical_xor(b).has_value());
+  ASSERT_TRUE(a.logical_xor(empty).has_value());
+  EXPECT_EQ(*a.logical_xor(empty), 1);
+  ASSERT_TRUE(empty.logical_xor(b).has_value());
+  EXPECT_EQ(*empty.logical_xor(b), 2);
+  EXPECT_FALSE(empty.logical_xor(optional<int>(nullopt)).has_value());
+}
+
+TEST_F(OptionalTest, Flatten) {
+  optional<optional<int>> nested_full(optional<int>(5));
+  optional<optional<int>> nested_empty_inner{optional<int>(nullopt)};
+  optional<optional<int>> nested_empty_outer(nullopt);
+
+  ASSERT_TRUE(flatten(nested_full).has_value());
+  EXPECT_EQ(*flatten(nested_full), 5);
+  EXPECT_FALSE(flatten(nested_empty_inner).has_value());
+  EXPECT_FALSE(flatten(nested_empty_outer).has_value());
+}
+
+TEST_F(OptionalTest, Insert) {
+  optional<int> opt;
+  EXPECT_EQ(opt.insert(3), 3);
+  ASSERT_TRUE(opt.has_value());
+  EXPECT_EQ(*opt, 3);
+
+  EXPECT_EQ(opt.insert(9), 9);
+  EXPECT_EQ(*opt, 9);
 }
 
 // Ensure the traits propagate cleanly at compile time

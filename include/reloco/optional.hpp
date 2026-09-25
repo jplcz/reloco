@@ -65,7 +65,8 @@ public:
     detail::poison_memory_region(std::addressof(value_), sizeof(T));
   }
 
-  constexpr optional(const T &value) noexcept(std::is_nothrow_copy_constructible_v<T>) : has_value_(false) {
+  constexpr optional(const T &value) noexcept(std::is_nothrow_copy_constructible_v<T>)
+      RELOCO_RETURN_TYPESTATE(unconsumed) : has_value_(false) {
     construct(value);
   }
 
@@ -148,6 +149,19 @@ public:
     return has_value_;
   }
 
+  /** @brief Rust `Option::is_some()` alias for `has_value()`. */
+  [[nodiscard]] constexpr bool is_some() const noexcept RELOCO_TEST_TYPESTATE(unconsumed) { return has_value_; }
+
+  /** @brief Rust `Option::is_none()` alias for `!has_value()`. */
+  [[nodiscard]] constexpr bool is_none() const noexcept RELOCO_TEST_TYPESTATE(unconsumed) { return !has_value_; }
+
+  /**
+   * @brief Rust `Option::is_some_and` equivalent: `true` if a value is
+   * present and @p f returns `true` for it; `false` otherwise (@p f is
+   * not invoked when empty).
+   */
+  template <typename F> [[nodiscard]] bool is_some_and(F &&f) const noexcept { return has_value_ && f(value_); }
+
   [[nodiscard]] T &value() & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
     RELOCO_ASSERT(has_value_, "optional has no value");
     return value_;
@@ -160,6 +174,38 @@ public:
 
   [[nodiscard]] T &&value() && noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
     RELOCO_ASSERT(has_value_, "optional has no value");
+    return std::move(value_);
+  }
+
+  /** @brief Rust `Option::unwrap()` alias for `value()`. */
+  [[nodiscard]] T &unwrap() & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") { return value(); }
+  /** @brief Rust `Option::unwrap()` alias for `value()`. */
+  [[nodiscard]] const T &unwrap() const & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+    return value();
+  }
+  /** @brief Rust `Option::unwrap()` alias for `value()`. */
+  [[nodiscard]] T &&unwrap() && noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+    return std::move(*this).value();
+  }
+
+  /**
+   * @brief Rust `Option::expect(msg)` equivalent: like `value()`, but
+   * @p msg is used as the `RELOCO_ASSERT_MSG` failure message instead of a
+   * generic one, for a more actionable trap site.
+   */
+  [[nodiscard]] T &expect(const char *msg) & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+    RELOCO_ASSERT_MSG(has_value_, msg);
+    return value_;
+  }
+  /** @copydoc expect(const char *) & */
+  [[nodiscard]] const T &expect(const char *msg) const & noexcept RELOCO_LIFETIMEBOUND
+      RELOCO_CALLABLE_WHEN("unconsumed") {
+    RELOCO_ASSERT_MSG(has_value_, msg);
+    return value_;
+  }
+  /** @copydoc expect(const char *) & */
+  [[nodiscard]] T &&expect(const char *msg) && noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+    RELOCO_ASSERT_MSG(has_value_, msg);
     return std::move(value_);
   }
 
@@ -214,6 +260,46 @@ public:
   template <typename U>
   [[nodiscard]] T value_or(U &&default_value) && noexcept(std::is_nothrow_move_constructible_v<T>) {
     return has_value_ ? std::move(value_) : static_cast<T>(std::forward<U>(default_value));
+  }
+
+  /** @brief Rust `Option::unwrap_or` alias for `value_or`. */
+  template <typename U>
+  [[nodiscard]] T unwrap_or(U &&default_value) const & noexcept(std::is_nothrow_copy_constructible_v<T>) {
+    return value_or(std::forward<U>(default_value));
+  }
+  /** @copydoc unwrap_or(U &&) const & */
+  template <typename U>
+  [[nodiscard]] T unwrap_or(U &&default_value) && noexcept(std::is_nothrow_move_constructible_v<T>) {
+    return std::move(*this).value_or(std::forward<U>(default_value));
+  }
+
+  /**
+   * @brief Rust `Option::unwrap_or_default` equivalent: returns the
+   * contained value, or a default-constructed `T` if empty.
+   */
+  template <typename U = T, std::enable_if_t<std::is_nothrow_default_constructible_v<U>, int> = 0>
+  [[nodiscard]] T unwrap_or_default() const & noexcept(std::is_nothrow_copy_constructible_v<T>) {
+    return has_value_ ? value_ : T();
+  }
+  /** @copydoc unwrap_or_default() const & */
+  template <typename U = T, std::enable_if_t<std::is_nothrow_default_constructible_v<U>, int> = 0>
+  [[nodiscard]] T unwrap_or_default() && noexcept(std::is_nothrow_move_constructible_v<T>) {
+    return has_value_ ? std::move(value_) : T();
+  }
+
+  /**
+   * @brief Rust `Option::unwrap_or_else` equivalent: returns the
+   * contained value, or invokes @p f (no arguments) and returns its
+   * result if empty.
+   */
+  template <typename F>
+  [[nodiscard]] T unwrap_or_else(F &&f) const & noexcept(std::is_nothrow_copy_constructible_v<T>) {
+    return has_value_ ? value_ : f();
+  }
+  /** @copydoc unwrap_or_else(F &&) const & */
+  template <typename F>
+  [[nodiscard]] T unwrap_or_else(F &&f) && noexcept(std::is_nothrow_move_constructible_v<T>) {
+    return has_value_ ? std::move(value_) : f();
   }
 
   /**
@@ -283,6 +369,68 @@ public:
   }
 
   /**
+   * @brief Rust `Option::map_or` equivalent: if a value is present,
+   * applies @p f to it and returns the result; otherwise returns
+   * @p default_value.
+   */
+  template <typename U, typename F> [[nodiscard]] U map_or(U default_value, F &&f) const & noexcept {
+    if (has_value_)
+      return f(value_);
+    return default_value;
+  }
+  /** @copydoc map_or(U, F &&) const & */
+  template <typename U, typename F> [[nodiscard]] U map_or(U default_value, F &&f) && noexcept {
+    if (has_value_)
+      return f(std::move(value_));
+    return default_value;
+  }
+
+  /**
+   * @brief Rust `Option::map_or_else` equivalent: if a value is present,
+   * applies @p f to it and returns the result; otherwise invokes
+   * @p default_fn (no arguments) and returns its result.
+   */
+  template <typename D, typename F> [[nodiscard]] auto map_or_else(D &&default_fn, F &&f) const & noexcept {
+    if (has_value_)
+      return f(value_);
+    return default_fn();
+  }
+  /** @copydoc map_or_else(D &&, F &&) const & */
+  template <typename D, typename F> [[nodiscard]] auto map_or_else(D &&default_fn, F &&f) && noexcept {
+    if (has_value_)
+      return f(std::move(value_));
+    return default_fn();
+  }
+
+  /**
+   * @brief Rust `Option::zip` equivalent: if both `*this` and @p other
+   * hold a value, returns an `optional<std::pair<T, U>>` containing both;
+   * otherwise returns an empty `optional`.
+   */
+  template <typename U>
+  [[nodiscard]] auto zip(const optional<U> &other) const &
+      noexcept(std::is_nothrow_copy_constructible_v<T> && std::is_nothrow_copy_constructible_v<U>) {
+    using Zipped = optional<std::pair<T, U>>;
+    if (has_value_ && other.has_value())
+      return Zipped(std::in_place, value_, other.value());
+    return Zipped(nullopt);
+  }
+
+  /**
+   * @brief Rust `Option::xor` equivalent (renamed since `xor` is a
+   * reserved alternative operator token in C++): returns the operand that
+   * holds a value if exactly one of `*this`/@p other does; otherwise
+   * returns an empty `optional<T>`.
+   */
+  [[nodiscard]] auto logical_xor(const optional &other) const noexcept(std::is_nothrow_copy_constructible_v<T>) {
+    if (has_value_ && !other.has_value_)
+      return optional(*this);
+    if (!has_value_ && other.has_value_)
+      return optional(other);
+    return optional(nullopt);
+  }
+
+  /**
    * @brief Rust `Option::take` equivalent: moves the value out into a
    * freshly-returned `optional<T>`, leaving `*this` empty. Always
    * callable, regardless of typestate (an empty `optional` simply
@@ -332,6 +480,18 @@ public:
     if (!has_value_)
       construct(factory());
     return value_;
+  }
+
+  /**
+   * @brief Rust `Option::insert` equivalent: unconditionally (re)constructs
+   * the contained value from @p value, discarding any previous one, and
+   * returns a reference to it. Unlike `get_or_insert`, this always
+   * overwrites; this is an alias of `emplace(value)`.
+   */
+  template <typename U = T>
+  T &insert(U &&value) & noexcept(std::is_nothrow_constructible_v<T, U &&>) RELOCO_LIFETIMEBOUND
+      RELOCO_SET_TYPESTATE(unconsumed) {
+    return emplace(std::forward<U>(value));
   }
 
   [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE T &unsafe_value() & noexcept RELOCO_LIFETIMEBOUND {
@@ -484,10 +644,10 @@ template <typename T, typename U>
  * to match Rust's `Result::Ok` variant casing rather than the lowercase
  * accessor method.
  */
-template <typename T, typename E> [[nodiscard]] optional<T> Ok(const expected<T, E> &e) noexcept {
+template <typename T, typename E> [[nodiscard]] auto Ok(const expected<T, E> &e) noexcept {
   if (e.has_value())
-    return e.value();
-  return nullopt;
+    return optional<T>(e.value());
+  return optional<T>(nullopt);
 }
 
 /**
@@ -495,10 +655,10 @@ template <typename T, typename E> [[nodiscard]] optional<T> Ok(const expected<T,
  * `optional<E>`, discarding the value on success. Named `Err`
  * (capitalized) to match Rust's `Result::Err` variant casing.
  */
-template <typename T, typename E> [[nodiscard]] optional<E> Err(const expected<T, E> &e) noexcept {
+template <typename T, typename E> [[nodiscard]] auto Err(const expected<T, E> &e) noexcept {
   if (!e.has_value())
-    return e.error();
-  return nullopt;
+    return optional<E>(e.error());
+  return optional<E>(nullopt);
 }
 
 /**
@@ -526,6 +686,25 @@ template <typename T>
 [[nodiscard]] optional<T> then_some(bool condition, T value) noexcept(std::is_nothrow_move_constructible_v<T>) {
   if (condition)
     return optional<T>(std::move(value));
+  return optional<T>(nullopt);
+}
+
+/**
+ * @brief Rust `Option::flatten` equivalent: collapses a nested
+ * `optional<optional<T>>` into an `optional<T>` (empty if either layer is
+ * empty). Implemented as a free function since C++ cannot partially
+ * specialize a member function on `T` itself being an `optional`.
+ */
+template <typename T> [[nodiscard]] auto flatten(const optional<optional<T>> &opt) noexcept {
+  if (opt.has_value())
+    return optional<T>(opt.value());
+  return optional<T>(nullopt);
+}
+
+/** @copydoc flatten(const optional<optional<T>> &) */
+template <typename T> [[nodiscard]] auto flatten(optional<optional<T>> &&opt) noexcept {
+  if (opt.has_value())
+    return optional<T>(std::move(opt).value());
   return optional<T>(nullopt);
 }
 

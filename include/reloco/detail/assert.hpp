@@ -58,9 +58,12 @@ inline void set_assert_handler(assert_handler_t new_handler) { detail::get_handl
 // the port route straight into its own panic/log facility.
 #if defined(RELOCO_KERNEL)
 #define RELOCO_DETAIL_ASSERT_FAIL(cond, ...) RELOCO_KERNEL_PANIC(#cond, __FILE__, __LINE__, "" __VA_ARGS__)
+#define RELOCO_DETAIL_ASSERT_FAIL_MSG(cond, msg_expr) RELOCO_KERNEL_PANIC(#cond, __FILE__, __LINE__, (msg_expr))
 #else
 #define RELOCO_DETAIL_ASSERT_FAIL(cond, ...)                                                                           \
   ::reloco::detail::get_handler_ptr()(#cond, __FILE__, __LINE__, "" __VA_ARGS__)
+#define RELOCO_DETAIL_ASSERT_FAIL_MSG(cond, msg_expr)                                                                  \
+  ::reloco::detail::get_handler_ptr()(#cond, __FILE__, __LINE__, (msg_expr))
 #endif
 
 #if defined(RELOCO_DISABLE_ASSERT)
@@ -79,6 +82,33 @@ inline void set_assert_handler(assert_handler_t new_handler) { detail::get_handl
     if (!(cond))                                                                                                       \
       RELOCO_UNLIKELY {                                                                                                \
         RELOCO_DETAIL_ASSERT_FAIL(cond, __VA_ARGS__);                                                                  \
+        RELOCO_TRAP();                                                                                                 \
+      }                                                                                                                \
+  } while (0)
+#endif
+
+// Like `RELOCO_ASSERT`, but @p msg_expr is an arbitrary runtime
+// `const char *` expression (e.g. a caller-supplied `expect(msg)`
+// argument) rather than a string literal folded in at the call site via
+// `""`-concatenation -- use this instead of `RELOCO_ASSERT(cond, msg)`
+// whenever the message isn't known until runtime.
+#if defined(RELOCO_DISABLE_ASSERT)
+#if RELOCO_HAS_UNREACHABLE
+#define RELOCO_ASSERT_MSG(cond, msg_expr)                                                                              \
+  do {                                                                                                                 \
+    (void)(msg_expr);                                                                                                  \
+    if (!(cond))                                                                                                       \
+      RELOCO_UNREACHABLE();                                                                                            \
+  } while (0)
+#else
+#define RELOCO_ASSERT_MSG(cond, msg_expr) ((void)(msg_expr))
+#endif
+#else
+#define RELOCO_ASSERT_MSG(cond, msg_expr)                                                                              \
+  do {                                                                                                                 \
+    if (!(cond))                                                                                                       \
+      RELOCO_UNLIKELY {                                                                                                \
+        RELOCO_DETAIL_ASSERT_FAIL_MSG(cond, msg_expr);                                                                 \
         RELOCO_TRAP();                                                                                                 \
       }                                                                                                                \
   } while (0)

@@ -98,6 +98,33 @@ reloco::result<int> parse(std::string_view s) noexcept {
 }
 ```
 
+Beyond `has_value()`/`value()`/`error()`/`value_or()` and the chaining
+methods `transform`/`map`, `map_err`, `and_then`, `or_else`, both
+`expected<T, E>` and the `expected<void, E>` specialization also provide
+Rust `Result<T, E>`-parity methods:
+
+- `is_ok()`/`is_err()` — boolean queries, aliases of `has_value()`/`!has_value()`.
+- `unwrap()`/`unwrap_err()` — like `value()`/`error()`, but named to match
+  Rust; asserts (traps) on the wrong state.
+- `expect(msg)`/`expect_err(msg)` — like `unwrap()`/`unwrap_err()`, but
+  `msg` (a runtime `const char *`, not required to be a string literal) is
+  used as the assertion failure message for a more actionable trap site.
+- `is_ok_and(f)`/`is_err_and(f)` — `true` if the value/error is present
+  *and* `f` applied to it returns `true`; `f` is not invoked otherwise.
+- `map_or(default, f)`/`map_or_else(default_fn, f)` — apply `f` to the
+  value if present, else return `default`/invoke `default_fn()`.
+- `inspect(f)`/`inspect_err(f)` — invoke `f` with the value/error for a
+  side effect (e.g. logging) if present, otherwise do nothing. Unlike
+  Rust's consuming, chainable `inspect`, these are `void`-returning and
+  non-chaining: `expected<T, E>` has no dedicated copy/move constructor
+  (only a generic converting one), and `expected<void, E>` has neither, so
+  a faithful consume-and-return-`Self` signature isn't available uniformly
+  across both specializations.
+- `unwrap_or(fallback)` — alias of `value_or(fallback)`.
+- `unwrap_or_default()` — returns the value, or a default-constructed `T`
+  if in the error state (SFINAE-disabled unless `T` is nothrow default
+  constructible; not available on `expected<void, E>`, which has no `T`).
+
 ## `error`
 
 `include/reloco/error.hpp`
@@ -1071,6 +1098,17 @@ reloco::optional<int> old = opt.replace(7);
 assert(*old == 42 && *opt == 7);
 ```
 
+`Ok(expected<T, E>)`/`Err(expected<T, E>)` free functions bridge a
+`result<T>` back into an `optional`, mirroring Rust's `Result::ok()`/
+`Result::err()`: `Ok` keeps the value and discards the error on failure;
+`Err` keeps the error and discards the value on success.
+
+```cpp
+reloco::result<int> parsed = parse(s);
+reloco::optional<int> value = reloco::Ok(parsed);
+reloco::optional<reloco::error> failure = reloco::Err(parsed);
+```
+
 Two free functions mirror Rust's `bool::then`/`bool::then_some`:
 `then(condition, f)` invokes `f()` only if `condition` is `true`, wrapping
 its result in an `optional`; `then_some(condition, value)` always evaluates
@@ -1080,6 +1118,37 @@ prefer `then()` when constructing the value has a cost worth skipping.
 ```cpp
 reloco::optional<int> maybe = reloco::then(x > 0, [&] { return compute(x); });
 ```
+
+Further Rust `Option<T>`-parity additions round out the API:
+
+- `is_some()`/`is_none()` — aliases of `has_value()`/`!has_value()`.
+- `is_some_and(f)` — `true` if a value is present *and* `f` applied to it
+  returns `true`; `f` is not invoked when empty.
+- `unwrap()` — alias of `value()`. `expect(msg)` — like `unwrap()`, but
+  `msg` (a runtime `const char *`) is used as the assertion failure
+  message.
+- `unwrap_or(fallback)` — alias of `value_or(fallback)`.
+  `unwrap_or_default()` — returns the value, or a default-constructed `T`
+  if empty (SFINAE-disabled unless `T` is nothrow default constructible).
+  `unwrap_or_else(f)` — returns the value, or invokes `f()` (no arguments)
+  if empty.
+- `map_or(default, f)`/`map_or_else(default_fn, f)` — apply `f` to the
+  value if present, else return `default`/invoke `default_fn()`.
+- `insert(value)` — unconditionally (re)constructs the held value from
+  `value`, discarding any previous one, and returns a reference to it
+  (unlike `get_or_insert`, which only inserts when empty); an alias of
+  `emplace(value)` under Rust's name for this operation.
+- `zip(other)` — if both `*this` and `other` hold a value, returns an
+  `optional<std::pair<T, U>>` containing both; otherwise an empty
+  `optional`.
+- `logical_xor(other)` — Rust's `Option::xor`, renamed since `xor` is a
+  reserved alternative operator token in C++: returns whichever of
+  `*this`/`other` holds a value if exactly one of them does, otherwise an
+  empty `optional<T>`.
+- `flatten(opt)` — a free function (not a member, since C++ cannot
+  partially specialize a member function on `T` itself being an
+  `optional`) collapsing a nested `optional<optional<T>>` into an
+  `optional<T>`, empty if either layer is empty.
 
 ## `function_ref<R(Args...)>`
 

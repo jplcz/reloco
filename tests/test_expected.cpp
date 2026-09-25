@@ -132,3 +132,133 @@ TEST(ExpectedTest, VoidSpecializationSupportsAndThenMapErrAndOrElse) {
   const auto recovered = err.or_else([](const std::string &) { return reloco::expected<void, std::string>(); });
   EXPECT_TRUE(recovered.has_value());
 }
+
+TEST(ExpectedTest, IsOkAndIsErrReportHeldAlternative) {
+  reloco::expected<int, std::string> ok(5);
+  reloco::expected<int, std::string> err(reloco::unexpected<std::string>("bad"));
+
+  EXPECT_TRUE(ok.is_ok());
+  EXPECT_FALSE(ok.is_err());
+  EXPECT_FALSE(err.is_ok());
+  EXPECT_TRUE(err.is_err());
+}
+
+TEST(ExpectedTest, UnwrapAndUnwrapErrAliasValueAndError) {
+  reloco::expected<int, std::string> ok(5);
+  reloco::expected<int, std::string> err(reloco::unexpected<std::string>("bad"));
+
+  EXPECT_EQ(ok.unwrap(), 5);
+  EXPECT_EQ(err.unwrap_err(), "bad");
+}
+
+TEST(ExpectedTest, ExpectAndExpectErrReturnUnderlyingValues) {
+  reloco::expected<int, std::string> ok(5);
+  reloco::expected<int, std::string> err(reloco::unexpected<std::string>("bad"));
+
+  EXPECT_EQ(ok.expect("should hold a value"), 5);
+  EXPECT_EQ(err.expect_err("should hold an error"), "bad");
+}
+
+TEST(ExpectedTest, UnwrapOrFallsBackOnError) {
+  reloco::expected<int, std::string> ok(5);
+  reloco::expected<int, std::string> err(reloco::unexpected<std::string>("bad"));
+
+  EXPECT_EQ(ok.unwrap_or(99), 5);
+  EXPECT_EQ(err.unwrap_or(99), 99);
+}
+
+TEST(ExpectedTest, UnwrapOrDefaultFallsBackToDefaultConstructedValue) {
+  reloco::expected<int, std::string> ok(5);
+  reloco::expected<int, std::string> err(reloco::unexpected<std::string>("bad"));
+
+  EXPECT_EQ(ok.unwrap_or_default(), 5);
+  EXPECT_EQ(err.unwrap_or_default(), 0);
+}
+
+TEST(ExpectedTest, MapOrAppliesFunctionOrReturnsDefault) {
+  reloco::expected<int, std::string> ok(5);
+  reloco::expected<int, std::string> err(reloco::unexpected<std::string>("bad"));
+
+  EXPECT_EQ(ok.map_or(0, [](int v) { return v * 2; }), 10);
+  EXPECT_EQ(err.map_or(0, [](int v) { return v * 2; }), 0);
+}
+
+TEST(ExpectedTest, MapOrElseAppliesFunctionOrDefaultFunction) {
+  reloco::expected<int, std::string> ok(5);
+  reloco::expected<int, std::string> err(reloco::unexpected<std::string>("bad"));
+
+  EXPECT_EQ(
+      ok.map_or_else([](const std::string &e) { return static_cast<int>(e.size()); }, [](int v) { return v * 2; }),
+      10);
+  EXPECT_EQ(
+      err.map_or_else([](const std::string &e) { return static_cast<int>(e.size()); }, [](int v) { return v * 2; }),
+      3);
+}
+
+TEST(ExpectedTest, IsOkAndIsErrAndOnlyInvokePredicateOnMatchingAlternative) {
+  reloco::expected<int, std::string> ok(5);
+  reloco::expected<int, std::string> err(reloco::unexpected<std::string>("bad"));
+
+  EXPECT_TRUE(ok.is_ok_and([](int v) { return v == 5; }));
+  EXPECT_FALSE(ok.is_ok_and([](int v) { return v == 6; }));
+  EXPECT_FALSE(ok.is_err_and([](const std::string &) { return true; }));
+
+  EXPECT_TRUE(err.is_err_and([](const std::string &e) { return e == "bad"; }));
+  EXPECT_FALSE(err.is_err_and([](const std::string &e) { return e == "other"; }));
+  EXPECT_FALSE(err.is_ok_and([](int) { return true; }));
+}
+
+TEST(ExpectedTest, InspectAndInspectErrInvokeSideEffectWithoutConsuming) {
+  reloco::expected<int, std::string> ok(5);
+  reloco::expected<int, std::string> err(reloco::unexpected<std::string>("bad"));
+
+  int seen_value = 0;
+  ok.inspect([&](int v) { seen_value = v; });
+  EXPECT_EQ(seen_value, 5);
+  ok.inspect_err([&](const std::string &) { FAIL() << "should not be invoked on success"; });
+
+  std::string seen_error;
+  err.inspect_err([&](const std::string &e) { seen_error = e; });
+  EXPECT_EQ(seen_error, "bad");
+  err.inspect([&](int) { FAIL() << "should not be invoked on failure"; });
+
+  // *this is untouched by either call.
+  EXPECT_TRUE(ok.has_value());
+  EXPECT_FALSE(err.has_value());
+}
+
+TEST(ExpectedTest, VoidSpecializationSupportsRustResultExtensions) {
+  reloco::expected<void, std::string> ok;
+  reloco::expected<void, std::string> err(reloco::unexpected<std::string>("bad"));
+
+  EXPECT_TRUE(ok.is_ok());
+  EXPECT_FALSE(err.is_ok());
+  EXPECT_TRUE(err.is_err());
+
+  ok.unwrap();
+  EXPECT_EQ(err.unwrap_err(), "bad");
+  ok.expect("should hold a value");
+  EXPECT_EQ(err.expect_err("should hold an error"), "bad");
+
+  EXPECT_EQ(ok.map_or(-1, [] { return 1; }), 1);
+  EXPECT_EQ(err.map_or(-1, [] { return 1; }), -1);
+
+  EXPECT_EQ(ok.map_or_else([](const std::string &e) { return static_cast<int>(e.size()); }, [] { return 1; }), 1);
+  EXPECT_EQ(err.map_or_else([](const std::string &e) { return static_cast<int>(e.size()); }, [] { return 1; }), 3);
+
+  EXPECT_TRUE(ok.is_ok_and([] { return true; }));
+  EXPECT_FALSE(err.is_ok_and([] { return true; }));
+  EXPECT_TRUE(err.is_err_and([](const std::string &e) { return e == "bad"; }));
+  EXPECT_FALSE(ok.is_err_and([](const std::string &) { return true; }));
+
+  bool invoked = false;
+  ok.inspect([&] { invoked = true; });
+  EXPECT_TRUE(invoked);
+  ok.inspect_err([](const std::string &) { FAIL() << "should not be invoked on success"; });
+
+  std::string seen_error;
+  err.inspect_err([&](const std::string &e) { seen_error = e; });
+  EXPECT_EQ(seen_error, "bad");
+  err.inspect([] { FAIL() << "should not be invoked on failure"; });
+}
+
