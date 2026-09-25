@@ -2,6 +2,16 @@
 //
 // SPDX-License-Identifier: BSD-2-Clause
 
+// Model-parameterized tls_provider<T, Tag> coverage: compiled once per
+// RELOCO_TLS_MODEL (RELOCO_TLS_MODEL_THREAD_LOCAL/_SINGLE/_PTHREAD, each
+// forced via a -DRELOCO_TLS_MODEL=... command-line define on its own
+// CMake target -- see CMakeLists.txt's jplcz_reloco_tls_*_tests targets),
+// so every backend's actual behavior is exercised, not just whichever one
+// happens to be the default/host-selected one. tests/test_tls_provider.cpp
+// covers the same API against whatever RELOCO_TLS_MODEL the main test
+// binary was built with (the default, RELOCO_TLS_MODEL_THREAD_LOCAL,
+// unless overridden).
+
 #include <gtest/gtest.h>
 #include <reloco/thread.hpp>
 #include <reloco/tls_provider.hpp>
@@ -14,7 +24,6 @@
 namespace {
 struct int_tag {};
 struct string_tag {};
-struct other_int_tag {};
 
 template <typename> constexpr bool is_reference_wrapper_v = false;
 template <typename U> constexpr bool is_reference_wrapper_v<std::reference_wrapper<U>> = true;
@@ -48,12 +57,22 @@ template <typename Provider> auto get_value(reloco::allocator_ref alloc) {
 }
 } // namespace
 
-TEST(TlsProviderTest, DefaultsToZeroValueBeforeAnySet) {
+#if RELOCO_TLS_MODEL == RELOCO_TLS_MODEL_THREAD_LOCAL
+#define TLS_PROVIDER_MODEL_SUITE TlsProviderModelTest_ThreadLocal
+#elif RELOCO_TLS_MODEL == RELOCO_TLS_MODEL_SINGLE
+#define TLS_PROVIDER_MODEL_SUITE TlsProviderModelTest_Single
+#elif RELOCO_TLS_MODEL == RELOCO_TLS_MODEL_PTHREAD
+#define TLS_PROVIDER_MODEL_SUITE TlsProviderModelTest_Pthread
+#else
+#error "test_tls_provider_models.cpp: unhandled RELOCO_TLS_MODEL"
+#endif
+
+TEST(TLS_PROVIDER_MODEL_SUITE, DefaultsToZeroValueBeforeAnySet) {
   using provider = reloco::tls_provider<int, struct default_zero_tag>;
   EXPECT_EQ(get_value<provider>(), 0);
 }
 
-TEST(TlsProviderTest, SetThenGetRoundTripsOnTheCallingThread) {
+TEST(TLS_PROVIDER_MODEL_SUITE, SetThenGetRoundTripsOnTheCallingThread) {
   using provider = reloco::tls_provider<int, int_tag>;
   EXPECT_TRUE(provider::set(42).has_value());
   EXPECT_EQ(get_value<provider>(), 42);
@@ -61,7 +80,7 @@ TEST(TlsProviderTest, SetThenGetRoundTripsOnTheCallingThread) {
   EXPECT_EQ(get_value<provider>(), 7);
 }
 
-TEST(TlsProviderTest, DistinctTagsAreIndependentSlotsForTheSameType) {
+TEST(TLS_PROVIDER_MODEL_SUITE, DistinctTagsAreIndependentSlotsForTheSameType) {
   using a = reloco::tls_provider<int, struct tag_a>;
   using b = reloco::tls_provider<int, struct tag_b>;
   ASSERT_TRUE(a::set(1).has_value());
@@ -70,15 +89,46 @@ TEST(TlsProviderTest, DistinctTagsAreIndependentSlotsForTheSameType) {
   EXPECT_EQ(get_value<b>(), 2);
 }
 
-TEST(TlsProviderTest, WorksWithNonTrivialTypes) {
+TEST(TLS_PROVIDER_MODEL_SUITE, WorksWithNonTrivialTypes) {
   using provider = reloco::tls_provider<std::string, string_tag>;
   EXPECT_TRUE(get_value<provider>().empty());
   ASSERT_TRUE(provider::set("hello").has_value());
   EXPECT_EQ(get_value<provider>(), "hello");
 }
 
-TEST(TlsProviderTest, EachThreadObservesItsOwnValue) {
-  using provider = reloco::tls_provider<int, other_int_tag>;
+TEST(TLS_PROVIDER_MODEL_SUITE, AllocatorParameterDefaultsToDefaultAllocator) {
+  using provider = reloco::tls_provider<int, struct explicit_allocator_tag>;
+  ASSERT_TRUE(provider::set(5, reloco::default_allocator()).has_value());
+  EXPECT_EQ(get_value<provider>(reloco::default_allocator()), 5);
+}
+
+#if RELOCO_TLS_MODEL == RELOCO_TLS_MODEL_SINGLE
+
+// RELOCO_TLS_MODEL_SINGLE is deliberately *not* per-thread: exactly one
+// global static instance backs every "thread's" slot, for single-threaded
+// builds that still want to link against tls_provider<T, Tag>-shaped code.
+TEST(TLS_PROVIDER_MODEL_SUITE, SingleModelSharesOneGlobalInstanceAcrossEveryThread) {
+  using provider = reloco::tls_provider<int, struct single_model_tag>;
+  ASSERT_TRUE(provider::set(100).has_value());
+
+  std::atomic<int> other_thread_initial{-1};
+  auto handle = reloco::spawn([&]() noexcept {
+    other_thread_initial.store(get_value<provider>(), std::memory_order_relaxed);
+    ASSERT_TRUE(provider::set(999).has_value());
+  });
+  ASSERT_TRUE(handle.has_value());
+  std::move(*handle).join();
+
+  EXPECT_EQ(other_thread_initial.load(), 100); // shared with the main thread's earlier set()
+  EXPECT_EQ(get_value<provider>(), 999);       // the worker thread's set() is visible here too
+}
+
+#else
+
+// RELOCO_TLS_MODEL_THREAD_LOCAL and RELOCO_TLS_MODEL_PTHREAD are both
+// genuinely per-thread.
+TEST(TLS_PROVIDER_MODEL_SUITE, EachThreadObservesItsOwnValue) {
+  using provider = reloco::tls_provider<int, struct per_thread_model_tag>;
   ASSERT_TRUE(provider::set(100).has_value());
 
   std::atomic<int> other_thread_initial{-1};
@@ -86,7 +136,7 @@ TEST(TlsProviderTest, EachThreadObservesItsOwnValue) {
 
   auto handle = reloco::spawn([&]() noexcept {
     other_thread_initial.store(get_value<provider>(), std::memory_order_relaxed);
-    EXPECT_TRUE(provider::set(999).has_value());
+    ASSERT_TRUE(provider::set(999).has_value());
     other_thread_after_set.store(get_value<provider>(), std::memory_order_relaxed);
   });
   ASSERT_TRUE(handle.has_value());
@@ -97,12 +147,4 @@ TEST(TlsProviderTest, EachThreadObservesItsOwnValue) {
   EXPECT_EQ(get_value<provider>(), 100); // main thread's own slot is unaffected
 }
 
-TEST(TlsProviderTest, AllocatorParameterDefaultsToDefaultAllocator) {
-  // get()/set() accept an explicit allocator_ref for backends that need to
-  // heap-allocate (RELOCO_TLS_MODEL_PTHREAD's heap-allocated
-  // specialization); every model accepts (and, apart from that one
-  // specialization, ignores) it, defaulting to default_allocator().
-  using provider = reloco::tls_provider<int, struct explicit_allocator_tag>;
-  ASSERT_TRUE(provider::set(5, reloco::default_allocator()).has_value());
-  EXPECT_EQ(get_value<provider>(reloco::default_allocator()), 5);
-}
+#endif

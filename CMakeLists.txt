@@ -205,6 +205,12 @@ if(JPLCZ_RELOCO_BUILD_HEADER_CHECKS)
 endif()
 
 if(JPLCZ_RELOCO_BUILD_TESTS)
+    include(CheckIncludeFileCXX)
+    check_include_file_cxx("pthread.h" JPLCZ_RELOCO_HAVE_PTHREAD_H)
+    if(JPLCZ_RELOCO_HAVE_PTHREAD_H)
+        find_package(Threads QUIET)
+    endif()
+
     include(FetchContent)
     FetchContent_Declare(
         googletest
@@ -235,6 +241,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_thread.cpp
         tests/test_channel.cpp
         tests/test_once_lock.cpp
+        tests/test_park.cpp
         tests/test_scope.cpp
         tests/test_fallible_singleton.cpp
         tests/test_duration.cpp
@@ -314,6 +321,48 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
     jplcz_reloco_enable_warnings(jplcz_reloco_implicit_typeid_tests)
     gtest_discover_tests(jplcz_reloco_implicit_typeid_tests
         TEST_PREFIX "ImplicitTypeId.")
+
+    # tests/test_tls_provider_models.cpp is compiled once per
+    # RELOCO_TLS_MODEL, each forced via its own -DRELOCO_TLS_MODEL=...
+    # define, so every tls_provider<T, Tag> backend is actually exercised
+    # rather than just whichever one the host/default happens to select.
+    # The test file itself names its gtest suite after RELOCO_TLS_MODEL
+    # (TlsProviderModelTest_ThreadLocal/_Single/_Pthread), so no
+    # TEST_PREFIX is needed here to keep the three binaries' cases apart.
+    add_executable(jplcz_reloco_tls_thread_local_tests tests/test_tls_provider_models.cpp)
+    target_link_libraries(jplcz_reloco_tls_thread_local_tests PRIVATE
+        jplcz_reloco GTest::gtest_main)
+    target_compile_definitions(jplcz_reloco_tls_thread_local_tests PRIVATE
+        RELOCO_TLS_MODEL=RELOCO_TLS_MODEL_THREAD_LOCAL)
+    jplcz_reloco_enable_warnings(jplcz_reloco_tls_thread_local_tests)
+    gtest_discover_tests(jplcz_reloco_tls_thread_local_tests)
+
+    add_executable(jplcz_reloco_tls_single_tests tests/test_tls_provider_models.cpp)
+    target_link_libraries(jplcz_reloco_tls_single_tests PRIVATE
+        jplcz_reloco GTest::gtest_main)
+    target_compile_definitions(jplcz_reloco_tls_single_tests PRIVATE
+        RELOCO_TLS_MODEL=RELOCO_TLS_MODEL_SINGLE)
+    jplcz_reloco_enable_warnings(jplcz_reloco_tls_single_tests)
+    gtest_discover_tests(jplcz_reloco_tls_single_tests)
+
+    # RELOCO_TLS_MODEL_PTHREAD needs <pthread.h>; only build/register this
+    # target on hosts that actually have it (matching
+    # RELOCO_THREAD_BACKEND_PTHREAD's own RELOCO_HAS_INCLUDE(<pthread.h>)
+    # auto-detection, just performed at CMake-configure time instead of
+    # preprocessor time since a dedicated target needs to exist -- or
+    # not -- before compilation).
+    if(JPLCZ_RELOCO_HAVE_PTHREAD_H)
+        add_executable(jplcz_reloco_tls_pthread_tests tests/test_tls_provider_models.cpp)
+        target_link_libraries(jplcz_reloco_tls_pthread_tests PRIVATE
+            jplcz_reloco GTest::gtest_main)
+        if(Threads_FOUND)
+            target_link_libraries(jplcz_reloco_tls_pthread_tests PRIVATE Threads::Threads)
+        endif()
+        target_compile_definitions(jplcz_reloco_tls_pthread_tests PRIVATE
+            RELOCO_TLS_MODEL=RELOCO_TLS_MODEL_PTHREAD)
+        jplcz_reloco_enable_warnings(jplcz_reloco_tls_pthread_tests)
+        gtest_discover_tests(jplcz_reloco_tls_pthread_tests)
+    endif()
 endif()
 
 if(JPLCZ_RELOCO_INSTALL)

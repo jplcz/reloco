@@ -247,7 +247,7 @@
 //     standard library implementation).
 //
 // RELOCO_TLS_MODEL
-//     Selects which backend reloco/detail/tls_provider.hpp's internal
+//     Selects which backend reloco/tls_provider.hpp's public
 //     tls_provider<T, Tag> uses for genuinely per-thread storage:
 //       - RELOCO_TLS_MODEL_THREAD_LOCAL (default): backed by C++11
 //         thread_local. Portable to any hosted C++17 target.
@@ -261,6 +261,12 @@
 //         elsewhere.
 //       - RELOCO_TLS_MODEL_SINGLE: one global static instance (not
 //         actually per-thread), for single-threaded builds.
-//     tls_provider<T, Tag> is an internal building block (used by, e.g.,
-//     the per-thread parker behind this_thread::park()), not a
-//     standalone public API; see reloco/detail/tls_provider.hpp.
+//     tls_provider<T, Tag>::get()/set() are fallible (return
+//     result<...>) and accept an allocator_ref (default
+//     default_allocator()) used for any actual heap allocation the
+//     backend needs (RELOCO_TLS_MODEL_PTHREAD's heap-allocated
+//     specialization only -- every other model/specialization never
+//     actually fails). tls_provider is a public reloco API (used
+//     internally by, e.g., the per-thread parker behind
+//     this_thread::park(), but also usable directly); see
+//     reloco/tls_provider.hpp.

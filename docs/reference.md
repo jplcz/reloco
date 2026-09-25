@@ -65,8 +65,10 @@ where, not a tutorial.
 | `relocatable.hpp` | `is_trivially_relocatable<T>` (+ C++20 `trivially_relocatable`) | Marks types safely movable by copying bytes and abandoning the source |
 | `send_sync.hpp` | `is_send<T>`, `is_sync<T>` (+ C++20 `sendable`/`syncable`) | Marks types sound to transfer to another thread (`is_send`) or share concurrently (`is_sync`), matching Rust's `Send`/`Sync` |
 | `duration.hpp` | `duration`, `duration_converter<T>`, `duration_cast<T>` | Integer-only (no floating point), Rust `std::time::Duration`-like time span, convertible to `timespec`/`timeval`/kernel-specific types via a customization point |
+| `tls_provider.hpp` | `tls_provider<T, Tag>` | Tag-differentiated, fallible, allocator-aware thread-local storage, selectable (`RELOCO_TLS_MODEL`) between `thread_local`, pthread keys, a custom OS/kernel backend, or a single-threaded global |
 | `thread.hpp` | `thread`, `thread_id`, `this_thread::get_id/yield`, `spawn`, `join_handle<R>` | Backend-selected (`pthread`/`std`/custom) OS thread primitive plus a Rust-like `spawn`/`JoinHandle<T>` layer built on `is_send`/`is_sync` |
 | `channel.hpp` | `channel<T>`, `sender<T>`, `receiver<T>` | Multi-producer, single-consumer channel matching Rust's `std::sync::mpsc`, built on `mutex.hpp` + `shared_ptr` + `is_send`/`is_sync` |
+| `park.hpp` | `thread_handle`, `this_thread::current/park/park_timeout/sleep_for` | Rust-like `thread::park`/`park_timeout`/`sleep`/`Thread`, built on `tls_provider.hpp` + `mutex.hpp` + `shared_ptr` |
 | `once_lock.hpp` | `once_lock<T>` | Write-once, read-many-times cell matching Rust's `std::sync::OnceLock<T>`, usable as a plain field/local (unlike `fallible_singleton.hpp`'s static, one-per-`T` global) |
 | `scope.hpp` | `scope`, `thread_scope`, `scoped_join_handle<R>` | Matches Rust's `std::thread::scope`: spawns threads guaranteed to finish before `scope()` returns, so they may safely borrow references to the caller's stack frame |
 | `lifetime.hpp` | `RELOCO_LIFETIMEBOUND`, `RELOCO_OWNER`, `RELOCO_POINTER`, `RELOCO_UNSAFE_BUFFER_USAGE`, ... | Compiler-specific lifetime/ownership/safe-buffers annotation macros |
@@ -2113,6 +2115,65 @@ extensibility pattern. `mutex.hpp`'s `condition_variable::wait_for` uses
 `duration`/`duration_cast<struct timespec>` for its timeout parameter and
 deadline computation, rather than `<chrono>`.
 
+## `tls_provider<T, Tag>`
+
+`include/reloco/tls_provider.hpp`
+
+A tag-differentiated thread-local storage provider: `tls_provider<T,
+Tag>` gives every thread its own independent instance of `T`, with the
+storage slot uniquely identified by both `T` and a caller-supplied unique
+tag type (`tls_provider<int, struct foo_tag>` and `tls_provider<int,
+struct bar_tag>` are two independent per-thread slots). Selected backend
+is `RELOCO_TLS_MODEL` (same customization shape as
+`RELOCO_MUTEX_BACKEND_*`/`RELOCO_THREAD_BACKEND_*`):
+
+- `RELOCO_TLS_MODEL_THREAD_LOCAL` (default): backed by C++11
+  `thread_local`. Portable to any hosted C++17 target; never actually
+  fails.
+- `RELOCO_TLS_MODEL_PTHREAD`: backed by `pthread_key_create`/
+  `pthread_getspecific`/`pthread_setspecific`, for POSIX targets that want
+  to avoid compiler `thread_local` support. Picks the cheapest
+  representation per `T`: a raw pointer or small trivial value is stored
+  directly in the key's `void *` slot (no heap allocation); anything else
+  is heap-allocated through the `allocator_ref` passed to `get()`/`set()`
+  (not `new`), alongside that same `allocator_ref`, so the
+  `pthread_key_create` destructor that runs on thread exit can deallocate
+  it correctly through the right allocator regardless of which allocator
+  any particular call used.
+- `RELOCO_TLS_MODEL_OS`: declares `tls_provider<T, Tag>` with no
+  definition; a kernel/RTOS port supplies `get()`/`set()` against its own
+  per-task storage, the same escape hatch
+  `RELOCO_MUTEX_BACKEND_CUSTOM`/`RELOCO_THREAD_BACKEND_CUSTOM` provide.
+- `RELOCO_TLS_MODEL_SINGLE`: one global static instance (not actually
+  per-thread), for single-threaded builds that still want to link against
+  code written against the `tls_provider<T, Tag>` interface.
+
+```cpp
+struct my_tag {};
+using my_slot = reloco::tls_provider<reloco::string, my_tag>;
+
+auto value = my_slot::get(); // result<std::reference_wrapper<string>>
+if (value)
+  value->get() = "hello";
+```
+
+`get()`/`set(T, allocator_ref = default_allocator())` are both fallible
+(`result<...>`): every model can fail if the one-time backend
+initialization itself fails (e.g. `RELOCO_TLS_MODEL_PTHREAD`'s
+`pthread_key_create`, reported as `error::resource_exhausted`), and
+`RELOCO_TLS_MODEL_PTHREAD`'s heap-allocated specialization can
+additionally fail with whatever `error` the allocator reports.
+`get()` returns `result<std::reference_wrapper<T>>` wherever the model has
+genuine addressable per-thread storage to reference (`THREAD_LOCAL`,
+`SINGLE`, `OS`, and `PTHREAD`'s heap-allocated specialization) --
+`expected<T, E>` requires a nothrow-move-constructible value type, which
+no reference type satisfies, so a reference is wrapped rather than
+returned directly (the same `result<std::reference_wrapper<T>>` idiom used
+elsewhere for "fallibly return a reference"). `PTHREAD`'s raw-pointer/
+small-trivial specializations have no such addressable storage (the value
+lives only as a bit pattern inside the key itself), so their `get()`
+returns `result<T>` by value instead.
+
 ## `thread` / `thread::spawn` / `join_handle<R>`
 
 `include/reloco/thread.hpp`
@@ -2201,6 +2262,53 @@ reloco container element requirement. `is_send<sender<T>>`/
 Rust where `mpsc::Sender<T>: Sync` when `T: Send`); `is_sync<receiver<T>>`
 is always `false`, deliberately matching Rust's single-consumer API
 contract rather than the implementation's own (looser) actual guarantee.
+
+## `thread_handle` / `this_thread::current/park/park_timeout/sleep_for`
+
+`include/reloco/park.hpp`
+
+Rust's `std::thread::park`/`park_timeout`/`sleep`/`Thread`/
+`thread::current()`. Every OS thread lazily owns exactly one *parker* --
+a one-slot wake token guarded by one `mutex` + `condition_variable` pair
+(see `mutex.hpp`), matching `channel.hpp`'s own locking approach --
+created on first use and cached for the thread's lifetime in a
+`tls_provider<shared_ptr<...>, ...>` (`RELOCO_TLS_MODEL`-selected, see
+`tls_provider.hpp`) slot.
+
+```cpp
+auto handle = reloco::this_thread::current(); // cloneable Send + Sync
+
+auto worker = reloco::spawn([]() noexcept {
+  reloco::this_thread::park(); // blocks until unparked
+});
+handle.unpark(); // wakes park() above, or makes its very next call return immediately
+```
+
+`thread_handle` (matching Rust's `std::thread::Thread`) is a cheap,
+cloneable, `Send + Sync` reference to a specific thread's parker:
+`this_thread::current()` (from any thread) captures a clone, and
+`unpark()` called through it wakes the thread it was obtained from, even
+after that thread has since exited (the underlying `shared_ptr` keeps the
+parker itself alive regardless). Tokens do not accumulate -- calling
+`unpark()` any number of times before the thread next parks is equivalent
+to calling it once, matching Rust's own semantics exactly.
+
+`this_thread::park()`/`park_timeout(duration)` block the calling thread
+until its token becomes available (consuming it), returning immediately
+(still consuming the token) if one is already available. Unlike Rust's
+`park_timeout`/`park_deadline` (which return nothing -- the caller must
+re-check its own condition after either call returns), `park_timeout`
+here returns `bool`: `true` if a token was consumed, `false` if the
+timeout elapsed first, matching `condition_variable::wait_for`'s own
+`result<bool>` outcome shape elsewhere in reloco. Still safe to ignore,
+exactly like Rust's spurious-wakeup-tolerant contract.
+
+`this_thread::sleep_for(duration)` is unrelated to parking: it blocks the
+calling thread for (at least) the given duration unconditionally, via a
+throwaway, always-false-predicate `condition_variable::wait_for` private
+to the call, so it never consumes or is affected by the calling thread's
+own park token, and stays available under every `mutex.hpp` backend
+(including `RELOCO_MUTEX_BACKEND_PTHREAD`'s monotonic-clock-aware wait).
 
 ## `once_lock<T>`
 
