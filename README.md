@@ -36,6 +36,7 @@ Start with the guide that matches what you are building:
 | [Container contract](docs/container-contract.md) | Copy-paste template and checklist for lifetime annotations, rvalue protection, and the tri-tier accessor convention on a new container |
 | [Type-erased base containers](docs/type-erased-base-containers.md) | How `vector`/`inline_vector`/`sso_vector`/`outline_vector` share one type-erased storage engine (`detail::vector_base.hpp`), and how to add a new vector flavor |
 | [Tree containers](docs/tree-containers.md) | `tree_set`/`tree_map`'s node layout (`detail::node_base.hpp`), the unbalanced BST engine (`detail::tree_base.hpp`), and how they compare to `flat_set`/`flat_map` |
+| [Flat hash containers](docs/flat-hash-containers.md) | `flat_hash_set`/`flat_hash_map`'s open-addressing engine (`detail::flat_hash_base.hpp`), backward-shift deletion, and how they compare to `tree_set`/`tree_map`/`flat_set`/`flat_map` |
 | [Extending reloco](docs/extending.md) | The tag + `*_traits<Tag>` + `context_type` provider pattern used by `allocator_ref` and future pluggable backends |
 | [Allocator capacity absorption](docs/allocator-capacity-absorption.md) | Binding `mem_block::size` to your allocator's real granularity: rationale, the `old_size`/`bytes` round-trip contract, arena/slab vs. system-allocator use, and the sanitizer caveat |
 | [API reference](docs/reference.md) | Per-type quick reference for every public header |

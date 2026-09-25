@@ -179,6 +179,40 @@ fundamentally cannot offer (an index-based lookup would have to walk the
 tree), unlike `flat_set`/`flat_map`'s contiguous `vector<T>`-backed
 storage.
 
+### Rust `BTreeSet`/`BTreeMap`-flavored API surface
+
+Both containers keep every element in ascending `Compare` order at all
+times (that is the whole point of a BST), so `tree_base` exposes several
+Rust `BTreeSet`/`BTreeMap` methods that have no `flat_set`/`flat_map`
+equivalent today:
+
+| Method (on `tree_set<T>` / `tree_map<K, V>`) | Rust equivalent | Behavior |
+|---|---|---|
+| `try_first()` / `try_first_key_value()` | `BTreeSet::first` / `BTreeMap::first_key_value` | Reference to the smallest element/entry, without removing it |
+| `try_last()` / `try_last_key_value()` | `BTreeSet::last` / `BTreeMap::last_key_value` | Reference to the greatest element/entry, without removing it |
+| `try_pop_first()` | `BTreeSet::pop_first` / `BTreeMap::pop_first` | Removes and returns the smallest element/entry |
+| `try_pop_last()` | `BTreeSet::pop_last` / `BTreeMap::pop_last` | Removes and returns the greatest element/entry |
+| `retain(pred)` | `BTreeSet::retain` / `BTreeMap::retain` | Keeps only elements/entries for which `pred` returns `true`, in one in-order walk |
+| `append(other)` | `BTreeSet::append` / `BTreeMap::append` | Moves every element/entry out of `other` into `*this`, leaving `other` empty |
+| `is_subset(other)` / `is_superset(other)` / `is_disjoint(other)` | `BTreeSet::is_subset` / `is_superset` / `is_disjoint` | Merge-walk set comparisons, `O(size() + other.size())` |
+
+All of these fail with `error::container_empty` (`try_first`/`try_last`/
+`try_pop_first`/`try_pop_last`) rather than returning an empty
+`optional`-like value, consistent with every other fallible reloco API.
+
+`append` is the one operation worth calling out specifically: it never
+allocates or constructs a new `T`. Each element being moved already lives
+in its own `node_base` allocation in `other`'s tree; `append` walks
+`other` in order, structurally unlinks each node (`bst_unlink`, the same
+primitive `try_remove` uses -- see Layer 2 above), and re-links it directly
+into `*this`'s tree via a small `insert_node` helper, so only
+`node_header` pointers move, never `T` itself. On a key collision (present
+in both `*this` and `other`), the entry already in `*this` is unlinked and
+destroyed first, matching Rust's "`self`'s value is overwritten by
+`other`'s" semantics -- then the incoming node is inserted at that
+now-vacant key with a plain retry, which is guaranteed collision-free
+since the conflicting key was just removed.
+
 ### `tree_set`/`tree_map` vs. `flat_set`/`flat_map`
 
 Both pairs are sorted, unique-key associative containers with the same

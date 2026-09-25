@@ -41,6 +41,8 @@
 #include <reloco/string_view.hpp>
 #include <reloco/tree_map.hpp>
 #include <reloco/tree_set.hpp>
+#include <reloco/flat_hash_map.hpp>
+#include <reloco/flat_hash_set.hpp>
 #include <reloco/type_id.hpp>
 #include <reloco/unique_ptr.hpp>
 #include <reloco/value_ptr.hpp>

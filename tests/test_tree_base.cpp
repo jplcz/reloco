@@ -354,3 +354,115 @@ TEST(TreeBaseTest, TryPopFirstDestroysNonTrivialPayload) {
   EXPECT_EQ(tree->size(), 1);
   EXPECT_TRUE(tree->contains("banana"));
 }
+
+TEST(TreeBaseTest, RetainKeepsOnlyMatchingElements) {
+  auto tree = int_set::try_create();
+  ASSERT_TRUE(tree);
+  for (int v : {1, 2, 3, 4, 5, 6}) {
+    ASSERT_TRUE(tree->try_insert(v));
+  }
+
+  tree->retain([](const int &v) { return v % 2 == 0; });
+
+  EXPECT_EQ(tree->size(), 3);
+  std::vector<int> remaining(tree->begin(), tree->end());
+  EXPECT_EQ(remaining, (std::vector<int>{2, 4, 6}));
+}
+
+TEST(TreeBaseTest, RetainOnEmptyTreeIsNoOp) {
+  auto tree = int_set::try_create();
+  ASSERT_TRUE(tree);
+  tree->retain([](const int &) { return false; });
+  EXPECT_TRUE(tree->empty());
+}
+
+TEST(TreeBaseTest, RetainDestroysNonTrivialPayloadOfRemovedElements) {
+  auto tree = string_set::try_create();
+  ASSERT_TRUE(tree);
+  ASSERT_TRUE(tree->try_insert("apple"));
+  ASSERT_TRUE(tree->try_insert("banana"));
+  ASSERT_TRUE(tree->try_insert("cherry"));
+
+  tree->retain([](const std::string &s) { return s != "banana"; });
+
+  EXPECT_EQ(tree->size(), 2);
+  EXPECT_TRUE(tree->contains("apple"));
+  EXPECT_TRUE(tree->contains("cherry"));
+  EXPECT_FALSE(tree->contains("banana"));
+}
+
+TEST(TreeBaseTest, AppendMovesElementsWithoutReallocating) {
+  auto tree1 = int_set::try_create();
+  auto tree2 = int_set::try_create();
+  ASSERT_TRUE(tree1);
+  ASSERT_TRUE(tree2);
+
+  ASSERT_TRUE(tree1->try_insert(1));
+  ASSERT_TRUE(tree1->try_insert(3));
+  ASSERT_TRUE(tree2->try_insert(2));
+  ASSERT_TRUE(tree2->try_insert(4));
+
+  tree1->append(*tree2);
+
+  EXPECT_EQ(tree1->size(), 4);
+  EXPECT_TRUE(tree2->empty());
+  std::vector<int> all(tree1->begin(), tree1->end());
+  EXPECT_EQ(all, (std::vector<int>{1, 2, 3, 4}));
+}
+
+TEST(TreeBaseTest, AppendOnKeyCollisionOverwritesWithOthersValue) {
+  auto tree1 = int_map::try_create();
+  auto tree2 = int_map::try_create();
+  ASSERT_TRUE(tree1);
+  ASSERT_TRUE(tree2);
+
+  ASSERT_TRUE(tree1->try_insert({1, "one"}));
+  ASSERT_TRUE(tree1->try_insert({2, "two-old"}));
+  ASSERT_TRUE(tree2->try_insert({2, "two-new"}));
+
+  tree1->append(*tree2);
+
+  EXPECT_EQ(tree1->size(), 2);
+  EXPECT_TRUE(tree2->empty());
+  auto found = tree1->try_find(2);
+  ASSERT_TRUE(found);
+  EXPECT_EQ(found->get().second, "two-new");
+}
+
+TEST(TreeBaseTest, AppendEmptyOtherIsNoOp) {
+  auto tree1 = int_set::try_create();
+  auto tree2 = int_set::try_create();
+  ASSERT_TRUE(tree1);
+  ASSERT_TRUE(tree2);
+  ASSERT_TRUE(tree1->try_insert(1));
+
+  tree1->append(*tree2);
+
+  EXPECT_EQ(tree1->size(), 1);
+  EXPECT_TRUE(tree2->empty());
+}
+
+TEST(TreeBaseTest, IsSubsetIsSupersetIsDisjoint) {
+  auto a = int_set::try_create();
+  auto b = int_set::try_create();
+  auto c = int_set::try_create();
+  ASSERT_TRUE(a);
+  ASSERT_TRUE(b);
+  ASSERT_TRUE(c);
+
+  for (int v : {1, 2}) {
+    ASSERT_TRUE(a->try_insert(v));
+  }
+  for (int v : {1, 2, 3}) {
+    ASSERT_TRUE(b->try_insert(v));
+  }
+  for (int v : {9, 10}) {
+    ASSERT_TRUE(c->try_insert(v));
+  }
+
+  EXPECT_TRUE(a->is_subset(*b));
+  EXPECT_FALSE(b->is_subset(*a));
+  EXPECT_TRUE(b->is_superset(*a));
+  EXPECT_TRUE(a->is_disjoint(*c));
+  EXPECT_FALSE(a->is_disjoint(*b));
+}

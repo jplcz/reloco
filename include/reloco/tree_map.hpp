@@ -31,7 +31,10 @@
  * Because the tree is always kept in ascending `Compare` order over
  * `Key`, `tree_map` also exposes Rust `BTreeMap`-flavored
  * `try_first_key_value`/`try_last_key_value`/`try_pop_first`/
- * `try_pop_last`, none of which have a `flat_map` counterpart today.
+ * `try_pop_last`, none of which have a `flat_map` counterpart today. It
+ * also has `append` (moves every entry of another `tree_map` into `*this`
+ * by relinking existing nodes, never reallocating) and `retain` (keeps
+ * only entries matching a `(const Key &, Mapped &)` predicate).
  */
 
 #include "container_ref.hpp"
@@ -212,6 +215,28 @@ public:
    * with `error::container_empty` if the map is empty.
    */
   using base::try_pop_last;
+
+  /**
+   * @brief Rust `BTreeMap::append` equivalent: moves every entry out of
+   * @p other into `*this`, leaving @p other empty. On a key collision, the
+   * entry already in `*this` is replaced by @p other's. Never allocates or
+   * constructs a new `(Key, Mapped)` pair -- each moved entry's existing
+   * node allocation is reused as-is (see `tree_base::append`).
+   */
+  void append(tree_map &other) & noexcept { base::append(other); }
+
+  /**
+   * @brief Rust `BTreeMap::retain` equivalent: keeps only the entries for
+   * which @p pred(key, mapped) returns `true`. @p pred receives a mutable
+   * reference to the mapped value (mutating it cannot break the tree's key
+   * ordering, exactly like `try_at`'s mutable overload) but only a
+   * `const key_type &` for the key itself.
+   */
+  template <typename Pred> void retain(Pred &&pred) & noexcept {
+    base::retain([&pred](const value_type &entry) noexcept {
+      return pred(entry.first, const_cast<mapped_type &>(entry.second));
+    });
+  }
 
 private:
   explicit tree_map(base &&b) noexcept : base(std::move(b)) {}

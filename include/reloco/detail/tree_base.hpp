@@ -467,6 +467,96 @@ public:
     }
   }
 
+  /**
+   * @brief Rust `BTreeSet::retain`/`BTreeMap::retain` equivalent: keeps
+   * only the elements for which @p pred(value) returns `true`, destroying
+   * and unlinking every other node in a single in-order walk. @p pred is
+   * invoked with `const value_type &`; capture the next in-order node
+   * before a possible removal, since removing a node invalidates its own
+   * `parent`/`left`/`right` links but never those of nodes visited later.
+   */
+  template <typename Pred> void retain(Pred &&pred) & noexcept {
+    header *node = bst_leftmost(root_);
+    while (node) {
+      header *next = bst_successor(node);
+      if (!pred(std::as_const(value_of(node)))) {
+        bst_unlink(root_, node);
+        bst_destroy_node(alloc_, metadata_for<T>, *get_type_operations_for<T>(), node);
+        --size_;
+      }
+      node = next;
+    }
+  }
+
+  /**
+   * @brief Rust `BTreeSet::append`/`BTreeMap::append` equivalent: moves
+   * every element out of @p other into `*this`, leaving @p other empty.
+   * On a key collision, the element already in `*this` is replaced by
+   * @p other's (matching Rust's "self's value is overwritten by other's"
+   * semantics). Never allocates or constructs a new `T`: each moved
+   * element's existing node allocation is reused as-is, relinked directly
+   * into `*this`'s tree, so this only touches `node_header` pointers (and,
+   * on a collision, destroys/deallocates the one node being replaced).
+   */
+  void append(tree_base &other) & noexcept {
+    header *node = bst_leftmost(other.root_);
+    while (node) {
+      header *next = bst_successor(node);
+      bst_unlink(other.root_, node);
+      --other.size_;
+      insert_node(node);
+      node = next;
+    }
+  }
+
+  /**
+   * @brief Rust `BTreeSet::is_subset` equivalent: `true` if every element
+   * of `*this` (compared by key, via `Compare`) is also present in
+   * @p other. `O(size() + other.size())` via an in-order merge walk of
+   * both trees.
+   */
+  [[nodiscard]] bool is_subset(const tree_base &other) const noexcept {
+    const KeyOf key_of{};
+    auto it = begin();
+    auto other_it = other.begin();
+    while (it != end()) {
+      while (other_it != other.end() && comp_(key_of(*other_it), key_of(*it)))
+        ++other_it;
+      if (other_it == other.end() || comp_(key_of(*it), key_of(*other_it)))
+        return false;
+      ++it;
+      ++other_it;
+    }
+    return true;
+  }
+
+  /**
+   * @brief Rust `BTreeSet::is_superset` equivalent: `true` if every
+   * element of @p other is also present in `*this` (i.e. `other.is_subset(
+   * *this)`).
+   */
+  [[nodiscard]] bool is_superset(const tree_base &other) const noexcept { return other.is_subset(*this); }
+
+  /**
+   * @brief Rust `BTreeSet::is_disjoint` equivalent: `true` if `*this` and
+   * @p other share no keys. `O(size() + other.size())` via an in-order
+   * merge walk of both trees.
+   */
+  [[nodiscard]] bool is_disjoint(const tree_base &other) const noexcept {
+    const KeyOf key_of{};
+    auto it = begin();
+    auto other_it = other.begin();
+    while (it != end() && other_it != other.end()) {
+      if (comp_(key_of(*it), key_of(*other_it)))
+        ++it;
+      else if (comp_(key_of(*other_it), key_of(*it)))
+        ++other_it;
+      else
+        return false;
+    }
+    return true;
+  }
+
 private:
   [[nodiscard]] static T &value_of(header *node) noexcept {
     return *std::launder(static_cast<T *>(node_base::payload_of(node, metadata_for<T>)));
@@ -481,6 +571,53 @@ private:
     bst_destroy_node(alloc_, metadata_for<T>, *get_type_operations_for<T>(), node);
     --size_;
     return value;
+  }
+
+  /**
+   * @brief Structurally inserts an already-constructed, currently
+   * unlinked @p node (its payload already holds a valid `T`, taken from
+   * some other tree) into `*this` at its sorted position. On a key
+   * collision, the existing node is unlinked/destroyed first and the
+   * walk restarts from the root -- since the colliding key is gone, that
+   * retry is guaranteed to find no further collision. Used by `append`
+   * to move nodes between trees without reallocating or reconstructing
+   * `T`.
+   */
+  void insert_node(header *node) noexcept {
+    const KeyOf key_of{};
+    const key_type &key = key_of(value_of(node));
+    header *parent = nullptr;
+    header *current = root_;
+    bool insert_left = false;
+    while (current) {
+      const key_type &current_key = key_of(value_of(current));
+      if (comp_(key, current_key)) {
+        parent = current;
+        current = current->left;
+        insert_left = true;
+      } else if (comp_(current_key, key)) {
+        parent = current;
+        current = current->right;
+        insert_left = false;
+      } else {
+        bst_unlink(root_, current);
+        bst_destroy_node(alloc_, metadata_for<T>, *get_type_operations_for<T>(), current);
+        --size_;
+        insert_node(node);
+        return;
+      }
+    }
+
+    node->parent = parent;
+    node->left = nullptr;
+    node->right = nullptr;
+    if (!parent)
+      root_ = node;
+    else if (insert_left)
+      parent->left = node;
+    else
+      parent->right = node;
+    ++size_;
   }
 
   template <typename Key> [[nodiscard]] header *find_node(const Key &key) const noexcept {

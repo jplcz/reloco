@@ -235,3 +235,102 @@ TEST(TreeSetTest, TryPopFirstAndTryPopLast) {
 
   EXPECT_TRUE(set.contains(20));
 }
+
+TEST(TreeSetTest, Retain) {
+  auto set_res = reloco::tree_set<int>::try_create();
+  ASSERT_TRUE(set_res.has_value());
+  auto &set = *set_res;
+
+  for (int v : {1, 2, 3, 4, 5, 6}) {
+    ASSERT_TRUE(set.try_insert(v));
+  }
+
+  set.retain([](const int &v) { return v % 2 == 0; });
+
+  EXPECT_EQ(set.size(), 3);
+  EXPECT_TRUE(set.contains(2));
+  EXPECT_TRUE(set.contains(4));
+  EXPECT_TRUE(set.contains(6));
+  EXPECT_FALSE(set.contains(1));
+  EXPECT_FALSE(set.contains(3));
+  EXPECT_FALSE(set.contains(5));
+}
+
+TEST(TreeSetTest, Append) {
+  auto set1_res = reloco::tree_set<int>::try_create();
+  auto set2_res = reloco::tree_set<int>::try_create();
+  ASSERT_TRUE(set1_res.has_value());
+  ASSERT_TRUE(set2_res.has_value());
+  auto &set1 = *set1_res;
+  auto &set2 = *set2_res;
+
+  ASSERT_TRUE(set1.try_insert(1));
+  ASSERT_TRUE(set1.try_insert(3));
+  ASSERT_TRUE(set2.try_insert(2));
+  ASSERT_TRUE(set2.try_insert(4));
+
+  set1.append(set2);
+
+  EXPECT_EQ(set1.size(), 4);
+  EXPECT_TRUE(set1.contains(1));
+  EXPECT_TRUE(set1.contains(2));
+  EXPECT_TRUE(set1.contains(3));
+  EXPECT_TRUE(set1.contains(4));
+  EXPECT_TRUE(set2.empty());
+}
+
+TEST(TreeSetTest, AppendOverwritesOnKeyCollision) {
+  auto set1_res = reloco::tree_set<int>::try_create();
+  auto set2_res = reloco::tree_set<int>::try_create();
+  ASSERT_TRUE(set1_res.has_value());
+  ASSERT_TRUE(set2_res.has_value());
+  auto &set1 = *set1_res;
+  auto &set2 = *set2_res;
+
+  ASSERT_TRUE(set1.try_insert(1));
+  ASSERT_TRUE(set1.try_insert(2));
+  ASSERT_TRUE(set2.try_insert(2));
+  ASSERT_TRUE(set2.try_insert(3));
+
+  set1.append(set2);
+
+  EXPECT_EQ(set1.size(), 3);
+  EXPECT_TRUE(set1.contains(1));
+  EXPECT_TRUE(set1.contains(2));
+  EXPECT_TRUE(set1.contains(3));
+  EXPECT_TRUE(set2.empty());
+}
+
+TEST(TreeSetTest, IsSubsetSupersetDisjoint) {
+  auto a_res = reloco::tree_set<int>::try_create();
+  auto b_res = reloco::tree_set<int>::try_create();
+  auto c_res = reloco::tree_set<int>::try_create();
+  ASSERT_TRUE(a_res.has_value());
+  ASSERT_TRUE(b_res.has_value());
+  ASSERT_TRUE(c_res.has_value());
+  auto &a = *a_res;
+  auto &b = *b_res;
+  auto &c = *c_res;
+
+  for (int v : {1, 2}) {
+    ASSERT_TRUE(a.try_insert(v));
+  }
+  for (int v : {1, 2, 3, 4}) {
+    ASSERT_TRUE(b.try_insert(v));
+  }
+  for (int v : {5, 6}) {
+    ASSERT_TRUE(c.try_insert(v));
+  }
+
+  EXPECT_TRUE(a.is_subset(b));
+  EXPECT_FALSE(b.is_subset(a));
+  EXPECT_TRUE(b.is_superset(a));
+  EXPECT_FALSE(a.is_superset(b));
+
+  EXPECT_TRUE(a.is_disjoint(c));
+  EXPECT_TRUE(c.is_disjoint(a));
+  EXPECT_FALSE(a.is_disjoint(b));
+
+  EXPECT_TRUE(a.is_subset(a));
+  EXPECT_TRUE(a.is_superset(a));
+}

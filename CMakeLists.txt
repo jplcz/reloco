@@ -254,6 +254,9 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_tree_base.cpp
         tests/test_tree_set.cpp
         tests/test_tree_map.cpp
+        tests/test_flat_hash_base.cpp
+        tests/test_flat_hash_set.cpp
+        tests/test_flat_hash_map.cpp
         tests/test_alignment.cpp
         tests/test_flat_set.cpp
         tests/test_flat_map.cpp

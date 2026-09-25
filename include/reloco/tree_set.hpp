@@ -29,7 +29,11 @@
  * Because the tree is always kept in ascending `Compare` order, `tree_set`
  * also inherits `tree_base`'s Rust `BTreeSet`-flavored
  * `try_first`/`try_last`/`try_pop_first`/`try_pop_last`, none of which have
- * a `flat_set` counterpart today.
+ * a `flat_set` counterpart today. It likewise inherits `retain` (Rust
+ * `Vec`/`BTreeSet::retain`), `append` (Rust `BTreeSet::append`: moves every
+ * element of another `tree_set` into `*this` by relinking existing nodes,
+ * never reallocating), and the merge-walk set-comparison predicates
+ * `is_subset`/`is_superset`/`is_disjoint`.
  */
 
 #include "container_ref.hpp"
@@ -50,6 +54,11 @@ public:
   using base::try_last;
   using base::try_pop_first;
   using base::try_pop_last;
+  using base::append;
+  using base::is_disjoint;
+  using base::is_subset;
+  using base::is_superset;
+  using base::retain;
   using typename base::size_type;
   using typename base::value_type;
 

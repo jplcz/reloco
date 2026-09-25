@@ -292,3 +292,66 @@ TEST(TreeMapTest, TryPopFirstAndTryPopLast) {
 
   EXPECT_TRUE(map.contains(20));
 }
+
+TEST(TreeMapTest, Retain) {
+  auto map_res = reloco::tree_map<int, std::string>::try_create();
+  ASSERT_TRUE(map_res.has_value());
+  auto &map = *map_res;
+
+  ASSERT_TRUE(map.try_insert(1, "one"));
+  ASSERT_TRUE(map.try_insert(2, "two"));
+  ASSERT_TRUE(map.try_insert(3, "three"));
+  ASSERT_TRUE(map.try_insert(4, "four"));
+
+  map.retain([](const int &key, std::string &value) {
+    if (key % 2 == 0) {
+      value += "-kept";
+      return true;
+    }
+    return false;
+  });
+
+  EXPECT_EQ(map.size(), 2);
+  EXPECT_FALSE(map.contains(1));
+  EXPECT_FALSE(map.contains(3));
+
+  auto two = map.try_at(2);
+  ASSERT_TRUE(two.has_value());
+  EXPECT_EQ(two->get(), "two-kept");
+
+  auto four = map.try_at(4);
+  ASSERT_TRUE(four.has_value());
+  EXPECT_EQ(four->get(), "four-kept");
+}
+
+TEST(TreeMapTest, Append) {
+  auto map1_res = reloco::tree_map<int, std::string>::try_create();
+  auto map2_res = reloco::tree_map<int, std::string>::try_create();
+  ASSERT_TRUE(map1_res.has_value());
+  ASSERT_TRUE(map2_res.has_value());
+  auto &map1 = *map1_res;
+  auto &map2 = *map2_res;
+
+  ASSERT_TRUE(map1.try_insert(1, "one"));
+  ASSERT_TRUE(map1.try_insert(2, "two-old"));
+  ASSERT_TRUE(map2.try_insert(2, "two-new"));
+  ASSERT_TRUE(map2.try_insert(3, "three"));
+
+  map1.append(map2);
+
+  EXPECT_EQ(map1.size(), 3);
+  EXPECT_TRUE(map2.empty());
+
+  auto one = map1.try_at(1);
+  ASSERT_TRUE(one.has_value());
+  EXPECT_EQ(one->get(), "one");
+
+  // Colliding key 2: other's value wins, matching Rust BTreeMap::append.
+  auto two = map1.try_at(2);
+  ASSERT_TRUE(two.has_value());
+  EXPECT_EQ(two->get(), "two-new");
+
+  auto three = map1.try_at(3);
+  ASSERT_TRUE(three.has_value());
+  EXPECT_EQ(three->get(), "three");
+}

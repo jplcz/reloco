@@ -29,6 +29,8 @@ where, not a tutorial.
 | `inline_flat_map.hpp` | `inline_flat_map<Key, Mapped, Capacity, Compare>` | Allocation-free counterpart of `flat_map<Key, Mapped, Compare>`, backed by `inline_vector<std::pair<Key, Mapped>, Capacity>` |
 | `tree_set.hpp` | `tree_set<T, Compare>` | Sorted, unique-element set backed by an allocator-managed, unbalanced binary search tree, with stable references and fallible insertion |
 | `tree_map.hpp` | `tree_map<Key, Mapped, Compare>` | Sorted, unique-key map backed by an allocator-managed, unbalanced binary search tree over `(Key, Mapped)` pairs, with stable references and fallible insertion |
+| `flat_hash_set.hpp` | `flat_hash_set<T, Hash, KeyEqual>` | Unordered, unique-element set backed by an open-addressing `vector<optional<T>>` hash table, with fallible insertion |
+| `flat_hash_map.hpp` | `flat_hash_map<Key, Mapped, Hash, KeyEqual>` | Unordered, unique-key map backed by an open-addressing `vector<optional<std::pair<Key, Mapped>>>` hash table, with fallible insertion |
 | `optional.hpp` | `optional<T>`, `nullopt_t`, `nullopt` | Zero-allocation, conditionally-present value wrapper with tri-tier access |
 | `function_ref.hpp` | `function_ref<R(Args...)>` | Non-owning, zero-allocation borrow of any callable |
 | `inplace_function.hpp` | `inplace_function<Signature, Capacity>` | Zero-allocation, fixed-capacity callable wrapper |
@@ -811,6 +813,12 @@ It has a `container_ref_traits` adapter (associative
 `collection_view_traits` adapter: unlike `flat_set`, a tree has no `O(1)`
 `at(index)`/`data()` to offer.
 
+Because the tree is always kept in ascending `Compare` order, `tree_set`
+also exposes Rust `BTreeSet`-flavored `try_first`/`try_last`/
+`try_pop_first`/`try_pop_last`, `retain`, `append`, and `is_subset`/
+`is_superset`/`is_disjoint` — see [Tree containers](tree-containers.md#rust-btreesetbtreemap-flavored-api-surface)
+for the full table.
+
 ## `tree_map<Key, Mapped, Compare = std::less<Key>>`
 
 `include/reloco/tree_map.hpp`
@@ -837,6 +845,87 @@ when `Compare` is, for the same reason as `tree_set`. It has a
 `container_ref_traits` adapter (associative `mutable_container_ref`
 source, `key_type == Key`, `element_type == Mapped`), but no
 `collection_view_traits` adapter, for the same reason as `tree_set`.
+
+Because the tree is always kept in ascending `Compare` order over `Key`,
+`tree_map` also exposes Rust `BTreeMap`-flavored `try_first_key_value`/
+`try_last_key_value`/`try_pop_first`/`try_pop_last`, `retain(pred)` (where
+`pred` takes `(const Key &, Mapped &)`), and `append` — see [Tree
+containers](tree-containers.md#rust-btreesetbtreemap-flavored-api-surface)
+for the full table.
+
+## `flat_hash_set<T, Hash = std::hash<T>, KeyEqual = std::equal_to<T>>`
+
+`include/reloco/flat_hash_set.hpp`
+
+Unordered, unique-element set backed by an open-addressing, linear-probing
+hash table over a single `vector<optional<T>>` (`detail::flat_hash_base<T,
+Hash, KeyEqual, KeyOf>`, `include/reloco/detail/flat_hash_base.hpp`),
+matching Rust's `HashSet<T>`. Unlike `tree_set` (ordered by `Compare`,
+node-based storage), iteration order is unspecified and depends on hash
+values and insertion/removal history, but lookup/insert/remove are `O(1)`
+average case instead of `O(log n)`. See [Flat hash containers](
+flat-hash-containers.md) for the storage/deletion/growth design.
+
+```cpp
+auto s = reloco::flat_hash_set<int>::try_create();
+if (!s)
+  return;
+auto ok = s->try_insert(2);
+ok = s->try_insert(1);
+assert(s->contains(1) && s->contains(2));
+```
+
+`reloco::flat_hash_set<T, Hash, KeyEqual>` is trivially relocatable exactly
+when both `Hash` and `KeyEqual` are: its own members (a `vector<optional<
+T>>`, a size, a mask, and `Hash`/`KeyEqual` themselves) are trivially
+relocatable regardless of `T`, since `vector<U>` is unconditionally
+trivially relocatable for any `U`. It has a `container_ref_traits` adapter
+(associative `mutable_container_ref` source, `key_type == element_type ==
+T`), but no `collection_view_traits` adapter: like a tree, a hash table has
+no `O(1)` `at(index)`/`data()` to offer (elements are not laid out in
+insertion order).
+
+`flat_hash_set` also exposes `try_take` (Rust `HashSet::take` equivalent:
+removes and returns the matching element), `retain`, and `is_subset`/
+`is_superset`/`is_disjoint` — see [Flat hash containers](
+flat-hash-containers.md#rust-hashsethashmap-flavored-api-surface) for the
+full table.
+
+## `flat_hash_map<Key, Mapped, Hash = std::hash<Key>, KeyEqual = std::equal_to<Key>>`
+
+`include/reloco/flat_hash_map.hpp`
+
+`flat_hash_set`'s key/value counterpart: an unordered, unique-key map
+backed by the same `detail::flat_hash_base` engine over `std::pair<Key,
+Mapped>` slots, matching Rust's `HashMap<K, V>`. Exposes the same
+`try_insert(key, mapped)`/`try_at(key)` (mutable and `const` overloads)
+surface as `tree_map`/`flat_map`, plus the Rust-`entry`-flavored
+`try_entry_or_insert`/`try_entry_or_insert_with`/`try_entry_and_modify` and
+`try_remove_entry` (Rust `HashMap::remove_entry` equivalent); it also has
+no `operator[]`, for the same fallibility rationale as `flat_map`/
+`tree_map`.
+
+```cpp
+auto m = reloco::flat_hash_map<int, std::string>::try_create();
+if (!m)
+  return;
+auto ok = m->try_insert(2, "two");
+ok = m->try_insert(1, "one");
+auto found = m->try_at(1);
+assert(found && found->get() == "one");
+```
+
+`reloco::flat_hash_map<Key, Mapped, Hash, KeyEqual>` is trivially
+relocatable exactly when both `Hash` and `KeyEqual` are, for the same
+reason as `flat_hash_set`. It has a `container_ref_traits` adapter
+(associative `mutable_container_ref` source, `key_type == Key`,
+`element_type == Mapped`), but no `collection_view_traits` adapter, for
+the same reason as `flat_hash_set`.
+
+`flat_hash_map` also exposes `retain(pred)` (where `pred` takes `(const
+Key &, Mapped &)`) — see [Flat hash containers](
+flat-hash-containers.md#rust-hashsethashmap-flavored-api-surface) for the
+full table.
 
 ## `sso_flat_set<T, InlineCapacity, Compare = std::less<T>>`
 
