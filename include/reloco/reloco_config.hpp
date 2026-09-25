@@ -146,7 +146,7 @@
 //         reloco::type_id (and reloco::any built on it) identifying a type
 //         without RTTI by that address.
 //       - reloco/fallible_singleton.hpp's fallible_singleton<T> and
-//         atomic_fallible_singleton<T, LockTraits>, whose entire point is
+//         atomic_fallible_singleton<T>, whose entire point is
 //         that every instance() caller for a given T shares one storage/
 //         state pair.
 //       - reloco/default_allocator.hpp's reloco_global_alloc, whose

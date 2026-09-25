@@ -102,7 +102,7 @@
 // comparing addresses across the shared-object boundary silently breaks.
 // `type_id.hpp`'s `detail::type_id_tag<T>` (backing `reloco::type_id`, and
 // through it `any.hpp`'s type-erasure) and `fallible_singleton.hpp`'s
-// `fallible_singleton<T>`/`atomic_fallible_singleton<T, LockTraits>`
+// `fallible_singleton<T>`/`atomic_fallible_singleton<T>`
 // storage are exactly that case: see their own docs. Reduces to a no-op
 // (and does not otherwise affect the entity's linkage/inlining) on a
 // backend without an equivalent attribute, such as MSVC, or a

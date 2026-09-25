@@ -1892,7 +1892,7 @@ constexpr` dispatch itself. See
 [Fallible construction](fallible-construction.md) for the full protocol,
 and `unique_ptr.hpp`/`string.hpp` for two complete, real-world examples.
 
-## `fallible_singleton<T>` / `atomic_fallible_singleton<T, LockTraits>`
+## `fallible_singleton<T>` / `atomic_fallible_singleton<T>`
 
 `include/reloco/fallible_singleton.hpp`
 
@@ -1901,17 +1901,17 @@ Lazily, fallibly initialized singletons built on
 order fiasco for globals with non-trivial, potentially-failing setup.
 `fallible_singleton<T>::instance()` (or `instance(allocator_ref)`)
 constructs `T` in static storage on first call and returns the same `T *`
-thereafter; it is **not thread-safe**. `atomic_fallible_singleton<T,
-LockTraits>::instance(lock)` is the thread-safe counterpart, guarded by a
-caller-supplied `LockTraits::lock_type &` (any type satisfying
-`has_lock_traits_v<LockTraits>`/the C++20 `lock_traits` concept) only while
-initialization hasn't completed yet. See
+thereafter; it is **not thread-safe**. `atomic_fallible_singleton<T>::
+instance()` is the thread-safe counterpart, using a `futex.hpp`
+`futex_word` state (`empty`/`initializing`/`ready`) instead of an
+externally supplied lock: a `compare_exchange` picks a single winner to
+run construction, every other concurrent caller blocks via `futex_wait`
+until the winner publishes the outcome and wakes them via
+`futex_wake_all` -- exactly like `once_lock<T>`'s slow path (see
+`once_lock.hpp`). A failed construction reverts the state to allow a
+later retry from any thread. See
 [Fallible construction](fallible-construction.md#lazy-singletons-fallible_singleton-atomic_fallible_singleton)
-for the full explanation. `LockTraits::lock_type` can be any of the
-`mutex`/`recursive_mutex`/`error_checking_mutex` types below (via a thin
-adapter satisfying `has_lock_traits_v`, since it requires `static void
-lock(lock_type &)`/`static void unlock(lock_type &)` free functions, not
-member functions) or an application's own mutex/spinlock.
+for the full explanation.
 
 Both classes are `RELOCO_EXPORT`-annotated so their storage stays one
 shared, process-wide instance per `T` even across a `-fvisibility=hidden`
@@ -2336,7 +2336,7 @@ own park token, and stays available under every `mutex.hpp` backend
 
 A cell that can be written at most once and read many times after that,
 matching Rust's `std::sync::OnceLock<T>`. Unlike `fallible_singleton<T>`/
-`atomic_fallible_singleton<T, LockTraits>` (`fallible_singleton.hpp`),
+`atomic_fallible_singleton<T>` (`fallible_singleton.hpp`),
 which each provide exactly one static, process-wide instance per `T`,
 `once_lock<T>` is an ordinary value type -- usable as a struct field, a
 local, or a container element -- so a program can have as many

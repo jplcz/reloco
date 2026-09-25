@@ -219,18 +219,21 @@ already resolves), and returns the same `T *` on every later call. It is
 **not thread-safe**: only use it from a single, controlled initialization
 path.
 
-`reloco::atomic_fallible_singleton<T, LockTraits>::instance(lock)` is the
-thread-safe counterpart: an `std::atomic<int>` fast path lets every thread
-skip locking once initialization has completed, falling back to a
-caller-supplied `LockTraits::lock_type &` (only acquired via
-`LockTraits::lock`/`LockTraits::unlock` while not yet ready) for the first,
-contended call. `LockTraits` is any type providing a `lock_type` member
-plus matching static `lock`/`unlock` functions (detected by
-`has_lock_traits_v<LockTraits>`, plus a matching C++20 `lock_traits`
-concept) — a `std::mutex`, a platform critical section, or an RTOS mutex
-all work equally well, and the lock is caller-owned rather than embedded,
-so this remains usable on freestanding/kernel targets with no
-`std::mutex`.
+`reloco::atomic_fallible_singleton<T>::instance()` is the thread-safe
+counterpart: a `futex.hpp` `futex_word` state (`empty`/`initializing`/
+`ready`) lets every thread skip locking once initialization has
+completed (a lock-free acquire-load), falling back -- only for the
+first, contended call -- to a `compare_exchange` claim of the `empty` ->
+`initializing` transition. The single winner performs construction while
+every other concurrent caller blocks via `futex_wait` until the winner
+publishes the outcome and wakes them via `futex_wake_all`, exactly like
+`once_lock<T>`'s slow path. If construction fails, the state reverts to
+`empty` so a later call (from any thread) may retry. No lock is embedded
+or caller-supplied: `futex.hpp` itself is the customization point for a
+freestanding/kernel target with no `std::mutex` (via
+`RELOCO_FUTEX_BACKEND_CUSTOM`, see `docs/futex.md`), so
+`atomic_fallible_singleton` no longer needs its own separate escape
+hatch for that case.
 
 ## Differences from `reloco_legacy`
 

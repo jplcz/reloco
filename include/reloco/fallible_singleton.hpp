@@ -37,16 +37,23 @@
  * static initialization order fiasco for globals with non-trivial,
  * fallible setup, not to provide a thread-safe lazy singleton.
  *
- * `atomic_fallible_singleton<T, LockTraits>` is the thread-safe
- * counterpart: an `std::atomic<int>` fast path lets every thread skip
- * locking once initialization has completed, falling back to an
- * externally supplied lock (`LockTraits::lock`/`LockTraits::unlock` on a
- * caller-owned `LockTraits::lock_type &`) only for the first, contended
- * initialization. The lock is caller-supplied and caller-owned, exactly
- * like legacy, rather than an embedded `std::mutex`, so this remains
- * usable on freestanding/kernel targets with their own critical-section or
- * spinlock primitive -- see `docs/extending.md` for the general
- * tag/traits provider pattern this follows.
+ * `atomic_fallible_singleton<T>` is the thread-safe counterpart: a
+ * `futex.hpp` `futex_word` state (`empty`/`initializing`/`ready`) lets
+ * every thread skip locking once initialization has completed (a
+ * lock-free acquire-load), falling back -- only for the first, contended
+ * call -- to a `compare_exchange` claim of the `empty` -> `initializing`
+ * transition, with every other concurrent caller blocking via
+ * `futex_wait` until the winner publishes the outcome and wakes them via
+ * `futex_wake_all`, exactly like `once_lock<T>`'s slow path (see
+ * `once_lock.hpp`). If construction fails, the state reverts to `empty`
+ * so a later call (from any thread) may retry -- unlike `once_lock<T>`,
+ * `atomic_fallible_singleton<T>` embeds no caller-supplied lock at all
+ * (an earlier revision took a `LockTraits`-satisfying external lock
+ * instead; `futex.hpp` centralizes that same freestanding/kernel
+ * customization point once, via `RELOCO_FUTEX_BACKEND_CUSTOM`, rather
+ * than requiring every lazy-singleton call site to supply its own lock
+ * type -- see `docs/extending.md` for the general tag/traits provider
+ * pattern this superseded).
  *
  * Both classes' `instance()` placement-news `T` into a static storage
  * buffer via `construction_helpers::try_construct`, which is itself
@@ -65,17 +72,17 @@
  * merged symbol if it keeps default visibility. Under
  * `-fvisibility=hidden` (a common shared-library default) without this,
  * two shared objects instantiating `fallible_singleton<T>`/
- * `atomic_fallible_singleton<T, LockTraits>` for the same, otherwise
- * externally-visible `T` would each silently get their own private,
- * separately-initialized instance instead of sharing one -- defeating the
- * purpose of a singleton across that boundary. As with `type_id.hpp`, this
- * is opt-in: it does nothing unless the consumer defines
- * `RELOCO_ENABLE_EXPORT`, since it only matters if `instance()` is
- * actually called for a shared `T` from more than one shared object. It
- * is also, like `type_id.hpp`'s, only effective for a `T` that itself has
- * default visibility -- GCC/Clang compute a template instantiation's
- * visibility as the minimum of the template's own visibility and each
- * template argument's, so a consumer-defined `T` needs its own
+ * `atomic_fallible_singleton<T>` for the same, otherwise externally-visible
+ * `T` would each silently get their own private, separately-initialized
+ * instance instead of sharing one -- defeating the purpose of a singleton
+ * across that boundary. As with `type_id.hpp`, this is opt-in: it does
+ * nothing unless the consumer defines `RELOCO_ENABLE_EXPORT`, since it
+ * only matters if `instance()` is actually called for a shared `T` from
+ * more than one shared object. It is also, like `type_id.hpp`'s, only
+ * effective for a `T` that itself has default visibility -- GCC/Clang
+ * compute a template instantiation's visibility as the minimum of the
+ * template's own visibility and each template argument's, so a
+ * consumer-defined `T` needs its own
  * `__attribute__((visibility("default")))` (or equivalent) for its
  * `fallible_singleton<T>` to actually share one instance across a
  * `-fvisibility=hidden` shared-object boundary.
@@ -87,43 +94,17 @@
 #include "default_allocator.hpp"
 #include "detail/compat.hpp"
 #include "error.hpp"
+#include "futex.hpp"
 #include "lifetime.hpp"
 
-#include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
-#include <type_traits>
 #include <utility>
 
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
 namespace reloco {
-
-namespace detail {
-
-template <typename T, typename = void> struct has_lock_traits_impl : std::false_type {};
-
-template <typename T>
-struct has_lock_traits_impl<
-    T, std::void_t<typename T::lock_type, decltype(T::lock(std::declval<typename T::lock_type &>())),
-                   decltype(T::unlock(std::declval<typename T::lock_type &>()))>> : std::true_type {};
-
-} // namespace detail
-
-/**
- * @brief Detects a lock-traits type usable with `atomic_fallible_singleton`.
- *
- * Satisfied by any `LockTraits` providing a `lock_type` member type plus
- * `static void lock(lock_type &)` and `static void unlock(lock_type &)`.
- */
-template <typename T> inline constexpr bool has_lock_traits_v = detail::has_lock_traits_impl<T>::value;
-
-#if RELOCO_CXX20
-
-template <typename T>
-concept lock_traits = has_lock_traits_v<T>;
-
-#endif // RELOCO_CXX20
 
 /**
  * @brief A lazily, fallibly initialized singleton `T`, constructed on
@@ -197,69 +178,63 @@ private:
 };
 
 /**
- * @brief Thread-safe counterpart to @ref fallible_singleton, guarded by a
- * caller-supplied lock satisfying @ref has_lock_traits_v.
+ * @brief Thread-safe counterpart to @ref fallible_singleton, using a
+ * `futex.hpp` `futex_word` state instead of an externally supplied lock.
  *
- * Every call first checks an `std::atomic<int>` state with acquire/release
- * ordering: once initialization has completed, every subsequent call on
- * every thread takes the fast, lock-free path. Only a call that observes
- * the not-yet-ready state acquires `external_lock` (via
- * `LockTraits::lock`/`unlock`) and re-checks under the lock before
- * attempting construction, so concurrent first callers safely race down to
- * exactly one winner performing `construction_helpers::try_construct`.
- *
- * `LockTraits::lock_type` is caller-owned (typically a function-local
- * `std::mutex`, a platform critical section, or an RTOS mutex) and passed
- * in by reference on every call -- `atomic_fallible_singleton` itself never
- * allocates or owns a lock, keeping it usable on freestanding/kernel
- * targets that have no `std::mutex`.
+ * Every call first checks the state with an acquire load: once
+ * initialization has completed, every subsequent call on every thread
+ * takes the fast, lock-free path. Only a call that observes the
+ * not-yet-ready state races to claim the `empty` -> `initializing`
+ * transition via `compare_exchange`; the single winner performs
+ * `construction_helpers::try_construct`, while every other concurrent
+ * caller blocks via `futex_wait` until the winner publishes the outcome
+ * (`ready` on success, back to `empty` -- allowing a later retry -- on
+ * failure) and wakes them via `futex_wake_all`. No lock is ever held.
  */
-template <typename T, typename LockTraits> class RELOCO_EXPORT atomic_fallible_singleton {
-  static_assert(has_lock_traits_v<LockTraits>,
-                "LockTraits must provide lock_type plus static lock(lock_type&)/unlock(lock_type&)");
-
+template <typename T> class RELOCO_EXPORT atomic_fallible_singleton {
 public:
   atomic_fallible_singleton() = delete;
 
   /**
    * @brief Returns the singleton instance, constructing it on the first
-   * call (under `external_lock`) via `construction_helpers::try_construct`
-   * using the given allocator.
+   * successful call via `construction_helpers::try_construct` using the
+   * given allocator. If construction fails, the cell reverts to
+   * uninitialized so a later call (from any thread) may retry.
    *
-   * @param external_lock Caller-owned lock, only acquired while
-   * initialization has not yet completed.
    * @param alloc The allocator to use for tiers that require one.
    */
-  [[nodiscard]] static result<T *> instance(typename LockTraits::lock_type &external_lock,
-                                            allocator_ref alloc) noexcept {
+  [[nodiscard]] static result<T *> instance(allocator_ref alloc) noexcept {
     // Acquire-load ensures we see T's fully-initialized memory once ready.
-    if (state_.load(std::memory_order_acquire) == ready) {
+    if (state_.load(std::memory_order_acquire) == ready)
       return ptr();
+
+    for (;;) {
+      std::uint32_t expected = empty;
+      if (state_.compare_exchange_strong(expected, initializing, std::memory_order_acq_rel, std::memory_order_acquire))
+        break; // Claimed the transition: this call performs construction below.
+      if (expected == ready)
+        return ptr();
+      // expected == initializing: another thread is constructing; wait for it to settle, then retry.
+      futex_wait(state_, initializing);
     }
 
-    LockTraits::lock(external_lock);
-
-    result<T *> res = ptr();
-    if (state_.load(std::memory_order_relaxed) != ready) {
-      auto ctor_res = construction_helpers::try_construct<T>(alloc, ptr());
-      if (!ctor_res) {
-        res = unexpected(ctor_res.error());
-      } else {
-        state_.store(ready, std::memory_order_release);
-      }
+    auto ctor_res = construction_helpers::try_construct<T>(alloc, ptr());
+    if (!ctor_res) {
+      state_.store(empty, std::memory_order_release);
+      futex_wake_all(state_);
+      return unexpected(ctor_res.error());
     }
 
-    LockTraits::unlock(external_lock);
-    return res;
+    state_.store(ready, std::memory_order_release);
+    futex_wake_all(state_);
+    return ptr();
   }
 
   /**
-   * @brief Same as `instance(lock_type&, allocator_ref)`, using the
-   * process-wide `reloco::default_allocator()`.
+   * @brief Same as `instance(allocator_ref)`, using the process-wide
+   * `reloco::default_allocator()`.
    */
-  [[nodiscard]] static result<T *> instance(typename LockTraits::lock_type &external_lock) noexcept {
-    return instance(external_lock, default_allocator());
-  }
+  [[nodiscard]] static result<T *> instance() noexcept { return instance(default_allocator()); }
 
 private:
   [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) static T *ptr() noexcept {
@@ -276,11 +251,12 @@ private:
     T value_;
   };
 
-  static constexpr int uninitialized = 0;
-  static constexpr int ready = 1;
+  static constexpr std::uint32_t empty = 0;
+  static constexpr std::uint32_t initializing = 1;
+  static constexpr std::uint32_t ready = 2;
 
   alignas(effective_alignment_v<T>) static inline storage_type storage_;
-  static inline std::atomic<int> state_{uninitialized};
+  static inline futex_word state_{empty};
 };
 
 } // namespace reloco

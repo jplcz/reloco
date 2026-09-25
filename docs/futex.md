@@ -22,9 +22,9 @@ This is the building block a handful of higher-level reloco primitives can
 use instead of a full `mutex` + `condition_variable` pair (see
 [`mutex.hpp`](reference.md)) when all they actually need is "block until
 this word changes" / "wake whoever is blocked on this word":
-`barrier.hpp`, `scope.hpp`, `once_lock.hpp`, and `tls_provider.hpp`'s
-`RELOCO_TLS_MODEL_PTHREAD` backend all use it today; `fallible_
-singleton.hpp` is a natural future user of the same primitive.
+`barrier.hpp`, `scope.hpp`, `once_lock.hpp`, `fallible_singleton.hpp`'s
+`atomic_fallible_singleton<T>`, and `tls_provider.hpp`'s
+`RELOCO_TLS_MODEL_PTHREAD` backend all use it today.
 
 `futex_wait` tolerates spurious wakeups (it may return even though `word`
 still equals `expected`), exactly like `condition_variable::wait` --
