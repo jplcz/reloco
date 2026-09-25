@@ -94,7 +94,7 @@ RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
 namespace reloco {
 
-template <typename T, std::size_t Capacity> class RELOCO_OWNER inline_vector {
+template <typename T, std::size_t Capacity> class RELOCO_OWNER inline_vector : public detail::inline_vector_base {
   static_assert(Capacity > 0, "inline_vector requires a positive Capacity; there is no zero-capacity specialization "
                               "(see array<T, 0> for that shape).");
 
