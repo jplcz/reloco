@@ -27,6 +27,11 @@
  * references/pointers to other entries -- each lives in its own node-based
  * allocation (see `detail/node_base.hpp`), not a contiguous, reallocatable
  * buffer.
+ *
+ * Because the tree is always kept in ascending `Compare` order over
+ * `Key`, `tree_map` also exposes Rust `BTreeMap`-flavored
+ * `try_first_key_value`/`try_last_key_value`/`try_pop_first`/
+ * `try_pop_last`, none of which have a `flat_map` counterpart today.
  */
 
 #include "container_ref.hpp"
@@ -162,6 +167,51 @@ public:
       modify(found->get());
     return found;
   }
+
+  /**
+   * @brief Rust `BTreeMap::first_key_value` equivalent: the (key, mapped
+   * value) pair with the smallest key by `Compare`, without removing it.
+   * Fails with `error::container_empty` if the map is empty.
+   */
+  [[nodiscard]] result<std::pair<std::reference_wrapper<const key_type>, std::reference_wrapper<const mapped_type>>>
+  try_first_key_value() const & noexcept RELOCO_LIFETIMEBOUND {
+    auto found = base::try_first();
+    if (!found)
+      return unexpected(found.error());
+    const value_type &entry = found->get();
+    return std::make_pair(std::cref(entry.first), std::cref(entry.second));
+  }
+
+  /**
+   * @brief Rust `BTreeMap::last_key_value` equivalent: the (key, mapped
+   * value) pair with the greatest key by `Compare`, without removing it.
+   * Fails with `error::container_empty` if the map is empty.
+   */
+  [[nodiscard]] result<std::pair<std::reference_wrapper<const key_type>, std::reference_wrapper<const mapped_type>>>
+  try_last_key_value() const & noexcept RELOCO_LIFETIMEBOUND {
+    auto found = base::try_last();
+    if (!found)
+      return unexpected(found.error());
+    const value_type &entry = found->get();
+    return std::make_pair(std::cref(entry.first), std::cref(entry.second));
+  }
+
+  auto try_first_key_value() const && = delete;
+  auto try_last_key_value() const && = delete;
+
+  /**
+   * @brief Rust `BTreeMap::pop_first` equivalent: removes and returns the
+   * (key, mapped value) pair with the smallest key by `Compare`. Fails
+   * with `error::container_empty` if the map is empty.
+   */
+  using base::try_pop_first;
+
+  /**
+   * @brief Rust `BTreeMap::pop_last` equivalent: removes and returns the
+   * (key, mapped value) pair with the greatest key by `Compare`. Fails
+   * with `error::container_empty` if the map is empty.
+   */
+  using base::try_pop_last;
 
 private:
   explicit tree_map(base &&b) noexcept : base(std::move(b)) {}

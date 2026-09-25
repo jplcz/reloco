@@ -232,3 +232,63 @@ TEST(TreeMapTest, IsTriviallyRelocatableRegardlessOfMappedType) {
   EXPECT_TRUE((reloco::is_trivially_relocatable_v<reloco::tree_map<int, int>>));
   EXPECT_TRUE((reloco::is_trivially_relocatable_v<reloco::tree_map<int, std::string>>));
 }
+
+TEST(TreeMapTest, TryFirstAndLastKeyValue) {
+  auto map_res = reloco::tree_map<int, std::string>::try_create();
+  ASSERT_TRUE(map_res.has_value());
+  auto &map = *map_res;
+
+  auto empty_first = map.try_first_key_value();
+  ASSERT_FALSE(empty_first.has_value());
+  EXPECT_EQ(empty_first.error(), reloco::error::container_empty);
+  auto empty_last = map.try_last_key_value();
+  ASSERT_FALSE(empty_last.has_value());
+  EXPECT_EQ(empty_last.error(), reloco::error::container_empty);
+
+  ASSERT_TRUE(map.try_insert(30, "thirty"));
+  ASSERT_TRUE(map.try_insert(10, "ten"));
+  ASSERT_TRUE(map.try_insert(20, "twenty"));
+
+  auto first = map.try_first_key_value();
+  ASSERT_TRUE(first.has_value());
+  EXPECT_EQ(first->first.get(), 10);
+  EXPECT_EQ(first->second.get(), "ten");
+
+  auto last = map.try_last_key_value();
+  ASSERT_TRUE(last.has_value());
+  EXPECT_EQ(last->first.get(), 30);
+  EXPECT_EQ(last->second.get(), "thirty");
+
+  // Not removed.
+  EXPECT_EQ(map.size(), 3);
+}
+
+TEST(TreeMapTest, TryPopFirstAndTryPopLast) {
+  auto map_res = reloco::tree_map<int, std::string>::try_create();
+  ASSERT_TRUE(map_res.has_value());
+  auto &map = *map_res;
+
+  auto empty_pop = map.try_pop_first();
+  ASSERT_FALSE(empty_pop.has_value());
+  EXPECT_EQ(empty_pop.error(), reloco::error::container_empty);
+
+  ASSERT_TRUE(map.try_insert(30, "thirty"));
+  ASSERT_TRUE(map.try_insert(10, "ten"));
+  ASSERT_TRUE(map.try_insert(20, "twenty"));
+
+  auto popped_first = map.try_pop_first();
+  ASSERT_TRUE(popped_first.has_value());
+  EXPECT_EQ(popped_first->first, 10);
+  EXPECT_EQ(popped_first->second, "ten");
+  EXPECT_EQ(map.size(), 2);
+  EXPECT_FALSE(map.contains(10));
+
+  auto popped_last = map.try_pop_last();
+  ASSERT_TRUE(popped_last.has_value());
+  EXPECT_EQ(popped_last->first, 30);
+  EXPECT_EQ(popped_last->second, "thirty");
+  EXPECT_EQ(map.size(), 1);
+  EXPECT_FALSE(map.contains(30));
+
+  EXPECT_TRUE(map.contains(20));
+}

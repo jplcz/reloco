@@ -179,3 +179,59 @@ TEST(TreeSetTest, IsTriviallyRelocatable) {
   // trivially relocatable end-to-end.
   EXPECT_TRUE(reloco::is_trivially_relocatable_v<reloco::tree_set<int>>);
 }
+
+TEST(TreeSetTest, TryFirstAndTryLast) {
+  auto set_res = reloco::tree_set<int>::try_create();
+  ASSERT_TRUE(set_res.has_value());
+  auto &set = *set_res;
+
+  auto empty_first = set.try_first();
+  ASSERT_FALSE(empty_first.has_value());
+  EXPECT_EQ(empty_first.error(), reloco::error::container_empty);
+  auto empty_last = set.try_last();
+  ASSERT_FALSE(empty_last.has_value());
+  EXPECT_EQ(empty_last.error(), reloco::error::container_empty);
+
+  ASSERT_TRUE(set.try_insert(30));
+  ASSERT_TRUE(set.try_insert(10));
+  ASSERT_TRUE(set.try_insert(20));
+
+  auto first = set.try_first();
+  ASSERT_TRUE(first.has_value());
+  EXPECT_EQ(first->get(), 10);
+
+  auto last = set.try_last();
+  ASSERT_TRUE(last.has_value());
+  EXPECT_EQ(last->get(), 30);
+
+  // Not removed.
+  EXPECT_EQ(set.size(), 3);
+}
+
+TEST(TreeSetTest, TryPopFirstAndTryPopLast) {
+  auto set_res = reloco::tree_set<int>::try_create();
+  ASSERT_TRUE(set_res.has_value());
+  auto &set = *set_res;
+
+  auto empty_pop = set.try_pop_first();
+  ASSERT_FALSE(empty_pop.has_value());
+  EXPECT_EQ(empty_pop.error(), reloco::error::container_empty);
+
+  ASSERT_TRUE(set.try_insert(30));
+  ASSERT_TRUE(set.try_insert(10));
+  ASSERT_TRUE(set.try_insert(20));
+
+  auto popped_first = set.try_pop_first();
+  ASSERT_TRUE(popped_first.has_value());
+  EXPECT_EQ(*popped_first, 10);
+  EXPECT_EQ(set.size(), 2);
+  EXPECT_FALSE(set.contains(10));
+
+  auto popped_last = set.try_pop_last();
+  ASSERT_TRUE(popped_last.has_value());
+  EXPECT_EQ(*popped_last, 30);
+  EXPECT_EQ(set.size(), 1);
+  EXPECT_FALSE(set.contains(30));
+
+  EXPECT_TRUE(set.contains(20));
+}

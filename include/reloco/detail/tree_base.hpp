@@ -395,6 +395,60 @@ public:
     return {};
   }
 
+  /**
+   * @brief Rust `BTreeSet::first`/`BTreeMap::first_key_value` equivalent:
+   * a reference to the smallest element by `Compare`, without removing it.
+   * Fails with `error::container_empty` if the tree is empty.
+   */
+  [[nodiscard]] result<std::reference_wrapper<const value_type>> try_first() const & noexcept RELOCO_LIFETIMEBOUND {
+    header *node = bst_leftmost(root_);
+    if (!node)
+      return unexpected(error::container_empty);
+    return std::cref(value_of(node));
+  }
+
+  /**
+   * @brief Rust `BTreeSet::last`/`BTreeMap::last_key_value` equivalent: a
+   * reference to the greatest element by `Compare`, without removing it.
+   * Fails with `error::container_empty` if the tree is empty.
+   */
+  [[nodiscard]] result<std::reference_wrapper<const value_type>> try_last() const & noexcept RELOCO_LIFETIMEBOUND {
+    header *node = bst_rightmost(root_);
+    if (!node)
+      return unexpected(error::container_empty);
+    return std::cref(value_of(node));
+  }
+
+  auto try_first() const && = delete;
+  auto try_last() const && = delete;
+
+  /**
+   * @brief Rust `BTreeSet::pop_first`/`BTreeMap::pop_first` equivalent:
+   * removes and returns the smallest element by `Compare`. Fails with
+   * `error::container_empty` if the tree is empty. Moves the value out
+   * before the node is unlinked/destroyed, so only `T`'s move constructor
+   * (never move- or copy-assignment) is required, consistent with
+   * `try_remove`'s CLRS "transplant" deletion never reassigning `T`.
+   */
+  [[nodiscard]] result<value_type> try_pop_first() & noexcept {
+    header *node = bst_leftmost(root_);
+    if (!node)
+      return unexpected(error::container_empty);
+    return pop_node(node);
+  }
+
+  /**
+   * @brief Rust `BTreeSet::pop_last`/`BTreeMap::pop_last` equivalent:
+   * removes and returns the greatest element by `Compare`. Fails with
+   * `error::container_empty` if the tree is empty.
+   */
+  [[nodiscard]] result<value_type> try_pop_last() & noexcept {
+    header *node = bst_rightmost(root_);
+    if (!node)
+      return unexpected(error::container_empty);
+    return pop_node(node);
+  }
+
   [[nodiscard]] const_iterator begin() const & noexcept RELOCO_LIFETIMEBOUND {
     return const_iterator(bst_leftmost(root_), root_);
   }
@@ -419,6 +473,14 @@ private:
   }
   [[nodiscard]] static const T &value_of(const header *node) noexcept {
     return *std::launder(static_cast<const T *>(node_base::payload_of(node, metadata_for<T>)));
+  }
+
+  [[nodiscard]] value_type pop_node(header *node) noexcept {
+    value_type value(std::move(value_of(node)));
+    bst_unlink(root_, node);
+    bst_destroy_node(alloc_, metadata_for<T>, *get_type_operations_for<T>(), node);
+    --size_;
+    return value;
   }
 
   template <typename Key> [[nodiscard]] header *find_node(const Key &key) const noexcept {

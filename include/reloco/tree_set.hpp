@@ -25,6 +25,11 @@
  * never invalidates existing references/pointers to other elements (unlike
  * `flat_set`, where inserting can reallocate the whole backing `vector<T>`)
  * -- only `try_remove`ing the specific element you are pointing at does.
+ *
+ * Because the tree is always kept in ascending `Compare` order, `tree_set`
+ * also inherits `tree_base`'s Rust `BTreeSet`-flavored
+ * `try_first`/`try_last`/`try_pop_first`/`try_pop_last`, none of which have
+ * a `flat_set` counterpart today.
  */
 
 #include "container_ref.hpp"
@@ -41,6 +46,10 @@ class RELOCO_OWNER tree_set : public detail::tree_base<T, Compare, detail::ident
 public:
   using base::base;
   using base::try_insert;
+  using base::try_first;
+  using base::try_last;
+  using base::try_pop_first;
+  using base::try_pop_last;
   using typename base::size_type;
   using typename base::value_type;
 

@@ -278,3 +278,79 @@ TEST(TreeBaseTest, ExplicitAllocatorConstruction) {
   ASSERT_TRUE(tree->try_insert(7));
   EXPECT_TRUE(tree->contains(7));
 }
+
+TEST(TreeBaseTest, TryFirstAndTryLastOnEmptyTree) {
+  auto tree = int_set::try_create();
+  ASSERT_TRUE(tree);
+
+  auto first = tree->try_first();
+  ASSERT_FALSE(first);
+  EXPECT_EQ(first.error(), reloco::error::container_empty);
+
+  auto last = tree->try_last();
+  ASSERT_FALSE(last);
+  EXPECT_EQ(last.error(), reloco::error::container_empty);
+}
+
+TEST(TreeBaseTest, TryFirstAndTryLastReturnExtremes) {
+  auto tree = int_set::try_create();
+  ASSERT_TRUE(tree);
+  for (int v : {50, 10, 30, 70, 20}) {
+    ASSERT_TRUE(tree->try_insert(v));
+  }
+
+  auto first = tree->try_first();
+  ASSERT_TRUE(first);
+  EXPECT_EQ(first->get(), 10);
+
+  auto last = tree->try_last();
+  ASSERT_TRUE(last);
+  EXPECT_EQ(last->get(), 70);
+
+  EXPECT_EQ(tree->size(), 5);
+}
+
+TEST(TreeBaseTest, TryPopFirstAndTryPopLastOnEmptyTree) {
+  auto tree = int_set::try_create();
+  ASSERT_TRUE(tree);
+
+  auto popped = tree->try_pop_first();
+  ASSERT_FALSE(popped);
+  EXPECT_EQ(popped.error(), reloco::error::container_empty);
+}
+
+TEST(TreeBaseTest, TryPopFirstAndTryPopLastRemoveExtremes) {
+  auto tree = int_set::try_create();
+  ASSERT_TRUE(tree);
+  for (int v : {50, 10, 30, 70, 20}) {
+    ASSERT_TRUE(tree->try_insert(v));
+  }
+
+  auto popped_first = tree->try_pop_first();
+  ASSERT_TRUE(popped_first);
+  EXPECT_EQ(*popped_first, 10);
+  EXPECT_EQ(tree->size(), 4);
+  EXPECT_FALSE(tree->contains(10));
+
+  auto popped_last = tree->try_pop_last();
+  ASSERT_TRUE(popped_last);
+  EXPECT_EQ(*popped_last, 70);
+  EXPECT_EQ(tree->size(), 3);
+  EXPECT_FALSE(tree->contains(70));
+
+  std::vector<int> remaining(tree->begin(), tree->end());
+  EXPECT_EQ(remaining, (std::vector<int>{20, 30, 50}));
+}
+
+TEST(TreeBaseTest, TryPopFirstDestroysNonTrivialPayload) {
+  auto tree = string_set::try_create();
+  ASSERT_TRUE(tree);
+  ASSERT_TRUE(tree->try_insert("banana"));
+  ASSERT_TRUE(tree->try_insert("apple"));
+
+  auto popped = tree->try_pop_first();
+  ASSERT_TRUE(popped);
+  EXPECT_EQ(*popped, "apple");
+  EXPECT_EQ(tree->size(), 1);
+  EXPECT_TRUE(tree->contains("banana"));
+}
