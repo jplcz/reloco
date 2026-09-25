@@ -65,6 +65,7 @@ where, not a tutorial.
 | `relocatable.hpp` | `is_trivially_relocatable<T>` (+ C++20 `trivially_relocatable`) | Marks types safely movable by copying bytes and abandoning the source |
 | `send_sync.hpp` | `is_send<T>`, `is_sync<T>` (+ C++20 `sendable`/`syncable`) | Marks types sound to transfer to another thread (`is_send`) or share concurrently (`is_sync`), matching Rust's `Send`/`Sync` |
 | `duration.hpp` | `duration`, `duration_converter<T>`, `duration_cast<T>` | Integer-only (no floating point), Rust `std::time::Duration`-like time span, convertible to `timespec`/`timeval`/kernel-specific types via a customization point |
+| `instant.hpp` | `instant`, `instant_clock_traits<Tag>` | Opaque, monotonically non-decreasing point in time built on `duration`, matching Rust's `std::time::Instant`; clock source selectable (`RELOCO_INSTANT_CLOCK_TAG`) between built-in `clock_gettime` and a custom OS/kernel backend |
 | `tls_provider.hpp` | `tls_provider<T, Tag>` | Tag-differentiated, fallible, allocator-aware thread-local storage, selectable (`RELOCO_TLS_MODEL`) between `thread_local`, pthread keys, a custom OS/kernel backend, or a single-threaded global |
 | `thread.hpp` | `thread`, `thread_id`, `this_thread::get_id/yield`, `spawn`, `join_handle<R>` | Backend-selected (`pthread`/`std`/custom) OS thread primitive plus a Rust-like `spawn`/`JoinHandle<T>` layer built on `is_send`/`is_sync` |
 | `channel.hpp` | `channel<T>`, `sender<T>`, `receiver<T>` | Multi-producer, single-consumer channel matching Rust's `std::sync::mpsc`, built on `mutex.hpp` + `shared_ptr` + `is_send`/`is_sync` |
@@ -2114,6 +2115,48 @@ can add its own specialization for a fixed-point type like FreeBSD's
 extensibility pattern. `mutex.hpp`'s `condition_variable::wait_for` uses
 `duration`/`duration_cast<struct timespec>` for its timeout parameter and
 deadline computation, rather than `<chrono>`.
+
+## `instant`
+
+`include/reloco/instant.hpp`
+
+An opaque, monotonically non-decreasing point in time matching Rust's
+`std::time::Instant`, built on `duration` rather than
+`std::chrono::time_point<Clock>` for the same integer-only, `<chrono>`-free
+rationale `duration` itself documents. Like Rust's `Instant`, a value
+returned by `instant::now()` carries no defined epoch or meaning by
+itself -- only the *difference* between two `instant` values matters:
+`duration_since(earlier)`/`saturating_duration_since(earlier)` (an alias,
+saturates to zero if `earlier` is actually later), `checked_duration_since
+(earlier) -> result<duration>` (fails with `error::invalid_argument`
+instead of saturating), `elapsed()` (`now().duration_since(*this)`), and
+`operator-` between two `instant`s (`-> duration`, equivalent to
+`duration_since`). `checked_add`/`checked_sub(duration) -> result<instant>`
+and `operator+`/`operator-(duration)` (saturating) round out arithmetic;
+full comparison operators are provided since `instant` values are always
+ordered even though their absolute value isn't meaningful.
+
+`instant::now()`'s actual clock reading is a customization point, keyed by
+an empty tag type (same shape as `allocator_traits<Tag>`): the primary
+`instant_clock_traits<Tag>` template has no generic definition, so a new
+`Tag` requires its own specialization exposing `static duration now()
+noexcept`. `RELOCO_INSTANT_CLOCK_TAG` selects which tag `instant::now()`
+calls through to, defaulting to the built-in `posix_clock_tag` (backed by
+`clock_gettime(3)` against `CLOCK_MONOTONIC` when available, else
+`CLOCK_REALTIME` -- `RELOCO_MUTEX_NO_MONOTONIC_CLOCK` opts out the same way
+it does for `mutex.hpp`'s own condition-variable deadlines) when `<time.h>`
+is detected as available. When no clock source is configured,
+`instant::now()`/`elapsed()` are simply not declared -- every other
+`instant` member still works on values obtained some other way. A
+freestanding/kernel target defines its own tag + specialization for
+whatever clock it has (e.g. FreeBSD kernel `sbinuptime()`), matching the
+`RELOCO_MUTEX_BACKEND_CUSTOM`/`RELOCO_TLS_MODEL_OS` extensibility pattern;
+see `instant.hpp`'s own file-level doc comment for a worked example.
+
+`instant`'s internal subtraction (used by `duration_since`/`checked_sub`/
+etc.) is built on `int_ops.hpp`'s `checked_sub<std::uint32_t>` to detect
+the one place it can actually borrow (the sub-second remainder) instead of
+hand-rolled overflow checks.
 
 ## `tls_provider<T, Tag>`
 

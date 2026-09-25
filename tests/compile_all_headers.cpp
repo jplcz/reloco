@@ -36,6 +36,7 @@
 #include <reloco/inline_string.hpp>
 #include <reloco/inline_vector.hpp>
 #include <reloco/inplace_function.hpp>
+#include <reloco/instant.hpp>
 #include <reloco/int_ops.hpp>
 #include <reloco/lifetime.hpp>
 #include <reloco/once_lock.hpp>

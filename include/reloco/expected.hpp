@@ -5,6 +5,7 @@
 #pragma once
 
 #include "detail/assert.hpp"
+#include "detail/compat.hpp"
 #include "lifetime.hpp"
 #include "relocatable.hpp"
 #include "rvalue_safety.hpp"
@@ -74,7 +75,7 @@ public:
   constexpr expected(unexpected<E> &&err) noexcept : m_error(std::move(err.value())), m_has_value(false) {}
   constexpr expected(const unexpected<E> &err) noexcept : m_error(err.value()), m_has_value(false) {}
 
-  ~expected() noexcept {
+  RELOCO_CONSTEXPR20 ~expected() noexcept {
     if (m_has_value)
       m_value.~T();
     else
@@ -212,7 +213,7 @@ public:
   constexpr expected() noexcept : m_has_value(true) {}
   constexpr expected(unexpected<E> &&err) noexcept : m_error(std::move(err.value())), m_has_value(false) {}
 
-  ~expected() noexcept {
+  RELOCO_CONSTEXPR20 ~expected() noexcept {
     if (!m_has_value)
       m_error.~E();
   }
