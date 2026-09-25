@@ -42,6 +42,7 @@ Start with the guide that matches what you are building:
 | [Extending reloco](docs/extending.md) | The tag + `*_traits<Tag>` + `context_type` provider pattern used by `allocator_ref` and future pluggable backends |
 | [Allocator capacity absorption](docs/allocator-capacity-absorption.md) | Binding `mem_block::size` to your allocator's real granularity: rationale, the `old_size`/`bytes` round-trip contract, arena/slab vs. system-allocator use, and the sanitizer caveat |
 | [API reference](docs/reference.md) | Per-type quick reference for every public header |
+| [Demos](demos/README.md) | Standalone example programs showing `scope()`/`guarded_mutex`/`barrier`, `channel`, `once_lock`, and `park`/`unpark` used together |
 | [GDB pretty printers](docs/gdb-pretty-printers.md) | Formatting reloco containers/views/smart pointers in GDB: source, auto-load, or embed |
 | [Package-manager integration](docs/package-managers.md) | Conan 2, vcpkg overlays, CPM.cmake, CPack packaging, and CMake-based dependency managers |
 | [Shared-library deployments](docs/shared-library.md) | `RELOCO_SHARED`/`RELOCO_SHARED_BUILD` and `RELOCO_TYPE_INSTANCE(Type)`: deduplicating template instantiations across a multi-`.so` deployment |
