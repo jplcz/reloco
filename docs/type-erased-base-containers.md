@@ -61,15 +61,31 @@ resolves its table entirely at compile time, per `T`, via
 `detail/type_metadata.hpp`, separate from `vector_base.hpp`:
 
 ```cpp
+enum class type_capability : unsigned {
+  none = 0,
+  trivially_destructible = 1u << 0,
+  trivially_relocatable = 1u << 1,
+  trivially_copyable = 1u << 2,
+  default_constructible = 1u << 3,
+};
+
 struct type_metadata {
   std::size_t element_size;
   std::size_t element_alignment;
-  bool is_trivially_destructible;
-  bool is_trivially_relocatable;
-  bool is_trivially_copyable;
-  bool is_default_constructible;
+  type_capability capabilities;
+
+  constexpr bool is_trivially_destructible() const noexcept;
+  constexpr bool is_trivially_relocatable() const noexcept;
+  constexpr bool is_trivially_copyable() const noexcept;
+  constexpr bool is_default_constructible() const noexcept;
 };
 ```
+
+The four triviality facts are packed into a single `type_capability`
+bitmask rather than four separate `bool` fields, with `constexpr` accessor
+methods over it (`type.is_trivially_relocatable()` reads exactly like the
+old field read, just through a method) -- callers don't construct or
+inspect the bitmask itself.
 
 `type_metadata` describes only `T` itself -- size, alignment, and a handful
 of triviality facts -- with nothing specific to *contiguous array* storage,

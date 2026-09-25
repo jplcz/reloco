@@ -81,7 +81,7 @@ RELOCO_API result<void> unowned_vector_base::try_reserve_base(allocator_ref allo
         operations_->move_range(type, res->ptr, data_, size_);
       }
       // We don't have to "free" inline storage, just destroy the contents
-      if (!type.is_trivially_relocatable) {
+      if (!type.is_trivially_relocatable()) {
         // If type is trivially relocatable, then move_range has already killed source objects
         // so we can't destroy them
         destroy_elements_base(type);
@@ -101,7 +101,7 @@ RELOCO_API result<void> unowned_vector_base::try_reserve_base(allocator_ref allo
     }
   }
 
-  if (type.is_trivially_relocatable) {
+  if (type.is_trivially_relocatable()) {
     auto res = data_ ? alloc.reallocate(data_, cap_ * elem_size, required_bytes, type.element_alignment)
                      : alloc.allocate(required_bytes, type.element_alignment);
     if (!res)
@@ -175,7 +175,7 @@ RELOCO_API result<void> unowned_vector_base::shrink_to_fit_base(allocator_ref al
         operations_->move_range(type, inline_storage, data_, size_);
       }
       // Destroy heap elements
-      if (!type.is_trivially_relocatable) {
+      if (!type.is_trivially_relocatable()) {
         // Only if they're not trivially relocatable. Trivial relocation prohibits source destruction
         // from being ran
         destroy_elements_base(type);
@@ -202,7 +202,7 @@ RELOCO_API result<void> unowned_vector_base::shrink_to_fit_base(allocator_ref al
 
   const std::size_t target_bytes = size_ * elem_size;
 
-  if (type.is_trivially_relocatable) {
+  if (type.is_trivially_relocatable()) {
     auto res = alloc.reallocate(data_, cap_ * elem_size, target_bytes, type.element_alignment);
     if (!res)
       return unexpected(res.error());
@@ -255,7 +255,7 @@ RELOCO_API result<void> unowned_vector_base::try_erase_at_base(const type_metada
     void *dest = byte_data + index * elem_size;
     const void *src = byte_data + (index + 1) * elem_size;
 
-    if (type.is_trivially_relocatable) {
+    if (type.is_trivially_relocatable()) {
       std::memmove(dest, src, move_count * elem_size);
     } else {
       // Reuse operations_->move_range to safely shift non-trivial elements down
@@ -282,7 +282,7 @@ RELOCO_API void unowned_vector_base::retain_base(const type_metadata &type,
     if (pred(current_ptr)) {
       if (write != read) {
         void *dest_ptr = byte_data + write * elem_size;
-        if (type.is_trivially_relocatable) {
+        if (type.is_trivially_relocatable()) {
           std::memmove(dest_ptr, current_ptr, elem_size);
         } else {
           operations_->move_range(type, dest_ptr, current_ptr, 1);
@@ -324,7 +324,7 @@ RELOCO_API void unowned_vector_base::dedup_by_base(const type_metadata &type,
     // Otherwise, keep it and shift if necessary
     if (write != read) {
       void *write_ptr = byte_data + write * elem_size;
-      if (type.is_trivially_relocatable) {
+      if (type.is_trivially_relocatable()) {
         std::memmove(write_ptr, curr_ptr, elem_size);
       } else {
         operations_->move_range(type, write_ptr, curr_ptr, 1);
@@ -375,7 +375,7 @@ RELOCO_API result<void *> unowned_vector_base::try_insert_at_base(allocator_ref 
     void *dest = byte_data + (index + 1) * elem_size;
     const void *src = byte_data + index * elem_size;
 
-    if (type.is_trivially_relocatable) {
+    if (type.is_trivially_relocatable()) {
       std::memmove(dest, src, move_count * elem_size);
     } else {
       // Shift up using operations table move_range_up
@@ -390,7 +390,7 @@ RELOCO_API result<void *> unowned_vector_base::try_insert_at_base(allocator_ref 
     if (move_count > 0) {
       void *dest = byte_data + index * elem_size;
       const void *src = byte_data + (index + 1) * elem_size;
-      if (type.is_trivially_relocatable) {
+      if (type.is_trivially_relocatable()) {
         std::memmove(dest, src, move_count * elem_size);
       } else {
         operations_->move_range(type, dest, src, move_count);
