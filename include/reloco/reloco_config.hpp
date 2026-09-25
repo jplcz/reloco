@@ -245,3 +245,22 @@
 //     effect on RELOCO_MUTEX_BACKEND_STD (always backed directly by
 //     std::condition_variable::wait_for, whose own clock is fixed by the
 //     standard library implementation).
+//
+// RELOCO_TLS_MODEL
+//     Selects which backend reloco/detail/tls_provider.hpp's internal
+//     tls_provider<T, Tag> uses for genuinely per-thread storage:
+//       - RELOCO_TLS_MODEL_THREAD_LOCAL (default): backed by C++11
+//         thread_local. Portable to any hosted C++17 target.
+//       - RELOCO_TLS_MODEL_PTHREAD: backed by pthread_key_create/
+//         pthread_getspecific/pthread_setspecific, for POSIX targets that
+//         want to avoid compiler thread_local support.
+//       - RELOCO_TLS_MODEL_OS: declares tls_provider<T, Tag> with no
+//         definition; a kernel/RTOS port supplies get()/set() against its
+//         own per-task storage, the same escape hatch
+//         RELOCO_MUTEX_BACKEND_CUSTOM/RELOCO_THREAD_BACKEND_CUSTOM provide
+//         elsewhere.
+//       - RELOCO_TLS_MODEL_SINGLE: one global static instance (not
+//         actually per-thread), for single-threaded builds.
+//     tls_provider<T, Tag> is an internal building block (used by, e.g.,
+//     the per-thread parker behind this_thread::park()), not a
+//     standalone public API; see reloco/detail/tls_provider.hpp.

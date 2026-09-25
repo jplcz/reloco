@@ -60,3 +60,4 @@
 #include <reloco/detail/compat.hpp>
 #include <reloco/detail/flat_container_base.hpp>
 #include <reloco/detail/sanitizer.hpp>
+#include <reloco/detail/tls_provider.hpp>
