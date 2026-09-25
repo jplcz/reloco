@@ -27,6 +27,8 @@ where, not a tutorial.
 | `flat_map.hpp` | `flat_map<Key, Mapped, Compare>` | Sorted, unique-key map backed by `vector<std::pair<Key, Mapped>>`, with fallible insertion |
 | `inline_flat_set.hpp` | `inline_flat_set<T, Capacity, Compare>` | Allocation-free counterpart of `flat_set<T, Compare>`, backed by `inline_vector<T, Capacity>` |
 | `inline_flat_map.hpp` | `inline_flat_map<Key, Mapped, Capacity, Compare>` | Allocation-free counterpart of `flat_map<Key, Mapped, Compare>`, backed by `inline_vector<std::pair<Key, Mapped>, Capacity>` |
+| `tree_set.hpp` | `tree_set<T, Compare>` | Sorted, unique-element set backed by an allocator-managed, unbalanced binary search tree, with stable references and fallible insertion |
+| `tree_map.hpp` | `tree_map<Key, Mapped, Compare>` | Sorted, unique-key map backed by an allocator-managed, unbalanced binary search tree over `(Key, Mapped)` pairs, with stable references and fallible insertion |
 | `optional.hpp` | `optional<T>`, `nullopt_t`, `nullopt` | Zero-allocation, conditionally-present value wrapper with tri-tier access |
 | `function_ref.hpp` | `function_ref<R(Args...)>` | Non-owning, zero-allocation borrow of any callable |
 | `inplace_function.hpp` | `inplace_function<Signature, Capacity>` | Zero-allocation, fixed-capacity callable wrapper |
@@ -774,6 +776,67 @@ clone/consume tiers:
 |---|---|
 | `try_to_flat_map(allocator_ref alloc) const &` / `try_to_flat_map() const &` | Clones every (key, mapped) entry into a new `flat_map<Key, Mapped, Compare>`, leaving `*this` untouched |
 | `try_to_flat_map(allocator_ref alloc) &&` / `try_to_flat_map() &&` | Moves every (key, mapped) entry out into a new `flat_map<Key, Mapped, Compare>`, consuming `*this` (left empty either way) |
+
+## `tree_set<T, Compare = std::less<T>>`
+
+`include/reloco/tree_set.hpp`
+
+Sorted, unique-element set backed by an allocator-managed, unbalanced
+binary search tree (`detail::tree_base<T, Compare, KeyOf>`,
+`include/reloco/detail/tree_base.hpp`) rather than `flat_set`'s contiguous
+`vector<T>`: every element lives in its own single-allocation node, so
+insertion/removal never shifts other elements and never invalidates
+references to elements that are not themselves removed — the trade-off is
+`O(log n)` average (`O(n)` worst case, since it is unbalanced)
+insert/find/remove instead of `flat_set`'s cache-friendly `O(n)`
+insert/`O(log n)` binary-search find. See [Tree containers](
+tree-containers.md) for the node layout and engine design.
+
+```cpp
+auto s = reloco::tree_set<int>::try_create();
+if (!s)
+  return;
+auto ok = s->try_insert(2);
+ok = s->try_insert(1);
+assert(s->contains(1) && s->contains(2));
+```
+
+`reloco::tree_set<T, Compare>` is trivially relocatable exactly when
+`Compare` is: the container's own members (a node pointer, a size, and an
+`allocator_ref`) never point into `*this`, so relocating its bytes is
+always safe regardless of `T` — every element lives in a separately
+allocated node untouched by a byte-copy of the container object itself.
+It has a `container_ref_traits` adapter (associative
+`mutable_container_ref` source, `key_type == element_type == T`), but no
+`collection_view_traits` adapter: unlike `flat_set`, a tree has no `O(1)`
+`at(index)`/`data()` to offer.
+
+## `tree_map<Key, Mapped, Compare = std::less<Key>>`
+
+`include/reloco/tree_map.hpp`
+
+`tree_set`'s key/value counterpart: a sorted, unique-key map backed by the
+same `detail::tree_base` engine over `std::pair<Key, Mapped>` nodes.
+Exposes the same `try_insert(key, mapped)`/`try_at(key)` (mutable and
+`const` overloads) surface as `flat_map`, plus the Rust-`entry`-flavored
+`try_entry_or_insert`/`try_entry_or_insert_with`/`try_entry_and_modify`; it
+also has no `operator[]`, for the same fallibility rationale as `flat_map`.
+
+```cpp
+auto m = reloco::tree_map<int, std::string>::try_create();
+if (!m)
+  return;
+auto ok = m->try_insert(2, "two");
+ok = m->try_insert(1, "one");
+auto found = m->try_at(1);
+assert(found && found->get() == "one");
+```
+
+`reloco::tree_map<Key, Mapped, Compare>` is trivially relocatable exactly
+when `Compare` is, for the same reason as `tree_set`. It has a
+`container_ref_traits` adapter (associative `mutable_container_ref`
+source, `key_type == Key`, `element_type == Mapped`), but no
+`collection_view_traits` adapter, for the same reason as `tree_set`.
 
 ## `sso_flat_set<T, InlineCapacity, Compare = std::less<T>>`
 
