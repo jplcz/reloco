@@ -40,6 +40,7 @@
 #include "lifetime.hpp"
 #include "relocatable.hpp"
 #include "rvalue_safety.hpp"
+#include "send_sync.hpp"
 
 #include <cstddef>
 #include <functional>
@@ -588,6 +589,26 @@ template <typename T> struct is_trivially_relocatable<rc<T>> : std::true_type {}
 /** @brief Same rationale as `is_trivially_relocatable<rc<T>>`: `weak_rc<T>`
  * only holds a `T *` and a control-block pointer. */
 template <typename T> struct is_trivially_relocatable<weak_rc<T>> : std::true_type {};
+
+/**
+ * @brief `rc<T>`'s refcount is a plain, non-atomic `std::size_t`,
+ * matching Rust's `Rc<T>` -- never `Send`, regardless of `T`: even
+ * transferring a single handle to another thread is unsound while a
+ * clone might still be dropped concurrently from the original thread.
+ */
+template <typename T> struct is_send<rc<T>> : std::false_type {};
+
+/** @brief Same rationale as `is_send<rc<T>>`, and for the same reason
+ * never `Sync` either: sharing `&rc<T>` across threads still exposes the
+ * same non-atomic refcount to concurrent clone/drop. */
+template <typename T> struct is_sync<rc<T>> : std::false_type {};
+
+/** @brief `weak_rc<T>` shares `rc<T>`'s non-atomic control block, so it is
+ * never `Send` either, matching Rust's `Weak<T>`. */
+template <typename T> struct is_send<weak_rc<T>> : std::false_type {};
+
+/** @brief Same rationale as `is_send<weak_rc<T>>`. */
+template <typename T> struct is_sync<weak_rc<T>> : std::false_type {};
 
 } // namespace reloco
 

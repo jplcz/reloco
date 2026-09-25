@@ -54,6 +54,7 @@
 #include "lifetime.hpp"
 #include "relocatable.hpp"
 #include "rvalue_safety.hpp"
+#include "send_sync.hpp"
 
 #include <atomic>
 #include <cstddef>
@@ -610,6 +611,24 @@ template <typename T> struct is_trivially_relocatable<shared_ptr<T>> : std::true
 /** @brief Same rationale as `is_trivially_relocatable<shared_ptr<T>>`:
  * `weak_ptr<T>` only holds a `T *` and a control-block pointer. */
 template <typename T> struct is_trivially_relocatable<weak_ptr<T>> : std::true_type {};
+
+/**
+ * @brief `shared_ptr<T>`'s refcount is atomic, matching Rust's `Arc<T>`:
+ * `Send`/`Sync` only when `T` itself is both -- the smart pointer is
+ * always safe to transfer/share, but the `T` it protects is reachable
+ * concurrently through any live clone.
+ */
+template <typename T> struct is_send<shared_ptr<T>> : std::bool_constant<is_send_v<T> && is_sync_v<T>> {};
+
+/** @brief Same rationale/bound as `is_send<shared_ptr<T>>`. */
+template <typename T> struct is_sync<shared_ptr<T>> : std::bool_constant<is_send_v<T> && is_sync_v<T>> {};
+
+/** @brief Same rationale/bound as `is_send<shared_ptr<T>>`: `weak_ptr<T>`
+ * shares `shared_ptr<T>`'s atomic control block. */
+template <typename T> struct is_send<weak_ptr<T>> : std::bool_constant<is_send_v<T> && is_sync_v<T>> {};
+
+/** @brief Same rationale/bound as `is_sync<shared_ptr<T>>`. */
+template <typename T> struct is_sync<weak_ptr<T>> : std::bool_constant<is_send_v<T> && is_sync_v<T>> {};
 
 } // namespace reloco
 

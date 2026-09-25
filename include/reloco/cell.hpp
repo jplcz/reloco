@@ -40,6 +40,7 @@
 #include "error.hpp"
 #include "expected.hpp"
 #include "lifetime.hpp"
+#include "send_sync.hpp"
 
 #include <cstddef>
 #include <type_traits>
@@ -86,8 +87,8 @@ public:
   /**
    * @brief Overwrites the value with @p value, returning the previous one.
    */
-  [[nodiscard]] constexpr T replace(T value) const &
-      noexcept(std::is_nothrow_move_constructible_v<T> && std::is_nothrow_move_assignable_v<T>) {
+  [[nodiscard]] constexpr T replace(T value) const & noexcept(std::is_nothrow_move_constructible_v<T> &&
+                                                              std::is_nothrow_move_assignable_v<T>) {
     T old = std::move(value_);
     value_ = std::move(value);
     return old;
@@ -98,9 +99,9 @@ public:
    * the previous value. Requires a default constructible `T` (Rust's
    * `T: Default` bound on `Cell::take`), not a copyable one.
    */
-  [[nodiscard]] constexpr T take() const &
-      noexcept(std::is_nothrow_default_constructible_v<T> && std::is_nothrow_move_constructible_v<T> &&
-               std::is_nothrow_move_assignable_v<T>) {
+  [[nodiscard]] constexpr T take() const & noexcept(std::is_nothrow_default_constructible_v<T> &&
+                                                    std::is_nothrow_move_constructible_v<T> &&
+                                                    std::is_nothrow_move_assignable_v<T>) {
     return replace(T());
   }
 
@@ -252,5 +253,26 @@ private:
   mutable T value_;
   mutable std::ptrdiff_t borrow_state_;
 };
+
+/**
+ * @brief `cell<T>` is `Send` exactly when `T` is (moving the whole cell to
+ * another thread is fine exactly when moving a bare `T` would be), but
+ * never `Sync`: `set()`/`replace()` mutate through a `const cell<T>&` with
+ * no synchronization at all, matching Rust's `Cell<T>` (never `Sync`,
+ * regardless of `T`).
+ */
+template <typename T> struct is_send<cell<T>> : is_send<T> {};
+
+/** @brief See the file-level documentation above: `cell<T>`'s unsynchronized
+ * interior mutability makes it never `Sync`, regardless of `T`. */
+template <typename T> struct is_sync<cell<T>> : std::false_type {};
+
+/** @brief Same rationale as `is_send<cell<T>>`: `ref_cell<T>`'s runtime
+ * borrow flag is a plain, unsynchronized `std::ptrdiff_t`. */
+template <typename T> struct is_send<ref_cell<T>> : is_send<T> {};
+
+/** @brief Same rationale as `is_sync<cell<T>>`: `ref_cell<T>`'s borrow
+ * flag has no synchronization, so it is never `Sync`, regardless of `T`. */
+template <typename T> struct is_sync<ref_cell<T>> : std::false_type {};
 
 } // namespace reloco

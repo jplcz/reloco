@@ -19,6 +19,10 @@
  * on destruction. This mirrors Rust's `Mutex<T>`/`MutexGuard<'a, T>`
  * exactly, and is the thread-safe counterpart of `cell.hpp`'s single-
  * threaded `ref_cell<T>`/`mut_guard`.
+ *
+ * `T` must satisfy `is_send_v<T>` (see `send_sync.hpp`): the mutex
+ * synchronizes every access, matching Rust's `unsafe impl<T: Send> Sync
+ * for Mutex<T>` bound (`is_sync_v<T>` is not required).
  */
 
 #include "detail/assert.hpp"
@@ -27,6 +31,7 @@
 #include "expected.hpp"
 #include "lifetime.hpp"
 #include "mutex.hpp"
+#include "send_sync.hpp"
 
 #include <type_traits>
 #include <utility>
@@ -43,6 +48,11 @@ namespace reloco {
  * `mutex.hpp` directly for reader/writer locking without an owned value).
  */
 template <typename T, typename MutexT = mutex> class RELOCO_CAPABILITY("mutex") guarded_mutex {
+  static_assert(is_send_v<T>, "guarded_mutex<T>: T must be Send (see send_sync.hpp) -- the mutex synchronizes every "
+                              "access, matching Rust's `unsafe impl<T: Send> Sync for Mutex<T>`, but a value that is "
+                              "unsound to transfer to another thread at all (e.g. rc<U>/weak_rc<U>) is still unsound "
+                              "to guard here, since lock()/try_lock() hand it to whichever thread acquires the lock");
+
 public:
   /**
    * @brief A live exclusive lock on the protected value. Move-only;

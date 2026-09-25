@@ -37,6 +37,7 @@
 #include <reloco/optional.hpp>
 #include <reloco/relocatable.hpp>
 #include <reloco/rvalue_safety.hpp>
+#include <reloco/send_sync.hpp>
 #include <reloco/shared_ptr.hpp>
 #include <reloco/span.hpp>
 #include <reloco/stack_allocator.hpp>

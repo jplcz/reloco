@@ -63,6 +63,7 @@ where, not a tutorial.
 | `concepts.hpp` | `has_try_create_v`, `has_try_allocate_v`, `has_try_construct_v`, `has_try_clone_v`, `has_try_clone_at_v` (+ C++20 concepts) | Detection traits for the fallible-construction protocol |
 | `construction_helpers.hpp` | `construction_helpers` | Compile-time dispatcher picking the best construction/clone strategy for a type |
 | `relocatable.hpp` | `is_trivially_relocatable<T>` (+ C++20 `trivially_relocatable`) | Marks types safely movable by copying bytes and abandoning the source |
+| `send_sync.hpp` | `is_send<T>`, `is_sync<T>` (+ C++20 `sendable`/`syncable`) | Marks types sound to transfer to another thread (`is_send`) or share concurrently (`is_sync`), matching Rust's `Send`/`Sync` |
 | `lifetime.hpp` | `RELOCO_LIFETIMEBOUND`, `RELOCO_OWNER`, `RELOCO_POINTER`, `RELOCO_UNSAFE_BUFFER_USAGE`, ... | Compiler-specific lifetime/ownership/safe-buffers annotation macros |
 | `rvalue_safety.hpp` | `RELOCO_BLOCK_RVALUE_ACCESS` | Deletes rvalue accessors that would otherwise dangle past a temporary |
 | `reloco_config.hpp` | (user override header hook) | How to override library-wide defaults from `reloco_user_config.hpp` |
@@ -2038,6 +2039,24 @@ specializations for `std::pair<T1, T2>`, `std::tuple<Ts...>`,
 `std::optional<T>`, and `std::variant<Ts...>`, each forwarding to the
 relocatability of their contained type(s) -- see
 [Trivial relocation](relocatable.md#standard-library-wrapper-types-relocatable_stdhpp).
+
+## `is_send<T>` / `is_sync<T>`
+
+`include/reloco/send_sync.hpp`
+
+Customization-point traits matching Rust's `Send`/`Sync` auto traits:
+`is_send<T>` asks whether it is sound to transfer ownership of a `T` to
+another thread, `is_sync<T>` whether it is sound to share a `T` across
+threads through a `const T &`. Both default to `true`; reloco specializes
+both to `false` (unconditionally) for `rc<T>`/`weak_rc<T>` (non-atomic
+refcount), specializes `is_sync` to `false` (`is_send` forwarding to `T`)
+for `cell<T>`/`ref_cell<T>` (unsynchronized interior mutability), and
+specializes both to `is_send<T> && is_sync<T>` for `shared_ptr<T>`/
+`weak_ptr<T>` (atomic refcount, but the shared `T` still needs to tolerate
+concurrent access). `guarded_mutex<T, MutexT>` (see `guarded_mutex.hpp`)
+`static_assert`s `is_send_v<T>`, matching Rust's `Mutex<T: Send>` bound. See
+[Thread-transfer/-sharing safety](send-sync.md) for the full rationale and
+table.
 
 ## `alignment_of<T>`
 
