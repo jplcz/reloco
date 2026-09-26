@@ -5,6 +5,7 @@
 #include "reloco/iterator.hpp"
 #include <gtest/gtest.h>
 
+#include <array>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -269,6 +270,153 @@ TEST(IteratorTest, EmptyIsAlwaysExhausted) {
   EXPECT_EQ(e.count(), 0u);
   auto e2 = reloco::empty<int>();
   EXPECT_FALSE(e2.next().has_value());
+}
+
+TEST(IteratorTest, PeekablePeeksWithoutConsuming) {
+  std::vector<int> v{1, 2, 3};
+  auto it = reloco::iter(v).peekable();
+  ASSERT_TRUE(it.peek().has_value());
+  EXPECT_EQ(it.peek()->get(), 1);
+  EXPECT_EQ(it.peek()->get(), 1); // repeated peek() is idempotent
+  auto a = it.next();
+  ASSERT_TRUE(a.has_value());
+  EXPECT_EQ(a->get(), 1);
+  auto b = it.next();
+  ASSERT_TRUE(b.has_value());
+  EXPECT_EQ(b->get(), 2);
+  auto c = it.next();
+  ASSERT_TRUE(c.has_value());
+  EXPECT_EQ(c->get(), 3);
+  EXPECT_FALSE(it.next().has_value());
+}
+
+TEST(IteratorTest, FlattenConcatenatesInnerRanges) {
+  std::vector<std::vector<int>> vv{{1, 2}, {3}, {}, {4, 5}};
+  std::vector<int> out;
+  reloco::iter(vv).flatten().for_each([&](int x) { out.push_back(x); });
+  EXPECT_EQ(out, (std::vector<int>{1, 2, 3, 4, 5}));
+}
+
+TEST(IteratorTest, FlatMapMapsThenFlattens) {
+  std::vector<int> v{1, 2, 3};
+  std::vector<int> out;
+  reloco::iter(v)
+      .flat_map([](int x) { return std::vector<int>{x, x * 10}; })
+      .for_each([&](int x) { out.push_back(x); });
+  EXPECT_EQ(out, (std::vector<int>{1, 10, 2, 20, 3, 30}));
+}
+
+TEST(IteratorTest, StepBySkipsElements) {
+  std::vector<int> v{0, 1, 2, 3, 4, 5, 6};
+  std::vector<int> out;
+  reloco::iter(v).step_by(2).for_each([&](int x) { out.push_back(x); });
+  EXPECT_EQ(out, (std::vector<int>{0, 2, 4, 6}));
+}
+
+TEST(IteratorTest, DedupCollapsesConsecutiveDuplicates) {
+  std::vector<int> v{1, 1, 2, 2, 2, 3, 1, 1};
+  std::vector<int> out;
+  reloco::iter(v).dedup().for_each([&](int x) { out.push_back(x); });
+  EXPECT_EQ(out, (std::vector<int>{1, 2, 3, 1}));
+}
+
+TEST(IteratorTest, IntersperseInsertsSeparatorBetweenItems) {
+  std::vector<int> v{1, 2, 3};
+  std::vector<int> out;
+  reloco::iter(v)
+      .map([](int x) { return x; })
+      .intersperse(0)
+      .for_each([&](int x) { out.push_back(x); });
+  EXPECT_EQ(out, (std::vector<int>{1, 0, 2, 0, 3}));
+}
+
+TEST(IteratorTest, IntersperseOfEmptyRangeIsEmpty) {
+  std::vector<int> v{};
+  auto it = reloco::iter(v).map([](int x) { return x; }).intersperse(0);
+  EXPECT_FALSE(it.next().has_value());
+}
+
+TEST(IteratorTest, IntersperseOfSingleElementYieldsNoSeparator) {
+  std::vector<int> v{5};
+  auto it = reloco::iter(v).map([](int x) { return x; }).intersperse(0);
+  auto a = it.next();
+  ASSERT_TRUE(a.has_value());
+  EXPECT_EQ(*a, 5);
+  EXPECT_FALSE(it.next().has_value());
+  // Calling next() again past exhaustion must keep returning empty, not
+  // resurrect a stale cached item (regression guard for the "moved-from
+  // optional stays engaged" pitfall).
+  EXPECT_FALSE(it.next().has_value());
+}
+
+TEST(IteratorTest, WindowsYieldsOverlappingFixedSizeSlices) {
+  std::vector<int> v{1, 2, 3, 4, 5};
+  std::vector<std::array<int, 3>> out;
+  reloco::iter(v).map([](int x) { return x; }).windows<3>().for_each(
+      [&](std::array<int, 3> a) { out.push_back(a); });
+  ASSERT_EQ(out.size(), 3u);
+  EXPECT_EQ(out[0], (std::array<int, 3>{1, 2, 3}));
+  EXPECT_EQ(out[1], (std::array<int, 3>{2, 3, 4}));
+  EXPECT_EQ(out[2], (std::array<int, 3>{3, 4, 5}));
+}
+
+TEST(IteratorTest, WindowsShorterThanNYieldsNothing) {
+  std::vector<int> v{1, 2};
+  auto it = reloco::iter(v).map([](int x) { return x; }).windows<3>();
+  EXPECT_FALSE(it.next().has_value());
+}
+
+TEST(IteratorTest, MergeInterleavesTwoSortedRanges) {
+  std::vector<int> a{1, 3, 5};
+  std::vector<int> b{2, 4, 6};
+  std::vector<int> out;
+  reloco::iter(a)
+      .map([](int x) { return x; })
+      .merge(reloco::iter(b).map([](int x) { return x; }))
+      .for_each([&](int x) { out.push_back(x); });
+  EXPECT_EQ(out, (std::vector<int>{1, 2, 3, 4, 5, 6}));
+}
+
+TEST(IteratorTest, LastReturnsFinalItem) {
+  std::vector<int> v{1, 2, 3};
+  auto r = reloco::iter(v).last();
+  ASSERT_TRUE(r.has_value());
+  EXPECT_EQ(r->get(), 3);
+}
+
+TEST(IteratorTest, LastOfEmptyRangeIsEmpty) {
+  std::vector<int> v{};
+  EXPECT_FALSE(reloco::iter(v).last().has_value());
+}
+
+TEST(IteratorTest, MinMaxFindExtremes) {
+  std::vector<int> v{3, 1, 4, 1, 5, 9, 2, 6};
+  auto mn = reloco::iter(v).map([](int x) { return x; }).min();
+  auto mx = reloco::iter(v).map([](int x) { return x; }).max();
+  ASSERT_TRUE(mn.has_value());
+  ASSERT_TRUE(mx.has_value());
+  EXPECT_EQ(*mn, 1);
+  EXPECT_EQ(*mx, 9);
+}
+
+TEST(IteratorTest, MinByKeyAndMaxByKeyUseProjection) {
+  std::vector<std::string> v{"aaa", "b", "cc"};
+  auto mn = reloco::iter(v).map([](const std::string &s) { return s; }).min_by_key(
+      [](const std::string &s) { return s.size(); });
+  auto mx = reloco::iter(v).map([](const std::string &s) { return s; }).max_by_key(
+      [](const std::string &s) { return s.size(); });
+  ASSERT_TRUE(mn.has_value());
+  ASSERT_TRUE(mx.has_value());
+  EXPECT_EQ(*mn, "b");
+  EXPECT_EQ(*mx, "aaa");
+}
+
+TEST(IteratorTest, SumAndProductFoldOverValues) {
+  std::vector<int> v{1, 2, 3, 4};
+  auto s = reloco::iter(v).map([](int x) { return x; }).sum();
+  auto p = reloco::iter(v).map([](int x) { return x; }).product();
+  EXPECT_EQ(s, 10);
+  EXPECT_EQ(p, 24);
 }
 
 namespace {

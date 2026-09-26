@@ -79,9 +79,11 @@
  * generating iterators never need a hand-written one at all.
  */
 
+#include "error.hpp"
 #include "lifetime.hpp"
 #include "optional.hpp"
 
+#include <array>
 #include <cstddef>
 #include <functional>
 #include <type_traits>
@@ -118,6 +120,13 @@ template <typename Upstream> class take_iterator;
 template <typename Upstream> class skip_iterator;
 template <typename A, typename B> class chain_iterator;
 template <typename It, typename Sentinel> class range_iterator;
+template <typename Upstream> class peekable_iterator;
+template <typename Upstream> class flatten_iterator;
+template <typename Upstream> class step_by_iterator;
+template <typename Upstream> class dedup_iterator;
+template <typename Upstream> class intersperse_iterator;
+template <typename Upstream, std::size_t N> class windows_iterator;
+template <typename A, typename B> class merge_iterator;
 
 /**
  * @brief CRTP base providing Rust's `Iterator` adapter/terminal methods on
@@ -132,6 +141,11 @@ template <typename It, typename Sentinel> class range_iterator;
 template <typename Derived, typename Item> class iterator_adaptor {
 public:
   using item_type = Item;
+
+  /** @brief The unwrapped element type (`T` whether `item_type` is `T`
+   * itself or `std::reference_wrapper<T>`); the type callables/predicates
+   * passed to `.map()`/`.filter()`/etc. actually see. */
+  using value_type = std::remove_reference_t<decltype(detail::unwrap_item(std::declval<item_type &>()))>;
 
   /** @brief Rust `Iterator::next()` equivalent. Lvalue-only: see the
    * file-level docs for why an rvalue overload is deleted. */
@@ -220,6 +234,50 @@ public:
    * every item of @p other. Both sides must share the same `item_type`. */
   template <typename Other> [[nodiscard]] chain_iterator<Derived, Other> chain(Other other) noexcept;
 
+  /** @brief Rust `itertools::Itertools::peekable()`/std `Iterator::peekable()`:
+   * wraps `*this` so the next item can be inspected via `.peek()` without
+   * consuming it. */
+  [[nodiscard]] peekable_iterator<Derived> peekable() noexcept;
+
+  /** @brief Rust `Iterator::flatten()`: flattens an iterator whose items
+   * are themselves iterable (anything with `begin()`/`end()`, including a
+   * plain container or another adaptor chain) into one flat stream.
+   * `value_type` must have `begin()`/`end()`. */
+  [[nodiscard]] flatten_iterator<Derived> flatten() noexcept;
+
+  /** @brief Rust `Iterator::flat_map()`: `.map(f).flatten()` fused into
+   * one call -- @p f must return something iterable (see @ref flatten). */
+  template <typename F> [[nodiscard]] auto flat_map(F f) noexcept;
+
+  /** @brief Rust `Iterator::step_by(n)`: yields every `n`-th item,
+   * starting with the first (`n` must be `> 0`). */
+  [[nodiscard]] step_by_iterator<Derived> step_by(std::size_t n) noexcept;
+
+  /** @brief itertools `Itertools::dedup()`: drops consecutive items that
+   * compare equal to the one before them (via `operator==` on the
+   * unwrapped item), keeping the first of each run. Requires `item_type`
+   * to be copy-constructible (to remember the previous item). */
+  [[nodiscard]] dedup_iterator<Derived> dedup() noexcept;
+
+  /** @brief itertools `Itertools::intersperse()`: inserts a copy of
+   * @p separator between every pair of consecutive items (never before
+   * the first or after the last). Requires `value_type` to be
+   * copy-constructible. */
+  [[nodiscard]] intersperse_iterator<Derived> intersperse(value_type separator) noexcept;
+
+  /** @brief Rust slice `[T]::windows(N)` equivalent: yields every
+   * contiguous, overlapping run of `N` consecutive items as an owned
+   * `std::array<value_type, N>` (a copy of each window, so this works
+   * regardless of whether `*this` borrows or owns its items). Requires
+   * `value_type` to be default-constructible and copyable. */
+  template <std::size_t N> [[nodiscard]] windows_iterator<Derived, N> windows() noexcept;
+
+  /** @brief itertools `Itertools::merge()`: merges `*this` and @p other --
+   * both assumed already sorted (ascending, via `operator<` on the
+   * unwrapped item) -- into one sorted stream. Both sides must share the
+   * same `item_type`. */
+  template <typename Other> [[nodiscard]] merge_iterator<Derived, Other> merge(Other other) noexcept;
+
   /** @brief Rust `Iterator::for_each()`: calls @p f with every (unwrapped)
    * item, in order, draining `*this`. */
   template <typename F> void for_each(F f) noexcept {
@@ -284,6 +342,96 @@ public:
       if (pred(detail::unwrap_item(*item)))
         return item;
     return nullopt;
+  }
+
+  /** @brief Rust `Iterator::last()`: the final remaining item, or empty
+   * if already exhausted; drains `*this`. */
+  [[nodiscard]] optional<item_type> last() noexcept {
+    optional<item_type> result = nullopt;
+    while (auto item = next())
+      result = std::move(item);
+    return result;
+  }
+
+  /** @brief Rust `Iterator::min()`: the smallest remaining item (via
+   * `operator<` on the unwrapped item), or empty if already exhausted.
+   * If several items are equally smallest, the *first* is returned
+   * (matching Rust). */
+  [[nodiscard]] optional<item_type> min() noexcept {
+    optional<item_type> best = next();
+    if (!best)
+      return nullopt;
+    while (auto item = next())
+      if (detail::unwrap_item(*item) < detail::unwrap_item(*best))
+        best = std::move(item);
+    return best;
+  }
+
+  /** @brief Rust `Iterator::max()`: the largest remaining item, or empty
+   * if already exhausted. If several items are equally largest, the
+   * *last* is returned (matching Rust). */
+  [[nodiscard]] optional<item_type> max() noexcept {
+    optional<item_type> best = next();
+    if (!best)
+      return nullopt;
+    while (auto item = next())
+      if (!(detail::unwrap_item(*item) < detail::unwrap_item(*best)))
+        best = std::move(item);
+    return best;
+  }
+
+  /** @brief Rust `Iterator::min_by_key()`: the item for which @p key_fn
+   * returns the smallest key, or empty if already exhausted. Ties keep
+   * the *first* match (matching Rust). */
+  template <typename F> [[nodiscard]] optional<item_type> min_by_key(F key_fn) noexcept {
+    optional<item_type> best = next();
+    if (!best)
+      return nullopt;
+    auto best_key = key_fn(detail::unwrap_item(*best));
+    while (auto item = next()) {
+      auto key = key_fn(detail::unwrap_item(*item));
+      if (key < best_key) {
+        best_key = std::move(key);
+        best = std::move(item);
+      }
+    }
+    return best;
+  }
+
+  /** @brief Rust `Iterator::max_by_key()`: the item for which @p key_fn
+   * returns the largest key, or empty if already exhausted. Ties keep the
+   * *last* match (matching Rust). */
+  template <typename F> [[nodiscard]] optional<item_type> max_by_key(F key_fn) noexcept {
+    optional<item_type> best = next();
+    if (!best)
+      return nullopt;
+    auto best_key = key_fn(detail::unwrap_item(*best));
+    while (auto item = next()) {
+      auto key = key_fn(detail::unwrap_item(*item));
+      if (!(key < best_key)) {
+        best_key = std::move(key);
+        best = std::move(item);
+      }
+    }
+    return best;
+  }
+
+  /** @brief Rust `Iterator::sum()`: left-fold over `operator+`, starting
+   * from `Acc{}` (defaults to `value_type`). */
+  template <typename Acc = value_type> [[nodiscard]] Acc sum() noexcept {
+    Acc total{};
+    while (auto item = next())
+      total = std::move(total) + detail::unwrap_item(*item);
+    return total;
+  }
+
+  /** @brief Rust `Iterator::product()`: left-fold over `operator*`,
+   * starting from `Acc{1}` (defaults to `value_type`). */
+  template <typename Acc = value_type> [[nodiscard]] Acc product() noexcept {
+    Acc total{1};
+    while (auto item = next())
+      total = std::move(total) * detail::unwrap_item(*item);
+    return total;
   }
 
 private:
@@ -546,6 +694,250 @@ private:
   bool a_done_{false};
 };
 
+/** @brief Rust `Iterator::peekable()`. See `iterator_adaptor::peekable()`. */
+template <typename Upstream>
+class peekable_iterator : public iterator_adaptor<peekable_iterator<Upstream>, typename Upstream::item_type> {
+public:
+  using item_type = typename Upstream::item_type;
+
+  explicit peekable_iterator(Upstream upstream) noexcept : upstream_(std::move(upstream)) {}
+
+  /** @brief Rust `Peekable::peek()`: the next item, without consuming it
+   * -- calling `.peek()` again (or `.next()`) before any intervening
+   * mutation returns the exact same item. Empty once exhausted. */
+  [[nodiscard]] const optional<item_type> &peek() noexcept RELOCO_LIFETIMEBOUND {
+    if (!cache_.has_value())
+      cache_ = upstream_.next();
+    return cache_;
+  }
+
+  [[nodiscard]] optional<item_type> next_impl() noexcept {
+    if (cache_.has_value())
+      return cache_.take();
+    return upstream_.next();
+  }
+
+private:
+  Upstream upstream_;
+  optional<item_type> cache_{};
+};
+
+namespace detail {
+
+// The type `flatten_iterator<Upstream>` iterates *into*: `Upstream`'s own
+// (unwrapped) item, stripped of any reference so it can be stored inline
+// (see `flatten_iterator::current_` -- the inner container/adaptor must
+// stay alive for as long as we're iterating its elements).
+template <typename Upstream>
+using flatten_inner_t = std::remove_reference_t<decltype(unwrap_item(std::declval<typename Upstream::item_type &>()))>;
+
+} // namespace detail
+
+/** @brief Rust `Iterator::flatten()`. See `iterator_adaptor::flatten()`. */
+template <typename Upstream>
+class flatten_iterator
+    : public iterator_adaptor<
+          flatten_iterator<Upstream>,
+          std::reference_wrapper<std::remove_reference_t<
+              decltype(*std::declval<detail::flatten_inner_t<Upstream> &>().begin())>>> {
+public:
+  using inner_type = detail::flatten_inner_t<Upstream>;
+  using item_type =
+      std::reference_wrapper<std::remove_reference_t<decltype(*std::declval<inner_type &>().begin())>>;
+
+  explicit flatten_iterator(Upstream upstream) noexcept : upstream_(std::move(upstream)) {}
+
+  [[nodiscard]] optional<item_type> next_impl() noexcept {
+    for (;;) {
+      if (current_.has_value()) {
+        if (inner_it_ != inner_end_) {
+          item_type ref(*inner_it_);
+          ++inner_it_;
+          return ref;
+        }
+        current_.reset();
+      }
+      auto outer_item = upstream_.next();
+      if (!outer_item)
+        return nullopt;
+      current_ = std::move(outer_item);
+      inner_it_ = detail::unwrap_item(*current_).begin();
+      inner_end_ = detail::unwrap_item(*current_).end();
+    }
+  }
+
+private:
+  Upstream upstream_;
+  optional<typename Upstream::item_type> current_{};
+  decltype(std::declval<inner_type &>().begin()) inner_it_{};
+  decltype(std::declval<inner_type &>().end()) inner_end_{};
+};
+
+/** @brief Rust `Iterator::step_by()`. See `iterator_adaptor::step_by()`. */
+template <typename Upstream>
+class step_by_iterator : public iterator_adaptor<step_by_iterator<Upstream>, typename Upstream::item_type> {
+public:
+  using item_type = typename Upstream::item_type;
+
+  step_by_iterator(Upstream upstream, std::size_t step) noexcept : upstream_(std::move(upstream)), step_(step) {
+    RELOCO_ASSERT(step > 0, "step_by: step must be > 0");
+  }
+
+  [[nodiscard]] optional<item_type> next_impl() noexcept {
+    if (first_) {
+      first_ = false;
+      return upstream_.next();
+    }
+    for (std::size_t i = 1; i < step_; ++i)
+      if (!upstream_.next())
+        return nullopt;
+    return upstream_.next();
+  }
+
+private:
+  Upstream upstream_;
+  std::size_t step_;
+  bool first_{true};
+};
+
+/** @brief itertools `Itertools::dedup()`. See `iterator_adaptor::dedup()`. */
+template <typename Upstream>
+class dedup_iterator : public iterator_adaptor<dedup_iterator<Upstream>, typename Upstream::item_type> {
+public:
+  using item_type = typename Upstream::item_type;
+
+  explicit dedup_iterator(Upstream upstream) noexcept : upstream_(std::move(upstream)) {}
+
+  [[nodiscard]] optional<item_type> next_impl() noexcept {
+    for (;;) {
+      auto item = upstream_.next();
+      if (!item)
+        return nullopt;
+      const bool is_dup =
+          previous_.has_value() && detail::unwrap_item(*previous_) == detail::unwrap_item(*item);
+      previous_ = item;
+      if (!is_dup)
+        return item;
+    }
+  }
+
+private:
+  Upstream upstream_;
+  optional<item_type> previous_{};
+};
+
+/** @brief itertools `Itertools::intersperse()`. See
+ * `iterator_adaptor::intersperse()`. */
+template <typename Upstream>
+class intersperse_iterator : public iterator_adaptor<intersperse_iterator<Upstream>, typename Upstream::item_type> {
+public:
+  using item_type = typename Upstream::item_type;
+  using value_type = std::remove_reference_t<decltype(detail::unwrap_item(std::declval<item_type &>()))>;
+
+  intersperse_iterator(Upstream upstream, value_type separator) noexcept
+      : upstream_(std::move(upstream)), separator_(std::move(separator)) {}
+
+  [[nodiscard]] optional<item_type> next_impl() noexcept {
+    if (!started_) {
+      started_ = true;
+      pending_ = upstream_.next();
+      if (!pending_)
+        return nullopt;
+    }
+    if (emit_separator_next_) {
+      emit_separator_next_ = false;
+      return item_type(separator_);
+    }
+    if (!pending_)
+      return nullopt;
+    optional<item_type> result = pending_.take();
+    pending_ = upstream_.next();
+    if (pending_)
+      emit_separator_next_ = true;
+    return result;
+  }
+
+private:
+  Upstream upstream_;
+  value_type separator_;
+  optional<item_type> pending_{};
+  bool started_{false};
+  bool emit_separator_next_{false};
+};
+
+/** @brief Rust slice `windows(N)` equivalent. See
+ * `iterator_adaptor::windows()`. */
+template <typename Upstream, std::size_t N>
+class windows_iterator
+    : public iterator_adaptor<
+          windows_iterator<Upstream, N>,
+          std::array<std::remove_reference_t<decltype(detail::unwrap_item(std::declval<typename Upstream::item_type &>()))>,
+                     N>> {
+public:
+  static_assert(N > 0, "windows<N>: N must be > 0");
+
+  using value_type = std::remove_reference_t<decltype(detail::unwrap_item(std::declval<typename Upstream::item_type &>()))>;
+  using item_type = std::array<value_type, N>;
+
+  explicit windows_iterator(Upstream upstream) noexcept : upstream_(std::move(upstream)) {}
+
+  [[nodiscard]] optional<item_type> next_impl() noexcept {
+    if (!filled_) {
+      for (std::size_t i = 0; i < N; ++i) {
+        auto item = upstream_.next();
+        if (!item)
+          return nullopt;
+        buffer_[i] = detail::unwrap_item(*item);
+      }
+      filled_ = true;
+      return item_type(buffer_);
+    }
+    auto item = upstream_.next();
+    if (!item)
+      return nullopt;
+    for (std::size_t i = 0; i + 1 < N; ++i)
+      buffer_[i] = std::move(buffer_[i + 1]);
+    buffer_[N - 1] = detail::unwrap_item(*item);
+    return item_type(buffer_);
+  }
+
+private:
+  Upstream upstream_;
+  std::array<value_type, N> buffer_{};
+  bool filled_{false};
+};
+
+/** @brief itertools `Itertools::merge()`. See `iterator_adaptor::merge()`. */
+template <typename A, typename B>
+class merge_iterator : public iterator_adaptor<merge_iterator<A, B>, typename A::item_type> {
+public:
+  static_assert(std::is_same_v<typename A::item_type, typename B::item_type>,
+                "merge: both sides must share the same item_type");
+
+  using item_type = typename A::item_type;
+
+  merge_iterator(A a, B b) noexcept : a_(std::move(a)), b_(std::move(b)), a_item_(a_.next()), b_item_(b_.next()) {}
+
+  [[nodiscard]] optional<item_type> next_impl() noexcept {
+    if (!a_item_ && !b_item_)
+      return nullopt;
+    if (!b_item_ || (a_item_ && !(detail::unwrap_item(*b_item_) < detail::unwrap_item(*a_item_)))) {
+      optional<item_type> result = a_item_.take();
+      a_item_ = a_.next();
+      return result;
+    }
+    optional<item_type> result = b_item_.take();
+    b_item_ = b_.next();
+    return result;
+  }
+
+private:
+  A a_;
+  B b_;
+  optional<item_type> a_item_;
+  optional<item_type> b_item_;
+};
+
 /**
  * @brief Rust `std::iter::from_fn()` equivalent: a source iterator that
  * calls @p f (a `FnMut() -> optional<Item>` in Rust terms) on every
@@ -735,6 +1127,49 @@ template <typename Derived, typename Item>
 template <typename Other>
 chain_iterator<Derived, Other> iterator_adaptor<Derived, Item>::chain(Other other) noexcept {
   return chain_iterator<Derived, Other>(std::move(derived()), std::move(other));
+}
+
+template <typename Derived, typename Item>
+peekable_iterator<Derived> iterator_adaptor<Derived, Item>::peekable() noexcept {
+  return peekable_iterator<Derived>(std::move(derived()));
+}
+
+template <typename Derived, typename Item>
+flatten_iterator<Derived> iterator_adaptor<Derived, Item>::flatten() noexcept {
+  return flatten_iterator<Derived>(std::move(derived()));
+}
+
+template <typename Derived, typename Item>
+template <typename F>
+auto iterator_adaptor<Derived, Item>::flat_map(F f) noexcept {
+  return map(std::move(f)).flatten();
+}
+
+template <typename Derived, typename Item>
+step_by_iterator<Derived> iterator_adaptor<Derived, Item>::step_by(std::size_t n) noexcept {
+  return step_by_iterator<Derived>(std::move(derived()), n);
+}
+
+template <typename Derived, typename Item>
+dedup_iterator<Derived> iterator_adaptor<Derived, Item>::dedup() noexcept {
+  return dedup_iterator<Derived>(std::move(derived()));
+}
+
+template <typename Derived, typename Item>
+intersperse_iterator<Derived> iterator_adaptor<Derived, Item>::intersperse(value_type separator) noexcept {
+  return intersperse_iterator<Derived>(std::move(derived()), std::move(separator));
+}
+
+template <typename Derived, typename Item>
+template <std::size_t N>
+windows_iterator<Derived, N> iterator_adaptor<Derived, Item>::windows() noexcept {
+  return windows_iterator<Derived, N>(std::move(derived()));
+}
+
+template <typename Derived, typename Item>
+template <typename Other>
+merge_iterator<Derived, Other> iterator_adaptor<Derived, Item>::merge(Other other) noexcept {
+  return merge_iterator<Derived, Other>(std::move(derived()), std::move(other));
 }
 
 } // namespace reloco
