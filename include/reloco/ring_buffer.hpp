@@ -7,6 +7,7 @@
 #include "default_allocator.hpp"
 #include "error.hpp"
 #include "expected.hpp"
+#include "rvalue_safety.hpp"
 #include "span.hpp"
 #include <algorithm>
 #include <cstring>
@@ -114,6 +115,8 @@ public:
   using value_type = std::remove_cv_t<T>;
   using reference = T &;
   using const_reference = const T &;
+
+  RELOCO_BLOCK_RVALUE_ACCESS(T);
 
   // ---- Bulk Mutation ----
 
