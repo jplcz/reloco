@@ -1493,6 +1493,93 @@ public:
     return this->try_erase_at_base(detail::get_operations_for<T>(), detail::metadata_for<T>, index);
   }
 
+  /**
+   * @brief Rust `VecDeque::insert` equivalent: constructs a new element in place
+   * at logical index @p index, shifting elements to make room.
+   *
+   * Composed entirely out of the public `rotate_left`/`rotate_right`/`try_emplace_front`
+   * building blocks rather than a bespoke shifting routine: `rotate_left(index)` brings
+   * the future predecessor of the new element to the front (cost
+   * `O(min(index, len - index))`, picked automatically by `rotate_left_base`),
+   * `try_emplace_front` places the new element (O(1) amortized), and
+   * `rotate_right(index)` restores relative order with the new element now sitting
+   * at `index`. If construction fails, the first rotation is undone so the deque is
+   * left exactly as it was found.
+   */
+  template <typename... Args>
+  [[nodiscard]] result<std::reference_wrapper<T>> try_emplace_at(size_type index,
+                                                                  Args &&...args) & noexcept RELOCO_LIFETIMEBOUND {
+    if (index > this->len_)
+      return unexpected(error::out_of_bounds);
+    if (index == this->len_)
+      return try_emplace_back(std::forward<Args>(args)...);
+    if (index == 0)
+      return try_emplace_front(std::forward<Args>(args)...);
+
+    auto reserved = try_reserve(this->len_ + 1);
+    if (!reserved)
+      return unexpected(reserved.error());
+
+    this->rotate_left(index);
+    auto pushed = try_emplace_front(std::forward<Args>(args)...);
+    if (!pushed) {
+      // Restore the original arrangement; `len_` is unchanged since the push failed.
+      this->rotate_right(index);
+      return unexpected(pushed.error());
+    }
+    this->rotate_right(index);
+    return std::ref((*this)[index]);
+  }
+
+  [[nodiscard]] result<void> try_insert_at(size_type index, const T &value) & noexcept {
+    auto res = try_emplace_at(index, value);
+    return res ? result<void>{} : unexpected(res.error());
+  }
+
+  [[nodiscard]] result<void> try_insert_at(size_type index, T &&value) & noexcept {
+    auto res = try_emplace_at(index, std::move(value));
+    return res ? result<void>{} : unexpected(res.error());
+  }
+
+  /**
+   * @brief Rust `VecDeque::swap_remove_back` equivalent: swaps the element at
+   * @p index with the last element, then pops the back. O(1) instead of
+   * `try_erase_at`'s O(min(index, len - index)) shift, at the cost of not
+   * preserving relative order.
+   */
+  [[nodiscard]] result<void> try_swap_remove_back(size_type index) & noexcept {
+    if (index >= this->len_)
+      return unexpected(error::out_of_bounds);
+    const size_type last = this->len_ - 1;
+    if (index != last)
+      std::swap((*this)[index], (*this)[last]);
+    return try_pop_back();
+  }
+
+  /**
+   * @brief Rust `VecDeque::swap_remove_front` equivalent: swaps the element at
+   * @p index with the first element, then pops the front. O(1) instead of
+   * `try_erase_at`'s O(min(index, len - index)) shift, at the cost of not
+   * preserving relative order.
+   */
+  [[nodiscard]] result<void> try_swap_remove_front(size_type index) & noexcept {
+    if (index >= this->len_)
+      return unexpected(error::out_of_bounds);
+    if (index != 0)
+      std::swap((*this)[index], (*this)[0]);
+    return try_pop_front();
+  }
+
+  /**
+   * @brief Rust `slice::contains` equivalent: `true` if any element compares
+   * equal to @p value via `operator==`. Walks both physical slices from
+   * `as_slices()` so wrapping is handled transparently.
+   */
+  [[nodiscard]] bool contains(const T &value) const & noexcept {
+    auto [s1, s2] = as_slices();
+    return s1.contains(value) || s2.contains(value);
+  }
+
 private:
   template <typename... Args> result<std::reference_wrapper<T>> try_emplace_front_slow(Args &&...args) noexcept {
     const std::size_t new_cap = this->cap_ == 0 ? 8 : (this->cap_ * 3 + 1) / 2;

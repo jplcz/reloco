@@ -37,6 +37,7 @@ Start with the guide that matches what you are building:
 | [Lifetime safety](docs/lifetime-safety.md) | Borrowed values and pointers, lifetime annotations, consumed-value tracking, and compiler diagnostics |
 | [Container contract](docs/container-contract.md) | Copy-paste template and checklist for lifetime annotations, rvalue protection, and the tri-tier accessor convention on a new container |
 | [Type-erased base containers](docs/type-erased-base-containers.md) | How `vector`/`inline_vector`/`sso_vector`/`outline_vector` share one type-erased storage engine (`detail::vector_base.hpp`), and how to add a new vector flavor |
+| [Deque containers](docs/deque-containers.md) | `vec_deque`'s ring-buffer engine (`detail::vector_base.hpp`'s `*_deque_base` policies), wrap-around handling, and how `try_insert_at`/`rotate_left`/`rotate_right` compose |
 | [Tree containers](docs/tree-containers.md) | `tree_set`/`tree_map`'s node layout (`detail::node_base.hpp`), the unbalanced BST engine (`detail::tree_base.hpp`), and how they compare to `flat_set`/`flat_map` |
 | [Flat hash containers](docs/flat-hash-containers.md) | `flat_hash_set`/`flat_hash_map`'s open-addressing engine (`detail::flat_hash_base.hpp`), backward-shift deletion, and how they compare to `tree_set`/`tree_map`/`flat_set`/`flat_map` |
 | [Extending reloco](docs/extending.md) | The tag + `*_traits<Tag>` + `context_type` provider pattern used by `allocator_ref` and future pluggable backends |

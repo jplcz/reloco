@@ -620,6 +620,54 @@ fallback already evaluates to `false` (copy is deleted), correctly
 reporting that `outline_vector<T>` may neither be moved nor relocated by
 any means.
 
+## `vec_deque<T>`
+
+`include/reloco/vec_deque.hpp`
+
+Move-only, allocator-backed double-ended queue backed by a single
+contiguous ring buffer -- the fallible, allocator-explicit analogue of
+Rust's `std::collections::VecDeque` (not `std::deque`, which uses
+fixed-size chunks). Push/pop/insert/erase at either end run in amortized
+O(1); random access is O(1).
+
+```cpp
+auto d = reloco::vec_deque<int>::try_create();
+if (!d)
+  return; // d.error() is a reloco::error.
+auto ok = d->try_push_back(2);
+ok = d->try_push_front(1);
+ok = d->try_insert_at(2, 3); // logically [1, 2, 3]
+assert((*d)[0] == 1 && (*d)[1] == 2 && (*d)[2] == 3);
+```
+
+Construction/cloning mirror `vector<T>`: `try_create(initial_cap = 0)`,
+`try_allocate(alloc, initial_cap = 0)`, `try_clone(alloc)`/`try_clone()`,
+`try_clone_at(alloc, storage, source)`.
+
+Mutation: `try_reserve`, `try_emplace_front`/`try_push_front`,
+`try_emplace_back`/`try_push_back`, `try_pop_front`, `try_pop_back`,
+`try_emplace_at`/`try_insert_at` (Rust `VecDeque::insert`), `try_erase_at`
+(shortest-shift removal), `try_swap_remove_back`/`try_swap_remove_front`
+(O(1) order-breaking removal), `rotate_left`/`rotate_right` (Rust
+`VecDeque::rotate_left`/`rotate_right`, O(min(mid, len - mid)), zero
+allocations), `truncate`, `clear`, `try_append(vec_deque &&)`.
+
+Access: `operator[]`/`front()`/`back()` (checked tier, assert in bounds),
+`try_at()` (returns `reloco::result<...>`), `contains(value)` (Rust
+`slice::contains` equivalent), `as_slices()` (returns the up-to-two
+contiguous `span<T>` chunks making up the logical range, second span empty
+unless the ring buffer has wrapped), `try_make_contiguous()` (unwraps the
+ring buffer in place, `head_ == 0`, returning a single `span<T>`).
+
+`reloco::is_trivially_relocatable<vec_deque<T>>` is always `true`
+regardless of `T`, for the same reason as `vector<T>`: its handle is just
+an `allocator_ref` plus a pointer and three sizes, with no self-reference
+into its own storage.
+
+See [Deque containers](deque-containers.md) for the ring-buffer engine
+design, wrap-around handling, and how `try_insert_at`/`rotate_left`/
+`rotate_right` compose.
+
 ## `boxed_slice<T>`
 
 `include/reloco/boxed_slice.hpp`

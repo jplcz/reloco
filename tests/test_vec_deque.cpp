@@ -281,3 +281,116 @@ TEST(VecDequeTest, ShortestShiftEraseAt) {
   EXPECT_EQ(d[d.size() - 1], 1);
   EXPECT_EQ(d.size(), 2);
 }
+
+TEST(VecDequeTest, InsertAtMiddleFrontAndBack) {
+  auto deque_res = vec_deque<int>::try_create(4);
+  ASSERT_TRUE(deque_res.has_value());
+  auto &d = *deque_res;
+
+  ASSERT_TRUE(d.try_push_back(1).has_value());
+  ASSERT_TRUE(d.try_push_back(2).has_value());
+  ASSERT_TRUE(d.try_push_back(4).has_value());
+  ASSERT_TRUE(d.try_push_back(5).has_value());
+  // Logically: [1, 2, 4, 5]
+
+  // Insert into the middle: [1, 2, 3, 4, 5]
+  ASSERT_TRUE(d.try_insert_at(2, 3).has_value());
+  EXPECT_EQ(d.size(), 5);
+  EXPECT_EQ(d[0], 1);
+  EXPECT_EQ(d[1], 2);
+  EXPECT_EQ(d[2], 3);
+  EXPECT_EQ(d[3], 4);
+  EXPECT_EQ(d[4], 5);
+
+  // Insert at front (index 0): [0, 1, 2, 3, 4, 5]
+  ASSERT_TRUE(d.try_insert_at(0, 0).has_value());
+  EXPECT_EQ(d[0], 0);
+  EXPECT_EQ(d.size(), 6);
+
+  // Insert at back (index == size()): [0, 1, 2, 3, 4, 5, 6]
+  ASSERT_TRUE(d.try_insert_at(d.size(), 6).has_value());
+  EXPECT_EQ(d.back(), 6);
+  EXPECT_EQ(d.size(), 7);
+
+  for (int i = 0; i <= 6; ++i)
+    EXPECT_EQ(d[static_cast<std::size_t>(i)], i);
+}
+
+TEST(VecDequeTest, InsertAtOnWrappedBuffer) {
+  auto deque_res = vec_deque<int>::try_create(4);
+  ASSERT_TRUE(deque_res.has_value());
+  auto &d = *deque_res;
+
+  // Build wrapped state, logically [1, 2, 3, 4, 5, 6] (see WrapAroundAndAsSlices).
+  ASSERT_TRUE(d.try_push_back(1).has_value());
+  ASSERT_TRUE(d.try_push_back(2).has_value());
+  ASSERT_TRUE(d.try_push_back(3).has_value());
+  ASSERT_TRUE(d.try_push_back(4).has_value());
+  ASSERT_TRUE(d.try_pop_front().has_value());
+  ASSERT_TRUE(d.try_pop_front().has_value());
+  ASSERT_TRUE(d.try_push_back(5).has_value());
+  ASSERT_TRUE(d.try_push_back(6).has_value());
+  // Logically: [3, 4, 5, 6]
+
+  ASSERT_TRUE(d.try_insert_at(2, 99).has_value());
+  // Logically: [3, 4, 99, 5, 6]
+  EXPECT_EQ(d.size(), 5);
+  EXPECT_EQ(d[0], 3);
+  EXPECT_EQ(d[1], 4);
+  EXPECT_EQ(d[2], 99);
+  EXPECT_EQ(d[3], 5);
+  EXPECT_EQ(d[4], 6);
+}
+
+TEST(VecDequeTest, SwapRemoveFrontAndBack) {
+  auto deque_res = vec_deque<int>::try_create(4);
+  ASSERT_TRUE(deque_res.has_value());
+  auto &d = *deque_res;
+
+  ASSERT_TRUE(d.try_push_back(1).has_value());
+  ASSERT_TRUE(d.try_push_back(2).has_value());
+  ASSERT_TRUE(d.try_push_back(3).has_value());
+  ASSERT_TRUE(d.try_push_back(4).has_value());
+  // Logically: [1, 2, 3, 4]
+
+  // swap_remove_back(1): swaps index 1 ('2') with the last ('4'), then pops back.
+  // Result: [1, 4, 3]
+  ASSERT_TRUE(d.try_swap_remove_back(1).has_value());
+  EXPECT_EQ(d.size(), 3);
+  EXPECT_EQ(d[0], 1);
+  EXPECT_EQ(d[1], 4);
+  EXPECT_EQ(d[2], 3);
+
+  // swap_remove_front(2): swaps index 2 ('3') with the first ('1'), then pops front.
+  // Result: [4, 1]
+  ASSERT_TRUE(d.try_swap_remove_front(2).has_value());
+  EXPECT_EQ(d.size(), 2);
+  EXPECT_EQ(d[0], 4);
+  EXPECT_EQ(d[1], 1);
+
+  EXPECT_FALSE(d.try_swap_remove_back(5).has_value());
+  EXPECT_FALSE(d.try_swap_remove_front(5).has_value());
+}
+
+TEST(VecDequeTest, Contains) {
+  auto deque_res = vec_deque<int>::try_create(4);
+  ASSERT_TRUE(deque_res.has_value());
+  auto &d = *deque_res;
+
+  EXPECT_FALSE(d.contains(1));
+
+  // Build a wrapped buffer, logically [3, 4, 5, 6] (see WrapAroundAndAsSlices).
+  ASSERT_TRUE(d.try_push_back(1).has_value());
+  ASSERT_TRUE(d.try_push_back(2).has_value());
+  ASSERT_TRUE(d.try_push_back(3).has_value());
+  ASSERT_TRUE(d.try_push_back(4).has_value());
+  ASSERT_TRUE(d.try_pop_front().has_value());
+  ASSERT_TRUE(d.try_pop_front().has_value());
+  ASSERT_TRUE(d.try_push_back(5).has_value());
+  ASSERT_TRUE(d.try_push_back(6).has_value());
+
+  EXPECT_TRUE(d.contains(3));
+  EXPECT_TRUE(d.contains(6));
+  EXPECT_FALSE(d.contains(1));
+  EXPECT_FALSE(d.contains(42));
+}
