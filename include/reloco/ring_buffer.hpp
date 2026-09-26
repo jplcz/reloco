@@ -324,21 +324,31 @@ public:
   // ---- Direct Buffer Access (Zero-Copy Networking/IO) ----
 
   /**
-   * @brief Returns the contiguous slices of data available to read.
+   * @brief Returns the contiguous slices of data available to read, up to a specified limit.
    * Typically passed directly to `writev` / `WSASend` / socket APIs.
+   *
+   * @param limit Maximum number of elements to expose (defaults to all available data).
    */
-  [[nodiscard]] std::pair<span<const T>, span<const T>> read_slices() const & noexcept {
-    if (this->len_ == 0)
-      return {span<const T>(), span<const T>()};
+  [[nodiscard]] std::pair<span<const T>, span<const T>>
+  read_slices(size_type limit = static_cast<size_type>(-1)) const & noexcept {
+    std::size_t to_read = std::min(this->len_, limit);
+
+    if (to_read == 0) {
+      return {};
+    }
 
     const T *typed_data = static_cast<const T *>(this->data_);
-    std::size_t tail = this->head_ + this->len_;
+    std::size_t logical_tail = this->head_ + to_read;
 
-    if (tail <= this->cap_) {
-      return {span<const T>(typed_data + this->head_, this->len_), span<const T>()};
+    if (logical_tail <= this->cap_) {
+      // The requested length fits entirely within the first physical chunk
+      return {span<const T>(typed_data + this->head_, to_read), {}};
     } else {
-      return {span<const T>(typed_data + this->head_, this->cap_ - this->head_),
-              span<const T>(typed_data, tail - this->cap_)};
+      // The requested length crosses the wrap-around boundary
+      std::size_t first_chunk = this->cap_ - this->head_;
+      std::size_t second_chunk = logical_tail - this->cap_;
+
+      return {span<const T>(typed_data + this->head_, first_chunk), span<const T>(typed_data, second_chunk)};
     }
   }
 

@@ -506,4 +506,40 @@ TEST(RingBufferTest, AllocateSlicesScatterGather) {
   EXPECT_EQ(full_read, "ABCD1234567890ABCDE");
 }
 
+TEST(RingBufferTest, ReadSlicesWithLimit) {
+  inline_ring_buffer<char, 32> stream;
+
+  // Force a wrapped state
+  ASSERT_TRUE(stream.try_reserve(32));
+  // Write 28, consume 24.
+  // Remaining data (4 bytes) is at index 24. Free space is 28 bytes.
+  ASSERT_TRUE(stream.try_write(span<const char>("12345678901234567890ABCDX_YZ", 28)));
+  stream.consume(24);
+
+  // Write 10 more bytes. Total size is 14.
+  // They go from index 24 to 32 (8 bytes), then wrap to index 0 (6 bytes).
+  ASSERT_TRUE(stream.try_write(span<const char>("1234567890", 10)));
+  EXPECT_EQ(stream.size(), 14);
+
+  // Read limitless (should give 8 and 6)
+  auto [r1, r2] = stream.read_slices();
+  EXPECT_EQ(r1.size(), 8);
+  EXPECT_EQ(r2.size(), 6);
+
+  // Read with limit fitting entirely in the first chunk
+  auto [L1, L2] = stream.read_slices(5);
+  EXPECT_EQ(L1.size(), 5);
+  EXPECT_TRUE(L2.empty()); // No wrap needed
+
+  // Read with limit precisely on the boundary
+  auto [B1, B2] = stream.read_slices(8);
+  EXPECT_EQ(B1.size(), 8);
+  EXPECT_TRUE(B2.empty());
+
+  // Read with limit crossing the boundary
+  auto [W1, W2] = stream.read_slices(11);
+  EXPECT_EQ(W1.size(), 8);
+  EXPECT_EQ(W2.size(), 3);
+}
+
 RELOCO_END_UNSAFE_BUFFER_USAGE
