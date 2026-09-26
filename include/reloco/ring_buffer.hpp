@@ -570,25 +570,29 @@ public:
    */
   span<T> make_contiguous() & noexcept RELOCO_LIFETIMEBOUND {
     if (this->len_ <= 1) {
-      if (this->len_ == 1)
-        this->head_ = 0; // Trivial reset
-      return span<T>(static_cast<T *>(this->data_) + this->head_, this->len_);
+      if (this->len_ == 1 && this->head_ > 0) {
+        T *typed_data = static_cast<T *>(this->data_);
+        typed_data[0] = typed_data[this->head_];
+      }
+      this->head_ = 0;
+      return span<T>(static_cast<T *>(this->data_), this->len_);
     }
 
     std::size_t tail = this->head_ + this->len_;
+    T *typed_data = static_cast<T *>(this->data_);
 
-    // Already contiguous
+    // Already contiguous, but not at the front.
+    // Slide it left to unify all free space at the back.
     if (tail <= this->cap_) {
-      return span<T>(static_cast<T *>(this->data_) + this->head_, this->len_);
+      if (this->head_ > 0) {
+        std::memmove(typed_data, typed_data + this->head_, this->len_ * sizeof(T));
+        this->head_ = 0;
+      }
+      return span<T>(typed_data, this->len_);
     }
 
     // Wrapped. We have two chunks: [head_, cap_) and [0, tail - cap_).
-    // Because elements are trivial, we can just use std::rotate on the raw bytes!
-    T *typed_data = static_cast<T *>(this->data_);
-
-    // If there is free space, it's faster to do block shifts, but std::rotate
-    // is highly optimized in standard libraries for contiguous memory and requires 0 extra memory.
-    // We rotate the entire array so the head chunk comes first.
+    // std::rotate perfectly glues Chunk 2 right after Chunk 1 and shifts the head to 0.
     std::rotate(typed_data, typed_data + this->head_, typed_data + this->cap_);
 
     this->head_ = 0;
@@ -1069,6 +1073,99 @@ public:
     this->transfer_to(dest, size_or_skip);
 
     return true;
+  }
+
+  // ---- Zero-Copy Allocation & Commit ----
+
+  /**
+   * @brief Returns a contiguous span of writable free space.
+   * Because memory is circular, this returns at most the contiguous free space
+   * up to the physical end of the buffer.
+   *
+   * @param limit Maximum number of elements to allocate (default: all available contiguous space).
+   * @return A span pointing to writable memory. Call `commit()` after writing.
+   */
+  [[nodiscard]] span<T>
+  allocate_contiguous(size_type limit = static_cast<size_type>(-1)) & noexcept RELOCO_LIFETIMEBOUND {
+    if (this->len_ == this->cap_)
+      return {}; // Full
+
+    std::size_t tail = this->head_ + this->len_;
+    std::size_t available;
+
+    if (tail < this->cap_) {
+      // Free space is contiguous from tail to the physical end of the buffer
+      available = this->cap_ - tail;
+    } else {
+      // Free space is wrapped, existing between the physical start (tail - cap_) and head_
+      tail -= this->cap_;
+      available = this->head_ - tail;
+    }
+
+    std::size_t to_allocate = std::min(limit, available);
+    return span<T>(static_cast<T *>(this->data_) + tail, to_allocate);
+  }
+
+  /**
+   * @brief Allocates uninitialized contiguous space for a trivially copyable object.
+   * Allows direct mutation (e.g., placement-new or direct struct assignment).
+   */
+  template <typename U> [[nodiscard]] result<U *> try_allocate_object() & noexcept RELOCO_LIFETIMEBOUND {
+    static_assert(std::is_trivially_copyable_v<U>, "Object must be trivially copyable");
+    static_assert(sizeof(U) % sizeof(T) == 0, "Object size must align with buffer element size");
+
+    const std::size_t required_elems = sizeof(U) / sizeof(T);
+
+    span<T> chunk = this->allocate_contiguous(required_elems);
+    if (chunk.size() < required_elems) {
+      return reloco::unexpected(error::capacity_exceeded);
+    }
+
+    return reinterpret_cast<U *>(chunk.data());
+  }
+
+  /**
+   * @brief Commits elements written directly into the allocated space, officially adding them to the buffer.
+   * @param count The number of elements successfully written.
+   */
+  void commit(size_type count) & noexcept {
+    RELOCO_ASSERT(count <= this->free_space(), "Cannot commit more elements than free space available");
+    this->len_ += count;
+  }
+
+  // ---- Scatter-Gather (Non-Contiguous) Allocation ----
+
+  /**
+   * @brief Returns up to `limit` elements of writable free space as one or two spans.
+   * Bypasses the need for `make_contiguous()` by exposing the wrap-around boundary directly.
+   * Perfect for POSIX `readv` or scatter-gather network I/O.
+   *
+   * @param limit Maximum number of elements to allocate (default: all free space).
+   * @return A pair of spans. The second span is empty if the allocated space didn't wrap.
+   *         Call `commit(total_written)` after writing to these spans.
+   */
+  [[nodiscard]] std::pair<span<T>, span<T>>
+  allocate_slices(size_type limit = static_cast<size_type>(-1)) & noexcept RELOCO_LIFETIMEBOUND {
+    std::size_t available = this->cap_ - this->len_;
+    std::size_t to_allocate = std::min(limit, available);
+
+    if (to_allocate == 0)
+      return {};
+
+    std::size_t tail = this->head_ + this->len_;
+    if (tail >= this->cap_)
+      tail -= this->cap_;
+
+    std::size_t first_chunk = std::min(to_allocate, this->cap_ - tail);
+
+    span<T> s1(static_cast<T *>(this->data_) + tail, first_chunk);
+    span<T> s2;
+
+    if (first_chunk < to_allocate) {
+      s2 = span<T>(static_cast<T *>(this->data_), to_allocate - first_chunk);
+    }
+
+    return {s1, s2};
   }
 };
 

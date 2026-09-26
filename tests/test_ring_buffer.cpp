@@ -418,4 +418,92 @@ TEST_F(RingBufferCodecTest, AtomicFrameTransfer) {
   EXPECT_EQ(dest.size(), (sizeof(TestHeader) + 5) * 2); // Destination holds both full packets
 }
 
+TEST(RingBufferTest, AllocateAndCommit) {
+  inline_ring_buffer<char, 32> stream;
+
+  // Force a wrap-around layout
+  ASSERT_TRUE(stream.try_reserve(20).has_value());
+  ASSERT_TRUE(stream.try_write(span<const char>("123456789012345", 15)).has_value()); // Write 15
+  stream.consume(10); // Consume 10. Head is at 10, Tail is at 15. Free space is 27 bytes total.
+
+  // Allocate contiguous memory for a mock "socket read"
+  // Even though 27 bytes are free, the tail is at 15, so the contiguous space
+  // to the end of the 32-byte array is only 17 bytes!
+  span<char> write_buf = stream.allocate_contiguous();
+  EXPECT_EQ(write_buf.size(), 17);
+
+  // Write 5 bytes directly into the span and commit it
+  std::memcpy(write_buf.data(), "ABCDE", 5);
+  stream.commit(5);
+
+  EXPECT_EQ(stream.size(), 10); // 5 old bytes + 5 new bytes
+
+  // Object Allocation
+  // Allocate space directly for a struct without copying it later
+  auto obj_res = stream.try_allocate_object<TestHeader>();
+  ASSERT_TRUE(obj_res.has_value());
+
+  TestHeader *hdr = *obj_res;
+  hdr->magic = 0x1337BEEF;
+  hdr->total_size = sizeof(TestHeader);
+
+  stream.commit(sizeof(TestHeader));
+  EXPECT_EQ(stream.size(), 18);
+
+  // Resolving Free-Space Fragmentation!
+  // We want to write 12 bytes. But we might be near the edge of the wrap.
+  span<char> chunk = stream.allocate_contiguous(12);
+
+  if (chunk.size() < 12) {
+    // We hit the edge of the array! The free space is fragmented.
+    // Fix it instantly with zero heap allocations:
+    stream.make_contiguous();
+
+    // Try again. Now the free space is guaranteed to be in one solid chunk!
+    chunk = stream.allocate_contiguous(12);
+    EXPECT_GE(chunk.size(), 12);
+  }
+
+  std::memcpy(chunk.data(), "FRAGMENT_FIX", 12);
+  stream.commit(12);
+
+  EXPECT_EQ(stream.size(), 30);
+}
+
+TEST(RingBufferTest, AllocateSlicesScatterGather) {
+  inline_ring_buffer<char, 32> stream;
+
+  // Force a wrap-around state
+  ASSERT_TRUE(stream.try_reserve(32));
+  // Write 24, consume 20.
+  // Remaining data (4 bytes) is at index 20. Tail is at 24.
+  // Free space: 8 bytes at the end [24-32], 20 bytes at the front [0-20].
+  ASSERT_TRUE(stream.try_write(span<const char>("12345678901234567890ABCD", 24)));
+  stream.consume(20);
+
+  // Request 15 bytes of allocation
+  auto [s1, s2] = stream.allocate_slices(15);
+
+  // It gives us exactly the split we need!
+  EXPECT_EQ(s1.size(), 8);
+  EXPECT_EQ(s2.size(), 7);
+
+  // Write directly into the allocated memory
+  std::memcpy(s1.data(), "12345678", 8);
+  std::memcpy(s2.data(), "90ABCDE", 7);
+
+  // Commit the total number of bytes written
+  stream.commit(15);
+
+  EXPECT_EQ(stream.size(), 19); // 4 old bytes + 15 new bytes
+
+  // Verify the data seamlessly crosses the boundary
+  auto [r1, r2] = stream.read_slices();
+  std::string full_read;
+  full_read.append(r1.data(), r1.size());
+  full_read.append(r2.data(), r2.size());
+
+  EXPECT_EQ(full_read, "ABCD1234567890ABCDE");
+}
+
 RELOCO_END_UNSAFE_BUFFER_USAGE
