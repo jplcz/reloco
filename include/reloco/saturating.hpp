@@ -35,8 +35,7 @@ namespace reloco {
  * (see `int_ops.hpp`, which this forwards to).
  */
 template <typename T> class saturating {
-  static_assert(std::is_integral_v<T> && !std::is_same_v<T, bool>,
-                "saturating<T> requires a non-bool integral T");
+  static_assert(std::is_integral_v<T> && !std::is_same_v<T, bool>, "saturating<T> requires a non-bool integral T");
 
 public:
   using value_type = T;

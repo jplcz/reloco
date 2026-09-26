@@ -48,17 +48,17 @@ class RELOCO_OWNER tree_set : public detail::tree_base<T, Compare, detail::ident
   using base = detail::tree_base<T, Compare, detail::identity_key_of>;
 
 public:
-  using base::base;
-  using base::try_insert;
-  using base::try_first;
-  using base::try_last;
-  using base::try_pop_first;
-  using base::try_pop_last;
   using base::append;
+  using base::base;
   using base::is_disjoint;
   using base::is_subset;
   using base::is_superset;
   using base::retain;
+  using base::try_first;
+  using base::try_insert;
+  using base::try_last;
+  using base::try_pop_first;
+  using base::try_pop_last;
   using typename base::size_type;
   using typename base::value_type;
 

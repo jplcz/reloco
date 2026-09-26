@@ -92,10 +92,8 @@ TEST(AtomicOpsTest, FetchUpdateSaturatingIncrementStopsAtCap) {
 
 TEST(AtomicOpsTest, FetchUpdateHonorsExplicitMemoryOrders) {
   std::atomic<int> a{1};
-  auto result =
-      fetch_update(a, std::memory_order_release, std::memory_order_relaxed, [](int current) {
-        return optional<int>(current * 2);
-      });
+  auto result = fetch_update(a, std::memory_order_release, std::memory_order_relaxed,
+                             [](int current) { return optional<int>(current * 2); });
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), 1);
   EXPECT_EQ(a.load(), 2);

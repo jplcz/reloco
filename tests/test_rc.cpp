@@ -175,8 +175,7 @@ TEST(RcTest, EqualityComparesUnderlyingPointer) {
 }
 
 TEST(RcTest, IsTriviallyRelocatable) {
-  static_assert(reloco::is_trivially_relocatable<reloco::rc<widget>>::value,
-                "rc<T> should be trivially relocatable");
+  static_assert(reloco::is_trivially_relocatable<reloco::rc<widget>>::value, "rc<T> should be trivially relocatable");
   static_assert(reloco::is_trivially_relocatable<reloco::weak_rc<widget>>::value,
                 "weak_rc<T> should be trivially relocatable");
 }

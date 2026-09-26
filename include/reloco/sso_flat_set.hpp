@@ -136,9 +136,7 @@ struct collection_view_traits<sso_flat_set<T, InlineCapacity, Compare>> {
   static constexpr bool has_data = true;
   static constexpr bool is_mutable = false;
 
-  [[nodiscard]] static std::size_t size(const sso_flat_set<T, InlineCapacity, Compare> &c) noexcept {
-    return c.size();
-  }
+  [[nodiscard]] static std::size_t size(const sso_flat_set<T, InlineCapacity, Compare> &c) noexcept { return c.size(); }
 
   [[nodiscard]] static bool empty(const sso_flat_set<T, InlineCapacity, Compare> &c) noexcept { return c.empty(); }
 
@@ -147,9 +145,7 @@ struct collection_view_traits<sso_flat_set<T, InlineCapacity, Compare>> {
     return c.begin()[index];
   }
 
-  [[nodiscard]] static const T *data(const sso_flat_set<T, InlineCapacity, Compare> &c) noexcept {
-    return c.begin();
-  }
+  [[nodiscard]] static const T *data(const sso_flat_set<T, InlineCapacity, Compare> &c) noexcept { return c.begin(); }
 };
 
 /**

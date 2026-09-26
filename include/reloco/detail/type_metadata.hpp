@@ -44,8 +44,8 @@
  */
 
 #include "../alignment.hpp"
-#include "../reloco_extern.hpp"
 #include "../relocatable.hpp"
+#include "../reloco_extern.hpp"
 
 #include <cstddef>
 #include <type_traits>

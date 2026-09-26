@@ -75,7 +75,7 @@
  */
 
 #if !defined(RELOCO_SHARED_BUILD)
-#error                                                                                                                \
+#error                                                                                                                 \
     "reloco_compile.hpp is only meant for the translation unit that builds a RELOCO_SHARED library -- define RELOCO_SHARED and RELOCO_SHARED_BUILD before including it (see reloco/reloco_extern.hpp)"
 #endif
 

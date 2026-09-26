@@ -54,7 +54,9 @@ TEST(GuardedMutexTest, TryLockSucceedsWhenFree) {
 
 TEST(GuardedMutexTest, GuardReleasesLockOnDestruction) {
   reloco::guarded_mutex<int> m(0);
-  { auto g = m.lock(); }
+  {
+    auto g = m.lock();
+  }
   auto g2 = m.try_lock();
   EXPECT_TRUE(g2.has_value());
 }

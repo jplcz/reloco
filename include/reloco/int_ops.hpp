@@ -69,8 +69,7 @@ template <typename T> struct overflowing_result {
 namespace detail {
 
 template <typename T> constexpr void assert_supported_int() noexcept {
-  static_assert(std::is_integral_v<T> && !std::is_same_v<T, bool>,
-               "int_ops requires a non-bool integral type");
+  static_assert(std::is_integral_v<T> && !std::is_same_v<T, bool>, "int_ops requires a non-bool integral type");
 }
 
 } // namespace detail

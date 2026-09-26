@@ -198,8 +198,7 @@ public:
    * without a predecessor to walk up from -- `node_header` itself has no
    * way back to the tree once you have walked off its far edge.
    */
-  constexpr tree_const_iterator(const node_header *node, const node_header *root) noexcept
-      : node_(node), root_(root) {}
+  constexpr tree_const_iterator(const node_header *node, const node_header *root) noexcept : node_(node), root_(root) {}
 
   [[nodiscard]] reference operator*() const noexcept {
     return *std::launder(static_cast<const T *>(node_base::payload_of(node_, metadata_for<T>)));
@@ -323,8 +322,8 @@ public:
    * parameter accepts both lvalues (one copy) and rvalues (moved in with
    * no extra copy) uniformly.
    */
-  [[nodiscard]] result<std::reference_wrapper<value_type>> try_insert(value_type value) & noexcept
-      RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] result<std::reference_wrapper<value_type>>
+  try_insert(value_type value) & noexcept RELOCO_LIFETIMEBOUND {
     const KeyOf key_of{};
     const key_type &key = key_of(value);
 
@@ -377,8 +376,8 @@ public:
   }
 
   template <typename Key>
-  [[nodiscard]] result<std::reference_wrapper<const value_type>> try_find(const Key &key) const & noexcept
-      RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] result<std::reference_wrapper<const value_type>>
+  try_find(const Key &key) const & noexcept RELOCO_LIFETIMEBOUND {
     header *node = find_node(key);
     if (!node)
       return unexpected(error::not_found);

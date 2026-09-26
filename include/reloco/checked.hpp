@@ -42,8 +42,7 @@ namespace reloco {
  * `int_ops.hpp`.
  */
 template <typename T> class checked {
-  static_assert(std::is_integral_v<T> && !std::is_same_v<T, bool>,
-                "checked<T> requires a non-bool integral T");
+  static_assert(std::is_integral_v<T> && !std::is_same_v<T, bool>, "checked<T> requires a non-bool integral T");
 
 public:
   using value_type = T;

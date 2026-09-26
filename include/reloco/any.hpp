@@ -107,8 +107,7 @@ public:
    * the cheapest storage strategy available for its (decayed) type: the
    * inline SOO buffer, or a single heap allocation.
    */
-  template <typename T, typename Decayed = std::decay_t<T>,
-            std::enable_if_t<!std::is_same_v<Decayed, any>, int> = 0>
+  template <typename T, typename Decayed = std::decay_t<T>, std::enable_if_t<!std::is_same_v<Decayed, any>, int> = 0>
   [[nodiscard]] static result<any> try_allocate(allocator_ref alloc, T &&value) noexcept {
     return try_allocate_impl<Decayed>(alloc, std::forward<T>(value));
   }
@@ -119,8 +118,7 @@ public:
    * value)` requires.
    */
   template <typename T, typename... Args>
-  [[nodiscard]] static result<any> try_allocate(allocator_ref alloc, std::in_place_type_t<T>,
-                                                Args &&...args) noexcept {
+  [[nodiscard]] static result<any> try_allocate(allocator_ref alloc, std::in_place_type_t<T>, Args &&...args) noexcept {
     return try_allocate_impl<T>(alloc, std::forward<Args>(args)...);
   }
 
@@ -128,8 +126,7 @@ public:
    * @brief `try_allocate` using the process-wide default allocator (see
    * `default_allocator()`).
    */
-  template <typename T, typename Decayed = std::decay_t<T>,
-            std::enable_if_t<!std::is_same_v<Decayed, any>, int> = 0>
+  template <typename T, typename Decayed = std::decay_t<T>, std::enable_if_t<!std::is_same_v<Decayed, any>, int> = 0>
   [[nodiscard]] static result<any> try_create(T &&value) noexcept {
     return try_allocate(default_allocator(), std::forward<T>(value));
   }
@@ -386,7 +383,7 @@ private:
         [](const storage *src, storage *dest, allocator_ref alloc) noexcept -> result<void> {
           if constexpr (cloneable) {
             return construction_helpers::try_clone_at<T>(alloc, reinterpret_cast<T *>(dest->buffer),
-                                                          *reinterpret_cast<const T *>(src->buffer));
+                                                         *reinterpret_cast<const T *>(src->buffer));
           } else {
             return unexpected(error::unsupported_operation);
           }
@@ -410,7 +407,7 @@ private:
             if (!block)
               return unexpected(block.error());
             auto res = construction_helpers::try_clone_at<T>(alloc, static_cast<T *>(block->ptr),
-                                                              *static_cast<const T *>(src->heap_ptr));
+                                                             *static_cast<const T *>(src->heap_ptr));
             if (!res) {
               alloc.deallocate(block->ptr, sizeof(T));
               return unexpected(res.error());

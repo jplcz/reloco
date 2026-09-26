@@ -339,7 +339,9 @@ TEST(SyncChannelTest, SendUnblocksWithInvalidStateWhenReceiverDroppedWhileWaitin
   ASSERT_TRUE(handle);
 
   reloco::this_thread::sleep_for(reloco::duration::from_millis(20));
-  { auto dropped = std::move(rx); } // Wakes the blocked send() above with invalid_state.
+  {
+    auto dropped = std::move(rx);
+  } // Wakes the blocked send() above with invalid_state.
 
   std::move(*handle).join();
   ASSERT_FALSE(send_result);

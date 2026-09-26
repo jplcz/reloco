@@ -255,8 +255,8 @@ public:
    * @p prefix removed from the front, or an empty `optional` if this view
    * does not start with @p prefix.
    */
-  [[nodiscard]] constexpr optional<basic_string_view> strip_prefix(basic_string_view prefix) const noexcept
-      RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] constexpr optional<basic_string_view>
+  strip_prefix(basic_string_view prefix) const noexcept RELOCO_LIFETIMEBOUND {
     if (!starts_with(prefix))
       return nullopt;
     return substr(prefix.size_);
@@ -267,8 +267,8 @@ public:
    * @p suffix removed from the back, or an empty `optional` if this view
    * does not end with @p suffix.
    */
-  [[nodiscard]] constexpr optional<basic_string_view> strip_suffix(basic_string_view suffix) const noexcept
-      RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] constexpr optional<basic_string_view>
+  strip_suffix(basic_string_view suffix) const noexcept RELOCO_LIFETIMEBOUND {
     if (!ends_with(suffix))
       return nullopt;
     return substr(0, size_ - suffix.size_);
@@ -290,8 +290,8 @@ public:
    * removed.
    */
   template <typename Pred = decltype(&basic_string_view::is_ascii_space)>
-  [[nodiscard]] constexpr basic_string_view trim_start(Pred pred = &basic_string_view::is_ascii_space) const noexcept
-      RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] constexpr basic_string_view
+  trim_start(Pred pred = &basic_string_view::is_ascii_space) const noexcept RELOCO_LIFETIMEBOUND {
     size_type i = 0;
     while (i < size_ && pred(data_[i]))
       ++i;
@@ -304,8 +304,8 @@ public:
    * removed.
    */
   template <typename Pred = decltype(&basic_string_view::is_ascii_space)>
-  [[nodiscard]] constexpr basic_string_view trim_end(Pred pred = &basic_string_view::is_ascii_space) const noexcept
-      RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] constexpr basic_string_view
+  trim_end(Pred pred = &basic_string_view::is_ascii_space) const noexcept RELOCO_LIFETIMEBOUND {
     size_type i = size_;
     while (i > 0 && pred(data_[i - 1]))
       --i;
@@ -317,8 +317,8 @@ public:
    * characters satisfying @p pred (default: ASCII whitespace).
    */
   template <typename Pred = decltype(&basic_string_view::is_ascii_space)>
-  [[nodiscard]] constexpr basic_string_view trim(Pred pred = &basic_string_view::is_ascii_space) const noexcept
-      RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] constexpr basic_string_view
+  trim(Pred pred = &basic_string_view::is_ascii_space) const noexcept RELOCO_LIFETIMEBOUND {
     return trim_start(pred).trim_end(pred);
   }
 

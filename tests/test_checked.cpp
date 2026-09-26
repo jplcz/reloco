@@ -12,13 +12,9 @@
 using reloco::checked;
 using reloco::error;
 
-TEST(CheckedTest, DefaultConstructedIsZero) {
-  EXPECT_EQ(checked<int>().get(), 0);
-}
+TEST(CheckedTest, DefaultConstructedIsZero) { EXPECT_EQ(checked<int>().get(), 0); }
 
-TEST(CheckedTest, GetReturnsWrappedValue) {
-  EXPECT_EQ(checked<int>(42).get(), 42);
-}
+TEST(CheckedTest, GetReturnsWrappedValue) { EXPECT_EQ(checked<int>(42).get(), 42); }
 
 TEST(CheckedTest, ImplicitlyConvertsToT) {
   const checked<int> value(7);
@@ -75,8 +71,7 @@ TEST(CheckedTest, TryDivFailsOnZeroDivisor) {
 }
 
 TEST(CheckedTest, TryDivFailsOnMinDividedByNegativeOne) {
-  const auto result =
-      checked<int32_t>(std::numeric_limits<int32_t>::min()).try_div(checked<int32_t>(-1));
+  const auto result = checked<int32_t>(std::numeric_limits<int32_t>::min()).try_div(checked<int32_t>(-1));
   ASSERT_FALSE(result.has_value());
   EXPECT_EQ(result.error(), error::integer_overflow);
 }
@@ -124,8 +119,8 @@ TEST(CheckedTest, TryAbsFailsForSignedMin) {
 
 TEST(CheckedTest, ChainedTryOperationsPropagateFailure) {
   const auto result = checked<int32_t>(std::numeric_limits<int32_t>::max())
-                           .try_add(checked<int32_t>(1))
-                           .and_then([](checked<int32_t> value) { return value.try_mul(checked<int32_t>(2)); });
+                          .try_add(checked<int32_t>(1))
+                          .and_then([](checked<int32_t> value) { return value.try_mul(checked<int32_t>(2)); });
   ASSERT_FALSE(result.has_value());
   EXPECT_EQ(result.error(), error::integer_overflow);
 }

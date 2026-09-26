@@ -99,8 +99,7 @@ TEST(VariantTest, IsTriviallyRelocatableFollowsAlternatives) {
 
 TEST(VariantTest, OverloadedHelperBuildsVisitor) {
   std::variant<int, std::string> raw(3);
-  int result = std::visit(overloaded{[](int i) { return i; }, [](const std::string &s) { return (int)s.size(); }},
-                           raw);
+  int result = std::visit(overloaded{[](int i) { return i; }, [](const std::string &s) { return (int)s.size(); }}, raw);
   EXPECT_EQ(result, 3);
 }
 

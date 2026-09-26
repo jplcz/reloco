@@ -382,7 +382,7 @@ TEST(SsoVectorTest, MoveConstructionFromInlineCopiesBuffer) {
   EXPECT_EQ(moved.size(), 2u);
   EXPECT_EQ(moved[0], 1);
   EXPECT_EQ(moved[1], 2);
-  EXPECT_TRUE(v.empty()); // NOLINT(bugprone-use-after-move)
+  EXPECT_TRUE(v.empty());     // NOLINT(bugprone-use-after-move)
   EXPECT_TRUE(v.is_inline()); // NOLINT(bugprone-use-after-move)
 }
 
@@ -398,7 +398,7 @@ TEST(SsoVectorTest, MoveConstructionFromHeapStealsPointer) {
   EXPECT_FALSE(moved.is_inline());
   EXPECT_EQ(moved.data(), original_data);
   EXPECT_EQ(moved.size(), 3u);
-  EXPECT_TRUE(v.empty()); // NOLINT(bugprone-use-after-move)
+  EXPECT_TRUE(v.empty());     // NOLINT(bugprone-use-after-move)
   EXPECT_TRUE(v.is_inline()); // NOLINT(bugprone-use-after-move)
 }
 
@@ -444,7 +444,7 @@ TEST(SsoVectorTest, MoveAssignmentFromHeapBackedReleasesInlineTarget) {
   a = std::move(b);
   EXPECT_FALSE(a.is_inline());
   EXPECT_EQ(a.size(), 5u);
-  EXPECT_TRUE(b.empty()); // NOLINT(bugprone-use-after-move)
+  EXPECT_TRUE(b.empty());     // NOLINT(bugprone-use-after-move)
   EXPECT_TRUE(b.is_inline()); // NOLINT(bugprone-use-after-move)
 }
 
@@ -507,8 +507,8 @@ TEST(SsoVectorTest, TryCloneAtWritesIntoUninitializedStorage) {
   ASSERT_TRUE(v.try_push_back(2));
 
   alignas(sso_vector<int, 4>) std::byte storage[sizeof(sso_vector<int, 4>)];
-  auto res = sso_vector<int, 4>::try_clone_at(reloco::default_allocator(),
-                                              reinterpret_cast<sso_vector<int, 4> *>(storage), v);
+  auto res =
+      sso_vector<int, 4>::try_clone_at(reloco::default_allocator(), reinterpret_cast<sso_vector<int, 4> *>(storage), v);
   ASSERT_TRUE(res);
   auto *cloned = reinterpret_cast<sso_vector<int, 4> *>(storage);
   EXPECT_EQ(cloned->size(), 2u);

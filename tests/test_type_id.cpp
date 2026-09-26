@@ -28,9 +28,7 @@ TEST(TypeIdTest, SameTypeCompareEqual) {
   EXPECT_EQ(reloco::type_id_of<alpha>(), reloco::type_id_of<alpha>());
 }
 
-TEST(TypeIdTest, DifferentTypesCompareUnequal) {
-  EXPECT_NE(reloco::type_id::of<alpha>(), reloco::type_id::of<beta>());
-}
+TEST(TypeIdTest, DifferentTypesCompareUnequal) { EXPECT_NE(reloco::type_id::of<alpha>(), reloco::type_id::of<beta>()); }
 
 TEST(TypeIdTest, CvAndReferenceQualificationAreDistinctIdentities) {
   EXPECT_NE(reloco::type_id::of<alpha>(), reloco::type_id::of<const alpha>());
@@ -44,9 +42,7 @@ TEST(TypeIdTest, DefaultConstructedIsTheNoTypeSentinel) {
   EXPECT_EQ(id, reloco::type_id());
 }
 
-TEST(TypeIdTest, OfProducesATruthyValidIdentity) {
-  EXPECT_TRUE(static_cast<bool>(reloco::type_id::of<alpha>()));
-}
+TEST(TypeIdTest, OfProducesATruthyValidIdentity) { EXPECT_TRUE(static_cast<bool>(reloco::type_id::of<alpha>())); }
 
 TEST(TypeIdTest, TotalOrderingIsConsistentAndIrreflexive) {
   auto a = reloco::type_id::of<alpha>();
@@ -76,9 +72,7 @@ TEST(TypeIdTest, NameIsNullptrForATypeWithNoRegisteredName) {
   EXPECT_EQ(reloco::type_id::of<unnamed_type>().name(), nullptr);
 }
 
-TEST(TypeIdTest, NameIsNullptrForTheNoTypeSentinel) {
-  EXPECT_EQ(reloco::type_id().name(), nullptr);
-}
+TEST(TypeIdTest, NameIsNullptrForTheNoTypeSentinel) { EXPECT_EQ(reloco::type_id().name(), nullptr); }
 
 TEST(TypeIdTest, RelocoTypeIdNameRegistersACustomDebugName) {
   const char *name = reloco::type_id::of<alpha>().name();

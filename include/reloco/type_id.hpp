@@ -167,10 +167,10 @@ template <typename T> struct RELOCO_EXPORT type_id_tag {
  * RELOCO_TYPE_ID_NAME(my_widget, "my_widget");
  * @endcode
  */
-#define RELOCO_TYPE_ID_NAME(T, name_str)                                                                             \
-  template <> struct reloco::type_id_tag<T> {                                                                        \
-    static constexpr char tag = 0;                                                                                   \
-    static constexpr const char *name() noexcept { return name_str; }                                                \
+#define RELOCO_TYPE_ID_NAME(T, name_str)                                                                               \
+  template <> struct reloco::type_id_tag<T> {                                                                          \
+    static constexpr char tag = 0;                                                                                     \
+    static constexpr const char *name() noexcept { return name_str; }                                                  \
   }
 
 /**
@@ -271,4 +271,3 @@ RELOCO_TYPE_ID_NAME(double, "double");
 RELOCO_TYPE_ID_NAME(long double, "long double");
 RELOCO_TYPE_ID_NAME(std::nullptr_t, "std::nullptr_t");
 RELOCO_TYPE_ID_NAME(reloco::type_id, "reloco::type_id");
-

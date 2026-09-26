@@ -202,9 +202,8 @@ public:
    * freshly initialized by this call).
    */
   template <typename F> [[nodiscard]] T &get_or_init(F &&f) noexcept(std::is_nothrow_invocable_v<F &>) {
-    auto init_result = get_or_try_init([&f]() noexcept(std::is_nothrow_invocable_v<F &>) -> result<T> {
-      return result<T>(std::forward<F>(f)());
-    });
+    auto init_result = get_or_try_init(
+        [&f]() noexcept(std::is_nothrow_invocable_v<F &>) -> result<T> { return result<T>(std::forward<F>(f)()); });
     RELOCO_ASSERT(init_result.has_value(), "once_lock::get_or_init: unreachable -- wrapped closure never fails");
     return **init_result;
   }

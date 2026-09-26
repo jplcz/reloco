@@ -66,7 +66,8 @@ public:
   }
 
   constexpr optional(const T &value) noexcept(std::is_nothrow_copy_constructible_v<T>)
-      RELOCO_RETURN_TYPESTATE(unconsumed) : has_value_(false) {
+      RELOCO_RETURN_TYPESTATE(unconsumed)
+      : has_value_(false) {
     construct(value);
   }
 
@@ -297,8 +298,7 @@ public:
     return has_value_ ? value_ : f();
   }
   /** @copydoc unwrap_or_else(F &&) const & */
-  template <typename F>
-  [[nodiscard]] T unwrap_or_else(F &&f) && noexcept(std::is_nothrow_move_constructible_v<T>) {
+  template <typename F> [[nodiscard]] T unwrap_or_else(F &&f) && noexcept(std::is_nothrow_move_constructible_v<T>) {
     return has_value_ ? std::move(value_) : f();
   }
 
@@ -408,8 +408,8 @@ public:
    * otherwise returns an empty `optional`.
    */
   template <typename U>
-  [[nodiscard]] auto zip(const optional<U> &other) const &
-      noexcept(std::is_nothrow_copy_constructible_v<T> && std::is_nothrow_copy_constructible_v<U>) {
+  [[nodiscard]] auto zip(const optional<U> &other) const & noexcept(std::is_nothrow_copy_constructible_v<T> &&
+                                                                    std::is_nothrow_copy_constructible_v<U>) {
     using Zipped = optional<std::pair<T, U>>;
     if (has_value_ && other.has_value())
       return Zipped(std::in_place, value_, other.value());

@@ -25,8 +25,8 @@ namespace reloco {
  * @p new_value, returning the previous value.
  */
 template <typename T, typename U = T>
-[[nodiscard]] constexpr T replace(T &slot, U &&new_value) noexcept(
-    std::is_nothrow_move_constructible_v<T> &&std::is_nothrow_assignable_v<T &, U &&>) {
+[[nodiscard]] constexpr T replace(T &slot, U &&new_value) noexcept(std::is_nothrow_move_constructible_v<T> &&
+                                                                   std::is_nothrow_assignable_v<T &, U &&>) {
   T old = std::move(slot);
   slot = std::forward<U>(new_value);
   return old;
@@ -38,8 +38,8 @@ template <typename T, typename U = T>
  * be default-constructible (Rust's `T: Default` bound).
  */
 template <typename T>
-[[nodiscard]] constexpr T take(T &slot) noexcept(std::is_nothrow_move_constructible_v<T>
-                                                     &&std::is_nothrow_default_constructible_v<T>) {
+[[nodiscard]] constexpr T take(T &slot) noexcept(std::is_nothrow_move_constructible_v<T> &&
+                                                 std::is_nothrow_default_constructible_v<T>) {
   static_assert(std::is_default_constructible_v<T>, "reloco::take requires a default-constructible T");
   return replace(slot, T());
 }

@@ -35,8 +35,7 @@ namespace reloco {
  * `wrapping_mul` call (see `int_ops.hpp`, which this forwards to).
  */
 template <typename T> class wrapping {
-  static_assert(std::is_integral_v<T> && !std::is_same_v<T, bool>,
-                "wrapping<T> requires a non-bool integral T");
+  static_assert(std::is_integral_v<T> && !std::is_same_v<T, bool>, "wrapping<T> requires a non-bool integral T");
 
 public:
   using value_type = T;

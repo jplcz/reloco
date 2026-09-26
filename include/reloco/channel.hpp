@@ -156,7 +156,7 @@ template <typename T> struct channel_shared {
   std::size_t sender_count = 1;
   bool receiver_alive = true;
   bool bounded = false;
-  std::size_t capacity = 0;          // Meaningful only when bounded; 0 means a rendezvous channel.
+  std::size_t capacity = 0; // Meaningful only when bounded; 0 means a rendezvous channel.
   std::size_t queue_len = 0;
   std::size_t waiting_receivers = 0; // Meaningful only for a bounded, 0-capacity (rendezvous) channel.
   allocator_ref alloc;
@@ -558,9 +558,8 @@ public:
       if (!shared_->receiver_alive)
         return unexpected(error::invalid_state);
 
-      bool has_room = shared_->capacity == 0
-                          ? (shared_->queue_len == 0 && shared_->waiting_receivers > 0)
-                          : shared_->queue_len < shared_->capacity;
+      bool has_room = shared_->capacity == 0 ? (shared_->queue_len == 0 && shared_->waiting_receivers > 0)
+                                             : shared_->queue_len < shared_->capacity;
       if (!has_room)
         return unexpected(error::capacity_exceeded);
 
@@ -619,7 +618,7 @@ template <typename T> [[nodiscard]] result<std::pair<sender<T>, receiver<T>>> ch
  */
 template <typename T>
 [[nodiscard]] result<std::pair<sync_sender<T>, receiver<T>>> sync_channel(std::size_t capacity,
-                                                                           allocator_ref alloc) noexcept {
+                                                                          allocator_ref alloc) noexcept {
   static_assert(std::is_nothrow_move_constructible_v<T>,
                 "reloco::sync_channel: T must be nothrow move constructible (queue nodes are moved through the "
                 "channel without any error-recovery path)");
@@ -653,4 +652,3 @@ template <typename T> struct is_send<receiver<T>> : is_send<T> {};
 template <typename T> struct is_sync<receiver<T>> : std::false_type {};
 
 } // namespace reloco
-

@@ -153,8 +153,7 @@ TEST(TypeOperationsTest, DestroyOneInvokesDestructor) {
 
 TEST(TypeOperationsTest, CopyConstructOneDefaultConstructsWhenValuePtrIsNull) {
   raw_slot<tracked> slot;
-  auto res =
-      get_type_operations_for<tracked>()->copy_construct_one(metadata_for<tracked>, heap(), slot.ptr(), nullptr);
+  auto res = get_type_operations_for<tracked>()->copy_construct_one(metadata_for<tracked>, heap(), slot.ptr(), nullptr);
   ASSERT_TRUE(res);
   EXPECT_EQ(slot.as().value, 0);
   slot.as().~tracked();
@@ -164,8 +163,7 @@ TEST(TypeOperationsTest, CopyConstructOneCopiesGivenValueViaCopyConstructor) {
   tracked::copy_count = 0;
   const tracked source(42);
   raw_slot<tracked> slot;
-  auto res =
-      get_type_operations_for<tracked>()->copy_construct_one(metadata_for<tracked>, heap(), slot.ptr(), &source);
+  auto res = get_type_operations_for<tracked>()->copy_construct_one(metadata_for<tracked>, heap(), slot.ptr(), &source);
   ASSERT_TRUE(res);
   EXPECT_EQ(slot.as().value, 42);
   EXPECT_EQ(tracked::copy_count, 1);
@@ -210,8 +208,8 @@ TEST(TypeOperationsTest, ClonableTypeWithoutCopySemanticsHasNullCloneOne) {
 TEST(TypeOperationsTest, CopyConstructOneReturnsUnsupportedForNonCopyableType) {
   raw_slot<move_only_non_copyable> slot;
   move_only_non_copyable value(3);
-  auto res = get_type_operations_for<move_only_non_copyable>()->copy_construct_one(
-      metadata_for<move_only_non_copyable>, heap(), slot.ptr(), &value);
+  auto res = get_type_operations_for<move_only_non_copyable>()->copy_construct_one(metadata_for<move_only_non_copyable>,
+                                                                                   heap(), slot.ptr(), &value);
   ASSERT_FALSE(res);
   EXPECT_EQ(res.error(), reloco::error::unsupported_operation);
 }

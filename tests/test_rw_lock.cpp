@@ -88,14 +88,18 @@ TEST(RwLockTest, TryWriteSucceedsWhenFree) {
 
 TEST(RwLockTest, ReadGuardReleasesLockOnDestruction) {
   reloco::rw_lock<int> m(0);
-  { auto g = m.read(); }
+  {
+    auto g = m.read();
+  }
   auto g2 = m.try_write();
   EXPECT_TRUE(g2.has_value());
 }
 
 TEST(RwLockTest, WriteGuardReleasesLockOnDestruction) {
   reloco::rw_lock<int> m(0);
-  { auto g = m.write(); }
+  {
+    auto g = m.write();
+  }
   auto g2 = m.try_read();
   EXPECT_TRUE(g2.has_value());
 }

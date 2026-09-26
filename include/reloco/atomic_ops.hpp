@@ -156,7 +156,7 @@ T fetch_min(std::atomic<T> &a, T val, std::memory_order order = std::memory_orde
  */
 template <typename T, typename F>
 expected<T, T> fetch_update(std::atomic<T> &a, std::memory_order success_order, std::memory_order failure_order,
-                             F &&f) noexcept(noexcept(f(std::declval<T>()))) {
+                            F &&f) noexcept(noexcept(f(std::declval<T>()))) {
   T current = a.load(failure_order);
   for (;;) {
     optional<T> next = f(current);
@@ -172,8 +172,9 @@ expected<T, T> fetch_update(std::atomic<T> &a, std::memory_order success_order, 
  * the success and failure memory orders.
  */
 template <typename T, typename F>
-expected<T, T> fetch_update(std::atomic<T> &a, std::memory_order order, F &&f) noexcept(
-    noexcept(fetch_update(a, order, detail::to_cas_failure_order(order), std::forward<F>(f)))) {
+expected<T, T> fetch_update(std::atomic<T> &a, std::memory_order order,
+                            F &&f) noexcept(noexcept(fetch_update(a, order, detail::to_cas_failure_order(order),
+                                                                  std::forward<F>(f)))) {
   return fetch_update(a, order, detail::to_cas_failure_order(order), std::forward<F>(f));
 }
 
@@ -184,8 +185,7 @@ expected<T, T> fetch_update(std::atomic<T> &a, std::memory_order order, F &&f) n
  */
 template <typename T, typename F>
 expected<T, T> fetch_update(std::atomic<T> &a,
-                             F &&f) noexcept(noexcept(fetch_update(a, std::memory_order_seq_cst,
-                                                                    std::forward<F>(f)))) {
+                            F &&f) noexcept(noexcept(fetch_update(a, std::memory_order_seq_cst, std::forward<F>(f)))) {
   return fetch_update(a, std::memory_order_seq_cst, std::forward<F>(f));
 }
 

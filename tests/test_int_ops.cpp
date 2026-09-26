@@ -75,25 +75,15 @@ TEST(IntOpsTest, CheckedMulSucceedsWithinRange) {
   EXPECT_EQ(result.value(), 42);
 }
 
-TEST(IntOpsTest, WrappingAddWrapsUnsigned) {
-  EXPECT_EQ(wrapping_add<uint8_t>(255, 1), 0);
-}
+TEST(IntOpsTest, WrappingAddWrapsUnsigned) { EXPECT_EQ(wrapping_add<uint8_t>(255, 1), 0); }
 
-TEST(IntOpsTest, WrappingSubWrapsUnsigned) {
-  EXPECT_EQ(wrapping_sub<uint8_t>(0, 1), 255);
-}
+TEST(IntOpsTest, WrappingSubWrapsUnsigned) { EXPECT_EQ(wrapping_sub<uint8_t>(0, 1), 255); }
 
-TEST(IntOpsTest, WrappingMulWraps) {
-  EXPECT_EQ(wrapping_mul<uint8_t>(200, 2), static_cast<uint8_t>(400));
-}
+TEST(IntOpsTest, WrappingMulWraps) { EXPECT_EQ(wrapping_mul<uint8_t>(200, 2), static_cast<uint8_t>(400)); }
 
-TEST(IntOpsTest, SaturatingAddClampsToMax) {
-  EXPECT_EQ(saturating_add<uint8_t>(255, 10), 255);
-}
+TEST(IntOpsTest, SaturatingAddClampsToMax) { EXPECT_EQ(saturating_add<uint8_t>(255, 10), 255); }
 
-TEST(IntOpsTest, SaturatingSubClampsToMin) {
-  EXPECT_EQ(saturating_sub<uint8_t>(0, 10), 0);
-}
+TEST(IntOpsTest, SaturatingSubClampsToMin) { EXPECT_EQ(saturating_sub<uint8_t>(0, 10), 0); }
 
 TEST(IntOpsTest, SaturatingMulClampsSignedToMaxOrMin) {
   EXPECT_EQ(saturating_mul<int8_t>(100, 2), std::numeric_limits<int8_t>::max());

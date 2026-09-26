@@ -78,7 +78,7 @@ template <> struct allocator_traits<heap_allocator_tag> {
    * allocation plus copy otherwise.
    */
   [[nodiscard]] static RELOCO_API result<mem_block> reallocate(void *ptr, std::size_t old_size, std::size_t new_size,
-                                                                std::size_t alignment) noexcept;
+                                                               std::size_t alignment) noexcept;
 };
 
 #if RELOCO_SHARED_PROVIDE_DEFINITIONS

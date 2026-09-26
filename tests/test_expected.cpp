@@ -188,11 +188,9 @@ TEST(ExpectedTest, MapOrElseAppliesFunctionOrDefaultFunction) {
   reloco::expected<int, std::string> err(reloco::unexpected<std::string>("bad"));
 
   EXPECT_EQ(
-      ok.map_or_else([](const std::string &e) { return static_cast<int>(e.size()); }, [](int v) { return v * 2; }),
-      10);
+      ok.map_or_else([](const std::string &e) { return static_cast<int>(e.size()); }, [](int v) { return v * 2; }), 10);
   EXPECT_EQ(
-      err.map_or_else([](const std::string &e) { return static_cast<int>(e.size()); }, [](int v) { return v * 2; }),
-      3);
+      err.map_or_else([](const std::string &e) { return static_cast<int>(e.size()); }, [](int v) { return v * 2; }), 3);
 }
 
 TEST(ExpectedTest, IsOkAndIsErrAndOnlyInvokePredicateOnMatchingAlternative) {
@@ -261,4 +259,3 @@ TEST(ExpectedTest, VoidSpecializationSupportsRustResultExtensions) {
   EXPECT_EQ(seen_error, "bad");
   err.inspect([] { FAIL() << "should not be invoked on failure"; });
 }
-

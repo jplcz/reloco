@@ -95,9 +95,9 @@ TEST(OnceLockTest, GetOrInitRunsInitializerExactlyOnceOnAnEmptyCell) {
     ++init_calls;
     return 99;
   });
-  EXPECT_EQ(second, 7);      // still the first value
+  EXPECT_EQ(second, 7);       // still the first value
   EXPECT_EQ(&first, &second); // same underlying storage
-  EXPECT_EQ(init_calls, 1);  // initializer not called again
+  EXPECT_EQ(init_calls, 1);   // initializer not called again
 }
 
 TEST(OnceLockTest, GetOrInitReturnsExistingValueWithoutCallingInitializer) {
