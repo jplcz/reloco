@@ -41,6 +41,24 @@ public:
     this->len_ -= count;
   }
 
+  /**
+   * @brief Shrinks the buffer logically to `new_len` by dropping elements from the back.
+   * If `new_len` >= `size()`, does nothing. (Rust: `truncate`)
+   */
+  void truncate(size_type new_len) & noexcept {
+    if (new_len < this->len_) {
+      this->len_ = new_len;
+    }
+  }
+
+  /**
+   * @brief Discards the last `count` elements from the back of the buffer.
+   */
+  void unwrite(size_type count) & noexcept {
+    count = std::min(count, this->len_);
+    this->len_ -= count;
+  }
+
 protected:
   void *data_ = nullptr;
   std::size_t head_ = 0;
@@ -398,6 +416,240 @@ public:
       // Buffer was full; advance head to drop the oldest element
       this->head_ = (this->head_ + 1 == this->cap_) ? 0 : this->head_ + 1;
     }
+  }
+
+  /**
+   * @brief Removes and returns the first element if the buffer is not empty.
+   * (Rust: `pop_front`)
+   */
+  [[nodiscard]] result<T> try_pop_front() & noexcept {
+    if (this->len_ == 0)
+      return unexpected(error::container_empty);
+    T val = static_cast<const T *>(this->data_)[this->head_];
+    this->head_ = (this->head_ + 1 == this->cap_) ? 0 : this->head_ + 1;
+    --this->len_;
+    return val;
+  }
+
+  /**
+   * @brief Removes and returns the last element if the buffer is not empty.
+   * (Rust: `pop_back`)
+   */
+  [[nodiscard]] result<T> try_pop_back() & noexcept {
+    if (this->len_ == 0)
+      return unexpected(error::container_empty);
+    std::size_t tail = this->head_ + this->len_ - 1;
+    if (tail >= this->cap_)
+      tail -= this->cap_;
+    T val = static_cast<const T *>(this->data_)[tail];
+    --this->len_;
+    return val;
+  }
+
+  /**
+   * @brief Pushes a single element to the front, growing capacity if necessary.
+   */
+  [[nodiscard]] result<void> try_push_front(T value) & noexcept {
+    if (this->len_ == this->cap_)
+      RELOCO_UNLIKELY {
+        std::size_t new_cap = this->cap_ == 0 ? 8 : (this->cap_ * 3 + 1) / 2;
+        auto res = try_reserve(new_cap);
+        if (!res)
+          return unexpected(res.error());
+      }
+
+    this->head_ = (this->head_ == 0) ? this->cap_ - 1 : this->head_ - 1;
+    static_cast<T *>(this->data_)[this->head_] = value;
+    ++this->len_;
+
+    return {};
+  }
+
+  /**
+   * @brief Pushes to the front. Overwrites the NEWEST (back) element if full.
+   * Useful for "keep the most recent N elements" streams where pushing front
+   * drops the oldest from the back.
+   */
+  void push_front_overwrite(T value) & noexcept {
+    if (this->cap_ == 0)
+      return;
+
+    this->head_ = (this->head_ == 0) ? this->cap_ - 1 : this->head_ - 1;
+    static_cast<T *>(this->data_)[this->head_] = value;
+
+    if (this->len_ < this->cap_) {
+      ++this->len_;
+    }
+    // If full, moving head backwards inherently drops the element at the tail!
+  }
+
+  // ---- Element Access ----
+
+  [[nodiscard]] T &operator[](size_type index) & noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT(index < this->len_, "ring_buffer index out of bounds");
+    std::size_t physical = this->head_ + index;
+    if (physical >= this->cap_)
+      physical -= this->cap_;
+    return static_cast<T *>(this->data_)[physical];
+  }
+
+  [[nodiscard]] const T &operator[](size_type index) const & noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT(index < this->len_, "ring_buffer index out of bounds");
+    std::size_t physical = this->head_ + index;
+    if (physical >= this->cap_)
+      physical -= this->cap_;
+    return static_cast<const T *>(this->data_)[physical];
+  }
+
+  [[nodiscard]] T &front() & noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT(this->len_ > 0, "ring_buffer is empty");
+    return static_cast<T *>(this->data_)[this->head_];
+  }
+
+  [[nodiscard]] const T &front() const & noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT(this->len_ > 0, "ring_buffer is empty");
+    return static_cast<const T *>(this->data_)[this->head_];
+  }
+
+  [[nodiscard]] T &back() & noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT(this->len_ > 0, "ring_buffer is empty");
+    std::size_t tail = this->head_ + this->len_ - 1;
+    if (tail >= this->cap_)
+      tail -= this->cap_;
+    return static_cast<T *>(this->data_)[tail];
+  }
+
+  [[nodiscard]] const T &back() const & noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT(this->len_ > 0, "ring_buffer is empty");
+    std::size_t tail = this->head_ + this->len_ - 1;
+    if (tail >= this->cap_)
+      tail -= this->cap_;
+    return static_cast<const T *>(this->data_)[tail];
+  }
+
+  /**
+   * @brief Bounds-checked access to the element at `index`.
+   * Returns a pointer to the element on success, or `error::out_of_bounds`.
+   */
+  [[nodiscard]] result<T *> try_at(size_type index) & noexcept RELOCO_LIFETIMEBOUND {
+    if (index >= this->len_)
+      return unexpected(error::out_of_bounds);
+    std::size_t physical = this->head_ + index;
+    if (physical >= this->cap_)
+      physical -= this->cap_;
+    return static_cast<T *>(this->data_) + physical;
+  }
+
+  [[nodiscard]] result<const T *> try_at(size_type index) const & noexcept RELOCO_LIFETIMEBOUND {
+    if (index >= this->len_)
+      return unexpected(error::out_of_bounds);
+    std::size_t physical = this->head_ + index;
+    if (physical >= this->cap_)
+      physical -= this->cap_;
+    return static_cast<const T *>(this->data_) + physical;
+  }
+
+  [[nodiscard]] result<T *> try_front() & noexcept RELOCO_LIFETIMEBOUND {
+    if (this->len_ == 0)
+      return unexpected(error::container_empty);
+    return static_cast<T *>(this->data_) + this->head_;
+  }
+
+  [[nodiscard]] result<T *> try_back() & noexcept RELOCO_LIFETIMEBOUND {
+    if (this->len_ == 0)
+      return unexpected(error::container_empty);
+    std::size_t tail = this->head_ + this->len_ - 1;
+    if (tail >= this->cap_)
+      tail -= this->cap_;
+    return static_cast<T *>(this->data_) + tail;
+  }
+
+  /**
+   * @brief Reorders the physical buffer so that all elements are contiguous,
+   * returning a single span. Uses zero allocations. (Rust: `make_contiguous`)
+   */
+  span<T> make_contiguous() & noexcept RELOCO_LIFETIMEBOUND {
+    if (this->len_ <= 1) {
+      if (this->len_ == 1)
+        this->head_ = 0; // Trivial reset
+      return span<T>(static_cast<T *>(this->data_) + this->head_, this->len_);
+    }
+
+    std::size_t tail = this->head_ + this->len_;
+
+    // Already contiguous
+    if (tail <= this->cap_) {
+      return span<T>(static_cast<T *>(this->data_) + this->head_, this->len_);
+    }
+
+    // Wrapped. We have two chunks: [head_, cap_) and [0, tail - cap_).
+    // Because elements are trivial, we can just use std::rotate on the raw bytes!
+    T *typed_data = static_cast<T *>(this->data_);
+
+    // If there is free space, it's faster to do block shifts, but std::rotate
+    // is highly optimized in standard libraries for contiguous memory and requires 0 extra memory.
+    // We rotate the entire array so the head chunk comes first.
+    std::rotate(typed_data, typed_data + this->head_, typed_data + this->cap_);
+
+    this->head_ = 0;
+    return span<T>(typed_data, this->len_);
+  }
+
+  // ---- Fallible Resizing ----
+
+  /**
+   * @brief Resizes the buffer to `new_len`. If it grows, new elements are initialized to `value`.
+   * Fails if `new_len` exceeds maximum capacity and cannot be allocated.
+   */
+  [[nodiscard]] result<void> try_resize(size_type new_len, T value = T{}) & noexcept {
+    if (new_len <= this->len_) {
+      this->len_ = new_len; // Trivial truncation
+      return {};
+    }
+
+    auto res = try_reserve(new_len);
+    if (!res)
+      return unexpected(res.error());
+
+    std::size_t to_add = new_len - this->len_;
+    for (std::size_t i = 0; i < to_add; ++i) {
+      // Safe to blindly push because we just reserved enough capacity
+      std::size_t tail = this->head_ + this->len_;
+      if (tail >= this->cap_)
+        tail -= this->cap_;
+
+      static_cast<T *>(this->data_)[tail] = value;
+      ++this->len_;
+    }
+
+    return {};
+  }
+
+  /**
+   * @brief Deep-copies the ring buffer using the provided allocator.
+   * Linearizes the layout into the new clone automatically!
+   */
+  [[nodiscard]] result<typed_ring_buffer> try_clone(allocator_ref alloc = Base::get_allocator()) const noexcept {
+    typed_ring_buffer clone(alloc);
+
+    if (this->len_ > 0) {
+      auto res = clone.try_reserve(this->len_);
+      if (!res)
+        return unexpected(res.error());
+
+      // Because T is trivial, we can just use our own read_slices!
+      auto [s1, s2] = this->read_slices();
+
+      // We can bypass try_write because we know capacity is exact
+      std::memcpy(static_cast<T *>(clone.data_), s1.data(), s1.size() * sizeof(T));
+      if (!s2.empty()) {
+        std::memcpy(static_cast<T *>(clone.data_) + s1.size(), s2.data(), s2.size() * sizeof(T));
+      }
+
+      clone.len_ = this->len_;
+    }
+
+    return clone;
   }
 };
 
