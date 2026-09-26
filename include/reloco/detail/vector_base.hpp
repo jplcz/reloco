@@ -979,6 +979,15 @@ private:
 };
 
 class RELOCO_EXPORT unowned_deque_base {
+public:
+  using allocator_type = allocator_ref;
+  using size_type = std::size_t;
+  using difference_type = std::ptrdiff_t;
+
+  [[nodiscard]] constexpr size_type capacity() const noexcept { return cap_; }
+  [[nodiscard]] constexpr bool empty() const noexcept { return len_ == 0; }
+  [[nodiscard]] constexpr size_type size() const noexcept { return len_; }
+
 protected:
   void *data_ = nullptr;
   std::size_t head_ = 0;
@@ -1183,10 +1192,10 @@ public:
 
 template <typename T, typename Base> class RELOCO_EXPORT typed_deque_base : public Base {
 public:
+  using size_type = typename Base::size_type;
+  using allocator_type = typename Base::allocator_type;
+  using difference_type = typename Base::difference_type;
   using value_type = T;
-  using allocator_type = allocator_ref;
-  using size_type = std::size_t;
-  using difference_type = std::ptrdiff_t;
   using reference = T &;
   using const_reference = const T &;
   using pointer = T *;
@@ -1397,7 +1406,7 @@ public:
    * @brief Reorders the physical buffer so that `head_ == 0`, returning a single
    * contiguous span. Useful for passing data to C-APIs.
    */
-  span<T> make_contiguous() & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] result<span<T>> try_make_contiguous() & noexcept RELOCO_LIFETIMEBOUND {
     if (this->len_ == 0)
       return span<T>();
 
@@ -1410,7 +1419,7 @@ public:
 
     auto res = this->try_make_contiguous_base(detail::get_operations_for<T>(), this->get_allocator(),
                                               detail::metadata_for<T>, Base::get_inline_storage(),
-                                              Base::inline_capacity(), Base::max_capacity(detail::metadata_for<T>()));
+                                              Base::inline_capacity(), Base::max_capacity(detail::metadata_for<T>));
 
     if (!res)
       return unexpected(res.error());

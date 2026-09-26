@@ -298,7 +298,9 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_wrapping.cpp
         tests/test_saturating.cpp
         tests/test_checked.cpp
-        tests/test_int_ops.cpp)
+        tests/test_int_ops.cpp
+        tests/test_vec_deque.cpp)
+    
     target_link_libraries(jplcz_reloco_tests PRIVATE jplcz_reloco GTest::gtest_main)
     jplcz_reloco_enable_warnings(jplcz_reloco_tests)
     gtest_discover_tests(jplcz_reloco_tests)
