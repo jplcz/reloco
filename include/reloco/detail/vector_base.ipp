@@ -362,9 +362,19 @@ RELOCO_API result<void *> unowned_vector_base::try_insert_at_base(const vector_o
     if (max_inline && cap_ < max_inline) {
       // Expand up to inline storage if we're below inline
       new_cap = max_inline;
+    } else if (cap_ == 0) {
+      // Bootstrap from zero
+      new_cap = std::min(std::size_t(8), max_cap);
     } else {
-      // Expand up to max storage
-      new_cap = std::min(cap_ == 0 ? std::size_t(8) : cap_ + ((cap_ + 1) / 2), max_cap);
+      // cap_ < max_cap, so `cap_ + 1` cannot overflow.
+      std::size_t growth = (cap_ + 1) / 2;
+
+      // Safe outer addition check
+      if (max_cap - cap_ < growth)
+        RELOCO_UNLIKELY { new_cap = max_cap; }
+      else {
+        new_cap = cap_ + growth;
+      }
     }
 
     if (auto res = try_reserve_base(operations, alloc, type, new_cap, inline_storage, max_inline, max_cap); !res) {

@@ -598,20 +598,20 @@ public:
    */
   template <typename... Args>
   [[nodiscard]] result<std::reference_wrapper<T>> try_emplace_back(Args &&...args) & noexcept RELOCO_LIFETIMEBOUND {
-    auto res = this->try_insert_at_base(
-        detail::get_operations_for<T>(), this->get_allocator(), detail::metadata_for<T>, this->size_,
-        [&args...](void *dest) noexcept -> result<void> {
-          return construction_helpers::try_construct<T>(default_allocator(), static_cast<T *>(dest),
-                                                        std::forward<Args>(args)...);
-        },
-        Base::get_inline_storage(), Base::inline_capacity(), Base::max_capacity(detail::metadata_for<T>));
+    // INLINED FAST PATH: Zero function calls, zero vtable jumps when capacity exists
+    if (this->size_ < this->capacity())
+      RELOCO_LIKELY {
+        T *ptr = static_cast<T *>(this->data_) + this->size_;
+        auto res = construction_helpers::try_construct<T>(default_allocator(), ptr, std::forward<Args>(args)...);
+        if (!res)
+          RELOCO_UNLIKELY { return unexpected(res.error()); }
 
-    if (!res)
-      return unexpected(res.error());
+        ++this->size_;
+        return std::ref(*ptr);
+      }
 
-    // *res returns the raw void* pointer to the newly constructed element
-    T *ptr = static_cast<T *>(*res);
-    return std::ref(*ptr);
+    // OUT-OF-LINE SLOW PATH: Capacity exhausted, fall back to base engine growth
+    return try_emplace_back_slow(std::forward<Args>(args)...);
   }
 
   /**
@@ -795,7 +795,7 @@ public:
     // Construct off to the side first (ensuring strong guarantee if construction fails)
     auto built = construction_helpers::try_allocate<T>(this->get_allocator(), std::forward<Args>(args)...);
     if (!built)
-      return unexpected(built.error());
+      RELOCO_UNLIKELY { return unexpected(built.error()); }
 
     // Delegate capacity reservation, shifting, and final placement to the base engine
     auto res = this->try_insert_at_base(
@@ -808,7 +808,7 @@ public:
         Base::get_inline_storage(), Base::inline_capacity(), Base::max_capacity(detail::metadata_for<T>));
 
     if (!res)
-      return unexpected(res.error());
+      RELOCO_UNLIKELY { return unexpected(res.error()); }
 
     T *ptr = static_cast<T *>(*res);
     return std::ref(*ptr);
@@ -956,6 +956,26 @@ public:
   }
   [[nodiscard]] const_reverse_iterator crbegin() const & noexcept RELOCO_LIFETIMEBOUND { return rbegin(); }
   [[nodiscard]] const_reverse_iterator crend() const & noexcept RELOCO_LIFETIMEBOUND { return rend(); }
+
+private:
+  template <typename... Args>
+  [[nodiscard]] result<std::reference_wrapper<T>>
+  try_emplace_back_slow(Args &&...args) & noexcept RELOCO_LIFETIMEBOUND {
+    auto res = this->try_insert_at_base(
+        detail::get_operations_for<T>(), this->get_allocator(), detail::metadata_for<T>, this->size_,
+        [&args...](void *dest) noexcept -> result<void> {
+          return construction_helpers::try_construct<T>(default_allocator(), static_cast<T *>(dest),
+                                                        std::forward<Args>(args)...);
+        },
+        Base::get_inline_storage(), Base::inline_capacity(), Base::max_capacity(detail::metadata_for<T>));
+
+    if (!res)
+      return unexpected(res.error());
+
+    // *res returns the raw void* pointer to the newly constructed element
+    T *ptr = static_cast<T *>(*res);
+    return std::ref(*ptr);
+  }
 };
 
 RELOCO_END_UNSAFE_BUFFER_USAGE
