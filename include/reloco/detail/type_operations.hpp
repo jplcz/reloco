@@ -87,13 +87,31 @@ struct RELOCO_EXPORT type_operations {
  * destructible/relocatable/copyable `T`, avoiding a per-element call
  * through `construction_helpers` entirely.
  */
+
+RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+
 struct RELOCO_EXPORT trivial_type_operations {
-  RELOCO_API static result<void> clone_one(const type_metadata &type, allocator_ref alloc, void *dest,
-                                           const void *src) noexcept;
-  RELOCO_API static result<void> copy_construct_one(const type_metadata &type, allocator_ref alloc, void *dest,
-                                                    const void *value_ptr) noexcept;
-  RELOCO_API static void relocate_one(const type_metadata &type, void *to, const void *from) noexcept;
+  static result<void> clone_one(const type_metadata &type, allocator_ref, void *dest, const void *src) noexcept {
+    std::memcpy(dest, src, type.element_size);
+    return {};
+  } // namespace reloco::detail
+
+  static result<void> copy_construct_one(const type_metadata &type, allocator_ref, void *dest,
+                                         const void *value_ptr) noexcept {
+    if (!value_ptr) {
+      std::memset(dest, 0, type.element_size);
+    } else {
+      std::memcpy(dest, value_ptr, type.element_size);
+    }
+    return {};
+  }
+
+  static void relocate_one(const type_metadata &type, void *to, const void *from) noexcept {
+    std::memcpy(to, from, type.element_size);
+  }
 };
+
+RELOCO_END_UNSAFE_BUFFER_USAGE
 
 inline constexpr type_operations operations_for_trivial_element = {
     nullptr,
@@ -144,25 +162,25 @@ template <typename T> struct copy_construct_one_resolver {
     if constexpr (std::is_trivially_copyable_v<T> && std::is_trivially_default_constructible_v<T>) {
       return &trivial_type_operations::copy_construct_one;
     } else {
-      return [](const type_metadata &, allocator_ref alloc, void *dest, const void *value_ptr) noexcept
-                 -> result<void> {
-        T *ptr = static_cast<T *>(dest);
-        if (!value_ptr) {
-          // --- Path A: Default construction ---
-          if constexpr (!std::is_default_constructible_v<T>) {
-            return unexpected(error::invalid_argument);
-          } else {
-            return construction_helpers::try_construct<T>(alloc, ptr);
-          }
-        } else {
-          // --- Path B: Copy construction ---
-          if constexpr (!is_try_constructible_v<T, const T &> && !std::is_copy_constructible_v<T>) {
-            return unexpected(error::unsupported_operation);
-          } else {
-            return construction_helpers::try_construct<T>(alloc, ptr, *static_cast<const T *>(value_ptr));
-          }
-        }
-      };
+      return
+          [](const type_metadata &, allocator_ref alloc, void *dest, const void *value_ptr) noexcept -> result<void> {
+            T *ptr = static_cast<T *>(dest);
+            if (!value_ptr) {
+              // --- Path A: Default construction ---
+              if constexpr (!std::is_default_constructible_v<T>) {
+                return unexpected(error::invalid_argument);
+              } else {
+                return construction_helpers::try_construct<T>(alloc, ptr);
+              }
+            } else {
+              // --- Path B: Copy construction ---
+              if constexpr (!is_try_constructible_v<T, const T &> && !std::is_copy_constructible_v<T>) {
+                return unexpected(error::unsupported_operation);
+              } else {
+                return construction_helpers::try_construct<T>(alloc, ptr, *static_cast<const T *>(value_ptr));
+              }
+            }
+          };
     }
   }
 };

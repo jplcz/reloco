@@ -978,6 +978,35 @@ private:
   }
 };
 
+class RELOCO_EXPORT heap_deque_base {
+protected:
+  void *data_ = nullptr;
+  std::size_t head_ = 0;
+  std::size_t len_ = 0;
+  std::size_t cap_ = 0;
+  allocator_ref alloc_;
+
+  // Destroys all elements, handling the wrap-around
+  void destroy_elements(const vector_operations *ops, const type_metadata &type) noexcept {
+    if (len_ == 0 || !ops->destroy_range)
+      return;
+
+    std::size_t tail = head_ + len_;
+    if (tail <= cap_) {
+      // Contiguous
+      ops->destroy_range(type, data_, head_, tail);
+    } else {
+      // Wrapped: destroy [head, cap) and [0, tail % cap)
+      ops->destroy_range(type, data_, head_, cap_);
+      ops->destroy_range(type, data_, 0, tail - cap_);
+    }
+  }
+
+  // Grows the capacity and "unwraps" the ring buffer into a flat contiguous layout
+  [[nodiscard]] RELOCO_API result<void> try_reserve_base(const vector_operations *ops, const type_metadata &type,
+                                                         std::size_t new_cap) noexcept;
+};
+
 RELOCO_END_UNSAFE_BUFFER_USAGE
 
 #if RELOCO_SHARED_PROVIDE_DEFINITIONS
