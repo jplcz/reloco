@@ -978,21 +978,19 @@ private:
   }
 };
 
-class RELOCO_EXPORT heap_deque_base {
+class RELOCO_EXPORT unowned_deque_base {
 protected:
   void *data_ = nullptr;
   std::size_t head_ = 0;
   std::size_t len_ = 0;
   std::size_t cap_ = 0;
-  allocator_ref alloc_;
 
   // Destroys all elements, handling the wrap-around
-  void destroy_elements(const vector_operations *ops, const type_metadata &type) noexcept {
+  void destroy_elements(const vector_operations *ops, const type_metadata &type) const noexcept {
     if (len_ == 0 || !ops->destroy_range)
       return;
 
-    std::size_t tail = head_ + len_;
-    if (tail <= cap_) {
+    if (const std::size_t tail = head_ + len_; tail <= cap_) {
       // Contiguous
       ops->destroy_range(type, data_, head_, tail);
     } else {
@@ -1003,8 +1001,180 @@ protected:
   }
 
   // Grows the capacity and "unwraps" the ring buffer into a flat contiguous layout
-  [[nodiscard]] RELOCO_API result<void> try_reserve_base(const vector_operations *ops, const type_metadata &type,
-                                                         std::size_t new_cap) noexcept;
+  [[nodiscard]] RELOCO_API result<void> try_reserve_base(const vector_operations *ops, allocator_ref alloc,
+                                                         const type_metadata &type, std::size_t new_cap,
+                                                         void *inline_storage, std::size_t max_inline,
+                                                         std::size_t max_cap) noexcept;
+};
+
+/**
+ * @brief Storage policy backing `vec_deque<T>`: an `allocator_ref`-owned heap
+ * allocation with no inline capacity, growable without bound (up to
+ * `max_capacity`).
+ */
+class RELOCO_EXPORT heap_deque_base : public unowned_deque_base {
+protected:
+  constexpr explicit heap_deque_base(allocator_ref alloc = default_allocator()) noexcept
+      : unowned_deque_base(), alloc_(alloc) {}
+
+  ~heap_deque_base() noexcept = default;
+
+  RELOCO_API void deallocate_elements(const vector_operations *ops, const type_metadata &type) noexcept;
+
+  constexpr void move_construct_from_base(heap_deque_base &&other) noexcept {
+    data_ = other.data_;
+    head_ = other.head_;
+    len_ = other.len_;
+    cap_ = other.cap_;
+    alloc_ = other.alloc_;
+
+    other.data_ = nullptr;
+    other.head_ = 0;
+    other.len_ = 0;
+    other.cap_ = 0;
+  }
+
+  void move_assign_from_base(const vector_operations *ops, const type_metadata &type,
+                             heap_deque_base &&other) noexcept {
+    if (this == &other)
+      return;
+
+    // Clean up current resources (destroys elements and deallocates heap)
+    destroy_elements(ops, type);
+
+    // Perform the move transfer
+    move_construct_from_base(std::move(other));
+  }
+
+  [[nodiscard]] static constexpr void *get_inline_storage() noexcept { return nullptr; }
+
+public:
+  [[nodiscard]] constexpr static bool is_inline() noexcept { return false; }
+
+  [[nodiscard]] allocator_ref get_allocator() const noexcept { return alloc_; }
+
+  [[nodiscard]] static constexpr std::size_t inline_capacity() noexcept { return 0; }
+
+  [[nodiscard]] static constexpr std::size_t max_capacity(const type_metadata &mt) noexcept {
+    return std::numeric_limits<std::size_t>::max() / mt.element_size;
+  }
+
+private:
+  allocator_ref alloc_;
+};
+
+/**
+ * @brief Storage policy backing `inline_vec_deque<T, Capacity>`: a
+ * fixed-capacity ring buffer embedded directly in the object, with no allocator
+ * and a hard `Capacity` ceiling.
+ */
+class RELOCO_EXPORT inline_deque_base : public unowned_deque_base {
+protected:
+  constexpr inline_deque_base(void *storage, std::size_t capacity) noexcept : unowned_deque_base() {
+    data_ = storage;
+    cap_ = capacity;
+  }
+
+  ~inline_deque_base() noexcept = default;
+
+  void deallocate_elements(const vector_operations *ops, const type_metadata &type) noexcept {
+    if (data_ && len_ > 0) {
+      destroy_elements(ops, type);
+      len_ = 0;
+      head_ = 0;
+    }
+  }
+
+  RELOCO_API void move_construct_from_base(const vector_operations *ops, const type_metadata &type,
+                                           inline_deque_base &&other) noexcept;
+
+  void move_assign_from_base(const vector_operations *ops, const type_metadata &type,
+                             inline_deque_base &&other) noexcept {
+    if (this == &other)
+      return;
+    destroy_elements(ops, type);
+    move_construct_from_base(ops, type, std::move(other));
+  }
+
+  [[nodiscard]] constexpr void *get_inline_storage() const noexcept { return data_; }
+
+public:
+  [[nodiscard]] constexpr static bool is_inline() noexcept { return true; }
+  [[nodiscard]] static allocator_ref get_allocator() noexcept { return default_allocator(); }
+  [[nodiscard]] std::size_t inline_capacity() const noexcept { return cap_; }
+  [[nodiscard]] constexpr std::size_t max_capacity(const type_metadata &) const noexcept { return cap_; }
+};
+
+/**
+ * @brief Storage policy backing `outline_vec_deque<T>`: elements live in a
+ * caller-supplied, caller-owned byte span. No allocator, no growth, no move semantics.
+ */
+class RELOCO_EXPORT outline_deque_base : public unowned_deque_base {
+protected:
+  constexpr outline_deque_base(void *storage, std::size_t capacity) noexcept : unowned_deque_base() {
+    data_ = storage;
+    cap_ = capacity;
+  }
+
+  ~outline_deque_base() noexcept = default;
+
+  void deallocate_elements(const vector_operations *ops, const type_metadata &type) noexcept {
+    if (data_ && len_ > 0) {
+      destroy_elements(ops, type);
+      len_ = 0;
+      head_ = 0;
+    }
+  }
+
+  [[nodiscard]] constexpr void *get_inline_storage() const noexcept { return data_; }
+
+public:
+  [[nodiscard]] constexpr static bool is_inline() noexcept { return false; }
+  [[nodiscard]] static allocator_ref get_allocator() noexcept { return default_allocator(); }
+  [[nodiscard]] std::size_t inline_capacity() const noexcept { return cap_; }
+  [[nodiscard]] constexpr std::size_t max_capacity(const type_metadata &) const noexcept { return cap_; }
+};
+
+/**
+ * @brief Storage policy backing `sso_vec_deque<T, InlineCapacity>`: starts
+ * using an embedded inline buffer but falls back to a heap allocation.
+ */
+class RELOCO_EXPORT mixed_deque_base : public unowned_deque_base {
+private:
+  void *inline_storage_;
+  std::size_t inline_capacity_;
+  allocator_ref alloc_;
+
+protected:
+  constexpr mixed_deque_base(void *inline_storage, std::size_t inline_capacity, const allocator_ref alloc) noexcept
+      : unowned_deque_base(), inline_storage_(inline_storage), inline_capacity_(inline_capacity), alloc_(alloc) {
+    data_ = inline_storage;
+    cap_ = inline_capacity;
+  }
+
+  ~mixed_deque_base() noexcept = default;
+
+  RELOCO_API void deallocate_elements(const vector_operations *ops, const type_metadata &type) noexcept;
+  RELOCO_API void move_construct_from_base(const vector_operations *ops, const type_metadata &type,
+                                           mixed_deque_base &&other) noexcept;
+
+  void move_assign_from_base(const vector_operations *ops, const type_metadata &type,
+                             mixed_deque_base &&other) noexcept {
+    if (this == &other)
+      return;
+    destroy_elements(ops, type);
+    move_construct_from_base(ops, type, std::move(other));
+  }
+
+  [[nodiscard]] constexpr void *get_inline_storage() const noexcept { return inline_storage_; }
+
+public:
+  [[nodiscard]] constexpr bool is_inline() const noexcept { return data_ == inline_storage_; }
+  [[nodiscard]] allocator_ref get_allocator() const noexcept { return alloc_; }
+  [[nodiscard]] std::size_t inline_capacity() const noexcept { return inline_capacity_; }
+  [[nodiscard]] static constexpr std::size_t max_capacity(const type_metadata &mt) noexcept {
+    return std::numeric_limits<std::size_t>::max() / mt.element_size;
+  }
 };
 
 RELOCO_END_UNSAFE_BUFFER_USAGE

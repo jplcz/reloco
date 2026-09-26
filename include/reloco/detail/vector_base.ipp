@@ -548,4 +548,207 @@ RELOCO_API void mixed_vector_base::move_assign_from_base(const vector_operations
   move_construct_from_base(operations, type, std::move(other));
 }
 
+RELOCO_API result<void> unowned_deque_base::try_reserve_base(const vector_operations *ops, allocator_ref alloc,
+                                                         const type_metadata &type, std::size_t new_cap,
+                                                         void *inline_storage, std::size_t max_inline,
+                                                         std::size_t max_cap) noexcept {
+  if (new_cap <= cap_)
+    return {};
+  if (new_cap > max_cap)
+    return unexpected(error::capacity_exceeded);
+
+  const std::size_t elem_size = type.element_size;
+  const std::size_t required_bytes = new_cap * elem_size;
+
+  RELOCO_DEBUG_ASSERT(max_inline <= max_cap, "Inline capacity larger than heap capacity");
+
+  // Handle embedded SSO/inline storage promotion
+  if (inline_storage) {
+    RELOCO_DEBUG_ASSERT(max_inline != 0, "Non-empty inline storage with zero capacity");
+    if (data_ == inline_storage) {
+      if (new_cap <= max_inline) {
+        cap_ = max_inline;
+        return {};
+      }
+
+      // Promote from inline to heap
+      auto res = alloc.allocate(required_bytes, type.element_alignment);
+      if (!res)
+        return unexpected(res.error());
+
+      const auto new_data = static_cast<char *>(res->ptr);
+      if (len_ > 0) {
+        // Linearize the ring buffer into [0, len_) during the move
+        const std::size_t first_chunk = std::min(len_, cap_ - head_);
+        ops->move_range(type, new_data, static_cast<char *>(data_) + head_ * elem_size, first_chunk);
+        if (first_chunk < len_) {
+          ops->move_range(type, new_data + first_chunk * elem_size, data_, len_ - first_chunk);
+        }
+      }
+
+      data_ = new_data;
+      cap_ = res->size / elem_size;
+      head_ = 0; // Buffer is now flat
+      return {};
+    }
+  }
+
+  // Try zero-cost in-place expansion first
+  if (data_) {
+    if (auto res = alloc.expand_in_place(data_, cap_ * elem_size, required_bytes); res) {
+      const std::size_t newly_allocated_cap = *res / elem_size;
+
+      // If the buffer was wrapped, expanding it creates a hole in the middle.
+      // We fix this by shifting the head chunk to the right, flush against the new capacity.
+      if (len_ > 0 && head_ + len_ > cap_) {
+        const std::size_t added_cap = newly_allocated_cap - cap_;
+        const std::size_t head_len = cap_ - head_;
+        const auto byte_data = static_cast<char *>(data_);
+
+        // Because we shift to the right, src and dest may overlap, so move_range_up is required.
+        // It's mathematically impossible for this shift to overwrite the tail chunk.
+        ops->move_range_up(type, byte_data + (head_ + added_cap) * elem_size, byte_data + head_ * elem_size, head_len);
+        head_ += added_cap;
+      }
+
+      cap_ = newly_allocated_cap;
+      return {};
+    }
+  }
+
+  // Fallback: Allocate or Reallocate
+  auto res = data_ && type.is_trivially_relocatable()
+                 ? alloc.reallocate(data_, cap_ * elem_size, required_bytes, type.element_alignment)
+                 : alloc.allocate(required_bytes, type.element_alignment);
+
+  if (!res)
+    return unexpected(res.error());
+
+  const auto new_data = static_cast<char *>(res->ptr);
+  const std::size_t newly_allocated_cap = res->size / elem_size;
+
+  if (data_ && type.is_trivially_relocatable()) {
+    // `reallocate` perfectly preserved the bytes, including the logical wrap-around.
+    // We fix the wrap exactly the same way as `expand_in_place`.
+    if (len_ > 0 && head_ + len_ > cap_) {
+      const std::size_t added_cap = newly_allocated_cap - cap_;
+      const std::size_t head_len = cap_ - head_;
+      ops->move_range_up(type, new_data + (head_ + added_cap) * elem_size, new_data + head_ * elem_size, head_len);
+      head_ += added_cap;
+    }
+  } else {
+    // Standard `allocate` path: linearize the chunks into [0, len_) while moving.
+    if (len_ > 0) {
+      std::size_t first_chunk = std::min(len_, cap_ - head_);
+      ops->move_range(type, new_data, static_cast<char *>(data_) + head_ * elem_size, first_chunk);
+      if (first_chunk < len_) {
+        ops->move_range(type, new_data + first_chunk * elem_size, data_, len_ - first_chunk);
+      }
+    }
+    if (data_)
+      alloc.deallocate(data_, cap_ * elem_size);
+    head_ = 0; // Buffer is now flat
+  }
+
+  data_ = new_data;
+  cap_ = newly_allocated_cap;
+  return {};
+}
+
+RELOCO_API void heap_deque_base::deallocate_elements(const vector_operations *ops, const type_metadata &type) noexcept {
+  if (data_) {
+    if (len_ > 0) {
+      unowned_deque_base::destroy_elements(ops, type);
+    }
+    alloc_.deallocate(data_, cap_ * type.element_size);
+    data_ = nullptr;
+    head_ = 0;
+    len_  = 0;
+    cap_  = 0;
+  }
+}
+
+RELOCO_API void inline_deque_base::move_construct_from_base(const vector_operations *ops, const type_metadata &type,
+                                                        inline_deque_base &&other) noexcept {
+  if (other.len_ > 0 && ops->move_range) {
+    char *dest = static_cast<char*>(data_);
+    char *src = static_cast<char*>(other.data_);
+    const std::size_t elem_size = type.element_size;
+
+    // Linearize the wrapped buffer into the new target starting at index 0
+    std::size_t first_chunk = std::min(other.len_, other.cap_ - other.head_);
+    ops->move_range(type, dest, src + other.head_ * elem_size, first_chunk);
+
+    if (first_chunk < other.len_) {
+      ops->move_range(type, dest + first_chunk * elem_size, src, other.len_ - first_chunk);
+    }
+
+    len_ = other.len_;
+    head_ = 0; // Linearized!
+  } else {
+    len_ = 0;
+    head_ = 0;
+  }
+
+  other.len_ = 0;
+  other.head_ = 0;
+}
+
+RELOCO_API void mixed_deque_base::deallocate_elements(const vector_operations *ops, const type_metadata &type) noexcept {
+  if (data_) {
+    if (len_ > 0) unowned_deque_base::destroy_elements(ops, type);
+    if (!is_inline()) alloc_.deallocate(data_, cap_ * type.element_size);
+
+    // Restore the inline state baseline
+    data_ = inline_storage_;
+    head_ = 0;
+    len_ = 0;
+    cap_ = inline_capacity_;
+  }
+}
+
+RELOCO_API void mixed_deque_base::move_construct_from_base(const vector_operations *ops, const type_metadata &type,
+                                                       mixed_deque_base &&other) noexcept {
+  alloc_ = other.alloc_;
+
+  if (other.is_inline()) {
+    if (other.len_ > 0 && ops && ops->move_range) {
+      char *dest = static_cast<char*>(data_);
+      char *src = static_cast<char*>(other.data_);
+      const std::size_t elem_size = type.element_size;
+
+      std::size_t first_chunk = std::min(other.len_, other.cap_ - other.head_);
+      ops->move_range(type, dest, src + other.head_ * elem_size, first_chunk);
+
+      if (first_chunk < other.len_) {
+        ops->move_range(type, dest + first_chunk * elem_size, src, other.len_ - first_chunk);
+      }
+
+      len_ = other.len_;
+      head_ = 0; // Linearized on the target's inline stack
+    } else {
+      len_ = 0;
+      head_ = 0;
+    }
+    cap_ = inline_capacity_;
+
+    other.len_ = 0;
+    other.head_ = 0;
+  } else {
+    // Steal heap allocation via O(1) swap
+    data_ = other.data_;
+    head_ = other.head_;
+    len_ = other.len_;
+    cap_ = other.cap_;
+
+    // Reset source to its safe, empty inline baseline
+    other.data_ = other.inline_storage_;
+    other.head_ = 0;
+    other.len_ = 0;
+    other.cap_ = other.inline_capacity_;
+  }
+}
+
+
+
 RELOCO_END_UNSAFE_BUFFER_USAGE
