@@ -1263,6 +1263,57 @@ reason as `flat_hash_set`. It has a `container_ref_traits` adapter
 `element_type == Mapped`), but no `collection_view_traits` adapter, for
 the same reason as `flat_hash_set`.
 
+## `lru_cache<Key, Mapped, Hash = std::hash<Key>, KeyEqual = std::equal_to<Key>>`
+
+`include/reloco/lru_cache.hpp`
+
+A fixed-capacity, unique-key cache that evicts its least-recently-used
+entry once full, matching Rust's de-facto `lru` crate's `LruCache<K, V>`.
+Built from a stable-index `vector<optional<node>>` slab (each node holding
+one `Key`/`Mapped` pair plus intrusive `prev`/`next` list links) and a
+`flat_hash_map<Key, size_type>` index for O(1) average-case lookup;
+unlike `flat_hash_map`'s own backward-shift deletion, removal here never
+relocates other live entries, since the intrusive list's indices must stay
+stable.
+
+- `try_put(key, value)` — inserts, or overwrites+promotes if @p key is
+  already present; evicts the current LRU entry first if already at
+  `capacity()`, matching `LruCache::put`.
+- `try_get(key)` — looks up and promotes to most-recently-used, matching
+  `LruCache::get_mut`.
+- `try_peek(key)` / `try_peek_mut(key)` — look up without promoting,
+  matching `LruCache::peek`/`::peek_mut`.
+- `contains(key)` — never promotes, matching `LruCache::contains`.
+- `try_remove(key)` — removes and returns the value, matching
+  `LruCache::pop`.
+- `begin()`/`end()` — a `const_iterator` walking every entry from most- to
+  least-recently-used, matching `LruCache::iter()`.
+
+```cpp
+auto cache_res = reloco::lru_cache<int, reloco::string>::try_create(2);
+if (!cache_res)
+  return;
+auto &cache = *cache_res;
+std::ignore = cache.try_put(1, reloco::string("one"));
+std::ignore = cache.try_put(2, reloco::string("two"));
+std::ignore = cache.try_get(1);           // promotes 1 -- 2 is now LRU
+std::ignore = cache.try_put(3, reloco::string("three")); // evicts 2
+assert(!cache.contains(2));
+assert(cache.contains(1) && cache.contains(3));
+```
+
+Capacity is fixed at `try_create(capacity, alloc)` and never grows: once
+allocated, every subsequent `try_put`/`try_get`/`try_peek`/`try_remove`
+call is itself allocation-free. Because the intrusive list needs a `Key`
+to evict the tail's index entry, and the index needs its own owned `Key`
+for hashing, **`Key` must be copy-constructible** (`Mapped` need not be —
+it is only ever moved); this is the one place `lru_cache` asks more of
+`Key` than the rest of reloco's containers.
+
+`reloco::lru_cache<Key, Mapped, Hash, KeyEqual>` is trivially relocatable
+exactly when both `Hash` and `KeyEqual` are, for the same reason as
+`flat_hash_map`.
+
 `flat_hash_map` also exposes `retain(pred)` (where `pred` takes `(const
 Key &, Mapped &)`) — see [Flat hash containers](
 flat-hash-containers.md#rust-hashsethashmap-flavored-api-surface) for the

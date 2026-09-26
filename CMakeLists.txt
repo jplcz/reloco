@@ -327,6 +327,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_once_lock.cpp
         tests/test_once.cpp
         tests/test_lazy_lock.cpp
+        tests/test_lru_cache.cpp
         tests/test_hint.cpp
         tests/test_park.cpp
         tests/test_scope.cpp

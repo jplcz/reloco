@@ -43,6 +43,7 @@
 #include <reloco/int_ops.hpp>
 #include <reloco/lazy_lock.hpp>
 #include <reloco/lifetime.hpp>
+#include <reloco/lru_cache.hpp>
 #include <reloco/mutex.hpp>
 #include <reloco/once.hpp>
 #include <reloco/once_lock.hpp>
