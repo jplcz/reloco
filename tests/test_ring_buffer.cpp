@@ -82,7 +82,7 @@ TEST(RingBufferTest, ScatterGatherIO) {
     c = 'Y';
 
   // Commit that we actually received exactly 5 bytes
-  io_buf.commit_written(5);
+  io_buf.commit(5);
   EXPECT_EQ(io_buf.size(), 6); // 1 original + 5 new
 
   // Verify
