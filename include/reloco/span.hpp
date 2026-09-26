@@ -42,6 +42,26 @@ namespace reloco {
  */
 template <typename T> class span;
 
+namespace detail {
+
+/** @brief `true` iff @p U is some `span<X>` instantiation (any @p X,
+ * including cv-qualified). Used to keep the generic container
+ * constructors below from ever intercepting a `span`-to-`span` argument
+ * (e.g. `span<std::byte>` converting to `span<const std::byte>`) --
+ * `span<X>` itself satisfies the container constructors' own
+ * `.data()`/`.size()` shape, so without this exclusion an rvalue
+ * `span<X>` prefers binding to the container constructors' `Container &&`
+ * overload (a non-converting exact match) over the dedicated,
+ * cross-qualification `span(const span<U> &)` converting constructor --
+ * and the former is deliberately `= delete`d to prevent binding a
+ * *non*-span rvalue container (whose `.data()` would dangle once the
+ * temporary is destroyed). */
+template <typename U> struct is_span : std::false_type {};
+template <typename U> struct is_span<span<U>> : std::true_type {};
+template <typename U> constexpr inline bool is_span_v = is_span<std::decay_t<U>>::value;
+
+} // namespace detail
+
 /**
  * @brief Rust `slice::chunks` equivalent: a lazy, non-overlapping forward
  * range of `span<T>` sub-views, each of at most `chunk_size` elements (the
@@ -253,8 +273,11 @@ public:
       : m_ptr(other.data()), m_size(other.size()) {}
 
   template <typename Container, typename = std::enable_if_t<
-                                    // Prevent hijacking the copy/move constructors
+                                    // Prevent hijacking the copy/move constructors, and defer to the
+                                    // dedicated span(const span<U> &) converting constructor above for
+                                    // any span<X> (see detail::is_span_v's doc comment).
                                     !std::is_same_v<std::decay_t<Container>, span> &&
+                                    !detail::is_span_v<Container> &&
                                     // Ensure the container has a .data() that converts to T*
                                     std::is_convertible_v<decltype(std::declval<Container &>().data()), T *> &&
                                     // Ensure the container has a .size() that returns an integer
@@ -264,6 +287,7 @@ public:
 
   template <typename Container, typename = std::enable_if_t<
                                     !std::is_same_v<std::decay_t<Container>, span> &&
+                                    !detail::is_span_v<Container> &&
                                     std::is_convertible_v<decltype(std::declval<const Container &>().data()), T *> &&
                                     std::is_integral_v<decltype(std::declval<const Container &>().size())>>>
   constexpr span(const Container &cont RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
@@ -271,6 +295,7 @@ public:
 
   template <typename Container,
             typename = std::enable_if_t<!std::is_same_v<std::decay_t<Container>, span> &&
+                                        !detail::is_span_v<Container> &&
                                         std::is_convertible_v<decltype(std::declval<Container &>().data()), T *> &&
                                         std::is_integral_v<decltype(std::declval<Container &>().size())>>>
   constexpr span(Container &&) = delete;
