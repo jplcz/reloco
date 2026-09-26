@@ -1284,7 +1284,7 @@ public:
    * @brief Consumes and drops elements from the front of the buffer until the
    * predicate returns true. The element that matches the predicate is NOT consumed.
    *
-   * @param predicate A callable `bool(const T&)`
+   * @param pred A callable `bool(const T&)`
    * @return The number of elements dropped.
    */
   template <typename Predicate> size_type consume_until(Predicate &&pred) & noexcept {
