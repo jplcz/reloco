@@ -651,6 +651,220 @@ public:
 
     return clone;
   }
+
+  // ---- Heterogeneous Object I/O ----
+
+  /**
+   * @brief Writes a trivially copyable object (like a struct) directly into the buffer.
+   * Fails if there is not enough free space. Does NOT allocate.
+   */
+  template <typename U> [[nodiscard]] result<void> try_write_object(const U &obj) & noexcept {
+    static_assert(std::is_trivially_copyable_v<U>, "Object must be trivially copyable to serialize");
+    static_assert(sizeof(U) % sizeof(T) == 0, "Object size must be a multiple of buffer element size");
+    return this->try_write_base(&obj, sizeof(U) / sizeof(T), sizeof(T));
+  }
+
+  /**
+   * @brief Writes a trivially copyable object, overwriting the oldest data if the buffer is full.
+   */
+  template <typename U> void write_object_overwrite(const U &obj) & noexcept {
+    static_assert(std::is_trivially_copyable_v<U>, "Object must be trivially copyable to serialize");
+    static_assert(sizeof(U) % sizeof(T) == 0, "Object size must be a multiple of buffer element size");
+    this->write_overwrite_base(&obj, sizeof(U) / sizeof(T), sizeof(T));
+  }
+
+  /**
+   * @brief Writes a span of a different trivially copyable type into the buffer.
+   * e.g., Pushing `span<const uint32_t>` into a `ring_buffer<uint8_t>`.
+   */
+  template <typename U> [[nodiscard]] result<void> try_write_span(span<const U> data) & noexcept {
+    static_assert(std::is_trivially_copyable_v<U>, "Span elements must be trivially copyable");
+    static_assert(sizeof(U) % sizeof(T) == 0, "Span element size must be a multiple of buffer element size");
+    return this->try_write_base(data.data(), (data.size() * sizeof(U)) / sizeof(T), sizeof(T));
+  }
+
+  /**
+   * @brief Reads a trivially copyable object from the buffer.
+   * Consumes the bytes and returns the instantiated object. Fails if there aren't enough bytes.
+   * This safely avoids strict-aliasing and alignment UB by using memcpy internally.
+   */
+  template <typename U> [[nodiscard]] result<U> try_read_object() & noexcept {
+    static_assert(std::is_trivially_copyable_v<U>, "Object must be trivially copyable to deserialize");
+    static_assert(sizeof(U) % sizeof(T) == 0, "Object size must be a multiple of buffer element size");
+
+    const std::size_t required_elements = sizeof(U) / sizeof(T);
+    if (this->len_ < required_elements)
+      return unexpected(error::out_of_bounds);
+
+    U obj;
+    this->read_base(&obj, required_elements, sizeof(T));
+    return obj;
+  }
+
+  /**
+   * @brief Reads a trivially copyable object from the buffer without consuming it.
+   * Useful for reading packet headers to determine payload sizes before extracting.
+   * @param element_offset The logical index to start peeking from (defaults to 0 / front).
+   */
+  template <typename U> [[nodiscard]] result<U> try_peek_object(size_type element_offset = 0) const & noexcept {
+    static_assert(std::is_trivially_copyable_v<U>, "Object must be trivially copyable to peek");
+    static_assert(sizeof(U) % sizeof(T) == 0, "Object size must be a multiple of buffer element size");
+
+    const std::size_t required_elements = sizeof(U) / sizeof(T);
+    if (this->len_ < element_offset + required_elements) {
+      return unexpected(error::out_of_bounds);
+    }
+
+    U obj;
+    char *dest_bytes = reinterpret_cast<char *>(&obj);
+    const char *src_bytes = static_cast<const char *>(this->data_);
+
+    std::size_t read_head = this->head_ + element_offset;
+    if (read_head >= this->cap_)
+      read_head %= this->cap_;
+
+    std::size_t first_chunk = std::min(required_elements, this->cap_ - read_head);
+    std::memcpy(dest_bytes, src_bytes + read_head * sizeof(T), first_chunk * sizeof(T));
+
+    if (first_chunk < required_elements) {
+      std::memcpy(dest_bytes + first_chunk * sizeof(T), src_bytes, (required_elements - first_chunk) * sizeof(T));
+    }
+
+    return obj;
+  }
+
+  // ---- Stream Parsing & Frame Decoding ----
+
+  /**
+   * @brief Probes for a structured frame, validates it, and extracts the payload if complete.
+   *
+   * @param validator A callable `std::pair<bool, size_type> (const Header&)`:
+   *        - On success: returns `{true, total_frame_elements}`.
+   *        - On failure (corrupted): returns `{false, elements_to_skip}` to frame-hunt.
+   * @param processor A callable `void (const Header&, span<const T> chunk1, span<const T> chunk2)`
+   *        executed ONLY if the entire frame has arrived.
+   *
+   * @return `result<bool>`:
+   *         - `true` if the buffer state advanced (a frame was processed OR corrupted bytes skipped).
+   *         - `false` if we are waiting for more data.
+   *         - `error::invalid_argument` if the validator approved an impossibly small frame size.
+   */
+  template <typename Header, typename Validator, typename Processor>
+  [[nodiscard]] result<bool> try_consume_frame(Validator &&validator, Processor &&processor) & noexcept {
+    static_assert(std::is_trivially_copyable_v<Header>, "Header must be trivially copyable");
+    const std::size_t header_elems = sizeof(Header) / sizeof(T);
+
+    if (this->len_ < header_elems)
+      return false;
+
+    // Peek the header safely
+    auto hdr_res = this->try_peek_object<Header>();
+    if (!hdr_res)
+      return false;
+
+    // Validate integrity and get expected size
+    auto [is_valid, size_or_skip] = validator(*hdr_res);
+
+    if (!is_valid) {
+      // Header is corrupted or magic mismatched. Skip penalty bytes.
+      this->clear();
+      return reloco::unexpected(error::invalid_argument);
+    }
+
+    // Catch malicious/corrupted length fields without asserting
+    if (size_or_skip < header_elems) {
+      this->clear(); // Wipe on impossible lengths too
+      return reloco::unexpected(error::invalid_argument);
+    }
+
+    if (this->len_ < size_or_skip) {
+      return false; // Header is valid, but payload hasn't fully arrived yet. Wait.
+    }
+
+    // We have the full frame! Calculate the payload slices.
+    std::size_t payload_elems = size_or_skip - header_elems;
+    std::size_t payload_head = (this->head_ + header_elems) % this->cap_;
+
+    span<const T> chunk1, chunk2;
+    if (payload_elems > 0) {
+      const T *typed_data = static_cast<const T *>(this->data_);
+      std::size_t first_chunk = std::min(payload_elems, this->cap_ - payload_head);
+
+      chunk1 = span<const T>(typed_data + payload_head, first_chunk);
+      if (first_chunk < payload_elems) {
+        chunk2 = span<const T>(typed_data, payload_elems - first_chunk);
+      }
+    }
+
+    // Dispatch the un-consumed payload to the user
+    processor(*hdr_res, chunk1, chunk2);
+
+    // Consume the entire frame automatically
+    this->consume(size_or_skip);
+    return true;
+  }
+
+  /**
+   * @brief Atomically writes a header and payload. If space is insufficient, it cleanly
+   * evicts COMPLETE older frames from the front using the provided validator, avoiding shredded data.
+   *
+   * @param validator The exact same callable used in `try_consume_frame` to determine frame sizes.
+   */
+  template <typename Header, typename PayloadType, typename Validator>
+  [[nodiscard]] result<void> try_write_frame_evicting(const Header &header, span<const PayloadType> payload,
+                                                      Validator &&validator) & noexcept {
+
+    static_assert(std::is_trivially_copyable_v<Header>, "Header must be trivially copyable");
+    static_assert(std::is_trivially_copyable_v<PayloadType>, "Payload must be trivially copyable");
+    static_assert(sizeof(Header) % sizeof(T) == 0, "Header size must align with buffer element size");
+    static_assert(sizeof(PayloadType) % sizeof(T) == 0, "Payload size must align with buffer element size");
+
+    const std::size_t header_elems = sizeof(Header) / sizeof(T);
+    const std::size_t payload_elems = (payload.size() * sizeof(PayloadType)) / sizeof(T);
+    const std::size_t total_elems = header_elems + payload_elems;
+
+    // A frame physically cannot fit if it's larger than the entire ring buffer capacity
+    if (total_elems > this->cap_) {
+      return unexpected(error::capacity_exceeded);
+    }
+
+    // Evict complete frames until we have enough contiguous free space
+    while (this->free_space() < total_elems) {
+      if (this->len_ < header_elems) {
+        // Less than a header remains, must be garbage. Wipe it.
+        this->clear();
+        break;
+      }
+
+      auto hdr_res = this->try_peek_object<Header>();
+      if (!hdr_res) {
+        this->clear();
+        break;
+      }
+
+      auto [is_valid, size_or_skip] = validator(*hdr_res);
+
+      if (!is_valid || size_or_skip < header_elems) {
+        // Corrupted frame at the front! Don't try to hunt.
+        // Wipe the entire buffer so the new frame starts on a clean slate.
+        this->clear();
+        break;
+      }
+
+      // Valid frame! Safely evict the ENTIRE frame.
+      std::size_t to_drop = std::min<std::size_t>(this->len_, size_or_skip);
+      this->consume(to_drop);
+    }
+
+    // Space is now guaranteed. Write losslessly!
+    // Using try_write_base here instead of overwrite_base guarantees we don't accidentally shred data.
+    std::ignore = this->try_write_base(&header, header_elems, sizeof(T));
+    if (payload_elems > 0) {
+      std::ignore = this->try_write_base(payload.data(), payload_elems, sizeof(T));
+    }
+
+    return {};
+  }
 };
 
 #if RELOCO_SHARED_PROVIDE_DEFINITIONS
