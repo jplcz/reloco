@@ -805,6 +805,67 @@ public:
   }
 
   /**
+   * @brief Probes for a structured frame and extracts the payload WITHOUT consuming it.
+   * Because this is a const operation, if corruption is detected, it returns an error
+   * but cannot automatically clear the buffer.
+   *
+   * @param validator A callable `std::pair<bool, size_type> (const Header&)`
+   * @param processor A callable `void (const Header&, span<const T> chunk1, span<const T> chunk2)`
+   *
+   * @return `result<bool>`:
+   *         - `true` if a frame was successfully peeked.
+   *         - `false` if we are waiting for more data.
+   *         - `error::invalid_argument` if corruption is detected.
+   */
+  template <typename Header, typename Validator, typename Processor>
+  [[nodiscard]] result<bool> try_peek_frame(Validator &&validator, Processor &&processor) const & noexcept {
+    static_assert(std::is_trivially_copyable_v<Header>, "Header must be trivially copyable");
+    const std::size_t header_elems = sizeof(Header) / sizeof(T);
+
+    if (this->len_ < header_elems)
+      return false;
+
+    // Peek the header safely
+    auto hdr_res = this->try_peek_object<Header>();
+    if (!hdr_res)
+      return false;
+
+    // Validate integrity and get expected size
+    auto [is_valid, size_or_skip] = validator(*hdr_res);
+
+    if (!is_valid || size_or_skip < header_elems) {
+      // Corruption detected! Cannot self-heal because this method is const.
+      return reloco::unexpected(error::invalid_argument);
+    }
+
+    // Check if the full frame is here
+    if (this->len_ < size_or_skip) {
+      return false; // Wait for more data
+    }
+
+    // We have the full frame! Calculate the payload slices.
+    std::size_t payload_elems = size_or_skip - header_elems;
+    std::size_t payload_head = (this->head_ + header_elems) % this->cap_;
+
+    span<const T> chunk1, chunk2;
+    if (payload_elems > 0) {
+      const T *typed_data = static_cast<const T *>(this->data_);
+      std::size_t first_chunk = std::min(payload_elems, this->cap_ - payload_head);
+
+      chunk1 = span<const T>(typed_data + payload_head, first_chunk);
+      if (first_chunk < payload_elems) {
+        chunk2 = span<const T>(typed_data, payload_elems - first_chunk);
+      }
+    }
+
+    // Dispatch the payload to the user
+    processor(*hdr_res, chunk1, chunk2);
+
+    // Return success WITHOUT consuming!
+    return true;
+  }
+
+  /**
    * @brief Atomically writes a header and payload. If space is insufficient, it cleanly
    * evicts COMPLETE older frames from the front using the provided validator, avoiding shredded data.
    *

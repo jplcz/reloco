@@ -292,4 +292,37 @@ TEST_F(RingBufferCodecTest, ClearsBufferOnImpossibleLengthConsume) {
   EXPECT_EQ(stream.size(), 0);
 }
 
+TEST_F(RingBufferCodecTest, PeekFrameDoesNotConsume) {
+  inline_ring_buffer<char, 128> stream;
+  auto val = get_validator();
+
+  TestHeader pkt{0x1337BEEF, sizeof(TestHeader) + 5};
+  ASSERT_TRUE(stream.try_write_object(pkt));
+  ASSERT_TRUE(stream.try_write(span<const char>("HELLO", 5)));
+
+  // Peek the frame
+  int peek_count = 0;
+  auto res = stream.try_peek_frame<TestHeader>(val, [&](const TestHeader &, span<const char> c1, span<const char>) {
+    EXPECT_EQ(c1.size(), 5);
+    EXPECT_EQ(std::string_view(c1.data(), c1.size()), "HELLO");
+    peek_count++;
+  });
+
+  ASSERT_TRUE(res.has_value());
+  EXPECT_TRUE(*res);
+  EXPECT_EQ(peek_count, 1);
+
+  // Verify it was NOT consumed! Size should remain unchanged.
+  EXPECT_EQ(stream.size(), sizeof(TestHeader) + 5);
+
+  // We can peek it again!
+  res = stream.try_peek_frame<TestHeader>(
+      val, [&](const TestHeader &, span<const char>, span<const char>) { peek_count++; });
+  EXPECT_EQ(peek_count, 2);
+
+  // Manually consume the exact size of the frame when finished
+  stream.consume(sizeof(TestHeader) + 5);
+  EXPECT_EQ(stream.size(), 0);
+}
+
 RELOCO_END_UNSAFE_BUFFER_USAGE
