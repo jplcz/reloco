@@ -38,7 +38,7 @@ public:
     return *this;
   }
 
-  ~vec_deque() noexcept { this->destroy_elements(detail::get_operations_for<T>(), detail::metadata_for<T>); }
+  ~vec_deque() noexcept { this->deallocate_elements(detail::get_operations_for<T>(), detail::metadata_for<T>); }
 
   // ---- Factories ----
 

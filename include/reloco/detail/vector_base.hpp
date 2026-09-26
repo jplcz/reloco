@@ -1058,7 +1058,7 @@ protected:
       return;
 
     // Clean up current resources (destroys elements and deallocates heap)
-    destroy_elements(ops, type);
+    deallocate_elements(ops, type);
 
     // Perform the move transfer
     move_construct_from_base(std::move(other));
@@ -1180,7 +1180,7 @@ protected:
                              mixed_deque_base &&other) noexcept {
     if (this == &other)
       return;
-    destroy_elements(ops, type);
+    deallocate_elements(ops, type);
     move_construct_from_base(ops, type, std::move(other));
   }
 

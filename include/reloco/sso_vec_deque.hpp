@@ -110,7 +110,7 @@ public:
     return *this;
   }
 
-  ~sso_vec_deque() noexcept { this->destroy_elements(detail::get_operations_for<T>(), detail::metadata_for<T>); }
+  ~sso_vec_deque() noexcept { this->deallocate_elements(detail::get_operations_for<T>(), detail::metadata_for<T>); }
 
   // ---- fallible construction / cloning (see concepts.hpp) ----
 
