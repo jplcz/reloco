@@ -55,14 +55,18 @@ customization point -- select **at most one**:
   -- no glibc futex wrapper is used or required; `futex_wait_timeout`
   passes `FUTEX_WAIT_PRIVATE`'s own *relative* `struct timespec` timeout
   argument directly, via `duration_cast<struct timespec>`). Implemented in
-  `futex_linux.ipp`. **Not exercised by this repository's test suite --
-  review before relying on it in production.**
+  `futex_linux.ipp`. **Auto-selected by default on Linux** (see below).
 - **`RELOCO_FUTEX_BACKEND_FREEBSD`**: `_umtx_op(2)`
   (`UMTX_OP_WAIT_UINT`/`UMTX_OP_WAKE`; `futex_wait_timeout` additionally
   passes a relative `struct _umtx_time` timeout, per `uaddr1`/`uaddr2`'s
-  size/pointer convention). Implemented in `futex_freebsd.ipp`. **Also not
-  exercised by this repository's test suite -- review before relying on
-  it in production.**
+  size/pointer convention). Implemented in `futex_freebsd.ipp`.
+  **Auto-selected by default on FreeBSD** (see below); not exercised by
+  this repository's test suite (no FreeBSD CI runner) -- review before
+  relying on it in production.
+- **`RELOCO_FUTEX_BACKEND_STD`**: forces the portable "parking lot"
+  fallback described below even on Linux/FreeBSD, overriding the
+  auto-selected native backend -- the explicit opt-out this task asked
+  for.
 - **`RELOCO_FUTEX_BACKEND_CUSTOM`**: suppresses the built-in
   declarations/definitions below entirely; the application/kernel
   supplies its own `reloco::futex_word`/`futex_wait`/`futex_wait_timeout`/
@@ -86,6 +90,7 @@ customization point -- select **at most one**:
 // targets hosted userspace, not the FreeBSD kernel proper) -- review and
 // adapt before relying on it.
 #include <sys/param.h>
+
 #include <sys/systm.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
@@ -146,13 +151,30 @@ hash `&word` across a small table of such locks, exactly like
 `futex_std.ipp`'s userspace "parking lot", rather than a single global
 one.)
 
-- **None defined (default)**: a portable "parking lot" fallback --
-  implemented in `futex_std.ipp` entirely on top of `mutex.hpp`'s
-  `mutex`/`condition_variable` (a small fixed table of buckets, each a
-  `mutex` + `condition_variable`, selected by hashing `&word`; see
-  `futex_std.ipp`'s file-level comment for the collision-safety argument)
-  -- always available on any hosted target `mutex.hpp` itself supports, no
-  OS-specific futex-like syscall required.
+- **None defined -- default on any other target (not Linux/FreeBSD, or
+  `RELOCO_FUTEX_BACKEND_STD` was defined)**: a portable "parking lot"
+  fallback -- implemented in `futex_std.ipp` entirely on top of
+  `mutex.hpp`'s `mutex`/`condition_variable` (a small fixed table of
+  buckets, each a `mutex` + `condition_variable`, selected by hashing
+  `&word`; see `futex_std.ipp`'s file-level comment for the
+  collision-safety argument) -- always available on any hosted target
+  `mutex.hpp` itself supports, no OS-specific futex-like syscall
+  required.
+
+### Auto-detected default
+
+If none of `RELOCO_FUTEX_BACKEND_LINUX`/`_FREEBSD`/`_STD`/`_CUSTOM` is
+defined, `futex.hpp` auto-selects the native backend by target OS --
+`RELOCO_FUTEX_BACKEND_LINUX` when `__linux__` is defined,
+`RELOCO_FUTEX_BACKEND_FREEBSD` when `__FreeBSD__` is defined -- exactly
+like `mutex.hpp` auto-selects `RELOCO_MUTEX_BACKEND_PTHREAD` whenever
+`<pthread.h>` is available. On any other target, or when
+`RELOCO_FUTEX_BACKEND_STD` is explicitly defined, the portable "parking
+lot" fallback above is used regardless of platform. Define
+`RELOCO_FUTEX_BACKEND_STD` to opt out of the native backend on
+Linux/FreeBSD without giving up the built-in implementation entirely
+(e.g. to sidestep the "not exercised on FreeBSD CI" caveat above, or to
+keep behavior identical across all your deployment targets).
 
 ## Shared-library participation
 

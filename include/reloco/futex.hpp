@@ -22,15 +22,22 @@
  * customization point -- select **at most one**: `RELOCO_FUTEX_BACKEND_
  * LINUX` (raw `futex(2)` syscall, `futex_linux.ipp`),
  * `RELOCO_FUTEX_BACKEND_FREEBSD` (`_umtx_op(2)`, `futex_freebsd.ipp`),
- * `RELOCO_FUTEX_BACKEND_CUSTOM` (application/kernel supplies its own
- * `futex_word`/`futex_wait`/`futex_wait_timeout`/`futex_wake_one`/
- * `futex_wake_all`, e.g. for a FreeBSD **kernel** `msleep(9)`/`wakeup(9)`
- * backend), or none defined (default: a portable "parking lot" fallback
- * in `futex_std.ipp`, built entirely on `mutex.hpp`'s `mutex`/
- * `condition_variable`, always available on any hosted target). See
- * [`docs/futex.md`](../../docs/futex.md) for the full backend writeup,
- * the `RELOCO_FUTEX_BACKEND_CUSTOM` FreeBSD-kernel example, and the
- * parking-lot collision-safety argument.
+ * `RELOCO_FUTEX_BACKEND_STD` (forces the portable "parking lot" fallback
+ * below even on Linux/FreeBSD), or `RELOCO_FUTEX_BACKEND_CUSTOM`
+ * (application/kernel supplies its own `futex_word`/`futex_wait`/
+ * `futex_wait_timeout`/`futex_wake_one`/`futex_wake_all`, e.g. for a
+ * FreeBSD **kernel** `msleep(9)`/`wakeup(9)` backend). If none of the
+ * four is defined, the native backend is auto-selected by target OS --
+ * `RELOCO_FUTEX_BACKEND_LINUX` on Linux (`__linux__`),
+ * `RELOCO_FUTEX_BACKEND_FREEBSD` on FreeBSD (`__FreeBSD__`) -- exactly
+ * like `mutex.hpp` auto-selects `RELOCO_MUTEX_BACKEND_PTHREAD` when
+ * `<pthread.h>` is available. On any other target (or when
+ * `RELOCO_FUTEX_BACKEND_STD` is defined), the portable "parking lot"
+ * fallback in `futex_std.ipp` is used instead, built entirely on
+ * `mutex.hpp`'s `mutex`/`condition_variable` and always available on any
+ * hosted target. See [`docs/futex.md`](../../docs/futex.md) for the full
+ * backend writeup, the `RELOCO_FUTEX_BACKEND_CUSTOM` FreeBSD-kernel
+ * example, and the parking-lot collision-safety argument.
  *
  * Every `futex_wait`/`futex_wait_timeout`/`futex_wake_one`/
  * `futex_wake_all` declaration below is `RELOCO_API`-decorated (see
@@ -68,11 +75,31 @@
 #include <cstdint>
 
 #if defined(RELOCO_FUTEX_BACKEND_LINUX) && defined(RELOCO_FUTEX_BACKEND_FREEBSD)
-#error "reloco/futex.hpp: define at most one of RELOCO_FUTEX_BACKEND_LINUX/RELOCO_FUTEX_BACKEND_FREEBSD"
+#error                                                                                                                 \
+    "reloco/futex.hpp: define at most one of RELOCO_FUTEX_BACKEND_LINUX/RELOCO_FUTEX_BACKEND_FREEBSD/RELOCO_FUTEX_BACKEND_STD"
+#endif
+#if defined(RELOCO_FUTEX_BACKEND_STD) && (defined(RELOCO_FUTEX_BACKEND_LINUX) || defined(RELOCO_FUTEX_BACKEND_FREEBSD))
+#error                                                                                                                 \
+    "reloco/futex.hpp: define at most one of RELOCO_FUTEX_BACKEND_LINUX/RELOCO_FUTEX_BACKEND_FREEBSD/RELOCO_FUTEX_BACKEND_STD"
 #endif
 #if defined(RELOCO_FUTEX_BACKEND_CUSTOM) &&                                                                            \
-    (defined(RELOCO_FUTEX_BACKEND_LINUX) || defined(RELOCO_FUTEX_BACKEND_FREEBSD))
-#error "reloco/futex.hpp: RELOCO_FUTEX_BACKEND_CUSTOM is exclusive of RELOCO_FUTEX_BACKEND_LINUX/_FREEBSD"
+    (defined(RELOCO_FUTEX_BACKEND_LINUX) || defined(RELOCO_FUTEX_BACKEND_FREEBSD) ||                                   \
+     defined(RELOCO_FUTEX_BACKEND_STD))
+#error "reloco/futex.hpp: RELOCO_FUTEX_BACKEND_CUSTOM is exclusive of RELOCO_FUTEX_BACKEND_LINUX/_FREEBSD/_STD"
+#endif
+
+// Auto-select the native backend on Linux/FreeBSD, exactly like
+// mutex.hpp's own RELOCO_MUTEX_BACKEND_PTHREAD/_STD auto-detection --
+// unless the caller already picked one explicitly (including
+// RELOCO_FUTEX_BACKEND_STD, which forces the portable fallback even on
+// Linux/FreeBSD) or opted out entirely via RELOCO_FUTEX_BACKEND_CUSTOM.
+#if !defined(RELOCO_FUTEX_BACKEND_CUSTOM) && !defined(RELOCO_FUTEX_BACKEND_LINUX) &&                                   \
+    !defined(RELOCO_FUTEX_BACKEND_FREEBSD) && !defined(RELOCO_FUTEX_BACKEND_STD)
+#if defined(__linux__)
+#define RELOCO_FUTEX_BACKEND_LINUX 1
+#elif defined(__FreeBSD__)
+#define RELOCO_FUTEX_BACKEND_FREEBSD 1
+#endif
 #endif
 
 #if !defined(RELOCO_FUTEX_BACKEND_CUSTOM)

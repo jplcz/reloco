@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 #include <reloco/duration.hpp>
+#include <reloco/mutex.hpp>
 #include <reloco/park.hpp>
 #include <reloco/thread.hpp>
 
