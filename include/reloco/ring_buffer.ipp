@@ -1,3 +1,14 @@
+// SPDX-FileCopyrightText: 2026 Jarosław Pelczar <jarek@jpelczar.com>
+//
+// SPDX-License-Identifier: BSD-2-Clause
+
+/** @file ring_buffer.ipp
+ * @brief Out-of-line bodies for `unowned_trivial_ring_base`'s heavier,
+ * allocation/copy-driving methods (see `ring_buffer.hpp`). Included from
+ * `ring_buffer.hpp` itself, guarded on `RELOCO_SHARED_PROVIDE_DEFINITIONS`
+ * (see `reloco/detail/compat.hpp`). Never included directly.
+ */
+
 RELOCO_API result<void> unowned_trivial_ring_base::try_write_base(const void *src, std::size_t count,
                                                                   std::size_t elem_size) noexcept {
   if (len_ + count > cap_)

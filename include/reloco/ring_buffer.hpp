@@ -3,6 +3,36 @@
 
 #pragma once
 
+/** @file ring_buffer.hpp
+ * @brief Byte/POD-oriented circular buffer for streaming I/O: framing
+ * protocol parsers, log ring buffers, and socket/pipe staging areas.
+ *
+ * `ring_buffer<T>` owns a heap allocation obtained through a
+ * `reloco::allocator_ref` (see `allocator.hpp`), exactly like `vector<T>`
+ * (see `vector.hpp`). `T` must be `std::is_trivially_copyable`; the API is
+ * built around bulk byte transfer (`try_write`/`read`/`read_slices`/
+ * `write_slices`) and zero-copy framing (`try_consume_frame`/
+ * `try_write_frame_evicting`) rather than per-element construction --
+ * see `vec_deque.hpp` for a per-element deque of arbitrary (non-trivial)
+ * `T`.
+ *
+ * `unowned_trivial_ring_base` (the untyped, `void*`-based engine) and
+ * `unowned_ring_base<T>` (the typed layer) are shared, out-of-line-bodied
+ * (`ring_buffer.ipp`) engines behind four storage policies --
+ * `heap_trivial_ring_base`, `inline_trivial_ring_base`,
+ * `outline_trivial_ring_base`, `mixed_trivial_ring_base` -- backing the
+ * four public containers `ring_buffer<T>`, `inline_ring_buffer<T,
+ * Capacity>`, `outline_ring_buffer<T>`, `sso_ring_buffer<T,
+ * InlineCapacity>`, mirroring `vector.hpp`/`inline_vector.hpp`/
+ * `outline_vector.hpp`/`sso_vector.hpp` exactly (see
+ * `detail/vector_base.hpp`). `ring_buffer_ref<T>` is an independent,
+ * copyable cursor snapshotting another ring buffer's current state.
+ *
+ * See `docs/ring-buffer.md` for the full design writeup, and
+ * `docs/atomic-ring-buffer.md` / `atomic_ring_buffer.hpp` for the
+ * lock-free, cross-thread SPSC counterpart.
+ */
+
 #include "allocator.hpp"
 #include "default_allocator.hpp"
 #include "error.hpp"

@@ -1,4 +1,34 @@
+// SPDX-FileCopyrightText: 2026 Jarosław Pelczar <jarek@jpelczar.com>
+//
+// SPDX-License-Identifier: BSD-2-Clause
+
 #pragma once
+
+/** @file atomic_ring_buffer.hpp
+ * @brief Lock-free, single-producer/single-consumer (SPSC) ring buffer for
+ * handing trivially copyable data between exactly two threads without a
+ * mutex.
+ *
+ * `spsc_ring_buffer<T>` splits its state across two cache lines
+ * (`write_idx_`/`cached_read_idx_` for the producer, `read_idx_`/
+ * `cached_write_idx_` for the consumer) to prevent false sharing, and
+ * requires a power-of-two capacity so every index computation can use
+ * `& mask_` instead of `% cap_`. Unlike `ring_buffer<T>` (see
+ * `ring_buffer.hpp`), every container in this family is unconditionally
+ * non-copyable and non-movable: moving or copying an object containing
+ * `std::atomic` members while another thread may be reading/writing it is
+ * inherently unsound.
+ *
+ * `inline_spsc_ring_buffer<T, Capacity>` (embedded, zero-allocation),
+ * `outline_spsc_ring_buffer<T>` (non-owning, over a caller-supplied span),
+ * and `heap_spsc_ring_buffer<T>` (allocator-backed, fallible
+ * `try_initialize`) are the three public leaf containers.
+ *
+ * See `docs/atomic-ring-buffer.md` for the full design writeup, and
+ * `docs/ring-buffer.md` / `ring_buffer.hpp` for the single-threaded,
+ * growable counterpart this type's frame-parsing API mirrors.
+ */
+
 #include "allocator.hpp"
 #include "default_allocator.hpp"
 #include "error.hpp"

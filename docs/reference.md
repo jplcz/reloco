@@ -754,6 +754,166 @@ unconditionally `false` regardless of `T`, for the same reason as
 `sso_vector<T, InlineCapacity>`: a small instance's data pointer points
 into its own embedded buffer.
 
+## `ring_buffer<T>`
+
+`include/reloco/ring_buffer.hpp`
+
+Move-only, allocator-backed, growable circular buffer for byte/POD
+streaming I/O: `T` must be `std::is_trivially_copyable`. Unlike
+`vec_deque<T>`, the API is built around bulk transfer and zero-copy
+framing rather than per-element construction.
+
+```cpp
+reloco::ring_buffer<char> rb;
+auto ok = rb.try_reserve(64);
+std::ignore = rb.try_write(reloco::span<const char>("hello", 5));
+char out[5];
+std::size_t n = rb.read(reloco::span<char>(out, 5)); // n == 5, consumes
+```
+
+Bulk transfer: `try_write(span<const T>)` (lossless), `write_overwrite`
+(lossy, evicts oldest), `read(span<T>)` (consuming), `read_slices()`/
+`write_slices()` (up to two contiguous spans, for `writev`/`readv`-style
+zero-copy I/O), `peek`, `make_contiguous()` (Rust `VecDeque::
+make_contiguous`), `transfer_to(dest)` (drains directly into another ring
+buffer).
+
+Single-element mutation: `push_back_overwrite`/`push_front_overwrite`
+(lossy, never fail), `try_pop_front`/`try_pop_back`, `push_back`
+(`std::back_inserter` support).
+
+Access: `operator[]`/`front()`/`back()` (checked tier), `try_at`/
+`try_front`/`try_back` (fallible tier), same tri-tier convention as every
+other reloco container.
+
+Heterogeneous object I/O: `try_write_object`/`write_object_overwrite`/
+`try_write_span` (write a different trivially copyable `U` across
+elements of `T`), `try_read_object`/`try_peek_object` (the reverse).
+
+Frame decoding: `try_consume_frame<Header>(validator, processor)` and
+`try_peek_frame` (zero-copy, length-prefixed protocol parsing directly
+against the buffer, self-healing on corruption), `try_write_frame_evicting`
+(write side: evicts complete frames to make room instead of shredding
+data), `try_read_frame<Header>(get_total_size)` (linearizes and returns
+one contiguous span per frame).
+
+Search: `find(value, offset)`, `find_sequence(seq, offset)`,
+`consume_until(predicate)`.
+
+Zero-copy allocation: `allocate_contiguous`/`allocate_slices` (writable
+spans) plus `commit(count)`, `try_allocate_object<U>()`,
+`align_write_head(alignment)`. `begin_write(limit)` returns a `write_tx`
+RAII transaction (typestate-checked via `-Wconsumed`, zero-overhead
+rollback if never committed).
+
+`reloco::is_trivially_relocatable<ring_buffer<T>>` is always `true`
+regardless of `T`: its handle is just an `allocator_ref` plus a pointer
+and three sizes.
+
+See [Ring buffers](ring-buffer.md) for the full engine design, the
+frame-parsing contract, and how `write_tx` composes.
+
+## `inline_ring_buffer<T, Capacity>`
+
+`include/reloco/ring_buffer.hpp`
+
+`ring_buffer<T>`'s fixed-capacity, allocator-free counterpart: elements
+live in an embedded byte array sized for exactly `Capacity` elements.
+Unlike `inline_vector`/`inline_vec_deque`, this type **is** copyable
+(copy construction/assignment deep-copy via `read_slices()` +
+`try_write()`), since `T` is always trivially copyable. Every
+growing operation fails with `error::capacity_exceeded` once
+`size() == Capacity`. Movable (steals nothing -- copies the inline
+elements and resets the source, since storage can't be stolen from an
+embedded array).
+
+`reloco::is_trivially_relocatable<inline_ring_buffer<T, Capacity>>` is
+conditional on `is_trivially_relocatable<T>`: its storage is embedded
+directly in the object.
+
+## `outline_ring_buffer<T>`
+
+`include/reloco/ring_buffer.hpp`
+
+`ring_buffer<T>`'s non-owning counterpart, bound once to a caller-supplied
+`span<U>` at construction (cross-casting: `U` need not equal `T`, as long
+as the byte length divides evenly). Never copyable or movable -- there is
+no sound way to steal a borrowed span. Growth is capped at the bound
+span's byte capacity divided by `sizeof(T)`.
+
+```cpp
+alignas(char) std::byte buffer[64];
+reloco::outline_ring_buffer<char> rb(reloco::span<std::byte>(buffer));
+```
+
+## `sso_ring_buffer<T, InlineCapacity>`
+
+`include/reloco/ring_buffer.hpp`
+
+`ring_buffer<T>`'s small-size-optimized counterpart: up to
+`InlineCapacity` elements live in an embedded byte array; growth beyond
+that promotes to an `allocator_ref`-backed heap allocation, linearizing
+the inline data in the process. `is_inline()` reports whether `*this` is
+still using its embedded buffer. Not copyable (use `try_clone`), movable
+(steals the heap pointer if spilled, else copies inline elements).
+
+`reloco::is_trivially_relocatable<sso_ring_buffer<T, InlineCapacity>>` is
+unconditionally `false` regardless of `T`: a small instance's data pointer
+points into its own embedded buffer.
+
+## `ring_buffer_ref<T>`
+
+`include/reloco/ring_buffer.hpp`
+
+An independent, copyable cursor over any of the ring buffer flavors above:
+takes an immutable borrow of a source buffer's current `data_`/`head_`/
+`len_`/`cap_` and copies that state, so calling `consume()`/`read()` on
+the reference advances only its own cursor without modifying the source.
+Useful for speculative/lookahead frame parsing. Can also wrap raw external
+memory directly via its `span<T>`-taking constructors.
+
+```cpp
+reloco::ring_buffer<char> rb;
+reloco::ring_buffer_ref<char> cursor(rb); // independent snapshot
+```
+
+## `spsc_ring_buffer<T>` / `inline_spsc_ring_buffer<T, Capacity>` / `outline_spsc_ring_buffer<T>` / `heap_spsc_ring_buffer<T>`
+
+`include/reloco/atomic_ring_buffer.hpp`
+
+Lock-free, single-producer/single-consumer queue for trivially copyable
+`T`, cache-line-split to avoid false sharing between producer and
+consumer. Capacity must be a power of two (`inline_spsc_ring_buffer`
+`static_assert`s it at compile time; `outline_spsc_ring_buffer` rounds the
+bound span's capacity down; `heap_spsc_ring_buffer::try_initialize` rounds
+up). Every container in this family is unconditionally non-copyable and
+non-movable.
+
+```cpp
+reloco::heap_spsc_ring_buffer<int> q;
+auto ok = q.try_initialize(16);
+std::ignore = q.try_push(42); // producer thread
+auto tx = q.begin_read();     // consumer thread
+```
+
+Producer API: `write_slices(min_space)`, `commit(count)`,
+`try_write(span<const T>)`, `try_push(value)`, `try_write_object<U>`,
+`try_emplace<U>` (`RELOCO_UNSAFE_BUFFER_USAGE`-gated placement-new),
+`begin_write(min_space)` (returns a typestate-checked `write_tx`).
+
+Consumer API: `read_slices(min_elements)`, `consume(count)`,
+`try_read_object<U>`, `try_peek_object<U>`, `try_consume_frame<Header>`
+(mirrors `ring_buffer<T>::try_consume_frame`), `read_with(func)`,
+`consume_while(predicate)`, `begin_read(min_elements)` (returns a
+typestate-checked `read_tx`).
+
+`heap_spsc_ring_buffer<T>` default-constructs inert; call
+`try_initialize(capacity)` once before use.
+
+See [Lock-free SPSC ring buffers](atomic-ring-buffer.md) for the full
+design writeup, including the demand-driven cache-refresh strategy behind
+`write_slices`/`read_slices`.
+
 ## `boxed_slice<T>`
 
 `include/reloco/boxed_slice.hpp`
