@@ -136,7 +136,7 @@ class RelocoSsoVectorPrinter:
         size = int(self.val["size_"])
         cap = int(self.val["cap_"])
         inline_cap = int(self.val.type.template_argument(1))
-        is_inline = int(self.val["data_"]) == int(self.val["inline_storage_"].address)
+        is_inline = int(self.val["data_"]) == int(self.val["inline_storage_"])
         return "reloco::sso_vector of length %d, capacity %d (%s, inline capacity %d)" % (
             size,
             cap,
