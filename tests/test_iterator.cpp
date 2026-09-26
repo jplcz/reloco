@@ -194,6 +194,83 @@ TEST(IteratorTest, RangeForOverTemporaryAdaptorChainWorks) {
   EXPECT_EQ(collected, (std::vector<int>{1, 3}));
 }
 
+// --- Generating (source) iterators ---
+
+namespace {
+
+// Hand-rolled generator: derives from iterator_adaptor directly, matching
+// the documented "write your own generating iterator" recipe.
+class counting_iterator : public reloco::iterator_adaptor<counting_iterator, int> {
+public:
+  using item_type = int;
+
+  [[nodiscard]] optional<item_type> next_impl() noexcept { return next_++; }
+
+private:
+  int next_{0};
+};
+
+} // namespace
+
+TEST(IteratorTest, HandRolledGeneratorComposesWithAdaptors) {
+  std::vector<int> out;
+  for (auto x : counting_iterator{}.take(5))
+    out.push_back(x);
+  EXPECT_EQ(out, (std::vector<int>{0, 1, 2, 3, 4}));
+}
+
+TEST(IteratorTest, FromFnDrivesGeneratorFromAClosure) {
+  int n = 0;
+  auto counter = reloco::from_fn([n]() mutable -> optional<int> {
+    if (n >= 3)
+      return nullopt;
+    return n++;
+  });
+  std::vector<int> out;
+  for (auto x : counter)
+    out.push_back(x);
+  EXPECT_EQ(out, (std::vector<int>{0, 1, 2}));
+}
+
+TEST(IteratorTest, OnceYieldsExactlyOneItem) {
+  auto o = reloco::once(std::string("hi"));
+  auto first = o.next();
+  ASSERT_TRUE(first.has_value());
+  EXPECT_EQ(*first, "hi");
+  EXPECT_FALSE(o.next().has_value());
+  EXPECT_FALSE(o.next().has_value());
+}
+
+TEST(IteratorTest, RepeatIsInfiniteUnlessBounded) {
+  auto r = reloco::repeat(7).take(4);
+  std::vector<int> out;
+  for (auto x : r)
+    out.push_back(x);
+  EXPECT_EQ(out, (std::vector<int>{7, 7, 7, 7}));
+}
+
+TEST(IteratorTest, SuccessorsStopsWhenGeneratorReturnsEmpty) {
+  auto powers = reloco::successors(optional<int>(1), [](int &prev) {
+    return prev <= 32 ? optional<int>(prev * 2) : nullopt;
+  });
+  std::vector<int> out;
+  for (auto x : powers)
+    out.push_back(x);
+  EXPECT_EQ(out, (std::vector<int>{1, 2, 4, 8, 16, 32, 64}));
+}
+
+TEST(IteratorTest, SuccessorsStopsImmediatelyWhenSeedIsEmpty) {
+  auto s = reloco::successors(optional<int>(nullopt), [](int &prev) { return optional<int>(prev); });
+  EXPECT_EQ(s.count(), 0u);
+}
+
+TEST(IteratorTest, EmptyIsAlwaysExhausted) {
+  auto e = reloco::empty<int>();
+  EXPECT_EQ(e.count(), 0u);
+  auto e2 = reloco::empty<int>();
+  EXPECT_FALSE(e2.next().has_value());
+}
+
 namespace {
 
 // void_t-based detection idiom (see tests/test_intrusive_hash_table.cpp for

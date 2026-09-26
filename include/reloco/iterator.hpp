@@ -7,7 +7,9 @@
 /** @file iterator.hpp
  * @brief Lazy, zero-allocation iterator adaptors mirroring Rust's
  * `std::iter::Iterator` adapter chain (`Fuse`, `Zip`, `Map`, `Filter`,
- * `Enumerate`, `Take`, `Skip`, `Chain`), layered on top of ordinary C++
+ * `Enumerate`, `Take`, `Skip`, `Chain`), plus `std::iter` *source*
+ * (generating) iterators (`from_fn`, `once`, `repeat`, `successors`,
+ * `empty`), layered on top of ordinary C++
  * `begin()`/`end()` range-for support.
  *
  * Every adaptor in this file is, at the same time:
@@ -63,6 +65,18 @@
  * upstream adaptor(s)/iterators and callable(s) inline by value; nothing
  * here allocates, so this header is safe to use in kernel/bare-metal code
  * exactly like the rest of reloco.
+ *
+ * **Writing your own generating (source) iterator.** `iterator_adaptor`
+ * is a CRTP base, not a closed set of adaptors: any class publicly
+ * derived from `iterator_adaptor<Derived, Item>` that implements
+ * `optional<Item> next_impl() noexcept` -- called once per `next()`/
+ * cursor-increment, never again once it has returned empty -- is a full
+ * citizen of the adaptor chain (`.map()`, `.take()`, range-for, etc. all
+ * work on it for free), infinite generators included (see `repeat()`
+ * below for why an infinite one must always be paired with `.take(n)` or
+ * another early-stopping adaptor). `from_fn()`/`once()`/`repeat()`/
+ * `successors()`/`empty()` are exactly such classes, provided so most
+ * generating iterators never need a hand-written one at all.
  */
 
 #include "lifetime.hpp"
@@ -531,6 +545,154 @@ private:
   B b_;
   bool a_done_{false};
 };
+
+/**
+ * @brief Rust `std::iter::from_fn()` equivalent: a source iterator that
+ * calls @p f (a `FnMut() -> optional<Item>` in Rust terms) on every
+ * `next()`, forwarding its result directly -- for a "generating" iterator
+ * that needs no more state than a capturing lambda already gives it, this
+ * is the escape hatch that avoids hand-writing a whole `next_impl()`
+ * class. See `from_fn()` below for the usual entry point.
+ */
+template <typename F>
+class from_fn_iterator
+    : public iterator_adaptor<
+          from_fn_iterator<F>,
+          typename decltype(std::declval<F &>()())::value_type> {
+public:
+  using item_type = typename decltype(std::declval<F &>()())::value_type;
+
+  explicit from_fn_iterator(F f) noexcept : f_(std::move(f)) {}
+
+  [[nodiscard]] optional<item_type> next_impl() noexcept { return f_(); }
+
+private:
+  F f_;
+};
+
+/**
+ * @brief Rust `std::iter::from_fn()`: builds a source iterator directly
+ * out of a callable `optional<Item> f()` -- @p f is called once per
+ * `next()`, and its result is forwarded as-is (so @p f itself decides
+ * when the sequence ends, by returning an empty `optional`).
+ *
+ * ```cpp
+ * int n = 0;
+ * auto counter = reloco::from_fn([n]() mutable -> reloco::optional<int> {
+ *   if (n >= 5)
+ *     return reloco::nullopt;
+ *   return n++;
+ * });
+ * // counter.count() == 5, yielding 0, 1, 2, 3, 4.
+ * ```
+ */
+template <typename F> [[nodiscard]] auto from_fn(F f) noexcept {
+  return from_fn_iterator<F>(std::move(f));
+}
+
+/**
+ * @brief Rust `std::iter::once()`: a source iterator yielding exactly one
+ * item (a move of @p value), then stopping.
+ */
+template <typename T> class once_iterator : public iterator_adaptor<once_iterator<T>, T> {
+public:
+  using item_type = T;
+
+  explicit once_iterator(T value) noexcept : value_(std::move(value)) {}
+
+  [[nodiscard]] optional<item_type> next_impl() noexcept {
+    if (!has_value_)
+      return nullopt;
+    has_value_ = false;
+    return optional<item_type>(std::move(value_));
+  }
+
+private:
+  T value_;
+  bool has_value_{true};
+};
+
+/** @copydoc once_iterator */
+template <typename T> [[nodiscard]] once_iterator<std::decay_t<T>> once(T value) noexcept {
+  return once_iterator<std::decay_t<T>>(std::move(value));
+}
+
+/**
+ * @brief Rust `std::iter::repeat()`: an infinite source iterator that
+ * yields an endless stream of copies of @p value. `T` must be copyable.
+ * Never exhausts on its own -- always combine with `.take(n)` (or another
+ * adaptor that stops early, like `.zip()` against a finite iterator), or
+ * a terminal operation such as `.count()`/`.for_each()` will loop forever.
+ */
+template <typename T> class repeat_iterator : public iterator_adaptor<repeat_iterator<T>, T> {
+public:
+  using item_type = T;
+
+  explicit repeat_iterator(T value) noexcept : value_(std::move(value)) {}
+
+  [[nodiscard]] optional<item_type> next_impl() noexcept { return optional<item_type>(value_); }
+
+private:
+  T value_;
+};
+
+/** @copydoc repeat_iterator */
+template <typename T> [[nodiscard]] repeat_iterator<std::decay_t<T>> repeat(T value) noexcept {
+  return repeat_iterator<std::decay_t<T>>(std::move(value));
+}
+
+/**
+ * @brief Rust `std::iter::successors()`: a source iterator seeded with
+ * @p first; each subsequent item is computed by calling @p f with a
+ * reference to the previous one (a `FnMut(&Item) -> optional<Item>` in
+ * Rust terms). Stops as soon as @p first is empty, or @p f returns empty.
+ *
+ * ```cpp
+ * // Powers of two while doubling stays <= 64: 1, 2, 4, 8, 16, 32, 64.
+ * auto powers = reloco::successors(reloco::optional<int>(1), [](int &prev) {
+ *   return prev <= 32 ? reloco::optional<int>(prev * 2) : reloco::nullopt;
+ * });
+ * ```
+ */
+template <typename T, typename F> class successors_iterator : public iterator_adaptor<successors_iterator<T, F>, T> {
+public:
+  using item_type = T;
+
+  successors_iterator(optional<T> first, F f) noexcept : current_(std::move(first)), f_(std::move(f)) {}
+
+  [[nodiscard]] optional<item_type> next_impl() noexcept {
+    if (!current_)
+      return nullopt;
+    optional<item_type> result = std::move(current_);
+    current_ = f_(*result.as_known());
+    return result.as_known();
+  }
+
+private:
+  optional<T> current_;
+  F f_;
+};
+
+/** @copydoc successors_iterator */
+template <typename T, typename F> [[nodiscard]] successors_iterator<T, F> successors(optional<T> first, F f) noexcept {
+  return successors_iterator<T, F>(std::move(first), std::move(f));
+}
+
+/**
+ * @brief Rust `std::iter::empty()`: a source iterator that is always
+ * immediately exhausted. Useful as a neutral placeholder wherever a
+ * concrete iterator type is required (`.chain(empty<T>())`, generic code,
+ * etc.).
+ */
+template <typename T> class empty_iterator : public iterator_adaptor<empty_iterator<T>, T> {
+public:
+  using item_type = T;
+
+  [[nodiscard]] optional<item_type> next_impl() noexcept { return nullopt; }
+};
+
+/** @copydoc empty_iterator */
+template <typename T> [[nodiscard]] empty_iterator<T> empty() noexcept { return empty_iterator<T>(); }
 
 template <typename Derived, typename Item> fuse_iterator<Derived> iterator_adaptor<Derived, Item>::fuse() noexcept {
   return fuse_iterator<Derived>(std::move(derived()));

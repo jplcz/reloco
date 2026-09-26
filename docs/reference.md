@@ -1411,7 +1411,7 @@ Unlike every other reloco container, `intrusive_hash_table` has no
 which is exactly the decision this whole file exists to leave to the
 caller.
 
-## `iter()` / `iterator_adaptor<Derived, Item>` (`Fuse`, `Zip`, `Map`, `Filter`, `Enumerate`, `Take`, `Skip`, `Chain`)
+## `iter()` / `iterator_adaptor<Derived, Item>` (`Fuse`, `Zip`, `Map`, `Filter`, `Enumerate`, `Take`, `Skip`, `Chain`, `from_fn`, `once`, `repeat`, `successors`, `empty`)
 
 `include/reloco/iterator.hpp`
 
@@ -1493,6 +1493,59 @@ iterators into `range`'s own storage).
 
 No allocation, no exceptions, no RTTI: every adaptor stores its upstream
 adaptor(s)/iterators and callable(s) inline by value.
+
+### Writing a generating (source) iterator
+
+`iterator_adaptor` is a CRTP base, not a closed set of adaptors: any class
+publicly derived from `iterator_adaptor<Derived, Item>` that implements
+`optional<Item> next_impl() noexcept` (called once per `next()`/cursor
+increment; never called again once it has returned empty) is a full
+citizen of the adaptor chain -- `.map()`/`.take()`/range-for/etc. all work
+on it for free, infinite generators included (pair one with `.take(n)` or
+another early-stopping adaptor, exactly like Rust's own infinite iterators):
+
+```cpp
+class fibonacci : public reloco::iterator_adaptor<fibonacci, std::uint64_t> {
+public:
+  using item_type = std::uint64_t;
+
+  optional<item_type> next_impl() noexcept {
+    auto value = a_;
+    auto next = a_ + b_;
+    a_ = b_;
+    b_ = next;
+    return value;
+  }
+
+private:
+  std::uint64_t a_{0}, b_{1};
+};
+
+for (auto x : fibonacci{}.take(10)) // 0, 1, 1, 2, 3, 5, 8, 13, 21, 34
+  ...
+```
+
+Five ready-made source iterators (Rust's `std::iter` free functions) cover
+the common cases without a hand-written class:
+
+| Function | Rust equivalent | Behavior |
+| --- | --- | --- |
+| `from_fn(f)` | `std::iter::from_fn()` | Calls `optional<Item> f()` on every `next()`, forwarding its result as-is -- `f` itself decides when to stop. |
+| `once(value)` | `std::iter::once()` | Yields exactly one item (a move of `value`), then stops. |
+| `repeat(value)` | `std::iter::repeat()` | Infinite stream of copies of `value`; always pair with `.take(n)` or another early-stopping adaptor. |
+| `successors(first, f)` | `std::iter::successors()` | Seeded with `optional<T> first`; each next item is `f(previous)`, stopping once `first`/`f(...)` is empty. |
+| `empty<T>()` | `std::iter::empty()` | Always immediately exhausted; a neutral placeholder wherever a concrete iterator type is required. |
+
+```cpp
+int n = 0;
+auto counter = reloco::from_fn([n]() mutable -> reloco::optional<int> {
+  return n < 5 ? reloco::optional<int>(n++) : reloco::nullopt;
+}); // 0, 1, 2, 3, 4
+
+auto powers = reloco::successors(reloco::optional<int>(1), [](int &prev) {
+  return prev <= 32 ? reloco::optional<int>(prev * 2) : reloco::nullopt;
+}); // 1, 2, 4, 8, 16, 32, 64
+```
 
 ## `sso_flat_set<T, InlineCapacity, Compare = std::less<T>>`
 
