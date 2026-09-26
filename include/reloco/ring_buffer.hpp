@@ -1291,14 +1291,14 @@ public:
       return buf_ != nullptr;
     }
 
-    [[nodiscard]] span<T> chunk1() const noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+    [[nodiscard]] span<T> chunk1() const noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(unconsumed) {
       return spans_.first;
     }
-    [[nodiscard]] span<T> chunk2() const noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+    [[nodiscard]] span<T> chunk2() const noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(unconsumed) {
       return spans_.second;
     }
 
-    [[nodiscard]] std::size_t total_allocated() const noexcept RELOCO_CALLABLE_WHEN("unconsumed") {
+    [[nodiscard]] std::size_t total_allocated() const noexcept RELOCO_CALLABLE_WHEN(unconsumed) {
       return spans_.first.size() + spans_.second.size();
     }
 
