@@ -8,6 +8,11 @@
 #include <reloco/send_sync.hpp>
 #include <reloco/thread.hpp>
 
+#if defined(__linux__)
+#include <cstring>
+#include <sys/prctl.h>
+#endif
+
 namespace {
 
 // Explicitly not Send, to exercise spawn()'s static_assert failing to
@@ -83,3 +88,43 @@ TEST(ThreadTest, SpawnRejectsNonSendCaptureAtCompileTime) {
   static_assert(!reloco::is_send_v<reloco::rc<int>>, "rc<T> must not be Send for this test to be meaningful");
   // reloco::spawn([captured = reloco::rc<int>()]() noexcept {}); // would not compile: F is not Send.
 }
+
+TEST(ThreadBuilderTest, SpawnWithoutNameOrStackSizeBehavesLikePlainSpawn) {
+  auto handle = reloco::thread_builder().spawn([]() noexcept -> int { return 7; });
+  ASSERT_TRUE(handle.has_value());
+  EXPECT_EQ(std::move(*handle).join(), 7);
+}
+
+TEST(ThreadBuilderTest, StackSizeIsAcceptedAndThreadStillRuns) {
+  std::atomic<bool> ran{false};
+  auto handle =
+      reloco::thread_builder().stack_size(1 << 20).spawn([&ran]() noexcept { ran.store(true, std::memory_order_relaxed); });
+#if defined(RELOCO_THREAD_BACKEND_STD)
+  // std::thread has no portable stack-size knob at all.
+  ASSERT_FALSE(handle.has_value());
+  EXPECT_EQ(handle.error(), reloco::error::unsupported_operation);
+#else
+  ASSERT_TRUE(handle.has_value());
+  std::move(*handle).join();
+  EXPECT_TRUE(ran.load(std::memory_order_relaxed));
+#endif
+}
+
+TEST(ThreadBuilderTest, OversizedNameIsReportedAsCapacityExceeded) {
+  auto handle = reloco::thread_builder().name("this-name-is-far-too-long-to-fit").spawn([]() noexcept {});
+  ASSERT_FALSE(handle.has_value());
+  EXPECT_EQ(handle.error(), reloco::error::capacity_exceeded);
+}
+
+#if defined(__linux__)
+TEST(ThreadBuilderTest, NameIsAppliedToTheSpawnedThreadOnLinux) {
+  char observed[16] = {};
+  auto handle = reloco::thread_builder().name("reloco-wrk").spawn([&observed]() noexcept {
+    prctl(PR_GET_NAME, observed);
+  });
+  ASSERT_TRUE(handle.has_value());
+  std::move(*handle).join();
+  EXPECT_STREQ(observed, "reloco-wrk");
+}
+#endif
+

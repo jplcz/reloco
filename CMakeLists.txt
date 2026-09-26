@@ -29,6 +29,14 @@ option(JPLCZ_RELOCO_BUILD_DEMOS
 option(JPLCZ_RELOCO_INSTALL
     "Install jplcz_reloco headers and CMake package metadata"
     ${JPLCZ_RELOCO_IS_TOP_LEVEL})
+set(JPLCZ_RELOCO_PORTING_HEADERS "" CACHE PATH
+    "Directory containing target-specific override headers (any of \
+mutex.hpp/thread.hpp/spin_lock.hpp/tls_provider.hpp/futex.hpp) copied \
+into include/reloco/detail/porting/ and installed alongside reloco's own \
+headers, plus the matching RELOCO_*_BACKEND_CUSTOM/RELOCO_TLS_MODEL macro \
+defined automatically for consumers of the jplcz_reloco target. See \
+include/reloco/detail/porting/*.template.hpp and include/reloco/detail/\
+porting/README.md for the exact shape each file must have.")
 
 if(JPLCZ_RELOCO_ENABLE_STRICT_WARNINGS OR JPLCZ_RELOCO_ENABLE_UNSAFE_BUFFER_USAGE OR
    JPLCZ_RELOCO_BUILD_HEADER_CHECKS OR JPLCZ_RELOCO_BUILD_TESTS)
@@ -74,6 +82,79 @@ target_include_directories(jplcz_reloco INTERFACE
 )
 
 add_library(jplcz_reloco::reloco ALIAS jplcz_reloco)
+
+# JPLCZ_RELOCO_PORTING_HEADERS: copy whichever of mutex.hpp/thread.hpp/
+# spin_lock.hpp/tls_provider.hpp/futex.hpp exist in the given directory
+# into a staging tree (never into reloco's own source include/ tree, so
+# reloco's own headers are never touched/replaced) and define the
+# matching RELOCO_*_BACKEND_CUSTOM/RELOCO_TLS_MODEL macro on
+# jplcz_reloco's INTERFACE so every consumer (including a downstream
+# find_package(jplcz_reloco) consumer, via the exported target's own
+# INTERFACE properties) picks it up automatically.
+# See include/reloco/detail/porting/README.md for the full mechanism.
+#
+# The build-tree staging layout is "porting_include/detail/porting/*.hpp"
+# (no "reloco/" prefix) added as its own extra -I directory: each reloco
+# header's own #include "detail/porting/<name>.hpp" is a quoted include,
+# so the compiler first tries it relative to that header's own directory
+# (include/reloco/), finds nothing there (only the *.template.hpp
+# scaffolds live in the real source tree), then falls back to treating it
+# like #include <detail/porting/<name>.hpp> against every -I directory --
+# which resolves against this staging directory's root, without a
+# "reloco/" prefix to account for. The installed layout is different (see
+# the JPLCZ_RELOCO_INSTALL block below): there, the same quoted include
+# resolves directly against <prefix>/include/reloco/detail/porting/
+# (install-tree-relative to reloco/mutex.hpp itself), so the installed
+# copy is placed at that "reloco/"-prefixed path instead, matching the
+# *.template.hpp scaffolds already installed there.
+if(JPLCZ_RELOCO_PORTING_HEADERS)
+    set(JPLCZ_RELOCO_PORTING_STAGING_DIR "${CMAKE_CURRENT_BINARY_DIR}/porting_include")
+    set(JPLCZ_RELOCO_PORTING_DEST_DIR "${JPLCZ_RELOCO_PORTING_STAGING_DIR}/detail/porting")
+    file(MAKE_DIRECTORY "${JPLCZ_RELOCO_PORTING_DEST_DIR}")
+
+    set(JPLCZ_RELOCO_PORTING_HEADER_NAMES mutex.hpp thread.hpp spin_lock.hpp tls_provider.hpp futex.hpp)
+    set(JPLCZ_RELOCO_PORTING_HEADER_DEFINES
+        "RELOCO_MUTEX_BACKEND_CUSTOM"
+        "RELOCO_THREAD_BACKEND_CUSTOM"
+        "RELOCO_SPIN_LOCK_BACKEND_CUSTOM"
+        "RELOCO_TLS_MODEL=RELOCO_TLS_MODEL_OS"
+        "RELOCO_FUTEX_BACKEND_CUSTOM"
+    )
+
+    list(LENGTH JPLCZ_RELOCO_PORTING_HEADER_NAMES JPLCZ_RELOCO_PORTING_HEADER_COUNT)
+    math(EXPR JPLCZ_RELOCO_PORTING_HEADER_LAST "${JPLCZ_RELOCO_PORTING_HEADER_COUNT} - 1")
+
+    set(JPLCZ_RELOCO_PORTING_ACTIVE_DEFINES "")
+    foreach(JPLCZ_RELOCO_PORTING_I RANGE ${JPLCZ_RELOCO_PORTING_HEADER_LAST})
+        list(GET JPLCZ_RELOCO_PORTING_HEADER_NAMES ${JPLCZ_RELOCO_PORTING_I} JPLCZ_RELOCO_PORTING_HEADER_NAME)
+        list(GET JPLCZ_RELOCO_PORTING_HEADER_DEFINES ${JPLCZ_RELOCO_PORTING_I} JPLCZ_RELOCO_PORTING_HEADER_DEFINE)
+        set(JPLCZ_RELOCO_PORTING_SRC "${JPLCZ_RELOCO_PORTING_HEADERS}/${JPLCZ_RELOCO_PORTING_HEADER_NAME}")
+        if(EXISTS "${JPLCZ_RELOCO_PORTING_SRC}")
+            configure_file(
+                "${JPLCZ_RELOCO_PORTING_SRC}"
+                "${JPLCZ_RELOCO_PORTING_DEST_DIR}/${JPLCZ_RELOCO_PORTING_HEADER_NAME}"
+                COPYONLY
+            )
+            list(APPEND JPLCZ_RELOCO_PORTING_ACTIVE_DEFINES "${JPLCZ_RELOCO_PORTING_HEADER_DEFINE}")
+            message(STATUS
+                "jplcz_reloco: using custom porting header '${JPLCZ_RELOCO_PORTING_HEADER_NAME}' "
+                "from ${JPLCZ_RELOCO_PORTING_SRC} (defining ${JPLCZ_RELOCO_PORTING_HEADER_DEFINE})")
+        endif()
+    endforeach()
+
+    if(JPLCZ_RELOCO_PORTING_ACTIVE_DEFINES)
+        target_compile_definitions(jplcz_reloco INTERFACE ${JPLCZ_RELOCO_PORTING_ACTIVE_DEFINES})
+    endif()
+
+    # reloco's own source tree never ships a same-named, non-`.template.hpp`
+    # file under detail/porting/ (only *.template.hpp scaffolds do), so
+    # there is no real file to collide with here regardless of search
+    # order -- this include directory only ever adds files, never shadows
+    # one already found via the plain source include/ tree above.
+    target_include_directories(jplcz_reloco INTERFACE
+        $<BUILD_INTERFACE:${JPLCZ_RELOCO_PORTING_STAGING_DIR}>
+    )
+endif()
 
 # reloco is header-only and primarily targets embedded/single-binary
 # consumers, so these are plain INTERFACE forwarders for the
@@ -259,6 +340,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_rw_lock.cpp
         tests/test_barrier.cpp
         tests/test_wait_group.cpp
+        tests/test_spin_lock.cpp
         tests/test_shared_ptr.cpp
         tests/test_rc.cpp
         tests/test_bytes.cpp
@@ -410,6 +492,19 @@ if(JPLCZ_RELOCO_INSTALL)
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
         COMPONENT Development
     )
+
+    # Installed after (never before) the plain include/ tree above so its
+    # contents -- always just the *.template.hpp scaffolds under
+    # detail/porting/ -- exist first; this only ever adds the real,
+    # non-template files a JPLCZ_RELOCO_PORTING_HEADERS build staged
+    # alongside them, never replaces anything.
+    if(JPLCZ_RELOCO_PORTING_HEADERS)
+        install(
+            DIRECTORY "${JPLCZ_RELOCO_PORTING_DEST_DIR}/"
+            DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/reloco/detail/porting"
+            COMPONENT Development
+        )
+    endif()
 
     install(
         FILES

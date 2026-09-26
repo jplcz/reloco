@@ -47,6 +47,18 @@
  * `futex_linux.ipp`/`futex_freebsd.ipp`, included from here only when
  * `RELOCO_SHARED_PROVIDE_DEFINITIONS` is `1`.
  *
+ * `RELOCO_FUTEX_BACKEND_CUSTOM` suppresses the built-in
+ * declarations/definitions entirely; this header instead `#include`s a
+ * fixed path, `detail/porting/futex.hpp`, right where the built-in
+ * backend would otherwise appear -- the same fixed-include mechanism
+ * `mutex.hpp`/`thread.hpp`/`spin_lock.hpp` use for their own `_CUSTOM`
+ * backends (see `mutex.hpp` for the full rationale). That file does not
+ * ship in this repository (only `detail/porting/futex.template.hpp`, a
+ * documentation-only scaffold sketching a FreeBSD **kernel**
+ * `msleep(9)`/`wakeup(9)` backend, does); supply your own, most
+ * conveniently via the `JPLCZ_RELOCO_PORTING_HEADERS` CMake variable (see
+ * `CMakeLists.txt`).
+ *
  * `futex_wait` tolerates spurious wakeups (it may return even though
  * `word` still equals `expected`), exactly like
  * `condition_variable::wait` -- callers must always re-check their own
@@ -157,5 +169,17 @@ RELOCO_API void futex_wake_all(futex_word &word) noexcept;
 #include "futex_std.ipp"
 #endif
 #endif
+
+#else // RELOCO_FUTEX_BACKEND_CUSTOM
+
+// See this file's top-level docs, docs/futex.md, and
+// detail/porting/futex.template.hpp for the exact
+// futex_word/futex_wait/futex_wait_timeout/futex_wake_one/futex_wake_all
+// API this must provide. #include'd at this fixed path (not "included by
+// the application through the normal path") so correctness never depends
+// on where else the application includes its replacement from -- the
+// same mechanism RELOCO_MUTEX_BACKEND_CUSTOM uses (see mutex.hpp for the
+// full rationale).
+#include "detail/porting/futex.hpp"
 
 #endif // !RELOCO_FUTEX_BACKEND_CUSTOM

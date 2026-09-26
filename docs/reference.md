@@ -72,7 +72,8 @@ where, not a tutorial.
 | `mutex.hpp` | `mutex`, `recursive_mutex`, `error_checking_mutex`, `shared_mutex`, `condition_variable` | Backend-selected (`pthread`/`std`/custom) mutex/reader-writer-lock/condvar primitives, annotated for compiler thread-safety analysis |
 | `guarded_mutex.hpp` | `guarded_mutex<T, MutexT>` | A mutex that owns the value it protects, matching Rust's `std::sync::Mutex<T>` |
 | `rw_lock.hpp` | `rw_lock<T, SharedMutexT>` | A reader-writer lock that owns the value it protects, matching Rust's `std::sync::RwLock<T>` |
-| `thread.hpp` | `thread`, `thread_id`, `this_thread::get_id/yield`, `spawn`, `join_handle<R>` | Backend-selected (`pthread`/`std`/custom) OS thread primitive plus a Rust-like `spawn`/`JoinHandle<T>` layer built on `is_send`/`is_sync` |
+| `thread.hpp` | `thread`, `thread_id`, `this_thread::get_id/yield`, `spawn`, `join_handle<R>`, `thread_builder` | Backend-selected (`pthread`/`std`/custom) OS thread primitive plus a Rust-like `spawn`/`JoinHandle<T>` layer built on `is_send`/`is_sync`, and a `thread_builder` for requesting a thread name/stack size, matching Rust's `std::thread::Builder` |
+| `spin_lock.hpp` | `spin_lock` | Busy-wait lock that never parks/blocks/syscalls, matching the `spin` crate's `spin::Mutex` (not part of Rust `std`); drop-in `MutexT` for `guarded_mutex<T, MutexT>`; no OS dependency, usable in interrupt handlers/before a scheduler exists/in a freestanding build |
 | `channel.hpp` | `channel<T>`, `sender<T>`, `receiver<T>`, `sync_channel<T>`, `sync_sender<T>` | Multi-producer, single-consumer channel matching Rust's `std::sync::mpsc`, plus a bounded/rendezvous `sync_channel<T>` counterpart, built on `mutex.hpp` + `shared_ptr` + `is_send`/`is_sync` |
 | `park.hpp` | `thread_handle`, `this_thread::current/park/park_timeout/sleep_for` | Rust-like `thread::park`/`park_timeout`/`sleep`/`Thread`, built on `tls_provider.hpp` + `futex.hpp` + `instant.hpp` + `shared_ptr` |
 | `once_lock.hpp` | `once_lock<T>` | Write-once, read-many-times cell matching Rust's `std::sync::OnceLock<T>`, usable as a plain field/local (unlike `fallible_singleton.hpp`'s static, one-per-`T` global) |
@@ -2451,10 +2452,14 @@ throwing paths become terminating calls anyway. `RELOCO_MUTEX_BACKEND_PTHREAD`
 is unaffected -- POSIX mutex calls never throw.
 
 Defining `RELOCO_MUTEX_BACKEND_CUSTOM` suppresses both built-in backends
-(including the generic `error_checking_mutex`) entirely: the application
-must then supply its own `mutex`/`recursive_mutex`/`error_checking_mutex`/
-`shared_mutex`/`condition_variable` matching the same public API, e.g. for
-Win32 `SRWLOCK`/`CRITICAL_SECTION`/`CONDITION_VARIABLE` or an RTOS's native
+(including the generic `error_checking_mutex`) entirely: `mutex.hpp`
+`#include`s a fixed path, `detail/porting/mutex.hpp`, at the exact point
+the built-in backend would otherwise define these classes -- see
+[Porting custom backends (`detail/porting/`)](#porting-custom-backends-detailporting)
+below for the full mechanism. The application must supply
+`mutex`/`recursive_mutex`/`error_checking_mutex`/`shared_mutex`/
+`condition_variable` matching the same public API there, e.g. for Win32
+`SRWLOCK`/`CRITICAL_SECTION`/`CONDITION_VARIABLE` or an RTOS's native
 primitives (not ported here by design -- see the header's file-level doc
 comment). See `RELOCO_MUTEX_BACKEND_STD`/`_PTHREAD`/`_CUSTOM` in
 `reloco_config.hpp` for the exact selection mechanism.
@@ -2541,7 +2546,136 @@ owned value with reader/writer locking. This is the thread-safe
 counterpart of [`cell<T>`/`ref_cell<T>`](#celltref_cellt) above, which are
 `!Sync`-equivalent (single-threaded only) by design.
 
-## `rw_lock<T, SharedMutexT = shared_mutex>`
+## `spin_lock`
+
+`include/reloco/spin_lock.hpp`
+
+A busy-wait lock that never parks/blocks and never makes a syscall,
+matching the ecosystem `spin` crate's `spin::Mutex` (Rust's own
+`std::sync` has no spinlock -- this is deliberately not modeled on
+anything in `std`). `mutex`/`guarded_mutex<T>` above ultimately block a
+contended thread by parking it with the OS scheduler; that is the right
+default virtually everywhere, but is unusable in a few specific contexts:
+
+- Interrupt/exception handlers, and other contexts with no "current
+  thread" to park.
+- Before a kernel's scheduler/threading subsystem is initialized at all
+  (early boot), or in a panic/fault handler that must not depend on one
+  existing.
+- SMP kernels protecting a data structure shared with an interrupt
+  handler on another core, where the holder is never itself descheduled
+  while holding the lock, so the wait is always provably short.
+
+`spin_lock` is pure `std::atomic<bool>` + [`hint::spin_loop()`](#hintspin_loop)
+with zero OS dependency, so it works unchanged in a freestanding/bare-
+kernel build. It provides the same minimal `lock()`/`unlock()`/
+`try_lock()` shape as `reloco::mutex`, so it slots directly into
+`guarded_mutex<T, MutexT>` as a drop-in `MutexT`:
+
+```cpp
+reloco::guarded_mutex<int, reloco::spin_lock> counter;
+auto guard = counter.lock(); // never parks; spins instead.
+```
+
+`is_locked()` returns a best-effort, inherently racy snapshot of whether
+the lock is currently held -- matching the `spin` crate's own
+`Mutex::is_locked()` -- useful only for diagnostics/assertions, never for
+making a synchronization decision. `spin_lock` is never fair (no
+queueing/ticketing) and never adaptive (always spins, never falls back to
+parking), matching the `spin` crate's own simplifications; use
+`mutex`/`guarded_mutex<T>` instead whenever one of the specific contexts
+above does not apply. A kernel/RTOS that already ships its own spinlock
+(most do, often tied into its own interrupt-masking/preemption-disabling
+conventions) should keep using that one instead -- this is only for a
+consumer that does not have one yet.
+
+**`RELOCO_SPIN_LOCK_BACKEND_CUSTOM`**: even though the built-in
+`std::atomic<bool>` implementation needs nothing OS-specific to work
+correctly, a kernel target usually still wants its own native spinlock
+instead -- one wired into that kernel's own interrupt-masking/preemption-
+disabling/lock-order-verification conventions (e.g. FreeBSD's
+`mtx_lock_spin`/`MTX_SPIN`, which disables interrupts on the current CPU
+and integrates with `WITNESS`; Linux's `raw_spinlock_t`, which disables
+preemption and is a distinct type from a regular `spinlock_t` on `-rt`
+kernels) that a freestanding `std::atomic` cannot replicate and must not
+silently omit. Define `RELOCO_SPIN_LOCK_BACKEND_CUSTOM` to suppress this
+header's own `spin_lock` definition entirely; `spin_lock.hpp` then
+`#include`s a fixed path, `detail/porting/spin_lock.hpp`, in its place --
+see [Porting custom backends (`detail/porting/`)](#porting-custom-backends-detailporting)
+below for the full mechanism:
+
+```cpp
+// reloco_user_config.hpp
+#define RELOCO_SPIN_LOCK_BACKEND_CUSTOM
+
+// include/reloco/detail/porting/spin_lock.hpp (this exact path/name),
+// wrapping FreeBSD kernel's own MTX_SPIN mutex (sys/mutex.h).
+namespace reloco {
+class spin_lock {
+public:
+  spin_lock() noexcept { mtx_init(&mtx_, "reloco::spin_lock", nullptr, MTX_SPIN); }
+  ~spin_lock() noexcept { mtx_destroy(&mtx_); }
+  spin_lock(const spin_lock &) = delete;
+  spin_lock &operator=(const spin_lock &) = delete;
+
+  void lock() & noexcept { mtx_lock_spin(&mtx_); }
+  void unlock() & noexcept { mtx_unlock_spin(&mtx_); }
+  [[nodiscard]] bool try_lock() & noexcept { return mtx_trylock_spin(&mtx_) != 0; }
+  [[nodiscard]] bool is_locked() const noexcept { return mtx_owned(&mtx_) != 0; }
+
+private:
+  mutable struct mtx mtx_{};
+};
+} // namespace reloco
+```
+
+A Linux kernel module would do the same wrapping `raw_spin_lock`/
+`raw_spin_unlock`/`raw_spin_trylock` (`<linux/spinlock.h>`) instead. The
+replacement must keep the same `lock()`/`unlock()`/`try_lock()` surface
+used by `guarded_mutex<T, MutexT>`, but is free to add its own
+construction requirements.
+
+### Porting custom backends (`detail/porting/`)
+
+`include/reloco/detail/porting/`
+
+`RELOCO_MUTEX_BACKEND_CUSTOM`/`RELOCO_THREAD_BACKEND_CUSTOM`/
+`RELOCO_SPIN_LOCK_BACKEND_CUSTOM`/`RELOCO_TLS_MODEL_OS`/
+`RELOCO_FUTEX_BACKEND_CUSTOM` all suppress their header's own built-in
+implementation and, in its exact place, `#include` a fixed path under
+this directory (`detail/porting/mutex.hpp`, `thread.hpp`, `spin_lock.hpp`,
+`tls_provider.hpp`, `futex.hpp` respectively) instead of relying on the
+application/kernel to have "included its replacement somewhere before
+first use" -- an include-*order* dependency that grows fragile the more
+reloco headers reference the same primitive transitively. With a fixed
+include path, whichever reloco header reaches (say) `reloco::mutex` first
+triggers that one `#include` at that one spot, with the exact same
+result, regardless of anything else -- order never matters.
+
+None of those fixed-path files ship in this repository; only their
+`*.template.hpp` counterparts do (`mutex.template.hpp`,
+`thread.template.hpp`, `spin_lock.template.hpp`,
+`tls_provider.template.hpp`, `futex.template.hpp`) -- unused,
+documentation-only scaffolds, each loosely sketching what a FreeBSD
+**kernel** port might look like (not exact or complete, and none is
+compiled or exercised by this repository's own build/test suite). Copy
+the relevant scaffold to its non-`.template` name in this same directory,
+fill it in, and define the matching macro yourself -- or, more
+conveniently, set the `JPLCZ_RELOCO_PORTING_HEADERS` CMake variable (see
+`CMakeLists.txt`) to a directory containing your finished header(s)
+before configuring reloco (top-level, or via
+`add_subdirectory`/`FetchContent`): the build copies whichever of them
+exist there into `detail/porting/` (staged in the build tree, then
+installed alongside reloco's own headers -- never replacing any of
+reloco's own headers, only adding files under `detail/porting/`) and
+defines the matching macro on the `jplcz_reloco` INTERFACE target
+automatically, so every consumer -- including a downstream
+`find_package(jplcz_reloco)` consumer, via the exported target's own
+INTERFACE properties -- picks up the replacement with no further
+per-consumer configuration. See `detail/porting/README.md` for the full
+table of macros/paths/scaffolds.
+
+## `rw_lock<T, SharedMutexT>`
 
 `include/reloco/rw_lock.hpp`
 
@@ -2733,9 +2867,11 @@ is `RELOCO_TLS_MODEL` (same customization shape as
   `pthread_key_create` destructor that runs on thread exit can deallocate
   it correctly through the right allocator regardless of which allocator
   any particular call used.
-- `RELOCO_TLS_MODEL_OS`: declares `tls_provider<T, Tag>` with no
-  definition; a kernel/RTOS port supplies `get()`/`set()` against its own
-  per-task storage, the same escape hatch
+- `RELOCO_TLS_MODEL_OS`: `#include`s a fixed path,
+  `detail/porting/tls_provider.hpp`, in place of a built-in definition
+  (see [Porting custom backends (`detail/porting/`)](#porting-custom-backends-detailporting)
+  below); a kernel/RTOS port supplies one generic `tls_provider<T, Tag>`
+  against its own per-task storage, the same escape hatch
   `RELOCO_MUTEX_BACKEND_CUSTOM`/`RELOCO_THREAD_BACKEND_CUSTOM` provide.
 - `RELOCO_TLS_MODEL_SINGLE`: one global static instance (not actually
   per-thread), for single-threaded builds that still want to link against
@@ -2767,7 +2903,7 @@ small-trivial specializations have no such addressable storage (the value
 lives only as a bit pattern inside the key itself), so their `get()`
 returns `result<T>` by value instead.
 
-## `thread` / `thread::spawn` / `join_handle<R>`
+## `thread` / `thread::spawn` / `join_handle<R>` / `thread_builder`
 
 `include/reloco/thread.hpp`
 
@@ -2775,7 +2911,10 @@ An OS thread primitive with the same backend-selection shape as
 `mutex.hpp`: `RELOCO_THREAD_BACKEND_PTHREAD` (wraps `<pthread.h>`
 directly) or `RELOCO_THREAD_BACKEND_STD` (wraps `<thread>`), auto-selected
 via `RELOCO_HAS_INCLUDE(<pthread.h>)`, or `RELOCO_THREAD_BACKEND_CUSTOM` to
-suppress both -- for an application/kernel supplying its own
+suppress both -- `thread.hpp` then `#include`s a fixed path,
+`detail/porting/thread.hpp` (see
+[Porting custom backends (`detail/porting/`)](#porting-custom-backends-detailporting)
+below), for an application/kernel supplying its own
 `thread`/`thread_id`/`this_thread::get_id()`/`this_thread::yield()`
 matching the same public surface (an RTOS task API, a freestanding target,
 ...).
@@ -2808,6 +2947,45 @@ dropping a `JoinHandle` silently detaches the thread), `join_handle<R>`'s
 destructor blocks and joins if still joinable, matching C++20
 `std::jthread`'s safer default; call `detach()` explicitly to opt in to
 Rust's original behavior.
+
+`thread_builder` matches Rust's `std::thread::Builder`, letting a caller
+request a thread name and/or stack size before spawning:
+
+```cpp
+auto handle = reloco::thread_builder()
+                  .name("worker")
+                  .stack_size(1 << 20)
+                  .spawn([] { ... });
+```
+
+Every setter is `&&`-qualified and returns `*this` by value, so calls
+chain directly off a temporary -- there is no way to hold a half-built
+`thread_builder` in a variable and reuse it for more than one `spawn()`,
+matching `std::thread::Builder::spawn`'s own consuming-`self` contract.
+`name()` truncates to `inline_string<15>`'s 15-character capacity if
+longer (matching Linux's own 16-byte-including-NUL `TASK_COMM_LEN`
+limit); an oversized name is reported as `error::capacity_exceeded` from
+`spawn()` itself rather than silently truncated. `stack_size()` is
+honored by the `PTHREAD` backend (via `pthread_attr_setstacksize`); the
+`STD` backend has no portable equivalent and reports
+`error::unsupported_operation` from `spawn()` instead of silently
+ignoring the request. Naming a thread is always best-effort: some
+platforms/backends apply it via `pthread_setname_np`/
+`pthread_set_name_np` from inside the spawned thread itself, others
+silently do nothing.
+
+Unlike `spawn`/`join_handle<R>`, `thread_builder` is *not*
+backend-generic: naming a thread and sizing its stack are OS/libc-specific
+facilities with no portable equivalent, so `thread_builder` is only
+defined for the built-in `PTHREAD`/`STD` backends and does not exist at
+all under `RELOCO_THREAD_BACKEND_CUSTOM`. This is deliberate: a
+kernel/RTOS providing its own thread/task backend already has its own
+native way to name a task and choose its stack size at creation time
+(often mandatory, unlike POSIX's optional attributes), so there is no one
+shared shape to standardize here -- a custom backend that wants this
+ergonomic layer defines its own `thread_builder`-shaped type against its
+own task-creation API, exactly like it already does for `thread`/
+`thread_id` itself.
 
 ## `channel<T>` / `sender<T>` / `receiver<T>`
 

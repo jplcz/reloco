@@ -33,3 +33,48 @@ RELOCO_API result<thread> thread::try_spawn(function<void()> &&entry, allocator_
   return t;
 #endif
 }
+
+namespace detail {
+
+// Best-effort thread naming applied *after* creation, since std::thread
+// itself offers no hook to run code before the entry callable starts.
+// Only wired up where <pthread.h> is available and glibc/musl's
+// std::thread native_handle is itself a pthread_t -- silently skipped
+// (rather than reported as an error) everywhere else, matching the
+// "best-effort" contract documented on thread::try_spawn_named.
+inline void apply_thread_name_std(RELOCO_MAYBE_UNUSED thread &t, RELOCO_MAYBE_UNUSED const inline_string<15> &name) noexcept {
+#if RELOCO_HAS_INCLUDE(<pthread.h>) && (defined(__linux__) || defined(__FreeBSD__))
+  if (name.empty())
+    return;
+#if defined(__FreeBSD__)
+  pthread_set_name_np(t.native_handle(), name.unsafe_c_str());
+#else
+  pthread_setname_np(t.native_handle(), name.unsafe_c_str());
+#endif
+#endif
+}
+
+} // namespace detail
+
+RELOCO_API result<thread> thread::try_spawn_named(function<void()> &&entry, allocator_ref alloc,
+                                                  optional<std::size_t> stack_size,
+                                                  inline_string<15> name) noexcept {
+  (void)alloc; // Unused: std::thread manages its own internal storage.
+  if (stack_size.has_value())
+    return unexpected(error::unsupported_operation);
+#if RELOCO_HAS_EXCEPTIONS
+  try {
+    thread t;
+    t.handle_ = std::thread(std::move(entry));
+    detail::apply_thread_name_std(t, name);
+    return t;
+  } catch (const std::system_error &) {
+    return unexpected(error::resource_exhausted);
+  }
+#else
+  thread t;
+  t.handle_ = std::thread(std::move(entry));
+  detail::apply_thread_name_std(t, name);
+  return t;
+#endif
+}

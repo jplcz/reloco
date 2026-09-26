@@ -34,16 +34,31 @@
  *   (SRWLOCK/CRITICAL_SECTION/CONDITION_VARIABLE, legacy's other backend,
  *   not ported here), a freestanding target, ... -- supplies its own
  *   `reloco::mutex`/`recursive_mutex`/`error_checking_mutex`/
- *   `shared_mutex`/`condition_variable` matching the same public API, in
- *   its own header, included by the application through the normal path,
- *   exactly like `RELOCO_DEFAULT_ALLOCATOR_CUSTOM` (see
- *   `default_allocator.hpp`):
+ *   `shared_mutex`/`condition_variable` matching the same public API.
+ *   Unlike `RELOCO_DEFAULT_ALLOCATOR_CUSTOM` (see `default_allocator.hpp`),
+ *   which is satisfied by an ordinary out-of-line definition included
+ *   *anywhere* by the application before first use, these are concrete
+ *   classes other reloco headers (`thread.hpp`, `guarded_mutex.hpp`, ...)
+ *   reference directly, so "included by the application through the
+ *   normal path" would make correctness depend on include *order* --
+ *   whichever reloco header reaches `reloco::mutex` first would need the
+ *   application's replacement to already be visible. To avoid that
+ *   entirely, this header instead `#include`s a fixed path,
+ *   `detail/porting/mutex.hpp`, right at the point the built-in backend
+ *   would otherwise have defined these classes -- that file does not ship
+ *   in this repository (only `detail/porting/mutex.template.hpp`, an
+ *   unused documentation-only scaffold, does), so you supply it yourself,
+ *   most conveniently through the `JPLCZ_RELOCO_PORTING_HEADERS` CMake
+ *   variable (see `CMakeLists.txt`), which copies it into that exact path
+ *   and defines `RELOCO_MUTEX_BACKEND_CUSTOM` for every consumer of the
+ *   `jplcz_reloco` target automatically -- or by placing it there
+ *   manually and defining the macro yourself if not using CMake:
  *
  * @code
  * // reloco_user_config.hpp
  * #define RELOCO_MUTEX_BACKEND_CUSTOM
  *
- * // my_platform_mutex.hpp, included normally elsewhere by the app.
+ * // include/reloco/detail/porting/mutex.hpp (this exact path/name).
  * namespace reloco {
  * class mutex { ... };            // lock()/unlock() -> void (assert on failure),
  * class recursive_mutex { ... };  // try_lock() -> bool, native_handle();
@@ -556,5 +571,23 @@ private:
 #endif
 
 } // namespace reloco
+
+#else // RELOCO_MUTEX_BACKEND_CUSTOM
+
+// Included unconditionally at this exact point -- not "included by the
+// application through the normal path" somewhere else -- so nothing about
+// where else this header is included from matters: whichever translation
+// unit reaches `mutex.hpp` first (directly or transitively, e.g. through
+// `thread.hpp`/`guarded_mutex.hpp`) triggers this one `#include` and gets
+// the complete `reloco::mutex`/`recursive_mutex`/`error_checking_mutex`/
+// `shared_mutex`/`condition_variable` set right here, at the same spot the
+// built-in backend would have defined them. See this file's top-level
+// docs and `detail/porting/mutex.template.hpp` for the exact API each
+// class must provide; `detail/porting/mutex.hpp` itself does not ship in
+// this repository (only the `.template.hpp` scaffold does) -- supply your
+// own, e.g. via the `JPLCZ_RELOCO_PORTING_HEADERS` CMake variable (see
+// CMakeLists.txt), which copies it into that path and defines
+// `RELOCO_MUTEX_BACKEND_CUSTOM` for you.
+#include "detail/porting/mutex.hpp"
 
 #endif // !RELOCO_MUTEX_BACKEND_CUSTOM

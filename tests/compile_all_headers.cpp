@@ -55,6 +55,7 @@
 #include <reloco/send_sync.hpp>
 #include <reloco/shared_ptr.hpp>
 #include <reloco/span.hpp>
+#include <reloco/spin_lock.hpp>
 #include <reloco/stack_allocator.hpp>
 #include <reloco/string.hpp>
 #include <reloco/string_view.hpp>

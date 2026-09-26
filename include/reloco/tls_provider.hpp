@@ -50,12 +50,27 @@
  *       through that same allocator regardless of which allocator any
  *       particular `set()`/`get()` call used. Can additionally fail with
  *       whatever `error` the allocator itself reports.
- * - **`RELOCO_TLS_MODEL_OS`**: declares the `tls_provider<T, Tag>`
- *   template with no definition; a kernel/RTOS port supplies `get()`/
- *   `set()` against its own per-task/per-thread storage (a TCB field, a
- *   scheduler-provided slot, ...), matching the escape hatch
- *   `RELOCO_MUTEX_BACKEND_CUSTOM`/`RELOCO_THREAD_BACKEND_CUSTOM` provide
- *   elsewhere (see `mutex.hpp`/`thread.hpp`).
+ * - **`RELOCO_TLS_MODEL_OS`**: `#include`s a fixed path,
+ *   `detail/porting/tls_provider.hpp`, right at the point the built-in
+ *   models above define `template <typename T, typename Tag> struct
+ *   tls_provider`, instead of the built-in models -- the same
+ *   fixed-include mechanism `mutex.hpp`/`thread.hpp`/`spin_lock.hpp` use
+ *   for their own `_CUSTOM` backends (see `mutex.hpp` for the full
+ *   rationale: it makes correctness independent of where else the
+ *   application includes its replacement from). A kernel/RTOS port
+ *   supplies one generic `tls_provider<T, Tag>` definition -- for every
+ *   `T`/`Tag`, exactly like `RELOCO_TLS_MODEL_PTHREAD` does with its own
+ *   `pthread_key_t`-per-`Tag` mechanism -- backed by its own
+ *   per-task/per-thread storage (a TCB field, a scheduler-provided slot,
+ *   ...), matching the escape hatch `RELOCO_MUTEX_BACKEND_CUSTOM`/
+ *   `RELOCO_THREAD_BACKEND_CUSTOM`/`RELOCO_SPIN_LOCK_BACKEND_CUSTOM`
+ *   provide elsewhere (see `mutex.hpp`/`thread.hpp`/`spin_lock.hpp`).
+ *   `detail/porting/tls_provider.hpp` does not ship in this repository
+ *   (only `detail/porting/tls_provider.template.hpp`, an unused
+ *   documentation-only scaffold, does); supply your own, most
+ *   conveniently through the `JPLCZ_RELOCO_PORTING_HEADERS` CMake
+ *   variable (see `CMakeLists.txt`), which copies it into that exact path
+ *   and defines `RELOCO_TLS_MODEL=RELOCO_TLS_MODEL_OS` automatically.
  * - **`RELOCO_TLS_MODEL_SINGLE`**: a single, global (not actually
  *   per-thread) static instance -- for a single-threaded build that still
  *   wants to link against code written against the `tls_provider<T, Tag>`
@@ -367,20 +382,15 @@ private:
 
 #elif (RELOCO_TLS_MODEL == RELOCO_TLS_MODEL_OS)
 
-/**
- * @brief Custom OS-specific or bare-metal storage provider, implemented by the target port.
- * @tparam T Type of the object being stored.
- * @tparam Tag Unique tag distinguishing this storage slot from others of type @p T.
- */
-template <typename T, typename Tag> struct tls_provider {
-  /** @brief Gets a reference to the calling task/thread's instance
-   * (implemented by the target port). May fail (e.g. an allocation
-   * failure on first use for this task/thread). */
-  [[nodiscard]] static result<std::reference_wrapper<T>> get(allocator_ref alloc = default_allocator()) noexcept;
-  /** @brief Sets the calling task/thread's instance value (implemented by
-   * the target port). May fail -- see `get()`. */
-  static result<void> set(T value, allocator_ref alloc = default_allocator()) noexcept;
-};
+} // namespace reloco
+
+// See this file's top-level docs and
+// `detail/porting/tls_provider.template.hpp` for the exact
+// `tls_provider<T, Tag>` shape this must define -- including opening its
+// own `namespace reloco { ... }`, exactly like the built-in models above.
+#include "detail/porting/tls_provider.hpp"
+
+namespace reloco {
 
 #elif (RELOCO_TLS_MODEL == RELOCO_TLS_MODEL_SINGLE)
 

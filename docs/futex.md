@@ -68,27 +68,32 @@ customization point -- select **at most one**:
   auto-selected native backend -- the explicit opt-out this task asked
   for.
 - **`RELOCO_FUTEX_BACKEND_CUSTOM`**: suppresses the built-in
-  declarations/definitions below entirely; the application/kernel
-  supplies its own `reloco::futex_word`/`futex_wait`/`futex_wait_timeout`/
-  `futex_wake_one`/`futex_wake_all` matching this exact API, in its own
-  header, included through the normal path -- the same escape hatch
-  `RELOCO_MUTEX_BACKEND_CUSTOM`/`RELOCO_DEFAULT_ALLOCATOR_CUSTOM` provide
-  elsewhere. This is the intended path for a target `futex.hpp` has no
-  built-in backend for at all, e.g. **FreeBSD kernel** code (as opposed to
-  `RELOCO_FUTEX_BACKEND_FREEBSD`'s *userspace* `_umtx_op(2)`), which has
-  its own kernel-primitive wait channel API (`msleep(9)`/`wakeup(9)`)
-  instead:
+  declarations/definitions below entirely; `futex.hpp` instead
+  `#include`s a fixed path, `detail/porting/futex.hpp`, right where the
+  built-in backend would otherwise appear -- so correctness never
+  depends on where else the application/kernel includes its replacement
+  from, unlike relying on include order. That file does not ship in this
+  repository (only `detail/porting/futex.template.hpp`, an unused
+  documentation-only scaffold, does); supply your own
+  `reloco::futex_word`/`futex_wait`/`futex_wait_timeout`/
+  `futex_wake_one`/`futex_wake_all` matching this exact API, most
+  conveniently via the `JPLCZ_RELOCO_PORTING_HEADERS` CMake variable (see
+  `CMakeLists.txt`), which copies it into that exact path and defines
+  `RELOCO_FUTEX_BACKEND_CUSTOM` for you. This is the intended path for a
+  target `futex.hpp` has no built-in backend for at all, e.g. **FreeBSD
+  kernel** code (as opposed to `RELOCO_FUTEX_BACKEND_FREEBSD`'s
+  *userspace* `_umtx_op(2)`), which has its own kernel-primitive wait
+  channel API (`msleep(9)`/`wakeup(9)`) instead --
+  `detail/porting/futex.template.hpp` sketches exactly that:
 
 ```cpp
 // reloco_user_config.hpp
 #define RELOCO_FUTEX_BACKEND_CUSTOM
 
-// my_freebsd_kernel_futex.hpp -- included normally elsewhere, e.g.
-// from a source file, before any use of reloco::futex_wait/
-// futex_wait_timeout/futex_wake_one/futex_wake_all. Documentation/
-// reference only: never compiled or exercised by this repository (which
-// targets hosted userspace, not the FreeBSD kernel proper) -- review and
-// adapt before relying on it.
+// include/reloco/detail/porting/futex.hpp (this exact path/name).
+// Documentation/reference only: never compiled or exercised by this
+// repository (which targets hosted userspace, not the FreeBSD kernel
+// proper) -- review and adapt before relying on it.
 #include <sys/param.h>
 
 #include <sys/systm.h>

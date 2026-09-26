@@ -127,11 +127,56 @@
 //     suppresses both built-in backends above, so an application
 //     targeting a platform with neither pthread nor a hosted <mutex> (an
 //     RTOS, a Win32-native backend, a freestanding target, ...) can supply
-//     its own, matching public API, in its own header, included by the
-//     application through the normal path rather than from
-//     reloco_user_config.hpp -- exactly the same escape hatch
-//     RELOCO_DEFAULT_ALLOCATOR_CUSTOM provides for
-//     reloco::default_allocator() (see above and reloco/mutex.hpp).
+//     its own, matching public API. Unlike RELOCO_DEFAULT_ALLOCATOR_CUSTOM
+//     (an ordinary out-of-line definition, included anywhere by the
+//     application before first use), these are concrete classes other
+//     reloco headers reference directly, so reloco/mutex.hpp instead
+//     #includes a fixed path, "detail/porting/mutex.hpp", right where the
+//     built-in backend would otherwise define them -- independent of
+//     where else the application includes its replacement from. That
+//     file does not ship in this repository (only
+//     detail/porting/mutex.template.hpp, a documentation-only scaffold,
+//     does); supply your own, most conveniently via the
+//     JPLCZ_RELOCO_PORTING_HEADERS CMake variable (see CMakeLists.txt),
+//     which copies it into that exact path and defines
+//     RELOCO_MUTEX_BACKEND_CUSTOM for you. See reloco/mutex.hpp for the
+//     full rationale and the exact API each class must provide.
+//
+// RELOCO_THREAD_BACKEND_STD / RELOCO_THREAD_BACKEND_PTHREAD /
+// RELOCO_THREAD_BACKEND_CUSTOM
+//     Same shape as the RELOCO_MUTEX_BACKEND_* family above, for
+//     reloco::thread/thread_id/this_thread::get_id()/this_thread::yield()
+//     (see reloco/thread.hpp). RELOCO_THREAD_BACKEND_CUSTOM's replacement
+//     lives at the fixed path "detail/porting/thread.hpp" (scaffold:
+//     detail/porting/thread.template.hpp).
+//
+// RELOCO_SPIN_LOCK_BACKEND_CUSTOM
+//     Define (to any value) to take over reloco::spin_lock entirely --
+//     the built-in implementation is plain std::atomic<bool> and works
+//     unchanged even in a freestanding/kernel build, but a kernel target
+//     usually wants its own native spinlock instead (tied into its own
+//     interrupt-masking/preemption-disabling conventions, e.g. FreeBSD's
+//     MTX_SPIN or Linux's raw_spinlock_t). Same fixed-include mechanism as
+//     RELOCO_MUTEX_BACKEND_CUSTOM above: reloco/spin_lock.hpp #includes
+//     "detail/porting/spin_lock.hpp" (scaffold:
+//     detail/porting/spin_lock.template.hpp) in place of its own
+//     definition.
+//
+// JPLCZ_RELOCO_PORTING_HEADERS (CMake variable, not a preprocessor macro)
+//     A directory containing any of mutex.hpp/thread.hpp/spin_lock.hpp/
+//     tls_provider.hpp (see reloco/detail/porting/*.template.hpp for the
+//     shape each must have). Set before configuring reloco (top-level or
+//     via add_subdirectory/FetchContent); CMakeLists.txt copies whichever
+//     of those files exist there into
+//     <install-prefix>/include/reloco/detail/porting/ (build tree during
+//     the build, then installed alongside reloco's own headers -- it
+//     never overwrites/replaces reloco's own headers, only adds files
+//     under detail/porting/) and defines the matching
+//     RELOCO_*_BACKEND_CUSTOM/RELOCO_TLS_MODEL macro on the jplcz_reloco
+//     INTERFACE target automatically, so every consumer linking against
+//     it (including a downstream find_package(jplcz_reloco) consumer, via
+//     the exported target) picks up the replacement with no further
+//     per-consumer configuration.
 //
 // RELOCO_ENABLE_EXPORT
 //     Define (to any value) to make RELOCO_EXPORT (reloco/detail/
@@ -254,11 +299,15 @@
 //       - RELOCO_TLS_MODEL_PTHREAD: backed by pthread_key_create/
 //         pthread_getspecific/pthread_setspecific, for POSIX targets that
 //         want to avoid compiler thread_local support.
-//       - RELOCO_TLS_MODEL_OS: declares tls_provider<T, Tag> with no
-//         definition; a kernel/RTOS port supplies get()/set() against its
-//         own per-task storage, the same escape hatch
-//         RELOCO_MUTEX_BACKEND_CUSTOM/RELOCO_THREAD_BACKEND_CUSTOM provide
-//         elsewhere.
+//       - RELOCO_TLS_MODEL_OS: #includes the fixed path
+//         "detail/porting/tls_provider.hpp" (scaffold:
+//         detail/porting/tls_provider.template.hpp) in place of a
+//         built-in definition; a kernel/RTOS port supplies one generic
+//         tls_provider<T, Tag> against its own per-task storage, the same
+//         fixed-include escape hatch RELOCO_MUTEX_BACKEND_CUSTOM/
+//         RELOCO_THREAD_BACKEND_CUSTOM/RELOCO_SPIN_LOCK_BACKEND_CUSTOM
+//         provide elsewhere (also settable via JPLCZ_RELOCO_PORTING_
+//         HEADERS, see above).
 //       - RELOCO_TLS_MODEL_SINGLE: one global static instance (not
 //         actually per-thread), for single-threaded builds.
 //     tls_provider<T, Tag>::get()/set() are fallible (return
