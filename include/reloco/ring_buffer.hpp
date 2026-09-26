@@ -926,6 +926,150 @@ public:
 
     return {};
   }
+
+  // ---- Delimiter Searching ----
+
+  /**
+   * @brief Searches for a specific value (delimiter) in the buffer.
+   * @param value The element to search for (e.g., '\n').
+   * @param offset Logical index to start searching from (defaults to 0).
+   * @return The logical index of the value if found, or empty if not found.
+   */
+  [[nodiscard]] std::optional<size_type> find(const T &value, size_type offset = 0) const & noexcept {
+    if (offset >= this->len_)
+      return std::nullopt;
+
+    const T *typed_data = static_cast<const T *>(this->data_);
+    std::size_t physical_start = (this->head_ + offset) % this->cap_;
+    std::size_t remaining = this->len_ - offset;
+
+    std::size_t first_chunk = std::min(remaining, this->cap_ - physical_start);
+    const T *match1 = std::find(typed_data + physical_start, typed_data + physical_start + first_chunk, value);
+    if (match1 != typed_data + physical_start + first_chunk) {
+      return offset + static_cast<size_type>(std::distance(typed_data + physical_start, match1));
+    }
+
+    if (first_chunk < remaining) {
+      std::size_t second_chunk = remaining - first_chunk;
+      const T *match2 = std::find(typed_data, typed_data + second_chunk, value);
+      if (match2 != typed_data + second_chunk) {
+        return offset + first_chunk + static_cast<size_type>(std::distance(typed_data, match2));
+      }
+    }
+
+    return std::nullopt;
+  }
+
+  // ---- Bulk Peeking ----
+
+  /**
+   * @brief Copies up to `dest.size()` elements from the buffer into `dest` WITHOUT consuming them.
+   * @param dest The destination span.
+   * @param offset Logical index to start peeking from (defaults to 0).
+   * @return The actual number of elements copied.
+   */
+  size_type peek(span<T> dest, size_type offset = 0) const & noexcept {
+    if (offset >= this->len_ || dest.empty())
+      return 0;
+
+    std::size_t count = std::min(dest.size(), this->len_ - offset);
+    char *dest_bytes = reinterpret_cast<char *>(dest.data());
+    const char *src_bytes = static_cast<const char *>(this->data_);
+
+    std::size_t read_head = (this->head_ + offset) % this->cap_;
+    std::size_t first_chunk = std::min(count, this->cap_ - read_head);
+
+    std::memcpy(dest_bytes, src_bytes + read_head * sizeof(T), first_chunk * sizeof(T));
+
+    if (first_chunk < count) {
+      std::memcpy(dest_bytes + first_chunk * sizeof(T), src_bytes, (count - first_chunk) * sizeof(T));
+    }
+
+    return count;
+  }
+
+  // ---- Cascading Transfers ----
+
+  /**
+   * @brief Drains up to `max_count` elements from this buffer directly into `dest` buffer.
+   * Moves bytes in maximum two chunked memcpys. Extremely fast.
+   * @return The number of elements successfully transferred.
+   */
+  template <typename DestBase>
+  size_type transfer_to(typed_ring_buffer<T, DestBase> &dest,
+                        size_type max_count = static_cast<size_type>(-1)) & noexcept {
+    std::size_t elements_to_move = std::min({max_count, this->len_, dest.free_space()});
+    if (elements_to_move == 0)
+      return 0;
+
+    auto [s1, s2] = this->read_slices();
+
+    std::size_t s1_move = std::min(s1.size(), elements_to_move);
+    std::ignore = dest.try_write(span<const T>(s1.data(), s1_move));
+
+    std::size_t remaining = elements_to_move - s1_move;
+    if (remaining > 0) {
+      std::ignore = dest.try_write(span<const T>(s2.data(), remaining));
+    }
+
+    this->consume(elements_to_move);
+    return elements_to_move;
+  }
+
+  // ---- Frame-Based Transfers ----
+
+  /**
+   * @brief Probes for a complete, valid structured frame and transfers it atomically
+   * to a destination ring buffer.
+   *
+   * @param dest The destination buffer.
+   * @param validator A callable `std::pair<bool, size_type> (const Header&)`
+   *
+   * @return `result<bool>`:
+   *         - `true` if a full frame was successfully transferred.
+   *         - `false` if waiting for more data in the source buffer.
+   *         - `error::capacity_exceeded` if the destination buffer lacks free space.
+   *         - `error::invalid_argument` if corruption is detected (source buffer is cleared).
+   */
+  template <typename Header, typename DestBase, typename Validator>
+  [[nodiscard]] result<bool> try_transfer_frame_to(typed_ring_buffer<T, DestBase> &dest,
+                                                   Validator &&validator) & noexcept {
+
+    static_assert(std::is_trivially_copyable_v<Header>, "Header must be trivially copyable");
+    const std::size_t header_elems = sizeof(Header) / sizeof(T);
+
+    if (this->len_ < header_elems)
+      return false;
+
+    // Peek the header safely
+    auto hdr_res = this->try_peek_object<Header>();
+    if (!hdr_res)
+      return false;
+
+    // Validate integrity and get expected size
+    auto [is_valid, size_or_skip] = validator(*hdr_res);
+
+    if (!is_valid || size_or_skip < header_elems) {
+      // Corruption detected! Clear source to stop cascading errors.
+      this->clear();
+      return reloco::unexpected(error::invalid_argument);
+    }
+
+    // Check if the full frame has arrived
+    if (this->len_ < size_or_skip) {
+      return false; // Wait for more data
+    }
+
+    // Ensure the destination can hold the entire frame atomically
+    if (dest.free_space() < size_or_skip) {
+      return reloco::unexpected(error::capacity_exceeded);
+    }
+
+    // Transfer the verified frame flawlessly reusing our byte-transfer API!
+    this->transfer_to(dest, size_or_skip);
+
+    return true;
+  }
 };
 
 #if RELOCO_SHARED_PROVIDE_DEFINITIONS

@@ -325,4 +325,97 @@ TEST_F(RingBufferCodecTest, PeekFrameDoesNotConsume) {
   EXPECT_EQ(stream.size(), 0);
 }
 
+TEST(RingBufferTest, FindDelimiter) {
+  inline_ring_buffer<char, 32> stream;
+
+  // Create a wrapped layout: [ "world\n", free..., "Hello " ]
+  ASSERT_TRUE(stream.try_reserve(10));
+  ASSERT_TRUE(stream.try_write(span<const char>("XXXXX", 5)));
+  stream.consume(5);
+  ASSERT_TRUE(stream.try_write(span<const char>("Hello world\n", 12)));
+
+  auto pos = stream.find('\n');
+  ASSERT_TRUE(pos.has_value());
+  EXPECT_EQ(*pos, 11);
+
+  // Verify we can find a substring/character starting from an offset
+  auto l_pos = stream.find('l', 5); // Search for 'l' starting after "Hello"
+  ASSERT_TRUE(l_pos.has_value());
+  EXPECT_EQ(*l_pos, 9); // The 'l' in "world"
+}
+
+TEST(RingBufferTest, BulkPeek) {
+  inline_ring_buffer<char, 32> stream;
+  ASSERT_TRUE(stream.try_write(span<const char>("0123456789", 10)));
+
+  std::string peek_buf(5, '\0');
+  // Peek 5 bytes starting at index 2 ("23456")
+  EXPECT_EQ(stream.peek(span<char>(peek_buf.data(), peek_buf.size()), 2), 5);
+  EXPECT_EQ(peek_buf, "23456");
+
+  // Ensure it wasn't consumed
+  EXPECT_EQ(stream.size(), 10);
+}
+
+TEST(RingBufferTest, CascadingTransfer) {
+  inline_ring_buffer<char, 16> src;
+  inline_ring_buffer<char, 64> dest;
+
+  ASSERT_TRUE(src.try_write(span<const char>("PacketData", 10)));
+
+  // Transfer up to 100 bytes (will cap at 10)
+  std::size_t moved = src.transfer_to(dest, 100);
+  EXPECT_EQ(moved, 10);
+  EXPECT_EQ(src.size(), 0);
+  EXPECT_EQ(dest.size(), 10);
+
+  // Verify destination data
+  std::string out(10, '\0');
+  dest.read(span<char>(out.data(), out.size()));
+  EXPECT_EQ(out, "PacketData");
+}
+
+TEST_F(RingBufferCodecTest, AtomicFrameTransfer) {
+  inline_ring_buffer<char, 128> src;
+  inline_ring_buffer<char, 64> dest;
+  auto val = get_validator();
+
+  // Write Frame 1 (Full)
+  TestHeader pkt1{0x1337BEEF, sizeof(TestHeader) + 5};
+  ASSERT_TRUE(src.try_write_object(pkt1));
+  ASSERT_TRUE(src.try_write(span<const char>("HELLO", 5)));
+
+  // Write Frame 2 (Partial!)
+  TestHeader pkt2{0x1337BEEF, sizeof(TestHeader) + 5};
+  ASSERT_TRUE(src.try_write_object(pkt2));
+  ASSERT_TRUE(src.try_write(span<const char>("WOR", 3))); // Missing 2 bytes
+
+  // --- First Pump ---
+  // Should transfer pkt1, but safely leave pkt2 in src
+  auto res1 = src.try_transfer_frame_to<TestHeader>(dest, val);
+  ASSERT_TRUE(res1.has_value());
+  EXPECT_TRUE(*res1);
+
+  EXPECT_EQ(src.size(), sizeof(TestHeader) + 3);  // pkt2 is left untouched
+  EXPECT_EQ(dest.size(), sizeof(TestHeader) + 5); // pkt1 successfully moved
+
+  // --- Second Pump ---
+  // Should return false (waiting for data)
+  auto res2 = src.try_transfer_frame_to<TestHeader>(dest, val);
+  ASSERT_TRUE(res2.has_value());
+  EXPECT_FALSE(*res2);
+
+  // Finish downloading Frame 2
+  ASSERT_TRUE(src.try_write(span<const char>("LD", 2)));
+
+  // --- Third Pump ---
+  // Should now transfer pkt2
+  auto res3 = src.try_transfer_frame_to<TestHeader>(dest, val);
+  ASSERT_TRUE(res3.has_value());
+  EXPECT_TRUE(*res3);
+
+  EXPECT_EQ(src.size(), 0);                             // Source is completely drained
+  EXPECT_EQ(dest.size(), (sizeof(TestHeader) + 5) * 2); // Destination holds both full packets
+}
+
 RELOCO_END_UNSAFE_BUFFER_USAGE
