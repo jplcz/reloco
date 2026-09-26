@@ -147,8 +147,13 @@ template <typename T> struct container_ref_traits<reloco::vec_deque<T>> {
     return c.try_push_front(std::move(value));
   }
 
-  // try_erase_at / try_insert_at are deliberately omitted here since inserting
-  // into the middle of a deque requires specialized shifting logic.
+  static result<void> try_insert_at(reloco::vec_deque<T> &c, std::size_t index, T value) noexcept {
+    return c.try_insert_at(index, std::move(value));
+  }
+
+  static result<void> try_erase_at(reloco::vec_deque<T> &c, std::size_t index) noexcept {
+    return c.try_erase_at(index);
+  }
 };
 
 RELOCO_END_UNSAFE_BUFFER_USAGE

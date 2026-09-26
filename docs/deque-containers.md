@@ -4,7 +4,7 @@ SPDX-FileCopyrightText: 2026 Jarosław Pelczar <jarek@jpelczar.com>
 SPDX-License-Identifier: BSD-2-Clause
 -->
 
-# Deque containers: `vec_deque<T>` and the ring-buffer engine
+# Deque containers: `vec_deque<T>`, `inline_vec_deque`, `outline_vec_deque`, `sso_vec_deque`, and the ring-buffer engine
 
 `vec_deque<T>` (`include/reloco/vec_deque.hpp`) is a move-only,
 allocator-backed double-ended queue: push/pop/insert/erase at either end run
@@ -12,6 +12,10 @@ in amortized O(1), and index access is O(1). It is the fallible,
 allocator-explicit analogue of `std::deque` (though, unlike `std::deque`,
 it is backed by a single contiguous ring buffer rather than a sequence of
 fixed-size chunks -- more like Rust's `std::collections::VecDeque`).
+`inline_vec_deque<T, Capacity>` (fixed-capacity, allocator-free),
+`outline_vec_deque<T>` (non-owning, over a caller-supplied span), and
+`sso_vec_deque<T, InlineCapacity>` (small-size-optimized) round out the
+family, mirroring `inline_vector`/`outline_vector`/`sso_vector` exactly.
 
 If you haven't already, read
 [Type-erased base containers](type-erased-base-containers.md) first: this
@@ -68,14 +72,19 @@ ships today:
 | Policy | Backs | Allocator | Growth |
 |---|---|---|---|
 | `heap_deque_base` | `vec_deque<T>` | `allocator_ref` | Unbounded (up to `max_capacity`) |
+| `inline_deque_base` | `inline_vec_deque<T, Capacity>` | none | Fixed at `Capacity` |
+| `outline_deque_base` | `outline_vec_deque<T>` | none | Fixed at the bound span's capacity |
+| `mixed_deque_base` | `sso_vec_deque<T, InlineCapacity>` | `allocator_ref` (once promoted) | Inline up to `InlineCapacity`, unbounded beyond |
 
-`inline_deque_base`, `outline_deque_base`, and `mixed_deque_base` are
-already defined in `vector_base.hpp` (mirroring `inline_vector_base`/
-`outline_vector_base`/`mixed_vector_base` on the vector side) as the
-storage policies for an eventual `inline_vec_deque<T, Capacity>`/
-`outline_vec_deque<T>`/`sso_vec_deque<T, InlineCapacity>`, but no public
-container plugs into them yet -- adding one follows the same "fifth vector
-flavor" recipe from
+`inline_deque_base`, `outline_deque_base`, and `mixed_deque_base` mirror
+`inline_vector_base`/`outline_vector_base`/`mixed_vector_base` on the
+vector side exactly -- same constructors, same
+`get_inline_storage`/`is_inline`/`get_allocator`/`inline_capacity`/
+`max_capacity` surface, same "no move support" rationale for the outline
+flavor (see
+[Type-erased base containers](type-erased-base-containers.md#why-outline_vector_base-has-no-move-support)).
+Adding a further deque flavor follows the identical "fifth vector flavor"
+recipe from
 [Type-erased base containers](type-erased-base-containers.md#adding-a-fifth-vector-flavor),
 just against `typed_deque_base<T, Base>` instead of `typed_vector_base<T,
 Base>`.
@@ -169,8 +178,9 @@ by the same `RELOCO_SHARED_PROVIDE_DEFINITIONS` macro described in
 
 ## See also
 
-- [API reference: `vec_deque<T>`](reference.md) for the full per-type quick
-  reference.
+- [API reference](reference.md) for the full per-type quick reference for
+  `vec_deque<T>`/`inline_vec_deque<T, Capacity>`/`outline_vec_deque<T>`/
+  `sso_vec_deque<T, InlineCapacity>`.
 - [Type-erased base containers](type-erased-base-containers.md) for the
-  vector side of the same engine, and the recipe for adding a new deque
-  flavor (`inline_vec_deque`/`outline_vec_deque`/`sso_vec_deque`).
+  vector side of the same engine, and the recipe for adding a sixth deque
+  flavor.

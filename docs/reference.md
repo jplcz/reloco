@@ -668,6 +668,92 @@ See [Deque containers](deque-containers.md) for the ring-buffer engine
 design, wrap-around handling, and how `try_insert_at`/`rotate_left`/
 `rotate_right` compose.
 
+## `inline_vec_deque<T, Capacity>`
+
+`include/reloco/inline_vec_deque.hpp`
+
+`vec_deque<T>`'s fixed-capacity, allocator-free counterpart, exactly
+mirroring how `inline_vector<T, Capacity>` relates to `vector<T>`:
+elements live in an embedded ring buffer sized for exactly `Capacity`
+elements, reusing `inline_vector.hpp`'s `detail::inline_vector_storage<T,
+Capacity>` byte-buffer helper. `Capacity` must be greater than zero.
+
+```cpp
+reloco::inline_vec_deque<int, 4> d;
+auto ok = d.try_push_back(2);
+ok = d.try_push_front(1);
+assert(d[0] == 1 && d[1] == 2);
+```
+
+Same mutation/access surface as `vec_deque<T>` (`try_push_front`/
+`try_push_back`/`try_insert_at`/`try_erase_at`/`try_swap_remove_back`/
+`try_swap_remove_front`/`rotate_left`/`rotate_right`/`as_slices`/
+`try_make_contiguous`/`contains`), but every capacity-growing call fails
+with `error::capacity_exceeded` once `size() == Capacity` instead of
+allocating. `capacity()`/`full()` report the fixed `Capacity`.
+`try_clone(alloc)`/`try_clone()`/`try_clone_at(...)` provide fallible deep
+copying (there is nothing for `inline_vec_deque` itself to allocate, but a
+nested `T` might). `try_to_vec_deque(alloc)`/`try_to_vec_deque()` "upgrade"
+to a heap-backed `vec_deque<T>` once `Capacity` is reached, mirroring
+`inline_vector<T, Capacity>::try_to_vector()` -- the `const &`-qualified
+overload clones every element, the `&&`-qualified overload moves them out
+and leaves `*this` empty.
+
+`reloco::is_trivially_relocatable<inline_vec_deque<T, Capacity>>` is
+conditional on `is_trivially_relocatable<T>` (unlike `vec_deque<T>`'s
+unconditional specialization): its storage is embedded directly in the
+object rather than behind a heap pointer.
+
+## `outline_vec_deque<T>`
+
+`include/reloco/outline_vec_deque.hpp`
+
+`vec_deque<T>`'s non-owning counterpart, exactly mirroring how
+`outline_vector<T>` relates to `vector<T>`: elements live in a
+caller-supplied, caller-owned `span<std::byte>` bound exactly once at
+construction; `outline_vec_deque<T>` never allocates, deallocates, or
+frees that memory. There is no default constructor, no rebind, and --
+like `outline_vector<T>` -- no move constructor/assignment either, since
+there is no sound way to steal a borrowed span.
+
+```cpp
+alignas(int) std::byte buffer[sizeof(int) * 4];
+reloco::outline_vec_deque<int> d(reloco::span<std::byte>(buffer));
+```
+
+Growth is capped at `storage.size() / sizeof(T)`, computed once at
+construction; beyond that, mutation fails with `error::capacity_exceeded`.
+There is no `try_create`/`try_allocate`/`try_clone`/`try_clone_at` (binding
+a span can never fail), and no `is_trivially_relocatable` specialization
+(the primary template's `std::is_trivially_copyable<T>` fallback already
+reports `false` since copy is deleted).
+
+## `sso_vec_deque<T, InlineCapacity>`
+
+`include/reloco/sso_vec_deque.hpp`
+
+`vec_deque<T>`'s small-size-optimized counterpart, exactly mirroring how
+`sso_vector<T, InlineCapacity>` relates to `vector<T>`: up to
+`InlineCapacity` elements live in an embedded ring buffer; growth beyond
+that promotes to an `allocator_ref`-backed heap allocation, unwrapping and
+linearizing the inline ring buffer in the process. `InlineCapacity` must
+be greater than zero.
+
+```cpp
+auto d = reloco::sso_vec_deque<int, 4>::try_create();
+```
+
+Construction/cloning mirror `sso_vector<T, InlineCapacity>`:
+`try_allocate(alloc, initial_cap = 0)`, `try_create(initial_cap = 0)`,
+`try_clone(alloc)`/`try_clone()` (reuses this deque's own allocator),
+`try_clone_at(alloc, storage, source)`. `is_inline()` reports whether
+`*this` is still using its embedded buffer.
+
+`reloco::is_trivially_relocatable<sso_vec_deque<T, InlineCapacity>>` is
+unconditionally `false` regardless of `T`, for the same reason as
+`sso_vector<T, InlineCapacity>`: a small instance's data pointer points
+into its own embedded buffer.
+
 ## `boxed_slice<T>`
 
 `include/reloco/boxed_slice.hpp`
