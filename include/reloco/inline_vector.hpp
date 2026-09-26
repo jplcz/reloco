@@ -128,18 +128,18 @@ public:
   inline_vector &operator=(const inline_vector &) = delete;
 
   inline_vector(inline_vector &&other) noexcept : base_t(this->storage_bytes_, Capacity) {
-    base_t::move_construct_from_base(detail::metadata_for<T>, std::move(other));
+    base_t::move_construct_from_base(detail::get_operations_for<T>(), detail::metadata_for<T>, std::move(other));
   }
 
   inline_vector &operator=(inline_vector &&other) noexcept {
     if (this != &other) {
       this->clear();
-      base_t::move_assign_from_base(detail::metadata_for<T>, std::move(other));
+      base_t::move_assign_from_base(detail::get_operations_for<T>(), detail::metadata_for<T>, std::move(other));
     }
     return *this;
   }
 
-  ~inline_vector() noexcept { this->destroy_elements(detail::metadata_for<T>); }
+  ~inline_vector() noexcept { this->destroy_elements(detail::get_operations_for<T>(), detail::metadata_for<T>); }
 
   // ---- fallible cloning (see concepts.hpp) ----
 
@@ -163,9 +163,9 @@ public:
       return unexpected(reserve_res.error());
     }
 
-    if (this->operations_->clone_range) {
-      if (auto clone_res =
-              this->operations_->clone_range(detail::metadata_for<T>, this->data_, clone.data_, this->size_, alloc);
+    if (detail::get_operations_for<T>()->clone_range) {
+      if (auto clone_res = detail::get_operations_for<T>()->clone_range(detail::metadata_for<T>, this->data_,
+                                                                        clone.data_, this->size_, alloc);
           !clone_res) {
         return unexpected(clone_res.error());
       }

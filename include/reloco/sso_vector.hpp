@@ -123,18 +123,18 @@ public:
   sso_vector &operator=(const sso_vector &) = delete;
 
   sso_vector(sso_vector &&other) noexcept : base_t(this->storage_bytes_, InlineCapacity, other.get_allocator()) {
-    base_t::move_construct_from_base(detail::metadata_for<T>, std::move(other));
+    base_t::move_construct_from_base(detail::get_operations_for<T>(), detail::metadata_for<T>, std::move(other));
   }
 
   sso_vector &operator=(sso_vector &&other) noexcept {
     if (this != &other) {
       this->clear();
-      base_t::move_assign_from_base(detail::metadata_for<T>, std::move(other));
+      base_t::move_assign_from_base(detail::get_operations_for<T>(), detail::metadata_for<T>, std::move(other));
     }
     return *this;
   }
 
-  ~sso_vector() noexcept { this->destroy_elements(detail::metadata_for<T>); }
+  ~sso_vector() noexcept { this->destroy_elements(detail::get_operations_for<T>(), detail::metadata_for<T>); }
 
   // ---- fallible construction / cloning (see concepts.hpp) ----
 
@@ -178,9 +178,9 @@ public:
       return unexpected(reserve_res.error());
     }
 
-    if (this->operations_->clone_range) {
-      if (auto clone_res =
-              this->operations_->clone_range(detail::metadata_for<T>, this->data_, clone.data_, this->size_, alloc);
+    if (detail::get_operations_for<T>()->clone_range) {
+      if (auto clone_res = detail::get_operations_for<T>()->clone_range(detail::metadata_for<T>, this->data_,
+                                                                        clone.data_, this->size_, alloc);
           !clone_res) {
         return unexpected(clone_res.error());
       }

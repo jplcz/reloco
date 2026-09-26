@@ -313,10 +313,10 @@ template <typename T> inline constexpr const vector_operations *get_operations_f
  */
 class RELOCO_EXPORT unowned_vector_base {
 protected:
-  constexpr explicit unowned_vector_base(const vector_operations *ops) noexcept : operations_(ops) {}
+  constexpr unowned_vector_base() noexcept {}
 
-  constexpr unowned_vector_base(const vector_operations *ops, void *data, std::size_t size, std::size_t cap) noexcept
-      : data_(data), operations_(ops), size_(size), cap_(cap) {}
+  constexpr unowned_vector_base(void *data, std::size_t size, std::size_t cap) noexcept
+      : data_(data), size_(size), cap_(cap) {}
 
 public:
   using size_type = std::size_t;
@@ -336,42 +336,46 @@ public:
 protected:
   // --- Base Engine Operations (Requiring explicit allocator_ref) ---
 
-  void destroy_elements_base(const type_metadata &type) const noexcept {
-    if (data_ && operations_) {
-      if (operations_->destroy_range) {
-        operations_->destroy_range(type, data_, 0, size_);
+  void destroy_elements_base(const vector_operations *operations, const type_metadata &type) const noexcept {
+    if (data_ && operations) {
+      if (operations->destroy_range) {
+        operations->destroy_range(type, data_, 0, size_);
       }
     }
   }
 
-  [[nodiscard]] RELOCO_API result<void> try_reserve_base(allocator_ref alloc, const type_metadata &type,
-                                                         std::size_t new_cap, void *inline_storage,
-                                                         std::size_t max_inline, std::size_t max_cap) noexcept;
+  [[nodiscard]] RELOCO_API result<void> try_reserve_base(const vector_operations *operations, allocator_ref alloc,
+                                                         const type_metadata &type, std::size_t new_cap,
+                                                         void *inline_storage, std::size_t max_inline,
+                                                         std::size_t max_cap) noexcept;
 
-  [[nodiscard]] RELOCO_API result<void> try_resize_base(allocator_ref alloc, const type_metadata &type,
-                                                        std::size_t count, const void *value_ptr, void *inline_storage,
+  [[nodiscard]] RELOCO_API result<void> try_resize_base(const vector_operations *operations, allocator_ref alloc,
+                                                        const type_metadata &type, std::size_t count,
+                                                        const void *value_ptr, void *inline_storage,
                                                         std::size_t max_inline, std::size_t max_cap) noexcept;
 
-  [[nodiscard]] RELOCO_API result<void> shrink_to_fit_base(allocator_ref alloc, const type_metadata &type,
-                                                           void *inline_storage, std::size_t max_inline) noexcept;
+  [[nodiscard]] RELOCO_API result<void> shrink_to_fit_base(const vector_operations *operations, allocator_ref alloc,
+                                                           const type_metadata &type, void *inline_storage,
+                                                           std::size_t max_inline) noexcept;
 
-  RELOCO_API result<void> try_pop_back_base(const type_metadata &type) noexcept;
+  RELOCO_API result<void> try_pop_back_base(const vector_operations *operations, const type_metadata &type) noexcept;
 
-  [[nodiscard]] RELOCO_API result<void> try_erase_at_base(const type_metadata &type, std::size_t index) noexcept;
+  [[nodiscard]] RELOCO_API result<void> try_erase_at_base(const vector_operations *operations,
+                                                          const type_metadata &type, std::size_t index) noexcept;
 
-  RELOCO_API void retain_base(const type_metadata &type, function_ref<bool(const void *)> pred) noexcept;
+  RELOCO_API void retain_base(const vector_operations *operations, const type_metadata &type,
+                              function_ref<bool(const void *)> pred) noexcept;
 
-  RELOCO_API void dedup_by_base(const type_metadata &type,
+  RELOCO_API void dedup_by_base(const vector_operations *operations, const type_metadata &type,
                                 function_ref<bool(const void *, const void *)> same) noexcept;
 
-  [[nodiscard]] RELOCO_API result<void *> try_insert_at_base(allocator_ref alloc, const type_metadata &type,
-                                                             std::size_t index,
+  [[nodiscard]] RELOCO_API result<void *> try_insert_at_base(const vector_operations *operations, allocator_ref alloc,
+                                                             const type_metadata &type, std::size_t index,
                                                              function_ref<result<void>(void *dest)> construct_fn,
                                                              void *inline_storage, std::size_t max_inline,
                                                              std::size_t max_cap) noexcept;
 
   void *data_ = nullptr;
-  const vector_operations *operations_;
   std::size_t size_ = 0;
   std::size_t cap_ = 0;
 };
@@ -383,27 +387,26 @@ protected:
  */
 class RELOCO_EXPORT heap_vector_base : public unowned_vector_base {
 protected:
-  constexpr explicit heap_vector_base(const vector_operations *ops, allocator_ref alloc = default_allocator()) noexcept
-      : unowned_vector_base(ops), alloc_(alloc) {}
+  constexpr explicit heap_vector_base(allocator_ref alloc = default_allocator()) noexcept : alloc_(alloc) {}
 
   ~heap_vector_base() noexcept = default;
 
-  RELOCO_API void destroy_elements(const type_metadata &type) noexcept;
+  RELOCO_API void destroy_elements(const vector_operations *operations, const type_metadata &type) noexcept;
 
-  constexpr void move_construct_from_base(const type_metadata &, heap_vector_base &&other) noexcept {
-    operations_ = other.operations_;
+  constexpr void move_construct_from_base(const vector_operations *, const type_metadata &,
+                                          heap_vector_base &&other) noexcept {
     data_ = other.data_;
     size_ = other.size_;
     cap_ = other.cap_;
     alloc_ = other.alloc_;
 
-    other.operations_ = nullptr;
     other.data_ = nullptr;
     other.size_ = 0;
     other.cap_ = 0;
   }
 
-  RELOCO_API void move_assign_from_base(const type_metadata &type, heap_vector_base &&other) noexcept;
+  RELOCO_API void move_assign_from_base(const vector_operations *operations, const type_metadata &type,
+                                        heap_vector_base &&other) noexcept;
 
   [[nodiscard]] static constexpr void *get_inline_storage() noexcept { return nullptr; }
 
@@ -429,17 +432,19 @@ private:
  */
 class RELOCO_EXPORT inline_vector_base : public unowned_vector_base {
 protected:
-  constexpr inline_vector_base(const vector_operations *ops, void *storage, std::size_t capacity) noexcept
-      : unowned_vector_base(ops, storage, 0, capacity) {}
+  constexpr inline_vector_base(void *storage, std::size_t capacity) noexcept
+      : unowned_vector_base(storage, 0, capacity) {}
 
   ~inline_vector_base() noexcept = default;
 
-  RELOCO_API void destroy_elements(const type_metadata &type) noexcept;
+  RELOCO_API void destroy_elements(const vector_operations *operations, const type_metadata &type) noexcept;
 
   // Uses `data_` directly as the destination since unowned_vector_base already points it to local storage!
-  RELOCO_API void move_construct_from_base(const type_metadata &type, inline_vector_base &&other) noexcept;
+  RELOCO_API void move_construct_from_base(const vector_operations *operations, const type_metadata &type,
+                                           inline_vector_base &&other) noexcept;
 
-  RELOCO_API void move_assign_from_base(const type_metadata &type, inline_vector_base &&other) noexcept;
+  RELOCO_API void move_assign_from_base(const vector_operations *operations, const type_metadata &type,
+                                        inline_vector_base &&other) noexcept;
 
   [[nodiscard]] constexpr void *get_inline_storage() noexcept { return data_; }
 
@@ -467,12 +472,12 @@ public:
  */
 class RELOCO_EXPORT outline_vector_base : public unowned_vector_base {
 protected:
-  constexpr outline_vector_base(const vector_operations *ops, void *storage, std::size_t capacity) noexcept
-      : unowned_vector_base(ops, storage, 0, capacity) {}
+  constexpr outline_vector_base(void *storage, std::size_t capacity) noexcept
+      : unowned_vector_base(storage, 0, capacity) {}
 
   ~outline_vector_base() noexcept = default;
 
-  RELOCO_API void destroy_elements(const type_metadata &type) noexcept;
+  RELOCO_API void destroy_elements(const vector_operations *operations, const type_metadata &type) noexcept;
 
   [[nodiscard]] constexpr void *get_inline_storage() noexcept { return data_; }
 
@@ -504,18 +509,19 @@ private:
   allocator_ref alloc_;
 
 protected:
-  constexpr mixed_vector_base(const vector_operations *ops, void *inline_storage, std::size_t inline_capacity,
-                              const allocator_ref alloc) noexcept
-      : unowned_vector_base(ops, inline_storage, 0, inline_capacity), inline_storage_(inline_storage),
+  constexpr mixed_vector_base(void *inline_storage, std::size_t inline_capacity, const allocator_ref alloc) noexcept
+      : unowned_vector_base(inline_storage, 0, inline_capacity), inline_storage_(inline_storage),
         inline_capacity_(inline_capacity), alloc_(alloc) {}
 
   ~mixed_vector_base() noexcept = default; // Deallocation handled by typed/derived layer or custom cleanup helper
 
-  RELOCO_API void destroy_elements(const type_metadata &type) noexcept;
+  RELOCO_API void destroy_elements(const vector_operations *operations, const type_metadata &type) noexcept;
 
-  RELOCO_API void move_construct_from_base(const type_metadata &type, mixed_vector_base &&other) noexcept;
+  RELOCO_API void move_construct_from_base(const vector_operations *operations, const type_metadata &type,
+                                           mixed_vector_base &&other) noexcept;
 
-  RELOCO_API void move_assign_from_base(const type_metadata &type, mixed_vector_base &&other) noexcept;
+  RELOCO_API void move_assign_from_base(const vector_operations *operations, const type_metadata &type,
+                                        mixed_vector_base &&other) noexcept;
 
   [[nodiscard]] constexpr void *get_inline_storage() noexcept { return inline_storage_; }
 
@@ -559,8 +565,7 @@ public:
 protected:
   // Forward constructors to the underlying Base policy
   template <typename... Args>
-  constexpr explicit typed_vector_base(Args &&...args) noexcept
-      : Base(detail::get_operations_for<T>(), std::forward<Args>(args)...) {}
+  constexpr explicit typed_vector_base(Args &&...args) noexcept : Base(std::forward<Args>(args)...) {}
 
   ~typed_vector_base() noexcept = default;
 
@@ -570,16 +575,17 @@ public:
    * backing allocation if needed.
    */
   [[nodiscard]] result<void> try_reserve(size_type new_cap) & noexcept {
-    return Base::try_reserve_base(Base::get_allocator(), metadata_for<T>, new_cap, Base::get_inline_storage(),
-                                  Base::inline_capacity(), Base::max_capacity(detail::metadata_for<T>));
+    return Base::try_reserve_base(detail::get_operations_for<T>(), Base::get_allocator(), metadata_for<T>, new_cap,
+                                  Base::get_inline_storage(), Base::inline_capacity(),
+                                  Base::max_capacity(detail::metadata_for<T>));
   }
 
   /**
    * @brief Releases unused capacity back to the allocator, if supported.
    */
   [[nodiscard]] result<void> shrink_to_fit() & noexcept {
-    return Base::shrink_to_fit_base(Base::get_allocator(), metadata_for<T>, Base::get_inline_storage(),
-                                    Base::inline_capacity());
+    return Base::shrink_to_fit_base(detail::get_operations_for<T>(), Base::get_allocator(), metadata_for<T>,
+                                    Base::get_inline_storage(), Base::inline_capacity());
   }
 
   // ---- mutation ----
@@ -593,7 +599,7 @@ public:
   template <typename... Args>
   [[nodiscard]] result<std::reference_wrapper<T>> try_emplace_back(Args &&...args) & noexcept RELOCO_LIFETIMEBOUND {
     auto res = this->try_insert_at_base(
-        this->get_allocator(), detail::metadata_for<T>, this->size_,
+        detail::get_operations_for<T>(), this->get_allocator(), detail::metadata_for<T>, this->size_,
         [&args...](void *dest) noexcept -> result<void> {
           return construction_helpers::try_construct<T>(default_allocator(), static_cast<T *>(dest),
                                                         std::forward<Args>(args)...);
@@ -628,7 +634,9 @@ public:
    * @brief Removes the last element. Fails with `error::container_empty` if
    * the vector is empty.
    */
-  [[nodiscard]] result<void> try_pop_back() & noexcept { return Base::try_pop_back_base(metadata_for<T>); }
+  [[nodiscard]] result<void> try_pop_back() & noexcept {
+    return Base::try_pop_back_base(detail::get_operations_for<T>(), metadata_for<T>);
+  }
 
   // ---- capacity ----
 
@@ -648,8 +656,9 @@ public:
   [[nodiscard]] result<void> try_resize(size_type count) & noexcept {
     static_assert(std::is_default_constructible_v<T>,
                   "try_resize(count) requires T to be default-constructible; use try_resize(count, value) instead.");
-    return Base::try_resize_base(Base::get_allocator(), metadata_for<T>, count, nullptr, Base::get_inline_storage(),
-                                 Base::inline_capacity(), Base::max_capacity(detail::metadata_for<T>));
+    return Base::try_resize_base(detail::get_operations_for<T>(), Base::get_allocator(), metadata_for<T>, count,
+                                 nullptr, Base::get_inline_storage(), Base::inline_capacity(),
+                                 Base::max_capacity(detail::metadata_for<T>));
   }
 
   /**
@@ -664,8 +673,9 @@ public:
   [[nodiscard]] result<void> try_resize(size_type count, const T &value) & noexcept {
     static_assert(std::is_nothrow_copy_constructible_v<T>,
                   "try_resize(count) requires T to be default-constructible; use try_resize(count, value) instead.");
-    return Base::try_resize_base(Base::get_allocator(), metadata_for<T>, count, &value, Base::get_inline_storage(),
-                                 Base::inline_capacity(), Base::max_capacity(detail::metadata_for<T>));
+    return Base::try_resize_base(detail::get_operations_for<T>(), Base::get_allocator(), metadata_for<T>, count, &value,
+                                 Base::get_inline_storage(), Base::inline_capacity(),
+                                 Base::max_capacity(detail::metadata_for<T>));
   }
 
   /**
@@ -677,7 +687,7 @@ public:
    */
   void clear() noexcept {
     if constexpr (!std::is_trivially_destructible_v<T>) {
-      this->destroy_elements_base(detail::metadata_for<T>);
+      this->destroy_elements_base(detail::get_operations_for<T>(), detail::metadata_for<T>);
     }
     this->size_ = 0;
   }
@@ -716,7 +726,7 @@ public:
    * and safe shifting/relocation to the base engine via `try_erase_at_base`.
    */
   [[nodiscard]] result<void> try_erase_at(size_type index) & noexcept {
-    return this->try_erase_at_base(detail::metadata_for<T>, index);
+    return this->try_erase_at_base(detail::get_operations_for<T>(), detail::metadata_for<T>, index);
   }
 
   /**
@@ -741,7 +751,7 @@ public:
     function_ref<bool(const void *)> erased_pred(
         [&pred](const void *elem_ptr) noexcept { return pred(*static_cast<const T *>(elem_ptr)); });
 
-    this->retain_base(detail::metadata_for<T>, erased_pred);
+    this->retain_base(detail::get_operations_for<T>(), detail::metadata_for<T>, erased_pred);
   }
 
   /**
@@ -758,7 +768,7 @@ public:
       return same(*static_cast<const T *>(a_ptr), *static_cast<const T *>(b_ptr));
     });
 
-    this->dedup_by_base(detail::metadata_for<T>, erased_same);
+    this->dedup_by_base(detail::get_operations_for<T>(), detail::metadata_for<T>, erased_same);
   }
 
   /**
@@ -789,7 +799,7 @@ public:
 
     // Delegate capacity reservation, shifting, and final placement to the base engine
     auto res = this->try_insert_at_base(
-        this->get_allocator(), detail::metadata_for<T>, index,
+        detail::get_operations_for<T>(), this->get_allocator(), detail::metadata_for<T>, index,
         [&built](void *dest) noexcept -> result<void> {
           static_assert(std::is_nothrow_move_constructible_v<T>, "reloco requires noexcept move-construction.");
           new (dest) T(std::move(*built));

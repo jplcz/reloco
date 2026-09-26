@@ -49,9 +49,10 @@ RELOCO_API void trivial_operator_set::move_range_up(const type_metadata &type, v
   }
 }
 
-RELOCO_API result<void> unowned_vector_base::try_reserve_base(allocator_ref alloc, const type_metadata &type,
-                                                              std::size_t new_cap, void *inline_storage,
-                                                              std::size_t max_inline, std::size_t max_cap) noexcept {
+RELOCO_API result<void> unowned_vector_base::try_reserve_base(const vector_operations *operations, allocator_ref alloc,
+                                                              const type_metadata &type, std::size_t new_cap,
+                                                              void *inline_storage, std::size_t max_inline,
+                                                              std::size_t max_cap) noexcept {
   if (new_cap <= cap_)
     return {};
   if (new_cap > max_cap)
@@ -78,13 +79,13 @@ RELOCO_API result<void> unowned_vector_base::try_reserve_base(allocator_ref allo
       if (!res)
         return unexpected(res.error());
       if (size_ > 0) {
-        operations_->move_range(type, res->ptr, data_, size_);
+        operations->move_range(type, res->ptr, data_, size_);
       }
       // We don't have to "free" inline storage, just destroy the contents
       if (!type.is_trivially_relocatable()) {
         // If type is trivially relocatable, then move_range has already killed source objects
         // so we can't destroy them
-        destroy_elements_base(type);
+        destroy_elements_base(operations, type);
       }
       data_ = res->ptr;
       cap_ = res->size / elem_size;
@@ -115,7 +116,7 @@ RELOCO_API result<void> unowned_vector_base::try_reserve_base(allocator_ref allo
 
     void *new_data = res->ptr;
     if (size_ > 0) {
-      operations_->move_range(type, new_data, data_, size_);
+      operations->move_range(type, new_data, data_, size_);
     }
 
     if (data_)
@@ -126,23 +127,24 @@ RELOCO_API result<void> unowned_vector_base::try_reserve_base(allocator_ref allo
   return {};
 }
 
-result<void> unowned_vector_base::try_resize_base(allocator_ref alloc, const type_metadata &type, std::size_t count,
-                                                  const void *value_ptr, void *inline_storage, std::size_t max_inline,
+result<void> unowned_vector_base::try_resize_base(const vector_operations *operations, allocator_ref alloc,
+                                                  const type_metadata &type, std::size_t count, const void *value_ptr,
+                                                  void *inline_storage, std::size_t max_inline,
                                                   std::size_t max_cap) noexcept {
   if (count <= size_) {
-    if (operations_->destroy_range) {
-      operations_->destroy_range(type, data_, count, size_);
+    if (operations->destroy_range) {
+      operations->destroy_range(type, data_, count, size_);
     }
     size_ = count;
     return {};
   }
 
-  auto res = try_reserve_base(alloc, type, count, inline_storage, max_inline, max_cap);
+  auto res = try_reserve_base(operations, alloc, type, count, inline_storage, max_inline, max_cap);
   if (!res)
     return unexpected(res.error());
 
-  if (operations_->copy_construct_range) {
-    auto ctor_res = operations_->copy_construct_range(type, alloc, data_, size_, count, value_ptr);
+  if (operations->copy_construct_range) {
+    auto ctor_res = operations->copy_construct_range(type, alloc, data_, size_, count, value_ptr);
     if (!ctor_res) {
       return unexpected(ctor_res.error());
     }
@@ -152,7 +154,8 @@ result<void> unowned_vector_base::try_resize_base(allocator_ref alloc, const typ
   return {};
 }
 
-RELOCO_API result<void> unowned_vector_base::shrink_to_fit_base(allocator_ref alloc, const type_metadata &type,
+RELOCO_API result<void> unowned_vector_base::shrink_to_fit_base(const vector_operations *operations,
+                                                                allocator_ref alloc, const type_metadata &type,
                                                                 void *inline_storage, std::size_t max_inline) noexcept {
   if (cap_ <= size_)
     return {};
@@ -172,13 +175,13 @@ RELOCO_API result<void> unowned_vector_base::shrink_to_fit_base(allocator_ref al
     // We might need to migrate to inline storage
     if (size_ <= max_inline) {
       if (size_ > 0) {
-        operations_->move_range(type, inline_storage, data_, size_);
+        operations->move_range(type, inline_storage, data_, size_);
       }
       // Destroy heap elements
       if (!type.is_trivially_relocatable()) {
         // Only if they're not trivially relocatable. Trivial relocation prohibits source destruction
         // from being ran
-        destroy_elements_base(type);
+        destroy_elements_base(operations, type);
       }
       if (data_) {
         alloc.deallocate(data_, cap_ * elem_size);
@@ -217,7 +220,7 @@ RELOCO_API result<void> unowned_vector_base::shrink_to_fit_base(allocator_ref al
 
     // Reuse the operations table's move_range to safely move elements
     // and destruct old ones without code duplication
-    operations_->move_range(type, new_data, data_, size_);
+    operations->move_range(type, new_data, data_, size_);
 
     alloc.deallocate(data_, cap_ * elem_size);
     data_ = new_data;
@@ -226,18 +229,20 @@ RELOCO_API result<void> unowned_vector_base::shrink_to_fit_base(allocator_ref al
   return {};
 }
 
-RELOCO_API result<void> unowned_vector_base::try_pop_back_base(const type_metadata &type) noexcept {
+RELOCO_API result<void> unowned_vector_base::try_pop_back_base(const vector_operations *operations,
+                                                               const type_metadata &type) noexcept {
   if (size_ == 0)
     return unexpected(error::container_empty);
 
   --size_;
-  if (operations_->destroy_range) {
-    operations_->destroy_range(type, data_, size_, size_ + 1);
+  if (operations->destroy_range) {
+    operations->destroy_range(type, data_, size_, size_ + 1);
   }
   return {};
 }
 
-RELOCO_API result<void> unowned_vector_base::try_erase_at_base(const type_metadata &type, std::size_t index) noexcept {
+RELOCO_API result<void> unowned_vector_base::try_erase_at_base(const vector_operations *operations,
+                                                               const type_metadata &type, std::size_t index) noexcept {
   if (index >= size_)
     return unexpected(error::out_of_bounds);
 
@@ -245,8 +250,8 @@ RELOCO_API result<void> unowned_vector_base::try_erase_at_base(const type_metada
   const std::size_t elem_size = type.element_size;
 
   // Destroy the element being removed via operations table
-  if (operations_->destroy_range) {
-    operations_->destroy_range(type, data_, index, index + 1);
+  if (operations->destroy_range) {
+    operations->destroy_range(type, data_, index, index + 1);
   }
 
   // Shift remaining elements down if any
@@ -258,8 +263,8 @@ RELOCO_API result<void> unowned_vector_base::try_erase_at_base(const type_metada
     if (type.is_trivially_relocatable()) {
       std::memmove(dest, src, move_count * elem_size);
     } else {
-      // Reuse operations_->move_range to safely shift non-trivial elements down
-      operations_->move_range(type, dest, src, move_count);
+      // Reuse operations->move_range to safely shift non-trivial elements down
+      operations->move_range(type, dest, src, move_count);
     }
   }
 
@@ -267,7 +272,7 @@ RELOCO_API result<void> unowned_vector_base::try_erase_at_base(const type_metada
   return {};
 }
 
-RELOCO_API void unowned_vector_base::retain_base(const type_metadata &type,
+RELOCO_API void unowned_vector_base::retain_base(const vector_operations *operations, const type_metadata &type,
                                                  function_ref<bool(const void *)> pred) noexcept {
   if (size_ == 0)
     return;
@@ -285,14 +290,14 @@ RELOCO_API void unowned_vector_base::retain_base(const type_metadata &type,
         if (type.is_trivially_relocatable()) {
           std::memmove(dest_ptr, current_ptr, elem_size);
         } else {
-          operations_->move_range(type, dest_ptr, current_ptr, 1);
+          operations->move_range(type, dest_ptr, current_ptr, 1);
         }
       }
       ++write;
     } else {
       // Destroy the rejected element
-      if (operations_->destroy_range) {
-        operations_->destroy_range(type, data_, read, read + 1);
+      if (operations->destroy_range) {
+        operations->destroy_range(type, data_, read, read + 1);
       }
     }
   }
@@ -300,7 +305,7 @@ RELOCO_API void unowned_vector_base::retain_base(const type_metadata &type,
   size_ = write;
 }
 
-RELOCO_API void unowned_vector_base::dedup_by_base(const type_metadata &type,
+RELOCO_API void unowned_vector_base::dedup_by_base(const vector_operations *operations, const type_metadata &type,
                                                    function_ref<bool(const void *, const void *)> same) noexcept {
   if (size_ < 2)
     return;
@@ -315,8 +320,8 @@ RELOCO_API void unowned_vector_base::dedup_by_base(const type_metadata &type,
 
     // If adjacent elements match according to the predicate
     if (same(prev_ptr, curr_ptr)) {
-      if (operations_->destroy_range) {
-        operations_->destroy_range(type, data_, read, read + 1);
+      if (operations->destroy_range) {
+        operations->destroy_range(type, data_, read, read + 1);
       }
       continue;
     }
@@ -327,7 +332,7 @@ RELOCO_API void unowned_vector_base::dedup_by_base(const type_metadata &type,
       if (type.is_trivially_relocatable()) {
         std::memmove(write_ptr, curr_ptr, elem_size);
       } else {
-        operations_->move_range(type, write_ptr, curr_ptr, 1);
+        operations->move_range(type, write_ptr, curr_ptr, 1);
       }
     }
     ++write;
@@ -336,7 +341,8 @@ RELOCO_API void unowned_vector_base::dedup_by_base(const type_metadata &type,
   size_ = write;
 }
 
-RELOCO_API result<void *> unowned_vector_base::try_insert_at_base(allocator_ref alloc, const type_metadata &type,
+RELOCO_API result<void *> unowned_vector_base::try_insert_at_base(const vector_operations *operations,
+                                                                  allocator_ref alloc, const type_metadata &type,
                                                                   std::size_t index,
                                                                   function_ref<result<void>(void *dest)> construct_fn,
                                                                   void *inline_storage, std::size_t max_inline,
@@ -361,7 +367,7 @@ RELOCO_API result<void *> unowned_vector_base::try_insert_at_base(allocator_ref 
       new_cap = std::min(cap_ == 0 ? std::size_t(8) : cap_ + ((cap_ + 1) / 2), max_cap);
     }
 
-    if (auto res = try_reserve_base(alloc, type, new_cap, inline_storage, max_inline, max_cap); !res) {
+    if (auto res = try_reserve_base(operations, alloc, type, new_cap, inline_storage, max_inline, max_cap); !res) {
       return unexpected(res.error());
     }
   }
@@ -379,7 +385,7 @@ RELOCO_API result<void *> unowned_vector_base::try_insert_at_base(allocator_ref 
       std::memmove(dest, src, move_count * elem_size);
     } else {
       // Shift up using operations table move_range_up
-      operations_->move_range_up(type, dest, src, move_count);
+      operations->move_range_up(type, dest, src, move_count);
     }
   }
 
@@ -393,7 +399,7 @@ RELOCO_API result<void *> unowned_vector_base::try_insert_at_base(allocator_ref 
       if (type.is_trivially_relocatable()) {
         std::memmove(dest, src, move_count * elem_size);
       } else {
-        operations_->move_range(type, dest, src, move_count);
+        operations->move_range(type, dest, src, move_count);
       }
     }
     return unexpected(ctor_res.error());
@@ -403,10 +409,11 @@ RELOCO_API result<void *> unowned_vector_base::try_insert_at_base(allocator_ref 
   return dest_ptr;
 }
 
-RELOCO_API void heap_vector_base::destroy_elements(const type_metadata &type) noexcept {
+RELOCO_API void heap_vector_base::destroy_elements(const vector_operations *operations,
+                                                   const type_metadata &type) noexcept {
   if (data_) {
     if (size_ > 0) {
-      destroy_elements_base(type);
+      destroy_elements_base(operations, type);
     }
     alloc_.deallocate(data_, cap_ * type.element_size);
     data_ = nullptr;
@@ -415,71 +422,72 @@ RELOCO_API void heap_vector_base::destroy_elements(const type_metadata &type) no
   }
 }
 
-RELOCO_API void heap_vector_base::move_assign_from_base(const type_metadata &type, heap_vector_base &&other) noexcept {
+RELOCO_API void heap_vector_base::move_assign_from_base(const vector_operations *operations, const type_metadata &type,
+                                                        heap_vector_base &&other) noexcept {
   if (this == &other)
     return;
 
   // Clean up current resources using our new helper
-  destroy_elements(type);
+  destroy_elements(operations, type);
 
-  operations_ = other.operations_;
   data_ = other.data_;
   size_ = other.size_;
   cap_ = other.cap_;
   alloc_ = other.alloc_;
 
-  other.operations_ = nullptr;
   other.data_ = nullptr;
   other.size_ = 0;
   other.cap_ = 0;
 }
 
-RELOCO_API void inline_vector_base::destroy_elements(const type_metadata &type) noexcept {
+RELOCO_API void inline_vector_base::destroy_elements(const vector_operations *operations,
+                                                     const type_metadata &type) noexcept {
   if (data_ && size_ > 0) {
-    if (operations_->destroy_range) {
-      operations_->destroy_range(type, data_, 0, size_);
+    if (operations->destroy_range) {
+      operations->destroy_range(type, data_, 0, size_);
     }
     size_ = 0;
   }
 }
 
-RELOCO_API void inline_vector_base::move_construct_from_base(const type_metadata &type,
+RELOCO_API void inline_vector_base::move_construct_from_base(const vector_operations *operations,
+                                                             const type_metadata &type,
                                                              inline_vector_base &&other) noexcept {
-  operations_ = other.operations_;
-
-  if (other.size_ > 0 && operations_->move_range) {
-    operations_->move_range(type, data_, other.data_, other.size_);
+  if (other.size_ > 0 && operations->move_range) {
+    operations->move_range(type, data_, other.data_, other.size_);
     size_ = other.size_;
   } else {
     size_ = 0;
   }
 
-  other.operations_ = nullptr;
   other.size_ = 0;
 }
 
-RELOCO_API void inline_vector_base::move_assign_from_base(const type_metadata &type,
+RELOCO_API void inline_vector_base::move_assign_from_base(const vector_operations *operations,
+                                                          const type_metadata &type,
                                                           inline_vector_base &&other) noexcept {
   if (this == &other)
     return;
 
-  destroy_elements(type);
-  move_construct_from_base(type, std::move(other));
+  destroy_elements(operations, type);
+  move_construct_from_base(operations, type, std::move(other));
 }
 
-RELOCO_API void outline_vector_base::destroy_elements(const type_metadata &type) noexcept {
+RELOCO_API void outline_vector_base::destroy_elements(const vector_operations *operations,
+                                                      const type_metadata &type) noexcept {
   if (data_ && size_ > 0) {
-    if (operations_->destroy_range) {
-      operations_->destroy_range(type, data_, 0, size_);
+    if (operations->destroy_range) {
+      operations->destroy_range(type, data_, 0, size_);
     }
     size_ = 0;
   }
 }
 
-RELOCO_API void mixed_vector_base::destroy_elements(const type_metadata &type) noexcept {
+RELOCO_API void mixed_vector_base::destroy_elements(const vector_operations *operations,
+                                                    const type_metadata &type) noexcept {
   if (data_) {
-    if (size_ > 0 && operations_ && operations_->destroy_range) {
-      operations_->destroy_range(type, data_, 0, size_);
+    if (size_ > 0 && operations && operations->destroy_range) {
+      operations->destroy_range(type, data_, 0, size_);
     }
     if (!is_inline()) {
       alloc_.deallocate(data_, cap_ * type.element_size);
@@ -490,15 +498,15 @@ RELOCO_API void mixed_vector_base::destroy_elements(const type_metadata &type) n
   }
 }
 
-RELOCO_API void mixed_vector_base::move_construct_from_base(const type_metadata &type,
+RELOCO_API void mixed_vector_base::move_construct_from_base(const vector_operations *operations,
+                                                            const type_metadata &type,
                                                             mixed_vector_base &&other) noexcept {
-  operations_ = other.operations_;
   alloc_ = other.alloc_;
 
   if (other.is_inline()) {
     // Our data_ is already initialized to our own inline_storage_ by constructor.
-    if (other.size_ > 0 && operations_ && operations_->move_range) {
-      operations_->move_range(type, data_, other.data_, other.size_);
+    if (other.size_ > 0 && operations && operations->move_range) {
+      operations->move_range(type, data_, other.data_, other.size_);
       size_ = other.size_;
     } else {
       size_ = 0;
@@ -518,16 +526,16 @@ RELOCO_API void mixed_vector_base::move_construct_from_base(const type_metadata 
   }
 }
 
-RELOCO_API void mixed_vector_base::move_assign_from_base(const type_metadata &type,
+RELOCO_API void mixed_vector_base::move_assign_from_base(const vector_operations *operations, const type_metadata &type,
                                                          mixed_vector_base &&other) noexcept {
   if (this == &other)
     return;
 
   // Clean up current resources (destroys elements and deallocates heap if needed)
-  destroy_elements(type);
+  destroy_elements(operations, type);
 
   // Perform the move transfer
-  move_construct_from_base(type, std::move(other));
+  move_construct_from_base(operations, type, std::move(other));
 }
 
 RELOCO_END_UNSAFE_BUFFER_USAGE

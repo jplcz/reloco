@@ -125,8 +125,8 @@ public:
    * `effective_alignment_v<T>` (checked via `RELOCO_ASSERT`) and outlive
    * `*this`.
    */
-  constexpr explicit outline_vector(span<std::byte> storage RELOCO_LIFETIMEBOUND
-                                         RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
+  constexpr explicit outline_vector(
+      span<std::byte> storage RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
       : base_t(storage.data(), storage.size() / sizeof(T)) {
     RELOCO_ASSERT(reinterpret_cast<std::uintptr_t>(storage.data()) % effective_alignment_v<T> == 0,
                   "outline_vector: storage span is not aligned for T");
@@ -136,7 +136,7 @@ public:
    * @brief Destructor. Destroys any live elements; never touches the
    * caller-owned backing storage itself (it is not this object's to free).
    */
-  ~outline_vector() noexcept { this->destroy_elements(detail::metadata_for<T>); }
+  ~outline_vector() noexcept { this->destroy_elements(detail::get_operations_for<T>(), detail::metadata_for<T>); }
 
   /**
    * @brief `true` once `size() == capacity()` -- the bound span has no

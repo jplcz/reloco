@@ -87,7 +87,10 @@ namespace reloco::detail {
  * a sanitizer doesn't already know belongs to you is undefined by both
  * tools' own contracts.
  */
-inline void poison_memory_region([[maybe_unused]] const void *addr, [[maybe_unused]] std::size_t size) noexcept {
+#if (!RELOCO_ASAN_ENABLED || !RELOCO_VALGRIND_ENABLED)
+constexpr
+#endif
+    inline void poison_memory_region([[maybe_unused]] const void *addr, [[maybe_unused]] std::size_t size) noexcept {
 #if RELOCO_ASAN_ENABLED
   __asan_poison_memory_region(addr, size);
 #endif
@@ -101,7 +104,10 @@ inline void poison_memory_region([[maybe_unused]] const void *addr, [[maybe_unus
  * "undefined"/uninitialized, not necessarily zero) to whichever of
  * ASan/Valgrind is enabled. A no-op when neither is enabled.
  */
-inline void unpoison_memory_region([[maybe_unused]] const void *addr, [[maybe_unused]] std::size_t size) noexcept {
+#if (!RELOCO_ASAN_ENABLED || !RELOCO_VALGRIND_ENABLED)
+constexpr
+#endif
+    inline void unpoison_memory_region([[maybe_unused]] const void *addr, [[maybe_unused]] std::size_t size) noexcept {
 #if RELOCO_ASAN_ENABLED
   __asan_unpoison_memory_region(addr, size);
 #endif
