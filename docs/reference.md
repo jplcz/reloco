@@ -49,6 +49,7 @@ where, not a tutorial.
 | `collection_view.hpp` | `collection_view<T>`, `mutable_collection_view<T>`, `collection_view_traits<Container>` | Type-erased, non-owning views over an adapted sequence container |
 | `container_ref.hpp` | `mutable_container_ref<T, Key = void>`, `container_ref_traits<Container>` | Type-erased handle for structurally mutating (growing/inserting/erasing) an adapted sequence or associative container |
 | `container_ref_std.hpp` | `container_ref_traits<std::vector<T>>`, `container_ref_traits<std::map<Key, Value>>` | Opt-in `container_ref_traits` adapters for `std::vector`/`std::map` |
+| `fmt.hpp` | `sink`, `Display<T>`, `Debug<T>`, `has_display_v<T>`, `has_debug_v<T>` | Type-erased output sink plus opt-in `Display`/`Debug` customization points, matching Rust's `std::fmt::Display`/`std::fmt::Debug`; reloco never specializes either for its own types |
 | `value_ptr.hpp` | `value_ptr<T>` | Nullable, non-owning pointer that rejects binding to prvalue temporaries |
 | `value_ref.hpp` | `value_ref<T>` | Non-null, non-owning reference wrapper that rejects binding to prvalue temporaries |
 | `checked_value.hpp` | `checked_value<T>` | Move-only wrapper with Rust-like use-after-move checks |
@@ -2356,6 +2357,48 @@ underlying call in `try`/`catch (...)`, converting any thrown exception
 into `unexpected(error::allocation_failed)` -- except under
 `-fno-exceptions` (`RELOCO_HAS_EXCEPTIONS == 0`), where the call is made
 unguarded instead, since `try`/`catch` isn't valid syntax in that mode.
+
+## `sink` / `Display<T>` / `Debug<T>`
+
+`include/reloco/fmt.hpp`
+
+A type-erased, zero-allocation output sink (`sink`: opaque `ctx` pointer +
+stateless `write`/`put`/`push_back` callback, deliberately laid out to
+match microfmt's own `sink` over the same `reloco::string_view`) plus two
+opt-in customization points, matching Rust's `std::fmt::Display` and
+`std::fmt::Debug`:
+
+- `Display<T>`: how `T` renders itself for user-facing display.
+- `Debug<T>`: how `T` renders itself for debugging/diagnostics.
+
+Same customization-point shape as `collection_view_traits<Container>`:
+both templates are intentionally left undefined, and a specialization must
+supply `static void format(const T &value, const reloco::sink &out) noexcept;`.
+`has_display_v<T>`/`has_debug_v<T>` SFINAE-detect whether a valid
+specialization exists.
+
+reloco itself never specializes `Display`/`Debug` for any of its own types
+and this header contains no formatting code of any kind -- adapting a type
+(and writing the formatting logic) is left entirely to the consumer, e.g. a
+higher-level formatting library bridging its own customization points to
+these.
+
+```cpp
+struct point { int x, y; };
+
+template <> struct reloco::Display<point> {
+  static void format(const point &p, const reloco::sink &out) noexcept {
+    out.write("(");
+    out.put(static_cast<char>('0' + p.x));
+    out.write(", ");
+    out.put(static_cast<char>('0' + p.y));
+    out.write(")");
+  }
+};
+
+static_assert(reloco::has_display_v<point>);
+static_assert(!reloco::has_debug_v<point>);
+```
 
 ## `value_ptr<T>` / `value_ref<T>`
 
