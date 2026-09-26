@@ -37,7 +37,8 @@
  *
  * Growth is a classic power-of-two doubling with a fixed maximum load
  * factor: `capacity()` is always `0` or a power of two, `size() + 1` is
- * kept `<= capacity() * max_load_factor` (`0.875`, chosen to keep probe
+ * kept `<= capacity() * max_load_factor_numerator / max_load_factor_denominator`
+ * (`7/8`, chosen to keep probe
  * sequences short without wasting more than 1/8th of the backing array),
  * and growing rehashes every live element into a freshly allocated,
  * larger `vector<optional<T>>` in one pass.
@@ -163,7 +164,8 @@ public:
 
   /// @brief Never let the table get more than 7/8ths full: keeps average
   /// probe length short without the backing array wasting much space.
-  static constexpr float max_load_factor = 0.875F;
+  static constexpr size_type max_load_factor_numerator = 7;
+  static constexpr size_type max_load_factor_denominator = 8;
   /// @brief Smallest non-zero capacity a table grows to; always a power
   /// of two, like every larger capacity.
   static constexpr size_type min_capacity = 8;
@@ -223,8 +225,17 @@ public:
   [[nodiscard]] size_type size() const noexcept { return size_; }
   [[nodiscard]] bool empty() const noexcept { return size_ == 0; }
   [[nodiscard]] size_type capacity() const noexcept { return slots_.size(); }
-  [[nodiscard]] float load_factor() const noexcept {
-    return capacity() == 0 ? 0.0F : static_cast<float>(size_) / static_cast<float>(capacity());
+  /**
+   * @brief Current load as parts-per-thousand (e.g. `875` for exactly
+   * `7/8`) -- an integer, never a `float`/`double`: reloco avoids
+   * floating point everywhere (kernel/bare-metal code frequently cannot
+   * use the FPU at all without extra save/restore ceremony), including
+   * in diagnostic-only accessors like this one. `size_ * 1000` cannot
+   * itself overflow before `capacity()` would, since `size_ <=
+   * capacity()` always holds.
+   */
+  [[nodiscard]] size_type load_factor_permille() const noexcept {
+    return capacity() == 0 ? 0 : (size_ * 1000) / capacity();
   }
 
   void clear() noexcept {
@@ -236,7 +247,7 @@ public:
   /**
    * @brief Ensures room for at least @p additional more elements without
    * growing again, rounding up to the next power-of-two capacity that
-   * keeps `size() + additional` within `max_load_factor`. A no-op if the
+   * keeps `size() + additional` within the max load factor. A no-op if the
    * current capacity already suffices.
    */
   [[nodiscard]] result<void> try_reserve(size_type additional) & noexcept {
@@ -401,11 +412,11 @@ public:
 private:
   static constexpr size_type npos = static_cast<size_type>(-1);
 
-  /// @brief `capacity()` slots kept occupied at `max_load_factor` (`7/8`),
+  /// @brief `capacity()` slots kept occupied at the max load factor (`7/8`),
   /// computed with integer arithmetic (never floating point) so growth
   /// decisions stay exact at every scale: `min_capacity` and every later
   /// capacity are powers of two and therefore already multiples of 8, so
-  /// `cap / 8 * 7` never loses precision the way `cap * max_load_factor`
+  /// `cap / 8 * 7` never loses precision the way a float computation
   /// could for very large `cap`.
   [[nodiscard]] static constexpr size_type threshold_for(size_type cap) noexcept { return cap / 8 * 7; }
 
@@ -442,7 +453,7 @@ private:
    * @brief Allocates a fresh `capacity`-sized slot array and rehashes
    * every currently-live element into it (guaranteed to succeed without
    * growing again, since @p capacity was already sized to fit `size_`
-   * within `max_load_factor`), then swaps it in. The only fallible step
+   * within the max load factor), then swaps it in. The only fallible step
    * is the initial allocation itself.
    */
   [[nodiscard]] result<void> grow_to(size_type new_capacity) & noexcept {

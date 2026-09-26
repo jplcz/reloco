@@ -94,7 +94,9 @@ TEST(OnceTest, UnsafeResetAllowsTheClosureToRunAgain) {
   flag.call_once([&] { ++calls; });
   EXPECT_TRUE(flag.is_completed());
 
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
   flag.unsafe_reset();
+  RELOCO_END_UNSAFE_BUFFER_USAGE
   EXPECT_FALSE(flag.is_completed());
 
   flag.call_once([&] { ++calls; });
@@ -106,7 +108,9 @@ TEST(OnceTest, UnsafeResetOnANotYetCompletedFlagIsANoop) {
   reloco::once flag;
   EXPECT_FALSE(flag.is_completed());
 
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
   flag.unsafe_reset();
+  RELOCO_END_UNSAFE_BUFFER_USAGE
   EXPECT_FALSE(flag.is_completed());
 
   int calls = 0;

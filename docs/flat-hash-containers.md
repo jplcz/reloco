@@ -99,17 +99,20 @@ that relocated element.
 ## Growth: power-of-two capacity, integer-exact load factor
 
 - `capacity()` is always `0` or a power of two.
-- `max_load_factor = 0.875` (`7/8`): kept comfortably below `1.0` to keep
-  average probe length short without wasting more than 1/8th of the
-  backing array.
+- `max_load_factor_numerator / max_load_factor_denominator = 7/8`: kept
+  comfortably below `1.0` to keep average probe length short without
+  wasting more than 1/8th of the backing array.
 - Growth decisions use **integer arithmetic exclusively**, never
   floating point: since every non-zero capacity is a multiple of
   `min_capacity == 8`, the "how many occupied slots trigger growth"
   threshold is computed as `cap / 8 * 7`, which is exact at every scale —
-  unlike `cap * 0.875` computed in `float`, which can lose precision for
-  very large `cap`. (`load_factor()`, the public diagnostic accessor, does
-  return a `float` — but nothing on the growth-decision path depends on
-  it.)
+  unlike a `float`/`double` computation, which can lose precision for
+  very large `cap`. `load_factor_permille()`, the public diagnostic
+  accessor, is likewise integer-only (parts-per-thousand, e.g. `875` for
+  exactly `7/8`) -- reloco uses no floating point anywhere in the
+  library, including in diagnostics-only accessors, since kernel/bare-
+  metal code frequently cannot use the FPU at all without extra save/
+  restore ceremony.
 - Growing rehashes every live element into a freshly allocated, larger
   `vector<optional<T>>` in one pass, then swaps it in; the only fallible
   step is the initial allocation. `try_reserve(additional)` performs this
