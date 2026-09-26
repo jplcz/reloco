@@ -652,4 +652,41 @@ TEST(RingBufferTest, BackInserterIsLossy) {
   EXPECT_EQ(it, stream.end());
 }
 
+TEST(RingBufferTest, LengthPrefixedFraming) {
+  struct MyHeader {
+    uint32_t magic;
+    uint32_t payload_length;
+  };
+
+  inline_ring_buffer<char, 128> stream;
+
+  // Simulate receiving a partial packet from the network
+  MyHeader hdr{0xABCD, 10}; // 8 byte header + 10 byte payload = 18 bytes total
+  ASSERT_TRUE(stream.try_write(span<const char>(reinterpret_cast<const char *>(&hdr), sizeof(MyHeader))));
+  ASSERT_TRUE(stream.try_write(span<const char>("12345", 5))); // Only 5 bytes of payload arrived!
+
+  EXPECT_EQ(stream.size(), 13);
+
+  auto size_extractor = [](const MyHeader &h) { return sizeof(MyHeader) + h.payload_length; };
+
+  // Try to read frame. It should fail because 13 < 18.
+  auto frame1 = stream.try_read_frame<MyHeader>(size_extractor);
+  EXPECT_FALSE(frame1.has_value());
+
+  // The rest of the payload arrives over the network
+  ASSERT_TRUE(stream.try_write(span<const char>("67890", 5)));
+
+  // Try again. It succeeds, linearizes the memory, and returns the exact packet!
+  auto frame2 = stream.try_read_frame<MyHeader>(size_extractor);
+  ASSERT_TRUE(frame2.has_value());
+  EXPECT_EQ(frame2->size(), 18);
+
+  // Safely cast and process the zero-copy frame
+  const MyHeader *zero_copy_hdr = reinterpret_cast<const MyHeader *>(frame2->data());
+  EXPECT_EQ(zero_copy_hdr->payload_length, 10);
+
+  // Advance the buffer
+  stream.consume(frame2->size());
+}
+
 RELOCO_END_UNSAFE_BUFFER_USAGE

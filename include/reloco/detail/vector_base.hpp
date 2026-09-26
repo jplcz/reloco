@@ -1508,7 +1508,7 @@ public:
    */
   template <typename... Args>
   [[nodiscard]] result<std::reference_wrapper<T>> try_emplace_at(size_type index,
-                                                                  Args &&...args) & noexcept RELOCO_LIFETIMEBOUND {
+                                                                 Args &&...args) & noexcept RELOCO_LIFETIMEBOUND {
     if (index > this->len_)
       return unexpected(error::out_of_bounds);
     if (index == this->len_)

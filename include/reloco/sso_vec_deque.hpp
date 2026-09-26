@@ -218,9 +218,7 @@ struct collection_view_traits<reloco::sso_vec_deque<T, InlineCapacity>> {
   static std::size_t size(const reloco::sso_vec_deque<T, InlineCapacity> &c) noexcept { return c.size(); }
   static bool empty(const reloco::sso_vec_deque<T, InlineCapacity> &c) noexcept { return c.empty(); }
   static T &at(reloco::sso_vec_deque<T, InlineCapacity> &c, std::size_t index) noexcept { return c[index]; }
-  static const T &at(const reloco::sso_vec_deque<T, InlineCapacity> &c, std::size_t index) noexcept {
-    return c[index];
-  }
+  static const T &at(const reloco::sso_vec_deque<T, InlineCapacity> &c, std::size_t index) noexcept { return c[index]; }
 };
 
 /**
@@ -245,8 +243,7 @@ struct container_ref_traits<reloco::sso_vec_deque<T, InlineCapacity>> {
     return c.try_push_front(std::move(value));
   }
 
-  static result<void> try_insert_at(reloco::sso_vec_deque<T, InlineCapacity> &c, std::size_t index,
-                                    T value) noexcept {
+  static result<void> try_insert_at(reloco::sso_vec_deque<T, InlineCapacity> &c, std::size_t index, T value) noexcept {
     return c.try_insert_at(index, std::move(value));
   }
 

@@ -1088,6 +1088,81 @@ public:
     return true;
   }
 
+  /**
+   * @brief Safely reads a POD struct from the buffer without consuming it.
+   * Seamlessly copies bytes even if the struct is split across the wrap boundary.
+   *
+   * @tparam U The struct type to read (must be trivially copyable).
+   * @param offset Logical byte offset to read from (default 0).
+   * @return The struct by value, or std::nullopt if not enough bytes exist.
+   */
+  template <typename U> [[nodiscard]] std::optional<U> peek_struct(size_type offset = 0) const noexcept {
+    static_assert(sizeof(T) == 1, "peek_struct requires a byte-oriented buffer (char, uint8_t, std::byte)");
+    static_assert(std::is_trivially_copyable_v<U>, "Can only peek trivially copyable structs");
+
+    if (this->len_ - offset < sizeof(U)) {
+      return std::nullopt; // Not enough data
+    }
+
+    U result;
+    std::copy_n(this->begin() + static_cast<std::ptrdiff_t>(offset), sizeof(U), reinterpret_cast<T *>(&result));
+
+    return result;
+  }
+
+  /**
+   * @brief Attempts to extract a complete length-prefixed packet.
+   *
+   * @tparam Header The struct type representing the packet header.
+   * @tparam LengthFunc A callable `std::size_t(const Header&)` that returns the total frame size.
+   * @return A contiguous span of the entire frame, or std::nullopt if incomplete.
+   */
+  template <typename Header, typename LengthFunc>
+  [[nodiscard]] std::optional<span<const T>> try_read_frame(LengthFunc get_total_size) & noexcept RELOCO_LIFETIMEBOUND {
+    // Do we have enough data to even read the header?
+    auto hdr = this->peek_struct<Header>();
+    if (!hdr)
+      return std::nullopt;
+
+    // Ask the user's lambda how big this entire packet is supposed to be
+    std::size_t total_size = get_total_size(*hdr);
+
+    // Has the whole packet arrived from the network yet?
+    if (this->len_ < total_size)
+      return std::nullopt;
+
+    // We have the full packet! Make sure it sits contiguously in memory.
+    // (If the buffer is fragmented, this slides it to index 0 using memmove)
+    this->make_contiguous();
+
+    // Return the span. (The user should call consume() after parsing it).
+    return span<const T>(static_cast<const T *>(this->data_) + this->head_, total_size);
+  }
+
+  /**
+   * @brief Advances the write head by inserting padding bytes until the
+   * next available write index satisfies the requested alignment.
+   *
+   * @param alignment The required byte alignment (e.g., alignof(MyStruct)).
+   */
+  void align_write_head(std::size_t alignment) & noexcept {
+    static_assert(sizeof(T) == 1, "Alignment padding requires a byte-oriented buffer");
+
+    const std::size_t physical_tail = (this->head_ + this->len_) % this->cap_;
+    const auto current_addr = reinterpret_cast<std::size_t>(static_cast<const T *>(this->data_) + physical_tail);
+
+    const std::size_t remainder = current_addr % alignment;
+    if (remainder == 0)
+      return; // Already aligned
+
+    const std::size_t padding_needed = alignment - remainder;
+
+    // Just fake-write padding bytes by increasing len_
+    if (this->free_space() >= padding_needed) {
+      this->commit(padding_needed);
+    }
+  }
+
   // ---- Zero-Copy Allocation & Commit ----
 
   /**
