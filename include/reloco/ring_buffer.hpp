@@ -1267,37 +1267,54 @@ public:
 
   // ---- RAII Transactions ----
 
-  class RELOCO_POINTER write_tx {
+  class RELOCO_POINTER RELOCO_CONSUMABLE(unconsumed) write_tx {
     typed_ring_buffer *buf_;
     std::pair<span<T>, span<T>> spans_;
 
     friend class typed_ring_buffer;
     write_tx(typed_ring_buffer *buf RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS, size_type limit) noexcept
+        RELOCO_RETURN_TYPESTATE(unconsumed)
         : buf_(buf), spans_(buf->allocate_slices(limit)) {}
 
   public:
     write_tx(const write_tx &) = delete;
     write_tx &operator=(const write_tx &) = delete;
 
-    write_tx(write_tx &&other) noexcept : buf_(other.buf_), spans_(other.spans_) {
+    write_tx(write_tx &&other) noexcept RELOCO_RETURN_TYPESTATE(unconsumed) : buf_(other.buf_), spans_(other.spans_) {
       other.buf_ = nullptr; // Steal ownership
     }
 
     ~write_tx() = default; // Zero overhead rollback on destruction
 
-    [[nodiscard]] span<T> chunk1() const noexcept RELOCO_LIFETIMEBOUND { return spans_.first; }
-    [[nodiscard]] span<T> chunk2() const noexcept RELOCO_LIFETIMEBOUND { return spans_.second; }
+    [[nodiscard]] constexpr bool is_valid() const noexcept RELOCO_TEST_TYPESTATE(unconsumed) { return buf_ != nullptr; }
+    [[nodiscard]] constexpr explicit operator bool() const noexcept RELOCO_TEST_TYPESTATE(unconsumed) {
+      return buf_ != nullptr;
+    }
 
-    [[nodiscard]] std::size_t total_allocated() const noexcept { return spans_.first.size() + spans_.second.size(); }
+    [[nodiscard]] span<T> chunk1() const noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+      return spans_.first;
+    }
+    [[nodiscard]] span<T> chunk2() const noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+      return spans_.second;
+    }
+
+    [[nodiscard]] std::size_t total_allocated() const noexcept RELOCO_CALLABLE_WHEN("unconsumed") {
+      return spans_.first.size() + spans_.second.size();
+    }
 
     /**
      * @brief Commits the written data to the buffer and invalidates the transaction.
      */
-    void commit(size_type count) noexcept {
+    void commit(size_type count) noexcept RELOCO_SET_TYPESTATE(consumed) {
       if (buf_) {
         buf_->commit(count);
         buf_ = nullptr; // Prevent double commits
       }
+    }
+
+    write_tx &as_unconsumed() noexcept RELOCO_SET_TYPESTATE(unconsumed) {
+      RELOCO_ASSERT(buf_ != nullptr, "Transaction already consumed");
+      return *this;
     }
   };
 
