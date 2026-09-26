@@ -542,4 +542,68 @@ TEST(RingBufferTest, ReadSlicesWithLimit) {
   EXPECT_EQ(W2.size(), 3);
 }
 
+TEST(RingBufferTest, IteratorSupport) {
+  inline_ring_buffer<int, 10> stream;
+
+  // Force a wrap around: write 8, consume 5, write 4
+  ASSERT_TRUE(stream.try_write(span<const int>({1, 2, 3, 4, 5, 100, 200, 300})));
+  stream.consume(5);                                                    // Remaining: 100, 200, 300
+  ASSERT_TRUE(stream.try_write(span<const int>({400, 500, 600, 700}))); // Wraps!
+
+  // Range-based for loop
+  int sum = 0;
+  for (const int val : stream) {
+    sum += val;
+  }
+  EXPECT_EQ(sum, 100 + 200 + 300 + 400 + 500 + 600 + 700);
+
+  // STL Algorithms (std::find works transparently across the wrap boundary!)
+  auto it = std::find(stream.begin(), stream.end(), 500);
+  ASSERT_NE(it, stream.end());
+  EXPECT_EQ(*it, 500);
+
+  // STL Mutation (std::fill)
+  std::fill(stream.begin(), stream.end(), 42);
+  for (int val : stream) {
+    EXPECT_EQ(val, 42);
+  }
+}
+
+TEST(RingBufferTest, RaiiWriteTransaction) {
+  inline_ring_buffer<char, 32> stream;
+  ASSERT_TRUE(stream.try_write(span<const char>("START", 5)));
+
+  {
+    // Start a transaction for 10 bytes
+    auto tx = stream.begin_write(10);
+    EXPECT_LE(tx.total_allocated(), 27); // Space available
+
+    auto chunk1 = tx.chunk1();
+    ASSERT_GE(chunk1.size(), 10);
+    std::memcpy(chunk1.data(), "ROLLBACK_!", 10);
+
+    // Notice we DO NOT call tx.commit() here!
+    // The transaction falls out of scope, safely abandoning the written bytes.
+  }
+
+  EXPECT_EQ(stream.size(), 5); // The buffer size never changed!
+
+  {
+    // Try again, but this time we commit.
+    auto tx = stream.begin_write(10);
+    auto chunk1 = tx.chunk1();
+    ASSERT_GE(chunk1.size(), 10);
+    std::memcpy(chunk1.data(), "SUCCESS!!!", 10);
+    tx.commit(10);
+  }
+
+  EXPECT_EQ(stream.size(), 15);
+
+  // Ensure data is correct
+  auto [r1, r2] = stream.read_slices();
+  std::string out;
+  out.append(r1.data(), r1.size());
+  EXPECT_EQ(out, "STARTSUCCESS!!!");
+}
+
 RELOCO_END_UNSAFE_BUFFER_USAGE

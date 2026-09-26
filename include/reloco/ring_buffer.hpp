@@ -278,6 +278,7 @@ template <typename T, typename Base> class RELOCO_EXPORT typed_ring_buffer : pub
 
 public:
   using size_type = typename Base::size_type;
+  using value_type = T;
 
   // Inherit base constructors (binds to the specific storage policy)
   template <typename... Args>
@@ -1176,6 +1177,134 @@ public:
     }
 
     return {s1, s2};
+  }
+
+  // ---- Iterators ----
+
+  template <bool IsConst> class ring_iterator {
+  public:
+    using iterator_category = std::random_access_iterator_tag;
+    using value_type = std::remove_cv_t<T>;
+    using difference_type = std::ptrdiff_t;
+    using pointer = std::conditional_t<IsConst, const T *, T *>;
+    using reference = std::conditional_t<IsConst, const T &, T &>;
+
+  private:
+    using BufferPtr = std::conditional_t<IsConst, const typed_ring_buffer *, typed_ring_buffer *>;
+    BufferPtr buf_{nullptr};
+    size_type logical_idx_{0};
+
+    friend class typed_ring_buffer;
+    ring_iterator(BufferPtr buf, size_type idx) noexcept : buf_(buf), logical_idx_(idx) {}
+
+  public:
+    ring_iterator() = default;
+
+    reference operator*() const noexcept {
+      std::size_t physical_idx = (buf_->head_ + logical_idx_) % buf_->cap_;
+      return static_cast<pointer>(buf_->data_)[physical_idx];
+    }
+
+    pointer operator->() const noexcept { return &(**this); }
+
+    ring_iterator &operator++() noexcept {
+      ++logical_idx_;
+      return *this;
+    }
+    ring_iterator operator++(int) noexcept {
+      auto tmp = *this;
+      ++(*this);
+      return tmp;
+    }
+    ring_iterator &operator--() noexcept {
+      --logical_idx_;
+      return *this;
+    }
+    ring_iterator operator--(int) noexcept {
+      auto tmp = *this;
+      --(*this);
+      return tmp;
+    }
+
+    ring_iterator &operator+=(difference_type n) noexcept {
+      logical_idx_ += n;
+      return *this;
+    }
+    ring_iterator &operator-=(difference_type n) noexcept {
+      logical_idx_ -= n;
+      return *this;
+    }
+
+    friend ring_iterator operator+(ring_iterator it, difference_type n) noexcept { return it += n; }
+    friend ring_iterator operator+(difference_type n, ring_iterator it) noexcept { return it += n; }
+    friend ring_iterator operator-(ring_iterator it, difference_type n) noexcept { return it -= n; }
+    friend difference_type operator-(const ring_iterator &a, const ring_iterator &b) noexcept {
+      return static_cast<difference_type>(a.logical_idx_) - static_cast<difference_type>(b.logical_idx_);
+    }
+
+    reference operator[](difference_type n) const noexcept { return *(*this + n); }
+
+    bool operator==(const ring_iterator &other) const noexcept {
+      return logical_idx_ == other.logical_idx_ && buf_ == other.buf_;
+    }
+    bool operator!=(const ring_iterator &other) const noexcept { return !(*this == other); }
+    bool operator<(const ring_iterator &other) const noexcept { return logical_idx_ < other.logical_idx_; }
+    bool operator>(const ring_iterator &other) const noexcept { return logical_idx_ > other.logical_idx_; }
+    bool operator<=(const ring_iterator &other) const noexcept { return logical_idx_ <= other.logical_idx_; }
+    bool operator>=(const ring_iterator &other) const noexcept { return logical_idx_ >= other.logical_idx_; }
+  };
+
+  using iterator = ring_iterator<false>;
+  using const_iterator = ring_iterator<true>;
+
+  iterator begin() noexcept { return iterator(this, 0); }
+  iterator end() noexcept { return iterator(this, this->len_); }
+
+  const_iterator begin() const noexcept { return const_iterator(this, 0); }
+  const_iterator end() const noexcept { return const_iterator(this, this->len_); }
+  const_iterator cbegin() const noexcept { return begin(); }
+  const_iterator cend() const noexcept { return end(); }
+
+  // ---- RAII Transactions ----
+
+  class write_tx {
+    typed_ring_buffer *buf_;
+    std::pair<span<T>, span<T>> spans_;
+
+    friend class typed_ring_buffer;
+    write_tx(typed_ring_buffer *buf, size_type limit) noexcept : buf_(buf), spans_(buf->allocate_slices(limit)) {}
+
+  public:
+    write_tx(const write_tx &) = delete;
+    write_tx &operator=(const write_tx &) = delete;
+
+    write_tx(write_tx &&other) noexcept : buf_(other.buf_), spans_(other.spans_) {
+      other.buf_ = nullptr; // Steal ownership
+    }
+
+    ~write_tx() = default; // Zero overhead rollback on destruction
+
+    [[nodiscard]] span<T> chunk1() const noexcept { return spans_.first; }
+    [[nodiscard]] span<T> chunk2() const noexcept { return spans_.second; }
+
+    [[nodiscard]] std::size_t total_allocated() const noexcept { return spans_.first.size() + spans_.second.size(); }
+
+    /**
+     * @brief Commits the written data to the buffer and invalidates the transaction.
+     */
+    void commit(size_type count) noexcept {
+      if (buf_) {
+        buf_->commit(count);
+        buf_ = nullptr; // Prevent double commits
+      }
+    }
+  };
+
+  /**
+   * @brief Begins a safe, rollback-ready scatter-gather write transaction.
+   */
+  [[nodiscard]] write_tx begin_write(size_type limit = static_cast<size_type>(-1)) & noexcept {
+    return write_tx(this, limit);
   }
 };
 
