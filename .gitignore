@@ -47,3 +47,6 @@ build*
 !scripts/build-matrix.sh
 !scripts/build-docs.sh
 .cache
+
+# Vagrant (local BSD verification, see docs/bsd-vagrant-testing.md)
+.vagrant/
