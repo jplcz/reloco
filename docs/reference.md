@@ -1411,7 +1411,7 @@ Unlike every other reloco container, `intrusive_hash_table` has no
 which is exactly the decision this whole file exists to leave to the
 caller.
 
-## `iter()` / `iterator_adaptor<Derived, Item>` (`Fuse`, `Zip`, `Map`, `Filter`, `Enumerate`, `Take`, `Skip`, `Chain`, `from_fn`, `once`, `repeat`, `successors`, `empty`)
+## `iter()` / `iterator_adaptor<Derived, Item>` (`Fuse`, `Zip`, `Map`, `Filter`, `Enumerate`, `Take`, `Skip`, `Chain`, `Peekable`, `Flatten`, `StepBy`, `Dedup`, `Intersperse`, `Windows`, `Merge`, `from_fn`, `once`, `repeat`, `successors`, `empty`)
 
 `include/reloco/iterator.hpp`
 
@@ -1452,13 +1452,17 @@ before handing it to the loop body, so callers only see the
 `reference_wrapper` if they call `next()` directly. An adaptor that
 *produces new values* (`map`, `enumerate`, `zip`) has a plain, owned
 `item_type` instead (the callable's return type, or a `std::pair` of the
-upstream item types).
+upstream item types). `iterator_adaptor` also exposes `value_type`: the
+*unwrapped* element type (`T`, whether `item_type` is `T` itself or
+`std::reference_wrapper<T>`) -- the type callables/predicates passed to
+`.map()`/`.filter()`/`.min_by_key()`/etc. actually see, and the type used
+by value-producing terminal ops like `.min()`/`.sum()`.
 
 **Adapters** (each moves `*this` into the new adaptor, matching Rust's
 `self`-by-value adapter methods -- the original binding is left
 moved-from and should not be reused):
 
-| Method | Rust equivalent | Behavior |
+| Method | Rust/itertools equivalent | Behavior |
 | --- | --- | --- |
 | `.fuse()` | `Iterator::fuse()` | Guarantees "empty stays empty"; matters only when wrapping a foreign `next_impl()` that might not already guarantee it. |
 | `.zip(other)` | `Iterator::zip()` | Pairs items from both sides; stops as soon as either is exhausted. |
@@ -1468,10 +1472,26 @@ moved-from and should not be reused):
 | `.take(n)` | `Iterator::take(n)` | Yields at most `n` items, then stops. |
 | `.skip(n)` | `Iterator::skip(n)` | Discards the first `n` items (lazily, on the first `next()` call, matching Rust). |
 | `.chain(other)` | `Iterator::chain()` | Yields every item of `*this`, then every item of `other` (both sides must share `item_type`). |
+| `.peekable()` | `Iterator::peekable()` | Adds `.peek()`: look at the next item without consuming it; repeated `.peek()` calls (with no intervening `.next()`) return the exact same item. |
+| `.flatten()` | `Iterator::flatten()` | Item must itself have `begin()`/`end()` (e.g. a `vector<vector<int>>`'s items); yields every inner element in order, skipping empty inner ranges. |
+| `.flat_map(f)` | `Iterator::flat_map()` | `.map(f).flatten()` in one step; `f` returns a range per item. |
+| `.step_by(n)` | `Iterator::step_by(n)` | Yields every `n`-th item, starting with the first (`n` must be `> 0`; asserted). |
+| `.dedup()` | itertools `Itertools::dedup()` | Collapses consecutive equal items (via `==` on the unwrapped `value_type`) down to a single copy; non-consecutive duplicates are left alone. |
+| `.intersperse(sep)` | itertools `Itertools::intersperse()` | Inserts a copy of `sep` between every pair of adjacent items; a 0- or 1-item source yields no separator at all. |
+| `.windows<N>()` | Rust slice `windows(N)` | Yields overlapping `std::array<value_type, N>` snapshots (`{0,1,2}`, `{1,2,3}`, ...); yields nothing if fewer than `N` items are available (`N` must be `> 0`; asserted). |
+| `.merge(other)` | itertools `Itertools::merge()` | Merges two already-sorted (ascending, by `<`) same-`item_type` sources into one sorted stream, like the merge step of mergesort. |
 
 **Terminal (consuming) operations**: `.for_each(f)`, `.fold(init, f)`,
-`.count()`, `.nth(n)`, `.all(pred)`, `.any(pred)`, `.find(pred)` -- all
-Rust `Iterator` methods of the same name, all draining `*this`.
+`.count()`, `.nth(n)`, `.all(pred)`, `.any(pred)`, `.find(pred)`,
+`.last()`, `.min()`, `.max()`, `.min_by_key(f)`, `.max_by_key(f)`,
+`.sum<Acc = value_type>()`, `.product<Acc = value_type>()` -- all Rust
+`Iterator`/itertools methods of the same name, all draining `*this`.
+`.min()`/`.max()`/`.min_by_key()`/`.max_by_key()` return an empty
+`optional<value_type>` for an empty source; ties keep the *first*
+encountered extremum, matching Rust. `.sum()`/`.product()` return `Acc{}`
+(the additive/multiplicative identity) for an empty source and default
+`Acc` to `value_type` (pass an explicit `Acc` when accumulating into a
+wider type, e.g. `.sum<std::int64_t>()` over `int` items).
 
 **Lvalue-only `next()`/`begin()`/`end()`.** Unlike the adapter-construction
 methods, `next()` and `begin()`/`end()` are `&`-qualified with an explicit
@@ -1545,6 +1565,52 @@ auto counter = reloco::from_fn([n]() mutable -> reloco::optional<int> {
 auto powers = reloco::successors(reloco::optional<int>(1), [](int &prev) {
   return prev <= 32 ? reloco::optional<int>(prev * 2) : reloco::nullopt;
 }); // 1, 2, 4, 8, 16, 32, 64
+```
+
+### Itertools-style adaptors
+
+The `.peekable()`/`.flatten()`/`.flat_map()`/`.step_by()`/`.dedup()`/
+`.intersperse()`/`.windows<N>()`/`.merge()` adaptors above round out the
+adapter chain with the common "itertools" operations that need no
+allocation or caller-supplied storage (unlike itertools' `unique()`,
+`sorted()`, `group_by()`, or the Cartesian-product family, which need a
+hash set/buffer/caller-supplied storage and are deliberately not provided
+here, matching this library's allocation-averse design):
+
+```cpp
+std::vector<int> v{1, 2, 3};
+auto it = reloco::iter(v).peekable();
+assert(it.peek()->get() == 1); // look ahead without consuming
+assert(it.peek()->get() == 1); // idempotent
+auto first = it.next(); // consumes the peeked item -- 1
+
+std::vector<std::vector<int>> vv{{1, 2}, {3}, {}, {4, 5}};
+for (int x : reloco::iter(vv).flatten()) // 1, 2, 3, 4, 5 (empty inner range skipped)
+  ...
+
+for (int x : reloco::iter(v).flat_map([](int x) { return std::vector<int>{x, x * 10}; }))
+  ... // 1, 10, 2, 20, 3, 30
+
+for (int x : reloco::iter(v).step_by(2)) // every 2nd item, starting with the first
+  ...
+
+std::vector<int> d{1, 1, 2, 2, 2, 3, 1, 1};
+for (int x : reloco::iter(d).dedup()) // 1, 2, 3, 1 (only consecutive duplicates collapse)
+  ...
+
+for (int x : reloco::iter(v).map([](int x) { return x; }).intersperse(0)) // 1, 0, 2, 0, 3
+  ...
+
+for (auto window : reloco::iter(v).map([](int x) { return x; }).windows<2>())
+  ...; // {1,2}, {2,3}
+
+std::vector<int> a{1, 3, 5}, b{2, 4, 6};
+for (int x : reloco::iter(a).map([](int x) { return x; })
+                 .merge(reloco::iter(b).map([](int x) { return x; })))
+  ...; // 1, 2, 3, 4, 5, 6 (both sides must already be sorted ascending)
+
+auto sum = reloco::iter(v).map([](int x) { return x; }).sum(); // 6
+auto biggest = reloco::iter(v).map([](int x) { return x; }).max(); // optional<int>(3)
 ```
 
 ## `sso_flat_set<T, InlineCapacity, Compare = std::less<T>>`
