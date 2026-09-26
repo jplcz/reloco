@@ -1181,7 +1181,7 @@ public:
 
   // ---- Iterators ----
 
-  template <bool IsConst> class ring_iterator {
+  template <bool IsConst> class RELOCO_POINTER ring_iterator {
   public:
     using iterator_category = std::random_access_iterator_tag;
     using value_type = std::remove_cv_t<T>;
@@ -1200,12 +1200,12 @@ public:
   public:
     ring_iterator() = default;
 
-    reference operator*() const noexcept {
+    reference operator*() const noexcept RELOCO_LIFETIMEBOUND {
       std::size_t physical_idx = (buf_->head_ + logical_idx_) % buf_->cap_;
       return static_cast<pointer>(buf_->data_)[physical_idx];
     }
 
-    pointer operator->() const noexcept { return &(**this); }
+    pointer operator->() const noexcept RELOCO_LIFETIMEBOUND { return &(**this); }
 
     ring_iterator &operator++() noexcept {
       ++logical_idx_;
@@ -1257,22 +1257,23 @@ public:
   using iterator = ring_iterator<false>;
   using const_iterator = ring_iterator<true>;
 
-  iterator begin() noexcept { return iterator(this, 0); }
-  iterator end() noexcept { return iterator(this, this->len_); }
+  [[nodiscard]] iterator begin() & noexcept RELOCO_LIFETIMEBOUND { return iterator(this, 0); }
+  [[nodiscard]] iterator end() & noexcept RELOCO_LIFETIMEBOUND { return iterator(this, this->len_); }
 
-  const_iterator begin() const noexcept { return const_iterator(this, 0); }
-  const_iterator end() const noexcept { return const_iterator(this, this->len_); }
-  const_iterator cbegin() const noexcept { return begin(); }
-  const_iterator cend() const noexcept { return end(); }
+  [[nodiscard]] const_iterator begin() const & noexcept RELOCO_LIFETIMEBOUND { return const_iterator(this, 0); }
+  [[nodiscard]] const_iterator end() const & noexcept RELOCO_LIFETIMEBOUND { return const_iterator(this, this->len_); }
+  [[nodiscard]] const_iterator cbegin() const & noexcept RELOCO_LIFETIMEBOUND { return begin(); }
+  [[nodiscard]] const_iterator cend() const & noexcept RELOCO_LIFETIMEBOUND { return end(); }
 
   // ---- RAII Transactions ----
 
-  class write_tx {
+  class RELOCO_POINTER write_tx {
     typed_ring_buffer *buf_;
     std::pair<span<T>, span<T>> spans_;
 
     friend class typed_ring_buffer;
-    write_tx(typed_ring_buffer *buf, size_type limit) noexcept : buf_(buf), spans_(buf->allocate_slices(limit)) {}
+    write_tx(typed_ring_buffer *buf RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS, size_type limit) noexcept
+        : buf_(buf), spans_(buf->allocate_slices(limit)) {}
 
   public:
     write_tx(const write_tx &) = delete;
@@ -1284,8 +1285,8 @@ public:
 
     ~write_tx() = default; // Zero overhead rollback on destruction
 
-    [[nodiscard]] span<T> chunk1() const noexcept { return spans_.first; }
-    [[nodiscard]] span<T> chunk2() const noexcept { return spans_.second; }
+    [[nodiscard]] span<T> chunk1() const noexcept RELOCO_LIFETIMEBOUND { return spans_.first; }
+    [[nodiscard]] span<T> chunk2() const noexcept RELOCO_LIFETIMEBOUND { return spans_.second; }
 
     [[nodiscard]] std::size_t total_allocated() const noexcept { return spans_.first.size() + spans_.second.size(); }
 
@@ -1303,7 +1304,7 @@ public:
   /**
    * @brief Begins a safe, rollback-ready scatter-gather write transaction.
    */
-  [[nodiscard]] write_tx begin_write(size_type limit = static_cast<size_type>(-1)) & noexcept {
+  [[nodiscard]] write_tx begin_write(size_type limit = static_cast<size_type>(-1)) & noexcept RELOCO_LIFETIMEBOUND {
     return write_tx(this, limit);
   }
 };
