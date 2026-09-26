@@ -245,6 +245,8 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_channel.cpp
         tests/test_once_lock.cpp
         tests/test_once.cpp
+        tests/test_lazy_lock.cpp
+        tests/test_hint.cpp
         tests/test_park.cpp
         tests/test_scope.cpp
         tests/test_fallible_singleton.cpp
@@ -256,6 +258,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_guarded_mutex.cpp
         tests/test_rw_lock.cpp
         tests/test_barrier.cpp
+        tests/test_wait_group.cpp
         tests/test_shared_ptr.cpp
         tests/test_rc.cpp
         tests/test_bytes.cpp

@@ -77,6 +77,9 @@ where, not a tutorial.
 | `park.hpp` | `thread_handle`, `this_thread::current/park/park_timeout/sleep_for` | Rust-like `thread::park`/`park_timeout`/`sleep`/`Thread`, built on `tls_provider.hpp` + `futex.hpp` + `instant.hpp` + `shared_ptr` |
 | `once_lock.hpp` | `once_lock<T>` | Write-once, read-many-times cell matching Rust's `std::sync::OnceLock<T>`, usable as a plain field/local (unlike `fallible_singleton.hpp`'s static, one-per-`T` global) |
 | `once.hpp` | `once` | Runs a closure exactly once across racing callers, matching Rust's `std::sync::Once`; no heap allocation and no `mutex.hpp` dependency, usable in a freestanding/bare-kernel build |
+| `lazy_lock.hpp` | `lazy_lock<T, F>` | Value lazily initialized at most once from a closure captured at construction, matching Rust's stable `std::sync::LazyLock<T, F>`; built directly on `once_lock<T>` |
+| `hint.hpp` | `hint::spin_loop()` | Architecture spin-wait hint (`pause`/`yield`/...) for busy-wait loops, matching Rust's `std::hint::spin_loop()`; no OS dependency, usable in a freestanding/bare-kernel build |
+| `wait_group.hpp` | `wait_group` | Waits for an unknown-in-advance number of cloned handles to all be dropped, matching crossbeam-utils's `WaitGroup`; built on `shared_ptr` + `futex.hpp` |
 | `scope.hpp` | `scope`, `thread_scope`, `scoped_join_handle<R>` | Matches Rust's `std::thread::scope`: spawns threads guaranteed to finish before `scope()` returns, so they may safely borrow references to the caller's stack frame |
 | `lifetime.hpp` | `RELOCO_LIFETIMEBOUND`, `RELOCO_OWNER`, `RELOCO_POINTER`, `RELOCO_UNSAFE_BUFFER_USAGE`, ... | Compiler-specific lifetime/ownership/safe-buffers annotation macros |
 | `rvalue_safety.hpp` | `RELOCO_BLOCK_RVALUE_ACCESS` | Deletes rvalue accessors that would otherwise dangle past a temporary |
@@ -3084,6 +3087,98 @@ pair, with no heap allocation and no dependency on `mutex.hpp` at all --
 bare-kernel environment that provides its own `RELOCO_FUTEX_BACKEND_CUSTOM`
 but has no OS-backed mutex/thread available at all. `once` is neither
 copyable nor movable.
+
+## `lazy_lock<T, F>`
+
+`include/reloco/lazy_lock.hpp`
+
+A value lazily initialized, at most once, from a closure captured at
+construction time, matching Rust's stable `std::sync::LazyLock<T, F>`
+(née `once_cell::sync::Lazy<T, F>`). Built directly on `once_lock<T>`:
+`lazy_lock<T, F>` is exactly a `once_lock<T>` paired with the closure `F`
+that knows how to fill it.
+
+```cpp
+reloco::lazy_lock config([]() -> reloco::string { return load_config(); });
+use(*config); // first dereference anywhere runs the closure exactly once
+```
+
+Unlike `once_lock<T>::get_or_init(F)`, which takes the initializer at
+every call site, `lazy_lock<T, F>` captures `F` once, at construction --
+every `operator*`/`operator->`/`get()` call afterward takes no arguments,
+the right shape for a lazily-initialized `static`/global or struct field.
+A deduction guide lets a local `lazy_lock` be declared directly from a
+closure (as above); a `static`/global or struct field, which must name a
+concrete type, uses `function.hpp`'s `function<T()>` as `F` explicitly.
+
+- `operator*()`/`operator->()`/`get()` -> `const T &`/`const T *`/`const
+  T *`: run the captured closure first if this is the first call (from
+  any thread; concurrent callers block until it completes), matching
+  Rust's `LazyLock`'s `Deref`.
+
+`F` must be invocable as `T()`, and is stored for the lifetime of the
+`lazy_lock` (unlike Rust's `LazyLock`, which drops its closure in place
+once it has run) -- reloco keeps `F` and `T` in separate members instead,
+trading a few extra bytes for a substantially simpler implementation.
+`is_send<lazy_lock<T, F>>` requires both `is_send<T>` and `is_send<F>`;
+`is_sync<lazy_lock<T, F>>` additionally requires `is_sync<T>`, matching
+Rust's `unsafe impl<T, F: Send> Sync for LazyLock<T, F> where OnceLock<T>:
+Sync`.
+
+## `hint::spin_loop()`
+
+`include/reloco/hint.hpp`
+
+A hardware hint that the calling thread is in a busy-wait spin loop,
+matching Rust's `std::hint::spin_loop()`. Emits the target architecture's
+dedicated spin-wait instruction where one exists (x86/x86-64 `pause`,
+AArch64/AArch32 `yield`, POWER `or 27,27,27`), which lets a
+hyperthreaded/SMT sibling core run without actually yielding the CPU back
+to the scheduler; falls back to a plain compiler fence
+(`std::atomic_signal_fence`) on an architecture with no such instruction.
+No OS dependency at all -- usable in a freestanding/bare-kernel build. A
+hand-rolled spinlock (or any other busy-wait loop) should call this once
+per spin iteration, exactly like Rust's own spinlock crates call
+`std::hint::spin_loop()`.
+
+## `wait_group`
+
+`include/reloco/wait_group.hpp`
+
+Waits for an unknown-in-advance number of cloned handles to all be
+dropped, matching crossbeam-utils's `WaitGroup` (Rust ecosystem, not
+`std`) -- unlike `barrier`, which needs the exact participant count up
+front.
+
+```cpp
+auto wg_result = reloco::wait_group::try_create();
+reloco::wait_group wg = std::move(*wg_result);
+
+for (auto &task : tasks) {
+  reloco::wait_group clone = wg; // one outstanding unit per task
+  reloco::spawn([clone = std::move(clone), &task]() mutable {
+    task.run();
+    // clone's destructor here signals this task's completion
+  });
+}
+
+std::move(wg).wait(); // blocks until every clone above has been dropped
+```
+
+- `wait_group::try_create(allocator_ref)` -> `result<wait_group>`:
+  allocates a fresh `wait_group` with one outstanding handle (this one).
+- Copy constructor/assignment: clones the handle, one more outstanding
+  unit of work, matching `Clone`.
+- `wait() &&` -> `void`: consumes this handle (dropping its own
+  outstanding unit, like every other clone's destructor) and blocks until
+  every other clone has also been dropped, matching Rust's
+  `WaitGroup::wait(self)`. Call via `std::move(wg).wait()`.
+
+Built on a `shared_ptr<detail::wait_group_state>` (an atomic refcount
+plus a `futex_word`) -- copying increments the shared count, dropping one
+decrements it and wakes any blocked `wait()` once it reaches zero. No
+mutex/condition_variable involved. `wait_group` carries no user data of
+its own, so it is unconditionally `Send`/`Sync`.
 
 ## `scope` / `thread_scope` / `scoped_join_handle<R>`
 

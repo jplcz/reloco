@@ -33,6 +33,7 @@
 #include <reloco/futex.hpp>
 #include <reloco/guarded_mutex.hpp>
 #include <reloco/heap_allocator.hpp>
+#include <reloco/hint.hpp>
 #include <reloco/inline_flat_map.hpp>
 #include <reloco/inline_flat_set.hpp>
 #include <reloco/inline_string.hpp>
@@ -40,6 +41,7 @@
 #include <reloco/inplace_function.hpp>
 #include <reloco/instant.hpp>
 #include <reloco/int_ops.hpp>
+#include <reloco/lazy_lock.hpp>
 #include <reloco/lifetime.hpp>
 #include <reloco/mutex.hpp>
 #include <reloco/once.hpp>
@@ -64,6 +66,7 @@
 #include <reloco/unique_ptr.hpp>
 #include <reloco/value_ptr.hpp>
 #include <reloco/value_ref.hpp>
+#include <reloco/wait_group.hpp>
 #include <reloco/variant.hpp>
 #include <reloco/vector.hpp>
 
