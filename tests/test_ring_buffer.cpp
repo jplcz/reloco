@@ -606,4 +606,20 @@ TEST(RingBufferTest, RaiiWriteTransaction) {
   EXPECT_EQ(out, "STARTSUCCESS!!!");
 }
 
+TEST(RingBufferTest, FindSequenceAcrossBoundary) {
+  inline_ring_buffer<char, 32> stream;
+  ASSERT_TRUE(stream.try_reserve(28));
+  ASSERT_TRUE(stream.try_write(span<const char>("12345678901234567890ABCD", 24)));
+  stream.consume(20); // Force wrap around for next write
+
+  // Write a magic word that perfectly splits across the end of the array
+  ASSERT_TRUE(stream.try_write(span<const char>("START_MAGIC_END", 15)));
+
+  std::string_view magic = "_MAGIC_";
+  auto pos = stream.find_sequence(span<const char>(magic.data(), magic.size()));
+
+  ASSERT_TRUE(pos.has_value());
+  EXPECT_EQ(*pos, 9); // Index relative to current logical start
+}
+
 RELOCO_END_UNSAFE_BUFFER_USAGE

@@ -1179,6 +1179,30 @@ public:
     return {s1, s2};
   }
 
+  /**
+   * @brief Searches for a multi-element sequence (e.g., a magic word or "\r\n\r\n").
+   * Seamlessly handles sequences split across the physical wrap-around boundary.
+   *
+   * @param seq The sequence to search for.
+   * @param offset Logical index to start searching from.
+   * @return Logical index of the start of the sequence, or std::nullopt.
+   */
+  [[nodiscard]] std::optional<size_type> find_sequence(span<const T> seq, size_type offset = 0) const & noexcept {
+    if (seq.empty() || this->len_ - offset < seq.size())
+      return std::nullopt;
+
+    // Cast the unsigned offset to a signed difference type for safe iterator arithmetic
+    auto it_begin = this->begin() + static_cast<std::ptrdiff_t>(offset);
+    auto it_end = this->end();
+
+    auto match = std::search(it_begin, it_end, seq.begin(), seq.end());
+
+    if (match != it_end) {
+      return static_cast<size_type>(match - this->begin());
+    }
+    return std::nullopt;
+  }
+
   // ---- Iterators ----
 
   template <bool IsConst> class RELOCO_POINTER ring_iterator {
@@ -1201,6 +1225,9 @@ public:
     ring_iterator() = default;
 
     reference operator*() const noexcept RELOCO_LIFETIMEBOUND {
+      RELOCO_ASSERT(buf_ != nullptr, "Dereferencing an uninitialized ring_iterator");
+      RELOCO_ASSERT(logical_idx_ < buf_->len_, "Out-of-bounds ring_iterator dereference (likely dereferenced end())");
+
       std::size_t physical_idx = (buf_->head_ + logical_idx_) % buf_->cap_;
       return static_cast<pointer>(buf_->data_)[physical_idx];
     }
@@ -1209,29 +1236,56 @@ public:
 
     ring_iterator &operator++() noexcept {
       ++logical_idx_;
+      RELOCO_ASSERT(buf_ != nullptr, "Incrementing uninitialized ring_iterator");
+      RELOCO_ASSERT(logical_idx_ <= buf_->len_, "ring_iterator incremented past end()");
       return *this;
     }
+
     ring_iterator operator++(int) noexcept {
       auto tmp = *this;
-      ++(*this);
+      ++(*this); // Safely calls the hardened prefix operator
       return tmp;
     }
+
     ring_iterator &operator--() noexcept {
       --logical_idx_;
+      RELOCO_ASSERT(buf_ != nullptr, "Decrementing uninitialized ring_iterator");
+      // Because logical_idx_ is unsigned, 0 - 1 wraps to SIZE_MAX,
+      // which safely triggers this exact same assert!
+      RELOCO_ASSERT(logical_idx_ <= buf_->len_, "ring_iterator decremented before begin()");
       return *this;
     }
+
     ring_iterator operator--(int) noexcept {
       auto tmp = *this;
-      --(*this);
+      --(*this); // Safely calls the hardened prefix operator
       return tmp;
     }
 
     ring_iterator &operator+=(difference_type n) noexcept {
-      logical_idx_ += n;
+      if (n >= 0) {
+        logical_idx_ += static_cast<size_type>(n);
+      } else {
+        logical_idx_ -= static_cast<size_type>(-n);
+      }
+
+      RELOCO_ASSERT(buf_ != nullptr, "Arithmetic on uninitialized ring_iterator");
+      // Catches both going past end() AND underflowing below begin() (due to unsigned wrap)
+      RELOCO_ASSERT(logical_idx_ <= buf_->len_, "ring_iterator arithmetic out of bounds");
+
       return *this;
     }
+
     ring_iterator &operator-=(difference_type n) noexcept {
-      logical_idx_ -= n;
+      if (n >= 0) {
+        logical_idx_ -= static_cast<size_type>(n);
+      } else {
+        logical_idx_ += static_cast<size_type>(-n);
+      }
+
+      RELOCO_ASSERT(buf_ != nullptr, "Arithmetic on uninitialized ring_iterator");
+      RELOCO_ASSERT(logical_idx_ <= buf_->len_, "ring_iterator arithmetic out of bounds");
+
       return *this;
     }
 
