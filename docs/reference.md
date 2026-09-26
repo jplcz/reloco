@@ -1411,6 +1411,89 @@ Unlike every other reloco container, `intrusive_hash_table` has no
 which is exactly the decision this whole file exists to leave to the
 caller.
 
+## `iter()` / `iterator_adaptor<Derived, Item>` (`Fuse`, `Zip`, `Map`, `Filter`, `Enumerate`, `Take`, `Skip`, `Chain`)
+
+`include/reloco/iterator.hpp`
+
+Lazy, zero-allocation iterator adaptors mirroring Rust's
+`std::iter::Iterator` adapter chain. `reloco::iter(range)` wraps any type
+with `begin()`/`end()` (a `vector`, `span`, `flat_map`, plain array, ...)
+as an adaptor that is, at the same time:
+
+- **A Rust-style pull iterator**: `next()` returns `optional<Item>`,
+  empty once exhausted, matching `Iterator::next(&mut self) -> Option<Item>`
+  exactly -- polling `next()` again after exhaustion keeps returning empty
+  rather than being undefined behavior (every adaptor in this file already
+  behaves as if `.fuse()`d; see below).
+- **A C++ range**: `begin()`/`end()` return a single-pass
+  `std::input_iterator_tag` cursor plus a distinct sentinel type, so every
+  adaptor chain is directly usable in a range-for loop.
+
+```cpp
+std::vector<int> v{1, 2, 3, 4, 5, 6};
+
+for (auto &x : reloco::iter(v).filter([](int &x) { return x % 2 == 0; }))
+  x *= 10; // real, mutable reference into `v` -- {1, 20, 3, 40, 5, 60}
+
+int sum = reloco::iter(v)
+              .filter([](int &x) { return x % 2 == 0; })
+              .map([](int &x) { return x / 10; })
+              .fold(0, [](int acc, int &x) { return acc + x; }); // 2+4+6 = 12
+```
+
+**Item shape.** An adaptor that only *borrows* from an underlying range
+(`iter(range)` itself, `filter`, `take`, `skip`, `fuse`, `chain`) has
+`item_type = std::reference_wrapper<T>` (or `<const T>`) -- reloco's
+established "nullable reference" idiom for anything that must fit inside
+an `optional<...>` (`optional<T&>` is not supported; the same shape
+`variant<Ts...>::as<T>()` uses for the same reason, see `variant.hpp`).
+The range-for cursor transparently unwraps this back to a plain `T &`
+before handing it to the loop body, so callers only see the
+`reference_wrapper` if they call `next()` directly. An adaptor that
+*produces new values* (`map`, `enumerate`, `zip`) has a plain, owned
+`item_type` instead (the callable's return type, or a `std::pair` of the
+upstream item types).
+
+**Adapters** (each moves `*this` into the new adaptor, matching Rust's
+`self`-by-value adapter methods -- the original binding is left
+moved-from and should not be reused):
+
+| Method | Rust equivalent | Behavior |
+| --- | --- | --- |
+| `.fuse()` | `Iterator::fuse()` | Guarantees "empty stays empty"; matters only when wrapping a foreign `next_impl()` that might not already guarantee it. |
+| `.zip(other)` | `Iterator::zip()` | Pairs items from both sides; stops as soon as either is exhausted. |
+| `.map(f)` | `Iterator::map()` | Applies `f` to every (unwrapped) item. |
+| `.filter(pred)` | `Iterator::filter()` | Yields only items for which `pred` is `true`. |
+| `.enumerate()` | `Iterator::enumerate()` | Pairs every item with its zero-based `std::size_t` position. |
+| `.take(n)` | `Iterator::take(n)` | Yields at most `n` items, then stops. |
+| `.skip(n)` | `Iterator::skip(n)` | Discards the first `n` items (lazily, on the first `next()` call, matching Rust). |
+| `.chain(other)` | `Iterator::chain()` | Yields every item of `*this`, then every item of `other` (both sides must share `item_type`). |
+
+**Terminal (consuming) operations**: `.for_each(f)`, `.fold(init, f)`,
+`.count()`, `.nth(n)`, `.all(pred)`, `.any(pred)`, `.find(pred)` -- all
+Rust `Iterator` methods of the same name, all draining `*this`.
+
+**Lvalue-only `next()`/`begin()`/`end()`.** Unlike the adapter-construction
+methods, `next()` and `begin()`/`end()` are `&`-qualified with an explicit
+`= delete`d rvalue overload, matching `rvalue_safety.hpp`'s
+`RELOCO_BLOCK_RVALUE_ACCESS` convention every reloco container's own
+`begin()`/`end()` already follows: an adaptor's C++ cursor holds a pointer
+back into the adaptor object itself (to call `next()` through it on every
+`operator++`), so handing back a live cursor from a temporary adaptor
+(`reloco::iter(v).map(f).begin()`) would dangle the instant that temporary
+is destroyed at the end of the full expression. This does *not* get in the
+way of `for (auto &x : reloco::iter(v).map(f))`: the range-for loop binds
+the range-expression to a hidden `auto &&` local first (lifetime-extending
+the temporary adaptor chain for the loop's duration), so `begin()`/`end()`
+are always called through that lvalue. `reloco::iter(range)` itself follows
+the same rule one level up: it only accepts an lvalue `range` (a deleted
+forwarding-reference overload rejects a temporary container with a clear
+"use of deleted function" diagnostic, since the adaptor stores plain C++
+iterators into `range`'s own storage).
+
+No allocation, no exceptions, no RTTI: every adaptor stores its upstream
+adaptor(s)/iterators and callable(s) inline by value.
+
 ## `sso_flat_set<T, InlineCapacity, Compare = std::less<T>>`
 
 `include/reloco/sso_flat_set.hpp`

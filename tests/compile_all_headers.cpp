@@ -42,6 +42,7 @@
 #include <reloco/instant.hpp>
 #include <reloco/int_ops.hpp>
 #include <reloco/intrusive_hash_table.hpp>
+#include <reloco/iterator.hpp>
 #include <reloco/lazy_lock.hpp>
 #include <reloco/lifetime.hpp>
 #include <reloco/lru_cache.hpp>
