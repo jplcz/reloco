@@ -278,7 +278,9 @@ template <typename T, typename Base> class RELOCO_EXPORT typed_ring_buffer : pub
 
 public:
   using size_type = typename Base::size_type;
-  using value_type = T;
+  using value_type = std::remove_cv_t<T>;
+  using reference = T &;
+  using const_reference = const T &;
 
   // Inherit base constructors (binds to the specific storage policy)
   template <typename... Args>
@@ -1397,6 +1399,28 @@ public:
    */
   [[nodiscard]] write_tx begin_write(size_type limit = static_cast<size_type>(-1)) & noexcept RELOCO_LIFETIMEBOUND {
     return write_tx(this, limit);
+  }
+
+  // ---- STL Back Inserter Support ----
+
+  /**
+   * @brief Pushes a single element to the back of the buffer.
+   * If the buffer is full, it automatically overwrites the oldest element (lossy FIFO).
+   * Required to support standard library std::back_inserter.
+   */
+  void push_back(const_reference value) & noexcept {
+    // Write to the current physical tail
+    std::size_t physical_tail = (this->head_ + this->len_) % this->cap_;
+    static_cast<T *>(this->data_)[physical_tail] = value;
+
+    // Adjust state based on capacity
+    if (this->len_ < this->cap_) {
+      ++this->len_; // Just grow the length
+    } else {
+      // Buffer is full. The tail just overwrote the old head!
+      // We must advance the head to drop the oldest element.
+      this->head_ = (this->head_ + 1) % this->cap_;
+    }
   }
 };
 

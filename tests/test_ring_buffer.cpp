@@ -634,4 +634,22 @@ TEST(RingBufferTest, ConsumeUntil) {
   EXPECT_EQ(*stream.begin(), '{');
 }
 
+TEST(RingBufferTest, BackInserterIsLossy) {
+  inline_ring_buffer<int, 3> stream; // Capacity is 3
+  std::vector<int> data = {1, 2, 3, 4, 5};
+
+  // Push 5 elements into a 3-element buffer using STL
+  std::copy(data.begin(), data.end(), std::back_inserter(stream));
+
+  // The buffer should cap at size 3
+  EXPECT_EQ(stream.size(), 3);
+
+  // It should have overwritten '1' and '2', leaving '3', '4', '5'
+  auto it = stream.begin();
+  EXPECT_EQ(*it++, 3);
+  EXPECT_EQ(*it++, 4);
+  EXPECT_EQ(*it++, 5);
+  EXPECT_EQ(it, stream.end());
+}
+
 RELOCO_END_UNSAFE_BUFFER_USAGE
