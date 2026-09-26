@@ -252,6 +252,29 @@ public:
   constexpr span(const span<U> &other RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
       : m_ptr(other.data()), m_size(other.size()) {}
 
+  template <typename Container, typename = std::enable_if_t<
+                                    // Prevent hijacking the copy/move constructors
+                                    !std::is_same_v<std::decay_t<Container>, span> &&
+                                    // Ensure the container has a .data() that converts to T*
+                                    std::is_convertible_v<decltype(std::declval<Container &>().data()), T *> &&
+                                    // Ensure the container has a .size() that returns an integer
+                                    std::is_integral_v<decltype(std::declval<Container &>().size())>>>
+  constexpr span(Container &cont RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
+      : m_ptr(cont.data()), m_size(cont.size()) {}
+
+  template <typename Container, typename = std::enable_if_t<
+                                    !std::is_same_v<std::decay_t<Container>, span> &&
+                                    std::is_convertible_v<decltype(std::declval<const Container &>().data()), T *> &&
+                                    std::is_integral_v<decltype(std::declval<const Container &>().size())>>>
+  constexpr span(const Container &cont RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
+      : m_ptr(cont.data()), m_size(cont.size()) {}
+
+  template <typename Container,
+            typename = std::enable_if_t<!std::is_same_v<std::decay_t<Container>, span> &&
+                                        std::is_convertible_v<decltype(std::declval<Container &>().data()), T *> &&
+                                        std::is_integral_v<decltype(std::declval<Container &>().size())>>>
+  constexpr span(Container &&) = delete;
+
 #if RELOCO_HAS_STD_SPAN
   /**
    * @brief Constructs a `reloco::span` from any `std::span` (dynamic or

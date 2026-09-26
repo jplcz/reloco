@@ -302,7 +302,8 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_vec_deque.cpp
         tests/test_inline_vec_deque.cpp
         tests/test_sso_vec_deque.cpp
-        tests/test_outline_vec_deque.cpp)
+        tests/test_outline_vec_deque.cpp
+        tests/test_ring_buffer.cpp)
     
     target_link_libraries(jplcz_reloco_tests PRIVATE jplcz_reloco GTest::gtest_main)
     jplcz_reloco_enable_warnings(jplcz_reloco_tests)
