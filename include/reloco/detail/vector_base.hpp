@@ -1005,6 +1005,10 @@ protected:
                                                          const type_metadata &type, std::size_t new_cap,
                                                          void *inline_storage, std::size_t max_inline,
                                                          std::size_t max_cap) noexcept;
+
+  [[nodiscard]] RELOCO_API result<void> try_make_contiguous_base(const vector_operations *ops, allocator_ref alloc,
+                                                                 const type_metadata &type, void *inline_storage,
+                                                                 std::size_t max_inline, std::size_t max_cap) noexcept;
 };
 
 /**
@@ -1174,6 +1178,282 @@ public:
   [[nodiscard]] std::size_t inline_capacity() const noexcept { return inline_capacity_; }
   [[nodiscard]] static constexpr std::size_t max_capacity(const type_metadata &mt) noexcept {
     return std::numeric_limits<std::size_t>::max() / mt.element_size;
+  }
+};
+
+template <typename T, typename Base> class RELOCO_EXPORT typed_deque_base : public Base {
+public:
+  using value_type = T;
+  using allocator_type = allocator_ref;
+  using size_type = std::size_t;
+  using difference_type = std::ptrdiff_t;
+  using reference = T &;
+  using const_reference = const T &;
+  using pointer = T *;
+  using const_pointer = const T *;
+
+  RELOCO_BLOCK_RVALUE_ACCESS(T);
+
+protected:
+  template <typename... Args>
+  constexpr explicit typed_deque_base(Args &&...args) noexcept : Base(std::forward<Args>(args)...) {}
+
+  ~typed_deque_base() noexcept = default;
+
+public:
+  [[nodiscard]] result<void> try_reserve(size_type new_cap) & noexcept {
+    return Base::try_reserve_base(detail::get_operations_for<T>(), Base::get_allocator(), metadata_for<T>, new_cap,
+                                  Base::get_inline_storage(), Base::inline_capacity(),
+                                  Base::max_capacity(detail::metadata_for<T>));
+  }
+
+  template <typename... Args>
+  [[nodiscard]] result<std::reference_wrapper<T>> try_emplace_front(Args &&...args) & noexcept RELOCO_LIFETIMEBOUND {
+    // INLINED FAST PATH
+    if (this->len_ < this->cap_)
+      RELOCO_LIKELY {
+        this->head_ = (this->head_ == 0) ? this->cap_ - 1 : this->head_ - 1;
+        T *ptr = static_cast<T *>(this->data_) + this->head_;
+
+        auto res = construction_helpers::try_construct<T>(default_allocator(), ptr, std::forward<Args>(args)...);
+        if (!res)
+          RELOCO_UNLIKELY {
+            // Rollback head on failure
+            this->head_ = (this->head_ == this->cap_ - 1) ? 0 : this->head_ + 1;
+            return unexpected(res.error());
+          }
+        ++this->len_;
+        return std::ref(*ptr);
+      }
+    return try_emplace_front_slow(std::forward<Args>(args)...);
+  }
+
+  [[nodiscard]] result<void> try_push_front(const T &value) & noexcept {
+    auto res = try_emplace_front(value);
+    return res ? result<void>{} : unexpected(res.error());
+  }
+
+  [[nodiscard]] result<void> try_push_front(T &&value) & noexcept {
+    auto res = try_emplace_front(std::move(value));
+    return res ? result<void>{} : unexpected(res.error());
+  }
+
+  [[nodiscard]] result<void> try_pop_front() & noexcept {
+    if (this->len_ == 0)
+      return unexpected(error::container_empty);
+
+    if constexpr (!std::is_trivially_destructible_v<T>) {
+      (static_cast<T *>(this->data_) + this->head_)->~T();
+    }
+
+    this->head_ = (this->head_ + 1 == this->cap_) ? 0 : this->head_ + 1;
+    --this->len_;
+    return {};
+  }
+
+  template <typename... Args>
+  [[nodiscard]] result<std::reference_wrapper<T>> try_emplace_back(Args &&...args) & noexcept RELOCO_LIFETIMEBOUND {
+    // INLINED FAST PATH
+    if (this->len_ < this->cap_)
+      RELOCO_LIKELY {
+        std::size_t tail = this->head_ + this->len_;
+        if (tail >= this->cap_)
+          tail -= this->cap_; // Fast modulo
+
+        T *ptr = static_cast<T *>(this->data_) + tail;
+        auto res = construction_helpers::try_construct<T>(default_allocator(), ptr, std::forward<Args>(args)...);
+
+        if (!res)
+          RELOCO_UNLIKELY { return unexpected(res.error()); }
+
+        ++this->len_;
+        return std::ref(*ptr);
+      }
+    return try_emplace_back_slow(std::forward<Args>(args)...);
+  }
+
+  [[nodiscard]] result<void> try_push_back(const T &value) & noexcept {
+    auto res = try_emplace_back(value);
+    return res ? result<void>{} : unexpected(res.error());
+  }
+
+  [[nodiscard]] result<void> try_push_back(T &&value) & noexcept {
+    auto res = try_emplace_back(std::move(value));
+    return res ? result<void>{} : unexpected(res.error());
+  }
+
+  [[nodiscard]] result<void> try_pop_back() & noexcept {
+    if (this->len_ == 0)
+      return unexpected(error::container_empty);
+
+    std::size_t tail = this->head_ + this->len_ - 1;
+    if (tail >= this->cap_)
+      tail -= this->cap_;
+
+    if constexpr (!std::is_trivially_destructible_v<T>) {
+      (static_cast<T *>(this->data_) + tail)->~T();
+    }
+
+    --this->len_;
+    return {};
+  }
+
+  void clear() noexcept {
+    if constexpr (!std::is_trivially_destructible_v<T>) {
+      this->destroy_elements_base(detail::get_operations_for<T>(), detail::metadata_for<T>());
+    }
+    this->len_ = 0;
+    this->head_ = 0;
+  }
+
+  [[nodiscard]] T &operator[](size_type logical_index) & noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT(logical_index < this->len_, "deque index out of bounds");
+    std::size_t physical_index = this->head_ + logical_index;
+    if (physical_index >= this->cap_)
+      physical_index -= this->cap_;
+    return static_cast<T *>(this->data_)[physical_index];
+  }
+
+  [[nodiscard]] const T &operator[](size_type logical_index) const & noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT(logical_index < this->len_, "deque index out of bounds");
+    std::size_t physical_index = this->head_ + logical_index;
+    if (physical_index >= this->cap_)
+      physical_index -= this->cap_;
+    return static_cast<const T *>(this->data_)[physical_index];
+  }
+
+  [[nodiscard]] result<std::reference_wrapper<T>> try_at(size_type index) & noexcept RELOCO_LIFETIMEBOUND {
+    if (index >= this->len_)
+      return unexpected(error::out_of_bounds);
+    return std::ref((*this)[index]);
+  }
+
+  [[nodiscard]] result<std::reference_wrapper<const T>> try_at(size_type index) const & noexcept RELOCO_LIFETIMEBOUND {
+    if (index >= this->len_)
+      return unexpected(error::out_of_bounds);
+    return std::cref((*this)[index]);
+  }
+
+  [[nodiscard]] T &front() & noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT(this->len_ > 0, "deque is empty");
+    return static_cast<T *>(this->data_)[this->head_];
+  }
+
+  [[nodiscard]] const T &front() const & noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT(this->len_ > 0, "deque is empty");
+    return static_cast<const T *>(this->data_)[this->head_];
+  }
+
+  [[nodiscard]] T &back() & noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT(this->len_ > 0, "deque is empty");
+    std::size_t tail = this->head_ + this->len_ - 1;
+    if (tail >= this->cap_)
+      tail -= this->cap_;
+    return static_cast<T *>(this->data_)[tail];
+  }
+
+  [[nodiscard]] const T &back() const & noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT(this->len_ > 0, "deque is empty");
+    std::size_t tail = this->head_ + this->len_ - 1;
+    if (tail >= this->cap_)
+      tail -= this->cap_;
+    return static_cast<const T *>(this->data_)[tail];
+  }
+
+  /**
+   * @brief Returns a pair of spans representing the contiguous parts of the deque.
+   * If the deque has not wrapped around, the second span is empty.
+   */
+  [[nodiscard]] std::pair<span<T>, span<T>> as_slices() & noexcept RELOCO_LIFETIMEBOUND {
+    if (this->len_ == 0)
+      return {span<T>(), span<T>()};
+
+    T *typed_data = static_cast<T *>(this->data_);
+    std::size_t tail = this->head_ + this->len_;
+
+    if (tail <= this->cap_) {
+      return {span<T>(typed_data + this->head_, this->len_), span<T>()};
+    } else {
+      return {span<T>(typed_data + this->head_, this->cap_ - this->head_), span<T>(typed_data, tail - this->cap_)};
+    }
+  }
+
+  [[nodiscard]] std::pair<span<const T>, span<const T>> as_slices() const & noexcept RELOCO_LIFETIMEBOUND {
+    if (this->len_ == 0)
+      return {span<const T>(), span<const T>()};
+
+    const T *typed_data = static_cast<const T *>(this->data_);
+    std::size_t tail = this->head_ + this->len_;
+
+    if (tail <= this->cap_) {
+      return {span<const T>(typed_data + this->head_, this->len_), span<const T>()};
+    } else {
+      return {span<const T>(typed_data + this->head_, this->cap_ - this->head_),
+              span<const T>(typed_data, tail - this->cap_)};
+    }
+  }
+
+  /**
+   * @brief Reorders the physical buffer so that `head_ == 0`, returning a single
+   * contiguous span. Useful for passing data to C-APIs.
+   */
+  span<T> make_contiguous() & noexcept RELOCO_LIFETIMEBOUND {
+    if (this->len_ == 0)
+      return span<T>();
+
+    std::size_t tail = this->head_ + this->len_;
+
+    // Fast path: already contiguous
+    if (tail <= this->cap_) {
+      return span<T>(static_cast<T *>(this->data_) + this->head_, this->len_);
+    }
+
+    auto res = this->try_make_contiguous_base(detail::get_operations_for<T>(), this->get_allocator(),
+                                              detail::metadata_for<T>, Base::get_inline_storage(),
+                                              Base::inline_capacity(), Base::max_capacity(detail::metadata_for<T>()));
+
+    if (!res)
+      return unexpected(res.error());
+
+    return span<T>(static_cast<T *>(this->data_) + this->head_, this->len_);
+  }
+
+private:
+  template <typename... Args> result<std::reference_wrapper<T>> try_emplace_front_slow(Args &&...args) noexcept {
+    const std::size_t new_cap = this->cap_ == 0 ? 8 : (this->cap_ * 3 + 1) / 2;
+    auto res = try_reserve(new_cap);
+    if (!res)
+      RELOCO_UNLIKELY { return unexpected(res.error()); }
+
+    // Now retry the fast path which is guaranteed to succeed
+    this->head_ = (this->head_ == 0) ? this->cap_ - 1 : this->head_ - 1;
+    T *ptr = static_cast<T *>(this->data_) + this->head_;
+    auto ctor_res = construction_helpers::try_construct<T>(default_allocator(), ptr, std::forward<Args>(args)...);
+    if (!ctor_res) {
+      this->head_ = (this->head_ == this->cap_ - 1) ? 0 : this->head_ + 1;
+      return unexpected(ctor_res.error());
+    }
+    ++this->len_;
+    return std::ref(*ptr);
+  }
+
+  template <typename... Args> result<std::reference_wrapper<T>> try_emplace_back_slow(Args &&...args) noexcept {
+    const std::size_t new_cap = this->cap_ == 0 ? 8 : (this->cap_ * 3 + 1) / 2;
+    auto res = try_reserve(new_cap);
+    if (!res)
+      RELOCO_UNLIKELY { return unexpected(res.error()); }
+
+    std::size_t tail = this->head_ + this->len_;
+    if (tail >= this->cap_)
+      tail -= this->cap_;
+
+    T *ptr = static_cast<T *>(this->data_) + tail;
+    auto ctor_res = construction_helpers::try_construct<T>(default_allocator(), ptr, std::forward<Args>(args)...);
+    if (!ctor_res)
+      return unexpected(ctor_res.error());
+
+    ++this->len_;
+    return std::ref(*ptr);
   }
 };
 

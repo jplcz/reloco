@@ -749,6 +749,66 @@ RELOCO_API void mixed_deque_base::move_construct_from_base(const vector_operatio
   }
 }
 
+RELOCO_API result<void> unowned_deque_base::try_make_contiguous_base(const vector_operations *ops, allocator_ref alloc,
+                                                                 const type_metadata &type, void *inline_storage,
+                                                                 std::size_t max_inline, std::size_t max_cap) noexcept {
+  std::size_t tail = head_ + len_;
+  // Already contiguous (should be caught by the wrapper, but checked for safety)
+  if (tail <= cap_) return {};
 
+  const std::size_t elem_size = type.element_size;
+  char *byte_data = static_cast<char *>(data_);
+
+  // We are wrapped. Break into Chunk 1 (head to cap) and Chunk 2 (0 to tail).
+  std::size_t L1 = cap_ - head_;
+  std::size_t L2 = tail - cap_;
+  std::size_t F  = cap_ - len_; // Free space
+
+  // Right-Shift Strategy: Free space is large enough to absorb Chunk 1
+  if (F >= L1) {
+    // Shift C2 right by L1
+    ops->move_range_up(type, byte_data + L1 * elem_size, byte_data, L2);
+    // Shift C1 left to 0
+    ops->move_range(type, byte_data, byte_data + head_ * elem_size, L1);
+
+    head_ = 0;
+    return {};
+  }
+
+  // Left-Shift Strategy: Free space is large enough to absorb Chunk 2
+  if (F >= L2) {
+    // Shift C1 left by L2
+    ops->move_range(type, byte_data + (head_ - L2) * elem_size, byte_data + head_ * elem_size, L1);
+    // Shift C2 right to the end
+    ops->move_range_up(type, byte_data + (cap_ - L2) * elem_size, byte_data, L2);
+
+    head_ -= L2;
+    return {};
+  }
+
+  // Hard Case (F < L1 && F < L2): Very little free space (or completely full).
+  auto temp_res = alloc.allocate(L2 * elem_size, type.element_alignment);
+
+  if (!temp_res) {
+    // Fallback: forcefully expand capacity by 1, which inherently calls
+    // try_reserve_base and linearizes the array securely during reallocation.
+    // If cap_ == max_cap, this will fail with capacity_exceeded.
+    return try_reserve_base(ops, alloc, type, cap_ + 1, inline_storage, max_inline, max_cap);
+  }
+
+  char* temp = static_cast<char*>(temp_res->ptr);
+
+  // Move Chunk 2 out to temp
+  ops->move_range(type, temp, byte_data, L2);
+  // Move Chunk 1 to index 0 (safe left-shift)
+  ops->move_range(type, byte_data, byte_data + head_ * elem_size, L1);
+  // Move Chunk 2 back into the middle
+  ops->move_range(type, byte_data + L1 * elem_size, temp, L2);
+
+  alloc.deallocate(temp_res->ptr, temp_res->size);
+
+  head_ = 0;
+  return {};
+}
 
 RELOCO_END_UNSAFE_BUFFER_USAGE
