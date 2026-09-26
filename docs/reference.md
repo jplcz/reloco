@@ -76,6 +76,7 @@ where, not a tutorial.
 | `channel.hpp` | `channel<T>`, `sender<T>`, `receiver<T>`, `sync_channel<T>`, `sync_sender<T>` | Multi-producer, single-consumer channel matching Rust's `std::sync::mpsc`, plus a bounded/rendezvous `sync_channel<T>` counterpart, built on `mutex.hpp` + `shared_ptr` + `is_send`/`is_sync` |
 | `park.hpp` | `thread_handle`, `this_thread::current/park/park_timeout/sleep_for` | Rust-like `thread::park`/`park_timeout`/`sleep`/`Thread`, built on `tls_provider.hpp` + `futex.hpp` + `instant.hpp` + `shared_ptr` |
 | `once_lock.hpp` | `once_lock<T>` | Write-once, read-many-times cell matching Rust's `std::sync::OnceLock<T>`, usable as a plain field/local (unlike `fallible_singleton.hpp`'s static, one-per-`T` global) |
+| `once.hpp` | `once` | Runs a closure exactly once across racing callers, matching Rust's `std::sync::Once`; no heap allocation and no `mutex.hpp` dependency, usable in a freestanding/bare-kernel build |
 | `scope.hpp` | `scope`, `thread_scope`, `scoped_join_handle<R>` | Matches Rust's `std::thread::scope`: spawns threads guaranteed to finish before `scope()` returns, so they may safely borrow references to the caller's stack frame |
 | `lifetime.hpp` | `RELOCO_LIFETIMEBOUND`, `RELOCO_OWNER`, `RELOCO_POINTER`, `RELOCO_UNSAFE_BUFFER_USAGE`, ... | Compiler-specific lifetime/ownership/safe-buffers annotation macros |
 | `rvalue_safety.hpp` | `RELOCO_BLOCK_RVALUE_ACCESS` | Deletes rvalue accessors that would otherwise dangle past a temporary |
@@ -3035,6 +3036,54 @@ requires both `is_send<T>` and `is_sync<T>`, matching Rust's `unsafe impl
 (`Mutex<T>`, only ever reached through an exclusive lock), a `const
 once_lock<T> &` hands out a bare `const T *` once ready, so concurrent
 readers need `T` itself to tolerate concurrent shared access.
+
+## `once`
+
+`include/reloco/once.hpp`
+
+Runs a closure exactly once across any number of racing callers, blocking
+every other caller until it completes, matching Rust's
+`std::sync::Once`. Complements `once_lock<T>` rather than replacing it:
+`once` carries no value at all -- it is purely a "has this run yet" gate
+around a side-effecting closure, matching Rust's own split between `Once`
+(side effects only) and `OnceLock<T>`/`LazyLock<T>` (a value).
+
+```cpp
+reloco::once init_logging;
+
+// From any thread, any number of times:
+init_logging.call_once([] { setup_logging(); });
+```
+
+- `call_once(F)`, where `F` is invocable as `void()`: runs `F` exactly
+  once and is assumed to never fail, matching Rust's
+  `Once::call_once`. Every caller -- including the one actually running
+  `F` -- returns only once `F` has completed.
+- `try_call_once(F)`, where `F` is invocable as `result<void>()`: same as
+  `call_once`, but if `F` fails, `once` reverts to not-yet-run so a later
+  call (from any thread) may retry. This is a reloco-specific extension:
+  Rust's `Once` has no failure-recovery equivalent of its own, since
+  `call_once`'s `F` cannot fail (only panic, which poisons the `Once`
+  permanently) -- reloco has no panic/unwind mechanism, so there is no
+  `call_once_force`/`OnceState` poisoning-recovery API to port.
+- `is_completed()` -> `bool`: `true` once `F` has run to completion,
+  matching Rust's `Once::is_completed()`. Never blocks.
+- `unsafe_reset()`: unconditionally resets this `once` to not-yet-run, so
+  the next `call_once`/`try_call_once` runs its closure again. **Unsafe**:
+  only sound with no other thread concurrently calling
+  `call_once`/`try_call_once`/`is_completed` on the same instance. Not
+  part of Rust's `Once` (no reset at all), but matches
+  `parking_lot::Once::reset(&mut self)`'s exclusive-access contract;
+  useful for re-running one-time initialization after `fork()` in a
+  freestanding/kernel context, or resetting a `once` in a test fixture.
+
+Built directly on a single `futex_word` state (`not_started`/`running`/
+`completed`, see `futex.hpp`) rather than a `mutex` + `condition_variable`
+pair, with no heap allocation and no dependency on `mutex.hpp` at all --
+`once` (and anything built on it) stays usable in a freestanding or
+bare-kernel environment that provides its own `RELOCO_FUTEX_BACKEND_CUSTOM`
+but has no OS-backed mutex/thread available at all. `once` is neither
+copyable nor movable.
 
 ## `scope` / `thread_scope` / `scoped_join_handle<R>`
 

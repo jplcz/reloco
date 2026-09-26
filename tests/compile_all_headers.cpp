@@ -42,6 +42,7 @@
 #include <reloco/int_ops.hpp>
 #include <reloco/lifetime.hpp>
 #include <reloco/mutex.hpp>
+#include <reloco/once.hpp>
 #include <reloco/once_lock.hpp>
 #include <reloco/optional.hpp>
 #include <reloco/park.hpp>
