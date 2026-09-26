@@ -1018,6 +1018,11 @@ protected:
   [[nodiscard]] RELOCO_API result<void> try_make_contiguous_base(const vector_operations *ops, allocator_ref alloc,
                                                                  const type_metadata &type, void *inline_storage,
                                                                  std::size_t max_inline, std::size_t max_cap) noexcept;
+
+  RELOCO_API void rotate_left_base(const vector_operations *ops, const type_metadata &type, std::size_t mid) noexcept;
+
+  [[nodiscard]] RELOCO_API result<void> try_erase_at_base(const vector_operations *ops, const type_metadata &type,
+                                                          std::size_t index) noexcept;
 };
 
 /**
@@ -1425,6 +1430,67 @@ public:
       return unexpected(res.error());
 
     return span<T>(static_cast<T *>(this->data_) + this->head_, this->len_);
+  }
+
+  /**
+   * @brief Rotates the deque left, shifting the element at logical index `mid` to the front.
+   * Elements `[0, mid)` are appended to the back.
+   * Runs in O(min(mid, len - mid)) element moves, with 0 allocations.
+   */
+  void rotate_left(size_type mid) & noexcept {
+    if (this->len_ <= 1)
+      return;
+    mid %= this->len_;
+    if (mid == 0)
+      return;
+    this->rotate_left_base(detail::get_operations_for<T>(), detail::metadata_for<T>, mid);
+  }
+
+  /**
+   * @brief Rotates the deque right by `k` positions.
+   * Elements `[len - k, len)` are moved to the front.
+   * Equivalent to `rotate_left(size() - (k % size()))`.
+   */
+  void rotate_right(size_type k) & noexcept {
+    if (this->len_ <= 1)
+      return;
+    k %= this->len_;
+    if (k == 0)
+      return;
+    this->rotate_left_base(detail::get_operations_for<T>(), detail::metadata_for<T>, this->len_ - k);
+  }
+
+  void truncate(size_type new_len) & noexcept {
+    while (this->len_ > new_len) {
+      // Safe to ignore result since we just checked length
+      std::ignore = try_pop_back();
+    }
+  }
+
+  template <typename OtherBase>
+  [[nodiscard]] result<void> try_append(typed_deque_base<T, OtherBase> &&other) & noexcept {
+    auto res = this->try_reserve(this->len_ + other.len_);
+    if (!res)
+      return unexpected(res.error());
+
+    // Because `other` might be wrapped, we pull from its slices
+    auto [s1, s2] = other.as_slices();
+    for (auto &val : s1)
+      try_push_back(std::move(val));
+    for (auto &val : s2)
+      try_push_back(std::move(val));
+
+    other.clear();
+    return {};
+  }
+
+  /**
+   * @brief Removes the element at the specified logical index, shifting the remaining
+   * elements to close the gap.
+   * Uses a shortest-shift optimization to run in O(min(index, len - index)) time.
+   */
+  [[nodiscard]] result<void> try_erase_at(size_type index) & noexcept {
+    return this->try_erase_at_base(detail::get_operations_for<T>(), detail::metadata_for<T>, index);
   }
 
 private:

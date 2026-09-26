@@ -549,9 +549,9 @@ RELOCO_API void mixed_vector_base::move_assign_from_base(const vector_operations
 }
 
 RELOCO_API result<void> unowned_deque_base::try_reserve_base(const vector_operations *ops, allocator_ref alloc,
-                                                         const type_metadata &type, std::size_t new_cap,
-                                                         void *inline_storage, std::size_t max_inline,
-                                                         std::size_t max_cap) noexcept {
+                                                             const type_metadata &type, std::size_t new_cap,
+                                                             void *inline_storage, std::size_t max_inline,
+                                                             std::size_t max_cap) noexcept {
   if (new_cap <= cap_)
     return {};
   if (new_cap > max_cap)
@@ -663,16 +663,16 @@ RELOCO_API void heap_deque_base::deallocate_elements(const vector_operations *op
     alloc_.deallocate(data_, cap_ * type.element_size);
     data_ = nullptr;
     head_ = 0;
-    len_  = 0;
-    cap_  = 0;
+    len_ = 0;
+    cap_ = 0;
   }
 }
 
 RELOCO_API void inline_deque_base::move_construct_from_base(const vector_operations *ops, const type_metadata &type,
-                                                        inline_deque_base &&other) noexcept {
+                                                            inline_deque_base &&other) noexcept {
   if (other.len_ > 0 && ops->move_range) {
-    char *dest = static_cast<char*>(data_);
-    char *src = static_cast<char*>(other.data_);
+    char *dest = static_cast<char *>(data_);
+    char *src = static_cast<char *>(other.data_);
     const std::size_t elem_size = type.element_size;
 
     // Linearize the wrapped buffer into the new target starting at index 0
@@ -694,10 +694,13 @@ RELOCO_API void inline_deque_base::move_construct_from_base(const vector_operati
   other.head_ = 0;
 }
 
-RELOCO_API void mixed_deque_base::deallocate_elements(const vector_operations *ops, const type_metadata &type) noexcept {
+RELOCO_API void mixed_deque_base::deallocate_elements(const vector_operations *ops,
+                                                      const type_metadata &type) noexcept {
   if (data_) {
-    if (len_ > 0) unowned_deque_base::destroy_elements(ops, type);
-    if (!is_inline()) alloc_.deallocate(data_, cap_ * type.element_size);
+    if (len_ > 0)
+      unowned_deque_base::destroy_elements(ops, type);
+    if (!is_inline())
+      alloc_.deallocate(data_, cap_ * type.element_size);
 
     // Restore the inline state baseline
     data_ = inline_storage_;
@@ -708,13 +711,13 @@ RELOCO_API void mixed_deque_base::deallocate_elements(const vector_operations *o
 }
 
 RELOCO_API void mixed_deque_base::move_construct_from_base(const vector_operations *ops, const type_metadata &type,
-                                                       mixed_deque_base &&other) noexcept {
+                                                           mixed_deque_base &&other) noexcept {
   alloc_ = other.alloc_;
 
   if (other.is_inline()) {
     if (other.len_ > 0 && ops && ops->move_range) {
-      char *dest = static_cast<char*>(data_);
-      char *src = static_cast<char*>(other.data_);
+      char *dest = static_cast<char *>(data_);
+      char *src = static_cast<char *>(other.data_);
       const std::size_t elem_size = type.element_size;
 
       std::size_t first_chunk = std::min(other.len_, other.cap_ - other.head_);
@@ -750,11 +753,13 @@ RELOCO_API void mixed_deque_base::move_construct_from_base(const vector_operatio
 }
 
 RELOCO_API result<void> unowned_deque_base::try_make_contiguous_base(const vector_operations *ops, allocator_ref alloc,
-                                                                 const type_metadata &type, void *inline_storage,
-                                                                 std::size_t max_inline, std::size_t max_cap) noexcept {
+                                                                     const type_metadata &type, void *inline_storage,
+                                                                     std::size_t max_inline,
+                                                                     std::size_t max_cap) noexcept {
   std::size_t tail = head_ + len_;
   // Already contiguous (should be caught by the wrapper, but checked for safety)
-  if (tail <= cap_) return {};
+  if (tail <= cap_)
+    return {};
 
   const std::size_t elem_size = type.element_size;
   char *byte_data = static_cast<char *>(data_);
@@ -762,7 +767,7 @@ RELOCO_API result<void> unowned_deque_base::try_make_contiguous_base(const vecto
   // We are wrapped. Break into Chunk 1 (head to cap) and Chunk 2 (0 to tail).
   std::size_t L1 = cap_ - head_;
   std::size_t L2 = tail - cap_;
-  std::size_t F  = cap_ - len_; // Free space
+  std::size_t F = cap_ - len_; // Free space
 
   // Right-Shift Strategy: Free space is large enough to absorb Chunk 1
   if (F >= L1) {
@@ -796,7 +801,7 @@ RELOCO_API result<void> unowned_deque_base::try_make_contiguous_base(const vecto
     return try_reserve_base(ops, alloc, type, cap_ + 1, inline_storage, max_inline, max_cap);
   }
 
-  char* temp = static_cast<char*>(temp_res->ptr);
+  char *temp = static_cast<char *>(temp_res->ptr);
 
   // Move Chunk 2 out to temp
   ops->move_range(type, temp, byte_data, L2);
@@ -808,6 +813,157 @@ RELOCO_API result<void> unowned_deque_base::try_make_contiguous_base(const vecto
   alloc.deallocate(temp_res->ptr, temp_res->size);
 
   head_ = 0;
+  return {};
+}
+
+RELOCO_API void unowned_deque_base::rotate_left_base(const vector_operations *ops, const type_metadata &type,
+                                                     std::size_t mid) noexcept {
+  if (len_ <= 1 || mid == 0 || mid == len_)
+    return;
+  mid %= len_;
+
+  // O(1) rotation for fully packed ring buffers (zero physical moves!)
+  if (len_ == cap_) {
+    head_ = (head_ + mid) % cap_;
+    return;
+  }
+
+  const std::size_t right_rot = len_ - mid;
+  const std::size_t elem_size = type.element_size;
+  char *byte_data = static_cast<char *>(data_);
+
+  if (mid <= right_rot) {
+    // Shift left: move `mid` elements from the front of the deque to the back.
+    std::size_t remaining = mid;
+    while (remaining > 0) {
+      std::size_t chunk = std::min(remaining, cap_ - len_); // Bounded by free space
+
+      // Contiguous source starting at `head_`
+      std::size_t src_chunk = cap_ - head_;
+
+      // Contiguous free space starting at `tail`
+      std::size_t tail = (head_ + len_) % cap_;
+      std::size_t dest_chunk = cap_ - tail;
+
+      chunk = std::min({chunk, src_chunk, dest_chunk});
+
+      ops->move_range(type, byte_data + tail * elem_size, byte_data + head_ * elem_size, chunk);
+      head_ = (head_ + chunk) % cap_;
+      remaining -= chunk;
+    }
+  } else {
+    // Shift right: move `right_rot` elements from the back of the deque to the front.
+    std::size_t remaining = right_rot;
+    while (remaining > 0) {
+      std::size_t chunk = std::min(remaining, cap_ - len_); // Bounded by free space
+
+      std::size_t tail = (head_ + len_) % cap_;
+
+      // The contiguous block of source elements ending at `tail`
+      std::size_t src_chunk = (tail == 0) ? cap_ : tail;
+
+      // The contiguous block of free space ending at `head_`
+      std::size_t dest_chunk = (head_ == 0) ? cap_ : head_;
+
+      chunk = std::min({chunk, src_chunk, dest_chunk});
+
+      std::size_t src_start = (tail == 0) ? cap_ - chunk : tail - chunk;
+      std::size_t dest_start = (head_ == 0) ? cap_ - chunk : head_ - chunk;
+
+      ops->move_range(type, byte_data + dest_start * elem_size, byte_data + src_start * elem_size, chunk);
+      head_ = dest_start;
+      remaining -= chunk;
+    }
+  }
+}
+
+RELOCO_API result<void> unowned_deque_base::try_erase_at_base(const vector_operations *ops, const type_metadata &type,
+                                                              std::size_t index) noexcept {
+  if (index >= len_)
+    return unexpected(error::out_of_bounds);
+
+  char *byte_data = static_cast<char *>(data_);
+  const std::size_t elem_size = type.element_size;
+
+  // Calculate physical index and destroy the target element
+  std::size_t physical_idx = head_ + index;
+  if (physical_idx >= cap_)
+    physical_idx -= cap_;
+
+  if (ops->destroy_range) {
+    ops->destroy_range(type, data_, physical_idx, physical_idx + 1);
+  }
+
+  // Shortest Shift Optimization
+  if (index < len_ / 2) {
+    // Shift logical [0, index) RIGHT by 1
+    if (index > 0) {
+      const std::size_t src_start = head_;
+      const std::size_t src_end = head_ + index;
+
+      if (src_end <= cap_) {
+        if (src_end < cap_) {
+          // Completely contiguous shift right
+          ops->move_range_up(type, byte_data + (src_start + 1) * elem_size, byte_data + src_start * elem_size, index);
+        } else {
+          // Exactly hits capacity: the last element wraps to 0
+          ops->move_range(type, byte_data, byte_data + (cap_ - 1) * elem_size, 1);
+          if (index > 1) {
+            ops->move_range_up(type, byte_data + (src_start + 1) * elem_size, byte_data + src_start * elem_size,
+                               index - 1);
+          }
+        }
+      } else {
+        // Source chunk is physically wrapped across the boundary
+        const std::size_t len2 = src_end - cap_;
+        ops->move_range_up(type, byte_data + 1 * elem_size, byte_data, len2);
+
+        ops->move_range(type, byte_data, byte_data + (cap_ - 1) * elem_size, 1);
+
+        const std::size_t len1 = cap_ - head_ - 1;
+        if (len1 > 0) {
+          ops->move_range_up(type, byte_data + (head_ + 1) * elem_size, byte_data + head_ * elem_size, len1);
+        }
+      }
+    }
+    // Update head
+    head_ = (head_ + 1 == cap_) ? 0 : head_ + 1;
+  } else {
+    // Shift logical [index + 1, len_) LEFT by 1
+    const std::size_t to_move = len_ - index - 1;
+    if (to_move > 0) {
+      std::size_t src_start = physical_idx + 1;
+      if (src_start >= cap_)
+        src_start -= cap_;
+      const std::size_t src_end = src_start + to_move;
+
+      if (src_end <= cap_) {
+        if (src_start > 0) {
+          // Completely contiguous shift left
+          ops->move_range(type, byte_data + (src_start - 1) * elem_size, byte_data + src_start * elem_size, to_move);
+        } else {
+          // Exactly starts at 0: the first element wraps to cap_ - 1
+          ops->move_range(type, byte_data + (cap_ - 1) * elem_size, byte_data, 1);
+          if (to_move > 1) {
+            ops->move_range(type, byte_data, byte_data + 1 * elem_size, to_move - 1);
+          }
+        }
+      } else {
+        // Source chunk is physically wrapped across the boundary
+        const std::size_t len1 = cap_ - src_start;
+        ops->move_range(type, byte_data + (src_start - 1) * elem_size, byte_data + src_start * elem_size, len1);
+
+        ops->move_range(type, byte_data + (cap_ - 1) * elem_size, byte_data, 1);
+
+        const std::size_t len2 = src_end - cap_ - 1;
+        if (len2 > 0) {
+          ops->move_range(type, byte_data, byte_data + 1 * elem_size, len2);
+        }
+      }
+    }
+  }
+
+  --len_;
   return {};
 }
 

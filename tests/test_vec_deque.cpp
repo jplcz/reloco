@@ -194,3 +194,90 @@ TEST(VecDequeTest, FallibleCloning) {
   auto slices = d2.as_slices();
   EXPECT_TRUE(slices.second.empty());
 }
+
+TEST(VecDequeTest, RotationOperations) {
+  auto deque_res = vec_deque<int>::try_create(5);
+  ASSERT_TRUE(deque_res.has_value());
+  auto &d = *deque_res;
+
+  // Fill partially: physically [_, _, 1, 2, 3]
+  ASSERT_TRUE(d.try_push_front(3));
+  ASSERT_TRUE(d.try_push_front(2));
+  ASSERT_TRUE(d.try_push_front(1));
+
+  // Rotate left by 1 -> logically [2, 3, 1]
+  d.rotate_left(1);
+  EXPECT_EQ(d[0], 2);
+  EXPECT_EQ(d[1], 3);
+  EXPECT_EQ(d[2], 1);
+
+  // Rotate right by 1 -> logically [1, 2, 3]
+  d.rotate_right(1);
+  EXPECT_EQ(d[0], 1);
+  EXPECT_EQ(d[1], 2);
+  EXPECT_EQ(d[2], 3);
+
+  // Force a wrapped buffer: physically [4, 5, 1, 2, 3] (fully packed)
+  ASSERT_TRUE(d.try_push_back(4));
+  ASSERT_TRUE(d.try_push_back(5));
+
+  // Rotate left by 2 on a fully packed ring is O(1) (moves 0 elements)
+  // logically becomes [3, 4, 5, 1, 2]
+  d.rotate_left(2);
+  EXPECT_EQ(d[0], 3);
+  EXPECT_EQ(d[1], 4);
+  EXPECT_EQ(d[2], 5);
+  EXPECT_EQ(d[3], 1);
+  EXPECT_EQ(d[4], 2);
+
+  // To undo rotate_left(2), we rotate_right(2)!
+  // logically returns to [1, 2, 3, 4, 5]
+  d.rotate_right(2);
+  EXPECT_EQ(d[0], 1);
+  EXPECT_EQ(d[1], 2);
+  EXPECT_EQ(d[4], 5);
+}
+
+TEST(VecDequeTest, ShortestShiftEraseAt) {
+  auto deque_res = vec_deque<int>::try_create(6);
+  ASSERT_TRUE(deque_res.has_value());
+  auto &d = *deque_res;
+
+  // Build wrapped state: [4, 5, 6, 1, 2, 3] physically.
+  // Logically: [1, 2, 3, 4, 5, 6]
+  ASSERT_TRUE(d.try_push_back(1).has_value());
+  ASSERT_TRUE(d.try_push_back(2).has_value());
+  ASSERT_TRUE(d.try_push_back(3).has_value());
+  ASSERT_TRUE(d.try_push_front(6).has_value());
+  ASSERT_TRUE(d.try_push_front(5).has_value());
+  ASSERT_TRUE(d.try_push_front(4).has_value());
+
+  // Erase index 1 (the '5').
+  // Since 1 < 6/2, it shifts the left chunk [0, 1) -> [4] rightwards.
+  // Logically becomes: [4, 6, 1, 2, 3]
+  ASSERT_TRUE(d.try_erase_at(1).has_value());
+  EXPECT_EQ(d.size(), 5);
+  EXPECT_EQ(d[0], 4);
+  EXPECT_EQ(d[1], 6);
+  EXPECT_EQ(d[2], 1);
+  EXPECT_EQ(d[3], 2);
+  EXPECT_EQ(d[4], 3);
+
+  // Erase index 3 (the '2').
+  // Since 3 > 5/2, it shifts the right chunk (3, 5) -> [3] leftwards.
+  // Logically becomes: [4, 6, 1, 3]
+  ASSERT_TRUE(d.try_erase_at(3).has_value());
+  EXPECT_EQ(d.size(), 4);
+  EXPECT_EQ(d[0], 4);
+  EXPECT_EQ(d[1], 6);
+  EXPECT_EQ(d[2], 1);
+  EXPECT_EQ(d[3], 3);
+
+  // Erase ends (falls into fast-paths internally)
+  ASSERT_TRUE(d.try_erase_at(0).has_value()); // pop_front
+  EXPECT_EQ(d[0], 6);
+
+  ASSERT_TRUE(d.try_erase_at(d.size() - 1).has_value()); // pop_back
+  EXPECT_EQ(d[d.size() - 1], 1);
+  EXPECT_EQ(d.size(), 2);
+}
