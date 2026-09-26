@@ -1203,6 +1203,26 @@ public:
     return std::nullopt;
   }
 
+  /**
+   * @brief Consumes and drops elements from the front of the buffer until the
+   * predicate returns true. The element that matches the predicate is NOT consumed.
+   *
+   * @param predicate A callable `bool(const T&)`
+   * @return The number of elements dropped.
+   */
+  template <typename Predicate> size_type consume_until(Predicate &&pred) & noexcept {
+    size_type dropped = 0;
+
+    auto it = std::find_if(this->begin(), this->end(), std::forward<Predicate>(pred));
+    dropped = static_cast<size_type>(it - this->begin());
+
+    if (dropped > 0) {
+      this->consume(dropped);
+    }
+
+    return dropped;
+  }
+
   // ---- Iterators ----
 
   template <bool IsConst> class RELOCO_POINTER ring_iterator {

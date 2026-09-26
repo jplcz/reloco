@@ -622,4 +622,16 @@ TEST(RingBufferTest, FindSequenceAcrossBoundary) {
   EXPECT_EQ(*pos, 9); // Index relative to current logical start
 }
 
+TEST(RingBufferTest, ConsumeUntil) {
+  inline_ring_buffer<char, 32> stream;
+  ASSERT_TRUE(stream.try_write(span<const char>("     { \"json\": true }", 21)).has_value());
+
+  // Fast-forward past all the garbage whitespace
+  std::size_t dropped = stream.consume_until([](char c) { return c == '{'; });
+
+  EXPECT_EQ(dropped, 5);
+  EXPECT_EQ(stream.size(), 16);
+  EXPECT_EQ(*stream.begin(), '{');
+}
+
 RELOCO_END_UNSAFE_BUFFER_USAGE
