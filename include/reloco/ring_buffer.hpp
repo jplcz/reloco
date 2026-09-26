@@ -1096,12 +1096,12 @@ public:
    * @param offset Logical byte offset to read from (default 0).
    * @return The struct by value, or std::nullopt if not enough bytes exist.
    */
-  template <typename U> [[nodiscard]] std::optional<U> peek_struct(size_type offset = 0) const noexcept {
+  template <typename U> [[nodiscard]] optional<U> peek_struct(size_type offset = 0) const noexcept {
     static_assert(sizeof(T) == 1, "peek_struct requires a byte-oriented buffer (char, uint8_t, std::byte)");
     static_assert(std::is_trivially_copyable_v<U>, "Can only peek trivially copyable structs");
 
     if (this->len_ - offset < sizeof(U)) {
-      return std::nullopt; // Not enough data
+      return nullopt; // Not enough data
     }
 
     U result;
