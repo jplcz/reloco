@@ -2,6 +2,7 @@
 #include <reloco/array.hpp>
 #include <reloco/ring_buffer.hpp>
 #include <reloco/span.hpp>
+#include <reloco/string_view.hpp>
 
 using namespace reloco;
 
@@ -690,3 +691,149 @@ TEST(RingBufferTest, LengthPrefixedFraming) {
 }
 
 RELOCO_END_UNSAFE_BUFFER_USAGE
+
+// ---------------------------------------------------------
+// Heap Ring Buffer Smoke Test
+// ---------------------------------------------------------
+TEST(RingBufferSmokeTest, HeapBufferAllocatesAndGrows) {
+  ring_buffer<char> buf;
+
+  // Initially empty with 0 capacity
+  EXPECT_EQ(buf.size(), 0);
+  EXPECT_EQ(buf.capacity(), 0);
+
+  // Reserve memory on the heap
+  ASSERT_TRUE(buf.try_reserve(16));
+  EXPECT_GE(buf.capacity(), 16);
+
+  // Write data
+  std::string_view msg = "HELLO";
+  ASSERT_TRUE(buf.try_write(span<const char>(msg.data(), msg.size())));
+  EXPECT_EQ(buf.size(), 5);
+
+  // Read it back
+  std::array<char, 5> out{};
+  EXPECT_EQ(buf.read(span<char>(out)), 5);
+  EXPECT_EQ(reloco::string_view(out.data(), 5), reloco::string_view("HELLO"));
+  EXPECT_EQ(buf.size(), 0);
+}
+
+// ---------------------------------------------------------
+// Inline (Stack) Ring Buffer Smoke Test
+// ---------------------------------------------------------
+TEST(RingBufferSmokeTest, InlineBufferStrictCapacity) {
+  inline_ring_buffer<int, 3> buf;
+
+  EXPECT_EQ(buf.capacity(), 3);
+
+  // Push 3 elements successfully
+  ASSERT_TRUE(buf.try_push_back(10));
+  ASSERT_TRUE(buf.try_push_back(20));
+  ASSERT_TRUE(buf.try_push_back(30));
+  EXPECT_EQ(buf.size(), 3);
+
+  // 4th element MUST fail because capacity is strictly locked to 3
+  EXPECT_FALSE(buf.try_push_back(40));
+
+  // Pop the front element
+  auto val = buf.try_pop_front();
+  ASSERT_TRUE(val);
+  EXPECT_EQ(*val, 10);
+  EXPECT_EQ(buf.size(), 2);
+}
+
+// ---------------------------------------------------------
+// SSO (Small String Optimization) Ring Buffer Smoke Test
+// ---------------------------------------------------------
+TEST(RingBufferSmokeTest, SsoBufferSpillsToHeap) {
+  sso_ring_buffer<int, 3> buf;
+
+  // Initially uses inline storage
+  EXPECT_EQ(buf.capacity(), 3);
+
+  // Fill inline storage
+  ASSERT_TRUE(buf.try_push_back(1).has_value());
+  ASSERT_TRUE(buf.try_push_back(2).has_value());
+  ASSERT_TRUE(buf.try_push_back(3).has_value());
+
+  // Push 4th element. This should seamlessly allocate heap memory,
+  // copy the existing 3 elements over, and push the 4th!
+  ASSERT_TRUE(buf.try_push_back(4));
+
+  EXPECT_GT(buf.capacity(), 3); // Proves it reallocated
+  EXPECT_EQ(buf.size(), 4);
+
+  // Verify data integrity after the move
+  EXPECT_EQ(buf.try_pop_front().unwrap(), 1);
+  EXPECT_EQ(buf.try_pop_front().unwrap(), 2);
+  EXPECT_EQ(buf.try_pop_front().unwrap(), 3);
+  EXPECT_EQ(buf.try_pop_front().unwrap(), 4);
+}
+
+// ---------------------------------------------------------
+// 4. Outline (External Memory) Ring Buffer Smoke Test
+// ---------------------------------------------------------
+TEST(RingBufferSmokeTest, OutlineBufferCrossCastsAndWraps) {
+  // We have an array of two 64-bit integers (16 bytes total)
+  std::array<uint64_t, 2> raw_storage = {0, 0};
+
+  // Construct a byte-oriented ring buffer over the uint64_t array.
+  // The cross-casting span constructor should calculate 16 bytes of capacity!
+  outline_ring_buffer<char> buf(reloco::span<uint64_t>{raw_storage});
+
+  EXPECT_EQ(buf.capacity(), 16);
+
+  // Write into the buffer
+  std::string_view msg = "12345678";
+  ASSERT_TRUE(buf.try_write(span<const char>(msg.data(), msg.size())));
+
+  // Verify it actually mutated the underlying external memory!
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE;
+  char *raw_bytes = reinterpret_cast<char *>(raw_storage.data());
+  EXPECT_EQ(raw_bytes[0], '1');
+  EXPECT_EQ(raw_bytes[7], '8');
+  RELOCO_END_UNSAFE_BUFFER_USAGE;
+}
+
+// ---------------------------------------------------------
+// 5. Ring Buffer Ref (Type Erasure & Cursor) Smoke Test
+// ---------------------------------------------------------
+
+namespace {
+// PARADIGM 1: The Mutating Reference
+// Accepts the base class by reference. Any consumes here mutate the original buffer.
+void process_network_packet(detail::unowned_ring_base<char> &stream) {
+  if (stream.size() >= 4) {
+    stream.consume(4);
+  }
+}
+
+// PARADIGM 2: The Independent Cursor
+// Accepts our new explicit cursor by value. Modifying it leaves the original untouched.
+std::size_t lookahead_scan(ring_buffer_ref<char> cursor) {
+  cursor.consume(2); // Modifies the local cursor's length, NOT the original!
+  return cursor.size();
+}
+} // namespace
+
+TEST(RingBufferSmokeTest, RingBufferRefTypeErasure) {
+  inline_ring_buffer<char, 32> fast_buf;
+  std::string_view msg = "PACKET_DATA";
+
+  // Write data and verify
+  ASSERT_TRUE(fast_buf.try_write(span<const char>(msg.data(), msg.size())).has_value());
+  EXPECT_EQ(fast_buf.size(), 11);
+
+  // 1. Pass by Reference (Modifies original buffer)
+  // Implicitly upcasts perfectly to detail::unowned_ring_base<char>&
+  process_network_packet(fast_buf);
+  EXPECT_EQ(fast_buf.size(), 7); // 11 - 4 = 7
+
+  // 2. Create an Independent Cursor
+  // Because the constructor is `explicit`, this compile-time safety is enforced.
+  // lookahead_scan(fast_buf) would fail to compile! We MUST explicitly borrow it:
+  std::size_t remaining_in_cursor = lookahead_scan(ring_buffer_ref<char>(fast_buf));
+
+  EXPECT_EQ(remaining_in_cursor, 5); // 7 - 2 = 5 inside the cursor
+  EXPECT_EQ(fast_buf.size(), 7);     // Original is UNTOUCHED!
+}

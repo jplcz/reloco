@@ -17,7 +17,7 @@ namespace detail {
 
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
-class RELOCO_EXPORT unowned_trivial_ring_base {
+class RELOCO_EXPORT RELOCO_POINTER unowned_trivial_ring_base {
 public:
   using size_type = std::size_t;
 
@@ -59,6 +59,13 @@ public:
     this->len_ -= count;
   }
 
+  unowned_trivial_ring_base &operator=(const unowned_trivial_ring_base &) noexcept = delete;
+  unowned_trivial_ring_base(const unowned_trivial_ring_base &) noexcept = delete;
+
+public:
+  [[nodiscard]] constexpr void *raw_data() const noexcept { return this->data_; }
+  [[nodiscard]] constexpr size_type raw_head() const noexcept { return this->head_; }
+
 protected:
   void *data_ = nullptr;
   std::size_t head_ = 0;
@@ -69,6 +76,11 @@ protected:
 
   constexpr unowned_trivial_ring_base(void *storage, const size_type capacity) noexcept
       : data_(storage), cap_(capacity) {}
+
+  // Explicit state adoption for the cursor
+  constexpr unowned_trivial_ring_base(void *storage, const size_type capacity, const size_type head,
+                                      const size_type len) noexcept
+      : data_(storage), head_(head), len_(len), cap_(capacity) {}
 
   [[nodiscard]] RELOCO_API result<void> try_reserve_base(allocator_ref alloc, std::size_t new_cap,
                                                          std::size_t elem_size, std::size_t align, void *inline_storage,
@@ -85,7 +97,7 @@ protected:
   RELOCO_API std::size_t read_base(void *dest, std::size_t count, std::size_t elem_size) noexcept;
 };
 
-template <typename T> class unowned_ring_base : public unowned_trivial_ring_base {
+template <typename T> class RELOCO_POINTER unowned_ring_base : public unowned_trivial_ring_base {
   static_assert(std::is_trivially_copyable_v<T>, "ring_buffer is strictly for trivial types (bytes, PODs)");
 
 protected:
@@ -94,12 +106,19 @@ protected:
   constexpr unowned_ring_base(void *storage, const size_type capacity) noexcept
       : unowned_trivial_ring_base(storage, capacity) {}
 
+  constexpr unowned_ring_base(void *storage, const size_type capacity, const size_type head,
+                              const size_type len) noexcept
+      : unowned_trivial_ring_base(storage, capacity, head, len) {}
+
 public:
   using value_type = std::remove_cv_t<T>;
   using reference = T &;
   using const_reference = const T &;
 
   // ---- Bulk Mutation ----
+
+  unowned_ring_base &operator=(const unowned_ring_base &) noexcept = delete;
+  unowned_ring_base(const unowned_ring_base &) noexcept = delete;
 
   /**
    * @brief Attempts to write the entire span into the buffer.
@@ -1288,12 +1307,26 @@ template <typename T> class outline_trivial_ring_base : public unowned_ring_base
 protected:
   constexpr outline_trivial_ring_base(void *storage, std::size_t capacity) noexcept
       : unowned_trivial_ring_base(storage, capacity) {}
+
   ~outline_trivial_ring_base() noexcept = default;
+
+  /**
+   * @brief Cross-casting constructor. Accepts a span of any type U.
+   * Automatically calculates the correct byte offset and truncates any trailing
+   * bytes that don't fit perfectly into a multiple of sizeof(T).
+   */
+  template <typename U>
+  constexpr explicit outline_trivial_ring_base(span<U> memory) noexcept
+      : unowned_ring_base<T>(const_cast<void *>(static_cast<const void *>(memory.data())),
+                             (memory.size() * sizeof(U)) / sizeof(T)) {
+    static_assert(!std::is_const_v<U>, "outline_ring_buffer writes to its storage and requires a mutable span");
+  }
+
   void destroy_elements(std::size_t) noexcept {
     this->len_ = 0;
     this->head_ = 0;
   }
-  [[nodiscard]] constexpr void *get_inline_storage() const noexcept { return this->ata_; }
+  [[nodiscard]] constexpr void *get_inline_storage() const noexcept { return this->data_; }
   [[nodiscard]] constexpr std::size_t max_capacity(std::size_t) const noexcept { return this->cap_; }
 
 public:
@@ -1376,7 +1409,7 @@ public:
   [[nodiscard]] std::size_t inline_capacity() const noexcept { return inline_capacity_; }
 };
 
-template <typename T, typename Base> class RELOCO_EXPORT typed_ring_buffer : public Base {
+template <typename T, typename Base> class RELOCO_EXPORT RELOCO_POINTER typed_ring_buffer : public Base {
   static_assert(std::is_trivially_copyable_v<T>, "ring_buffer is strictly for trivial types (bytes, PODs)");
 
 public:
@@ -1385,10 +1418,12 @@ public:
   using reference = T &;
   using const_reference = const T &;
 
+protected:
   // Inherit base constructors (binds to the specific storage policy)
   template <typename... Args>
   constexpr explicit typed_ring_buffer(Args &&...args) noexcept : Base(std::forward<Args>(args)...) {}
 
+public:
   [[nodiscard]] constexpr std::size_t max_capacity() const noexcept { return Base::max_capacity(sizeof(T)); }
 
   // ---- Capacity Management ----
@@ -1511,22 +1546,91 @@ RELOCO_END_UNSAFE_BUFFER_USAGE
 
 } // namespace detail
 
-template <typename T> using ring_buffer = detail::typed_ring_buffer<T, detail::heap_trivial_ring_base<T>>;
+template <typename T>
+class RELOCO_OWNER ring_buffer : public detail::typed_ring_buffer<T, detail::heap_trivial_ring_base<T>> {
+public:
+  constexpr explicit ring_buffer(allocator_ref alloc = default_allocator()) noexcept
+      : detail::typed_ring_buffer<T, detail::heap_trivial_ring_base<T>>(alloc) {}
 
-template <typename T> using outline_ring_buffer = detail::typed_ring_buffer<T, detail::outline_trivial_ring_base<T>>;
+  // Not copyable
+  ring_buffer(const ring_buffer &) noexcept = delete;
+  ring_buffer &operator=(const ring_buffer &) noexcept = delete;
+
+  // Moveable (Steals the heap pointer)
+  constexpr ring_buffer(ring_buffer &&other) noexcept
+      : detail::typed_ring_buffer<T, detail::heap_trivial_ring_base<T>>(other.get_allocator()) {
+    this->move_construct_from_base(std::move(other));
+  }
+
+  ring_buffer &operator=(ring_buffer &&other) noexcept {
+    this->move_assign_from_base(sizeof(T), std::move(other));
+    return *this;
+  }
+};
+
+template <typename T>
+class RELOCO_POINTER outline_ring_buffer : public detail::typed_ring_buffer<T, detail::outline_trivial_ring_base<T>> {
+public:
+  template <typename U>
+  constexpr explicit outline_ring_buffer(span<U> memory) noexcept
+      : detail::typed_ring_buffer<T, detail::outline_trivial_ring_base<T>>(memory) {}
+
+  // Never copyable and never movable (It doesn't own the memory it views)
+  outline_ring_buffer(const outline_ring_buffer &) noexcept = delete;
+  outline_ring_buffer &operator=(const outline_ring_buffer &) noexcept = delete;
+  outline_ring_buffer(outline_ring_buffer &&) noexcept = delete;
+  outline_ring_buffer &operator=(outline_ring_buffer &&) noexcept = delete;
+};
 
 template <typename T, std::size_t Capacity>
-class inline_ring_buffer : public detail::typed_ring_buffer<T, detail::inline_trivial_ring_base<T>> {
+class RELOCO_OWNER inline_ring_buffer : public detail::typed_ring_buffer<T, detail::inline_trivial_ring_base<T>> {
   alignas(T) std::byte storage_[Capacity * sizeof(T)];
 
 public:
   // ReSharper disable once CppPossiblyUninitializedMember
   constexpr inline_ring_buffer() noexcept // NOLINT(*-pro-type-member-init)
       : detail::typed_ring_buffer<T, detail::inline_trivial_ring_base<T>>(storage_, Capacity) {}
+
+  // Copy Constructor (Deep copies data into the new local array)
+  constexpr inline_ring_buffer(const inline_ring_buffer &other) noexcept // NOLINT(*-pro-type-member-init)
+      : detail::typed_ring_buffer<T, detail::inline_trivial_ring_base<T>>(storage_, Capacity) {
+    if (other.size() > 0) {
+      auto [s1, s2] = other.read_slices();
+      std::ignore = this->try_write(s1);
+      if (!s2.empty())
+        std::ignore = this->try_write(s2);
+    }
+  }
+
+  // Copy Assignment
+  inline_ring_buffer &operator=(const inline_ring_buffer &other) noexcept {
+    if (this != &other) {
+      this->clear();
+      if (other.size() > 0) {
+        auto [s1, s2] = other.read_slices();
+        std::ignore = this->try_write(s1);
+        if (!s2.empty())
+          std::ignore = this->try_write(s2);
+      }
+    }
+    return *this;
+  }
+
+  // Move Constructor (Uses base logic to shift elements zero-copy if possible)
+  constexpr inline_ring_buffer(inline_ring_buffer &&other) noexcept // NOLINT(*-pro-type-member-init)
+      : detail::typed_ring_buffer<T, detail::inline_trivial_ring_base<T>>(storage_, Capacity) {
+    this->move_construct_from_base(sizeof(T), std::move(other));
+  }
+
+  // Move Assignment
+  inline_ring_buffer &operator=(inline_ring_buffer &&other) noexcept {
+    this->move_assign_from_base(sizeof(T), std::move(other));
+    return *this;
+  }
 };
 
 template <typename T, std::size_t InlineCapacity>
-class sso_ring_buffer : public detail::typed_ring_buffer<T, detail::mixed_trivial_ring_base<T>> {
+class RELOCO_OWNER sso_ring_buffer : public detail::typed_ring_buffer<T, detail::mixed_trivial_ring_base<T>> {
   alignas(T) std::byte storage_[InlineCapacity * sizeof(T)];
 
 public:
@@ -1534,6 +1638,74 @@ public:
   constexpr explicit sso_ring_buffer( // NOLINT(*-pro-type-member-init)
       allocator_ref alloc = default_allocator()) noexcept
       : detail::typed_ring_buffer<T, detail::mixed_trivial_ring_base<T>>(storage_, InlineCapacity, alloc) {}
+
+  sso_ring_buffer(const sso_ring_buffer &other) = delete;
+  sso_ring_buffer &operator=(const sso_ring_buffer &other) = delete;
+
+  // Move Constructor (Steals heap pointer if spilled, else copies inline elements)
+  constexpr sso_ring_buffer(sso_ring_buffer &&other) noexcept // NOLINT(*-pro-type-member-init)
+      : detail::typed_ring_buffer<T, detail::mixed_trivial_ring_base<T>>(storage_, InlineCapacity,
+                                                                         other.get_allocator()) {
+    this->move_construct_from_base(sizeof(T), std::move(other));
+  }
+
+  // Move Assignment
+  sso_ring_buffer &operator=(sso_ring_buffer &&other) noexcept {
+    this->move_assign_from_base(sizeof(T), std::move(other));
+    return *this;
+  }
+};
+
+/**
+ * @brief An independent, lightweight cursor over a ring buffer.
+ * Initiates as an immutable borrow of the source buffer's state (copying its
+ * data pointer, capacity, head, and length).
+ * Because it holds its own internal pointers, calling `consume()` or `read()`
+ * on this reference advances its own cursor without modifying the original buffer.
+ */
+template <typename T> class RELOCO_POINTER ring_buffer_ref : public detail::unowned_ring_base<T> {
+public:
+  // ---- Sourcing from an Immutable Borrow ----
+
+  /**
+   * @brief Takes an immutable borrow of an existing ring buffer, explicitly copying
+   * its state to create an independent read/write cursor.
+   */
+  constexpr explicit ring_buffer_ref(const detail::unowned_ring_base<T> &source RELOCO_LIFETIMEBOUND) noexcept
+      : detail::unowned_ring_base<T>(source.raw_data(), source.capacity(), source.raw_head(), source.size()) {}
+
+  constexpr ring_buffer_ref(const ring_buffer_ref &other) noexcept
+      : detail::unowned_ring_base<T>(other.raw_data(), other.capacity(), other.raw_head(), other.size()) {}
+
+  ring_buffer_ref &operator=(const ring_buffer_ref &other) noexcept {
+    if (this != &other) {
+      // Protected members are accessible here because 'other' is the same derived type
+      this->data_ = other.data_;
+      this->cap_ = other.cap_;
+      this->head_ = other.head_;
+      this->len_ = other.len_;
+    }
+    return *this;
+  }
+
+  constexpr ring_buffer_ref(ring_buffer_ref &&other) noexcept
+      : ring_buffer_ref(static_cast<const ring_buffer_ref &>(other)) {}
+
+  ring_buffer_ref &operator=(ring_buffer_ref &&other) noexcept {
+    return *this = static_cast<const ring_buffer_ref &>(other);
+  }
+
+  // ---- Wrapping Raw Memory ----
+
+  constexpr explicit ring_buffer_ref(span<T> memory RELOCO_LIFETIMEBOUND) noexcept
+      : detail::unowned_ring_base<T>(memory.data(), memory.size(), 0, 0) {}
+
+  constexpr ring_buffer_ref(span<T> memory RELOCO_LIFETIMEBOUND, std::size_t initial_head,
+                            std::size_t initial_len) noexcept
+      : detail::unowned_ring_base<T>(memory.data(), memory.size(), initial_head, initial_len) {
+    RELOCO_ASSERT(initial_head < memory.size(), "Invalid initial head");
+    RELOCO_ASSERT(initial_len <= memory.size(), "Invalid initial length");
+  }
 };
 
 } // namespace reloco
