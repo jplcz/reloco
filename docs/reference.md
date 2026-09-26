@@ -1319,6 +1319,98 @@ Key &, Mapped &)`) — see [Flat hash containers](
 flat-hash-containers.md#rust-hashsethashmap-flavored-api-surface) for the
 full table.
 
+## `intrusive_hash_hook<T>` / `intrusive_hash_table<T, Hook, KeyOf, Hash = std::hash<Key>, KeyEqual = std::equal_to<Key>>`
+
+`include/reloco/intrusive_hash_table.hpp`
+
+A unique-key hash table that never allocates -- the odd one out among
+reloco's map/set family, matching Linux's `hlist_head`/`hlist_node`
+(`<linux/list.h>`) or Boost.Intrusive's `unordered_set` rather than any
+other reloco container. Every other map/set *owns* its element storage;
+`intrusive_hash_table` owns nothing at all, which is the point: it is
+meant for code that must run before an allocator subsystem is up (early
+kernel boot, an interrupt handler, a porting layer's own internals --
+see `include/reloco/detail/porting/README.md`). Nodes are ordinary caller-owned objects
+(`static`, stack, a caller-managed pool) that embed an
+`intrusive_hash_hook<T>` as a *named member* (not a CRTP base, so one
+object type can carry independent hooks for several different tables):
+
+```cpp
+struct my_node {
+  int key;
+  reloco::intrusive_hash_hook<my_node> hook;
+};
+struct my_node_key_of {
+  const int &operator()(const my_node &n) const noexcept { return n.key; }
+};
+using my_table = reloco::intrusive_hash_table<my_node, &my_node::hook, my_node_key_of>;
+
+std::array<my_node *, 16> buckets{};
+auto table_res = my_table::try_create(reloco::span<my_node *>(buckets.data(), buckets.size()));
+if (!table_res)
+  return;
+auto &table = *table_res;
+
+my_node a{1, {}};
+std::ignore = table.try_insert(a);
+assert(table.contains(1));
+table.remove(a); // O(1): no hashing/bucket-chain walk needed
+```
+
+- `try_create(buckets)` — adopts a caller-owned `span<T *>` bucket array
+  (zeroing every slot), failing with `error::invalid_argument` if empty.
+- `try_insert(node)` — fails with `error::already_exists` on a duplicate
+  key; `RELOCO_ASSERT`s @p node is not already linked into *this* or any
+  other table.
+- `try_find(key)` / `contains(key)` — hash+walk one bucket chain, same
+  asymptotic cost as `flat_hash_map`.
+- `try_remove(key)` — hashes+walks to find the node, then unlinks it.
+- `remove(node)` — O(1) unlink given a node reference already in hand
+  (matching Linux's `hlist_del`), via the hook's own `pprev` link -- no
+  hashing or bucket-chain walk. Prefer this over `try_remove(key)`
+  whenever the caller already has the node (e.g. from a prior
+  `try_find`).
+- `rehash(new_buckets)` — the caller-driven growth protocol (see below).
+- `clear()` — unlinks every node and zeroes every bucket;
+  `bucket_count()` is unchanged.
+
+Growing the bucket array is a two-step, caller-driven protocol rather
+than something `try_insert` ever does on its own: the caller allocates a
+*new*, larger `span<T *>` however it likes -- critically, **without**
+holding whatever lock guards concurrent access to the table, since
+allocation may be slow/contended -- then calls `rehash(new_buckets)`,
+which re-threads every currently linked node into the new array. Only
+that O(n) relinking pass needs to happen while holding the lock:
+
+```cpp
+auto new_storage = allocate_bucket_array(old_bucket_count * 2); // outside the lock
+{
+  auto guard = table_mutex.lock(); // held only for the relink below
+  std::ignore = table.rehash(reloco::span<my_node *>(new_storage, new_count));
+} // old bucket array (now unreferenced) may be freed here
+```
+
+`rehash` itself never allocates either. Nothing in this file ever calls
+an allocator, at any point.
+
+`size()`/`empty()`/`bucket_count()`/`load_factor_permille()`/
+`contains()`/const `try_find()` are all blocked on rvalue `*this` (a
+dangling-reference footgun, since the table is a non-owning `RELOCO_POINTER`
+view), and `try_insert`/`remove` explicitly reject rvalue node arguments
+too, matching the library-wide rvalue-safety convention (see [Lifetime
+and safety annotation macros](#lifetime-and-safety-annotation-macros)).
+
+`load_factor_permille()` reports load as parts-per-thousand (e.g. `1500`
+for an average chain length of `1.5`) rather than a `float` -- like every
+other reloco diagnostic accessor, it is integer-only, since kernel/
+bare-metal code (this file's whole reason to exist) frequently cannot use
+the FPU at all without extra save/restore ceremony.
+
+Unlike every other reloco container, `intrusive_hash_table` has no
+`try_clone`: cloning would require deciding where the clone's nodes live,
+which is exactly the decision this whole file exists to leave to the
+caller.
+
 ## `sso_flat_set<T, InlineCapacity, Compare = std::less<T>>`
 
 `include/reloco/sso_flat_set.hpp`
