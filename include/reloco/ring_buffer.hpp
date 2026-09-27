@@ -1585,6 +1585,8 @@ public:
   constexpr explicit ring_buffer(allocator_ref alloc = default_allocator()) noexcept
       : detail::typed_ring_buffer<T, detail::heap_trivial_ring_base<T>>(alloc) {}
 
+  ~ring_buffer() noexcept { this->destroy_elements(sizeof(T)); }
+
   // Not copyable
   ring_buffer(const ring_buffer &) noexcept = delete;
   ring_buffer &operator=(const ring_buffer &) noexcept = delete;
@@ -1671,6 +1673,8 @@ public:
   constexpr explicit sso_ring_buffer( // NOLINT(*-pro-type-member-init)
       allocator_ref alloc = default_allocator()) noexcept
       : detail::typed_ring_buffer<T, detail::mixed_trivial_ring_base<T>>(storage_, InlineCapacity, alloc) {}
+
+  ~sso_ring_buffer() noexcept { this->destroy_elements(sizeof(T)); }
 
   sso_ring_buffer(const sso_ring_buffer &other) = delete;
   sso_ring_buffer &operator=(const sso_ring_buffer &other) = delete;

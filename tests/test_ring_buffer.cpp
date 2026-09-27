@@ -21,7 +21,7 @@ TEST(RingBufferTest, BasicBulkReadWrite) {
   EXPECT_EQ(rb.free_space(), 5);
 
   // Read 3 bytes
-  std::array<char, 5> buf{};
+  std::array<char, 8> buf{};
   EXPECT_EQ(rb.read(span<char>(buf.data(), 3)), 3);
   EXPECT_EQ(std::string_view(buf.data(), 3), "Hel");
   EXPECT_EQ(rb.size(), 2);

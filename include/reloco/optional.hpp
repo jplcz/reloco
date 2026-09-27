@@ -58,10 +58,10 @@ template <typename T> class RELOCO_CONSUMABLE(unconsumed) optional {
 public:
   using value_type = T;
 
-  constexpr optional() noexcept RELOCO_RETURN_TYPESTATE(consumed) : dummy_('\0'), has_value_(false) {
+  constexpr optional() noexcept RELOCO_RETURN_TYPESTATE(consumed) : has_value_(false) {
     detail::poison_memory_region(std::addressof(value_), sizeof(T));
   }
-  constexpr optional(nullopt_t) noexcept : dummy_('\0'), has_value_(false) {
+  constexpr optional(nullopt_t) noexcept : has_value_(false) {
     detail::poison_memory_region(std::addressof(value_), sizeof(T));
   }
 
