@@ -15,6 +15,7 @@ add_jplcz_reloco_demo(scoped_workers)
 add_jplcz_reloco_demo(channel_pipeline)
 add_jplcz_reloco_demo(once_lock_config)
 add_jplcz_reloco_demo(park_ping_pong)
+add_jplcz_reloco_demo(bucket_vector)
 
 add_custom_target(jplcz_reloco_demos
     DEPENDS
