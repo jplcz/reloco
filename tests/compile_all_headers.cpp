@@ -10,6 +10,7 @@
 #include <reloco/array.hpp>
 #include <reloco/atomic_ops.hpp>
 #include <reloco/barrier.hpp>
+#include <reloco/bucket_allocator.hpp>
 #include <reloco/bytes.hpp>
 #include <reloco/channel.hpp>
 #include <reloco/checked.hpp>

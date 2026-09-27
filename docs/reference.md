@@ -37,6 +37,7 @@ where, not a tutorial.
 | `inplace_function.hpp` | `inplace_function<Signature, Capacity>` | Zero-allocation, fixed-capacity callable wrapper |
 | `stack_allocator.hpp` | `stack_allocator`, `stack_allocator_tag`, `stack_allocator_context` | Bump-pointer `allocator_traits` backend over a caller-owned buffer |
 | `pool_allocator.hpp` | `pool_allocator<Lock>`, `pool_allocator_tag<Lock>`, `pool_allocator_context<Lock>`, `null_mutex` | Fixed-block-size `allocator_traits` backend carving blocks out of slabs obtained from an upstream allocator, with kernel-style "unlock, allocate, relock" refill |
+| `bucket_allocator.hpp` | `bucket_allocator<Lock, BucketSizes...>`, `bucket_allocator_tag<Lock, BucketSizes...>`, `bucket_allocator_context<Lock, BucketSizes...>` | General-purpose `allocator_traits` backend combining a compile-time list of `pool_allocator`s, one per size bucket, routing each request to the smallest bucket that fits |
 | `unique_ptr.hpp` | `unique_ptr<T>` | Move-only, allocator-backed smart pointer with fallible construction |
 | `shared_ptr.hpp` | `shared_ptr<T>`, `weak_ptr<T>`, `enable_shared_from_this<T>` | Reference-counted, allocator-backed smart pointer with fallible construction |
 | `rc.hpp` | `rc<T>`, `weak_rc<T>`, `enable_rc_from_this<T>` | Single-threaded (non-atomic) reference-counted smart pointer, matching Rust's `Rc<T>`/`Weak<T>` |
@@ -2856,6 +2857,48 @@ upstream allocator. `expand_in_place`/`reallocate`/`advise` are
 intentionally omitted (every block is a fixed size, so there is nothing
 to grow/shrink in place) — `allocator_ref::can_reallocate()`/
 `can_advise()` report their absence seamlessly.
+
+## `bucket_allocator<Lock, BucketSizes...>` / `bucket_allocator_tag<Lock, BucketSizes...>` / `bucket_allocator_context<Lock, BucketSizes...>`
+
+`include/reloco/bucket_allocator.hpp`
+
+General-purpose `allocator_traits` backend combining a compile-time list
+of `pool_allocator`s (see above), one per size "bucket", routing each
+request to the smallest configured bucket that fits:
+
+```cpp
+reloco::bucket_allocator<reloco::null_mutex, 16, 32, 64, 128, 256> pool(
+    alignof(std::max_align_t), reloco::default_allocator(), 32);
+auto vec = reloco::vector<int>::try_allocate(pool.ref());
+```
+
+`BucketSizes...` must be listed in strictly ascending order (a
+`static_assert`, not a runtime check). Every bucket shares one
+`alignment` (a constructor parameter, not part of `BucketSizes`) and one
+upstream `allocator_ref` every bucket's own `pool_allocator_context<Lock>`
+obtains its slabs from. A request bigger than the largest configured
+bucket, or more aligned than `alignment`, fails with
+`error::allocation_failed` -- exactly like `pool_allocator` itself, this
+never falls through to a "handle anything" allocation path. Bucket
+selection is a plain linear scan bounded by `sizeof...(BucketSizes)` --
+deliberately simple and deterministic rather than, say, a binary search,
+since the bucket count is expected to stay small.
+
+Deallocation's one subtlety: the `bytes` a caller passes back to
+`deallocate()` is not always exactly the bucket size the block was
+carved from (a container may record, and later hand back, any value
+`<=` the actual capacity `allocate()` returned -- see `allocator.hpp`'s
+`mem_block` contract). `deallocate()` re-runs the same bucket-selection
+search to recover which bucket the block actually came from, then
+forwards *that bucket's own exact block size* to it, since
+`pool_allocator_context::deallocate_block` requires an exact match.
+
+`Lock` must always be given explicitly, even to pick the default
+`null_mutex` (e.g. `bucket_allocator<null_mutex, 16, 32, 64>`): a
+template parameter pack must be the last template parameter, so `Lock`,
+preceding `BucketSizes...`, cannot itself default while still letting a
+caller supply the (mandatory) bucket list after it. Neither copyable nor
+movable, for the same reasons as `pool_allocator<Lock>`.
 
 ## Fallible construction: `concepts.hpp` / `construction_helpers.hpp`
 
