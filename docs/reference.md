@@ -36,6 +36,7 @@ where, not a tutorial.
 | `function_ref.hpp` | `function_ref<R(Args...)>` | Non-owning, zero-allocation borrow of any callable |
 | `inplace_function.hpp` | `inplace_function<Signature, Capacity>` | Zero-allocation, fixed-capacity callable wrapper |
 | `stack_allocator.hpp` | `stack_allocator`, `stack_allocator_tag`, `stack_allocator_context` | Bump-pointer `allocator_traits` backend over a caller-owned buffer |
+| `pool_allocator.hpp` | `pool_allocator<Lock>`, `pool_allocator_tag<Lock>`, `pool_allocator_context<Lock>`, `null_mutex` | Fixed-block-size `allocator_traits` backend carving blocks out of slabs obtained from an upstream allocator, with kernel-style "unlock, allocate, relock" refill |
 | `unique_ptr.hpp` | `unique_ptr<T>` | Move-only, allocator-backed smart pointer with fallible construction |
 | `shared_ptr.hpp` | `shared_ptr<T>`, `weak_ptr<T>`, `enable_shared_from_this<T>` | Reference-counted, allocator-backed smart pointer with fallible construction |
 | `rc.hpp` | `rc<T>`, `weak_rc<T>`, `enable_rc_from_this<T>` | Single-threaded (non-atomic) reference-counted smart pointer, matching Rust's `Rc<T>`/`Weak<T>` |
@@ -2806,6 +2807,55 @@ function-local `static` state stays one shared instance across a
 `reloco_config.hpp`; the built-in, stateless heap-backed default has no
 such state to share, so this only matters for a custom hook shared across
 that boundary.
+
+## `pool_allocator<Lock>` / `pool_allocator_tag<Lock>` / `pool_allocator_context<Lock>` / `null_mutex`
+
+`include/reloco/pool_allocator.hpp`
+
+Fixed-block-size `allocator_traits` backend: hands out blocks of exactly
+one runtime-configured `block_size`/`block_alignment` (not a template
+parameter — construct one `pool_allocator` per size class needed), carved
+out of slabs obtained from an upstream `allocator_ref`. Rejects any request
+bigger than `block_size` or more aligned than `block_alignment` with
+`error::allocation_failed`, exactly like asking a fixed-size slab allocator
+(FreeBSD's `uma_zone`, Linux's `kmem_cache`) for something outside its
+zone.
+
+```cpp
+reloco::pool_allocator<> pool(64, alignof(std::max_align_t),
+                              reloco::default_allocator(), 32);
+auto vec = reloco::vector<int>::try_allocate(pool.ref());
+```
+
+All bookkeeping — the free-block list and the list of slabs themselves
+(for teardown) — is threaded intrusively through the blocks'/slabs' own
+memory (the first `sizeof(void*)` bytes of a free block, or of a slab,
+link to the next one): no separate tracking allocation is ever made. Each
+slab reserves exactly one whole block's worth of space at its front for
+that per-slab link.
+
+When the free list is empty, allocation releases the pool's internal
+`Lock` *before* calling into the (potentially slow/blocking) upstream
+allocator, and only reacquires it to splice the newly obtained slab's
+blocks onto the free list — the "unlock, allocate, relock" discipline a
+kernel slab allocator needs to avoid holding a spinlock across a call that
+might block or itself try to acquire a sleepable lock. `Lock` (the one
+template parameter) defaults to `null_mutex`, a no-op satisfying the same
+`lock()`/`unlock()`/`try_lock()` surface as `reloco::mutex`/
+`reloco::spin_lock` (either is a drop-in `Lock` for a genuinely
+multi-threaded pool); keep the default when the pool is only ever touched
+from a single thread or under some other external synchronization.
+
+`pool_allocator<Lock>` is neither copyable nor movable — it only ever
+exposes a type-erased `allocator_ref` via `.ref()`, so nothing needs (or
+is able) to relocate the pool itself once other code may already hold
+that handle (a real `Lock` like `reloco::mutex` is not movable/copyable
+either). Construct it once, in place, for the lifetime it needs to serve;
+its destructor returns every slab it is still holding back to the
+upstream allocator. `expand_in_place`/`reallocate`/`advise` are
+intentionally omitted (every block is a fixed size, so there is nothing
+to grow/shrink in place) — `allocator_ref::can_reallocate()`/
+`can_advise()` report their absence seamlessly.
 
 ## Fallible construction: `concepts.hpp` / `construction_helpers.hpp`
 

@@ -52,6 +52,7 @@
 #include <reloco/once_lock.hpp>
 #include <reloco/optional.hpp>
 #include <reloco/park.hpp>
+#include <reloco/pool_allocator.hpp>
 #include <reloco/relocatable.hpp>
 #include <reloco/rvalue_safety.hpp>
 #include <reloco/rw_lock.hpp>
