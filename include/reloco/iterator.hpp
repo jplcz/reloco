@@ -89,6 +89,8 @@
 #include <type_traits>
 #include <utility>
 
+RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+
 namespace reloco {
 
 namespace detail {
@@ -1173,3 +1175,5 @@ merge_iterator<Derived, Other> iterator_adaptor<Derived, Item>::merge(Other othe
 }
 
 } // namespace reloco
+
+RELOCO_END_UNSAFE_BUFFER_USAGE

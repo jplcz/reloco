@@ -37,6 +37,7 @@
 #include "default_allocator.hpp"
 #include "error.hpp"
 #include "expected.hpp"
+#include "iterator.hpp"
 #include "rvalue_safety.hpp"
 #include "span.hpp"
 #include <algorithm>
@@ -632,17 +633,22 @@ public:
    *
    * @param validator The exact same callable used in `try_consume_frame` to determine frame sizes.
    */
-  template <typename Header, typename PayloadType, typename Validator>
-  [[nodiscard]] result<void> try_write_frame_evicting(const Header &header, span<const PayloadType> payload,
+  template <typename Header, typename PayloadRange, typename Validator>
+  [[nodiscard]] result<void> try_write_frame_evicting(const Header &header, const PayloadRange &payloads,
                                                       Validator &&validator) & noexcept {
 
     static_assert(std::is_trivially_copyable_v<Header>, "Header must be trivially copyable");
-    static_assert(std::is_trivially_copyable_v<PayloadType>, "Payload must be trivially copyable");
     static_assert(sizeof(Header) % sizeof(T) == 0, "Header size must align with buffer element size");
-    static_assert(sizeof(PayloadType) % sizeof(T) == 0, "Payload size must align with buffer element size");
 
     const std::size_t header_elems = sizeof(Header) / sizeof(T);
-    const std::size_t payload_elems = (payload.size() * sizeof(PayloadType)) / sizeof(T);
+
+    const std::size_t payload_elems = reloco::iter(payloads)
+                                          .map([](const auto &chunk) -> std::size_t {
+                                            using element_t = std::remove_reference_t<decltype(*chunk.data())>;
+                                            return (chunk.size() * sizeof(element_t)) / sizeof(T);
+                                          })
+                                          .sum();
+
     const std::size_t total_elems = header_elems + payload_elems;
 
     // A frame physically cannot fit if it's larger than the entire ring buffer capacity
@@ -681,11 +687,27 @@ public:
     // Space is now guaranteed. Write losslessly!
     // Using try_write_base here instead of overwrite_base guarantees we don't accidentally shred data.
     std::ignore = this->try_write_base(&header, header_elems, sizeof(T));
-    if (payload_elems > 0) {
-      std::ignore = this->try_write_base(payload.data(), payload_elems, sizeof(T));
-    }
+
+    reloco::iter(payloads).for_each([this](const auto &chunk) {
+      if (!chunk.empty()) {
+        using chunk_element_t = std::remove_reference_t<decltype(*chunk.data())>;
+        std::ignore =
+            this->try_write_base(chunk.data(), (chunk.size() * sizeof(chunk_element_t)) / sizeof(T), sizeof(T));
+      }
+    });
 
     return {};
+  }
+
+  /**
+   * @brief Convenience overload for writing a single payload span.
+   */
+  template <typename Header, typename PayloadType, typename Validator>
+  [[nodiscard]] result<void> try_write_frame_evicting(const Header &header, span<const PayloadType> payload,
+                                                      Validator &&validator) & noexcept {
+
+    auto single_payload = array{payload};
+    return try_write_frame_evicting(header, single_payload, std::forward<Validator>(validator));
   }
 
   // ---- Delimiter Searching ----
