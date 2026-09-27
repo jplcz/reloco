@@ -59,6 +59,7 @@
 #include "rc.hpp"
 #include "relocatable.hpp"
 #include "rvalue_safety.hpp"
+#include "send_sync.hpp"
 #include "span.hpp"
 
 #include <cstddef>
@@ -387,6 +388,23 @@ template <> struct is_trivially_relocatable<bytes> : std::true_type {};
  * sizes, with no self-reference into its own storage.
  */
 template <> struct is_trivially_relocatable<bytes_mut> : std::true_type {};
+
+/**
+ * @brief `bytes` embeds an `rc<detail::bytes_storage>` for its shared,
+ * cheaply-cloneable ownership (see the file-level doc comment): cloning
+ * it is an `rc<T>` refcount bump, and that refcount is a plain, non-
+ * atomic increment/decrement -- exactly like `rc<T>` itself, `bytes` is
+ * unsound to transfer or share across threads even though its payload is
+ * immutable, because any clone might still be dropped concurrently from
+ * another thread, racing on the shared, unsynchronized refcount. Never
+ * `Send`/`Sync`, matching `rc<T>`'s own unconditional specializations in
+ * `rc.hpp`. `bytes_mut` needs no such override: it exclusively owns a
+ * plain heap allocation with no shared refcount, so its default (`true`)
+ * is correct.
+ */
+template <> struct is_send<bytes> : std::false_type {};
+/** @copydoc is_send<bytes> */
+template <> struct is_sync<bytes> : std::false_type {};
 
 #if RELOCO_SHARED_PROVIDE_DEFINITIONS
 #include "bytes.ipp"
