@@ -54,25 +54,20 @@ struct RELOCO_EXPORT nullopt_t {
 
 inline constexpr nullopt_t nullopt{nullopt_t::init{}};
 
-template <typename T> class RELOCO_CONSUMABLE(unconsumed) optional {
+template <typename T> class optional {
 public:
   using value_type = T;
 
-  constexpr optional() noexcept RELOCO_RETURN_TYPESTATE(consumed) : has_value_(false) {
-    detail::poison_memory_region(std::addressof(value_), sizeof(T));
-  }
-  constexpr optional(nullopt_t) noexcept RELOCO_RETURN_TYPESTATE(consumed) : has_value_(false) {
+  constexpr optional() noexcept : has_value_(false) { detail::poison_memory_region(std::addressof(value_), sizeof(T)); }
+  constexpr optional(nullopt_t) noexcept : has_value_(false) {
     detail::poison_memory_region(std::addressof(value_), sizeof(T));
   }
 
-  constexpr optional(const T &value) noexcept(std::is_nothrow_copy_constructible_v<T>)
-      RELOCO_RETURN_TYPESTATE(unconsumed)
-      : has_value_(false) {
+  constexpr optional(const T &value) noexcept(std::is_nothrow_copy_constructible_v<T>) : has_value_(false) {
     construct(value);
   }
 
-  constexpr optional(T &&value) noexcept(std::is_nothrow_move_constructible_v<T>) RELOCO_RETURN_TYPESTATE(unconsumed)
-      : has_value_(false) {
+  constexpr optional(T &&value) noexcept(std::is_nothrow_move_constructible_v<T>) : has_value_(false) {
     construct(std::move(value));
   }
 
@@ -90,14 +85,14 @@ public:
 
   template <typename... Args>
   constexpr explicit optional(std::in_place_t, Args &&...args) noexcept(std::is_nothrow_constructible_v<T, Args...>)
-      RELOCO_RETURN_TYPESTATE(unconsumed)
+
       : has_value_(false) {
     construct(std::forward<Args>(args)...);
   }
 
   ~optional() { destroy(); }
 
-  optional &operator=(nullopt_t) noexcept RELOCO_SET_TYPESTATE(consumed) {
+  optional &operator=(nullopt_t) noexcept {
     reset();
     return *this;
   }
@@ -134,8 +129,7 @@ public:
 
   template <typename U = T>
   std::enable_if_t<std::is_constructible_v<T, U &&> && std::is_assignable_v<T &, U &&>, optional &>
-  operator=(U &&value) noexcept(std::is_nothrow_assignable_v<T &, U &&> && std::is_nothrow_constructible_v<T, U &&>)
-      RELOCO_SET_TYPESTATE(unconsumed) {
+  operator=(U &&value) noexcept(std::is_nothrow_assignable_v<T &, U &&> && std::is_nothrow_constructible_v<T, U &&>) {
     if (has_value_) {
       value_ = std::forward<U>(value);
     } else {
@@ -144,16 +138,14 @@ public:
     return *this;
   }
 
-  [[nodiscard]] constexpr bool has_value() const noexcept RELOCO_TEST_TYPESTATE(unconsumed) { return has_value_; }
-  [[nodiscard]] constexpr explicit operator bool() const noexcept RELOCO_TEST_TYPESTATE(unconsumed) {
-    return has_value_;
-  }
+  [[nodiscard]] constexpr bool has_value() const noexcept { return has_value_; }
+  [[nodiscard]] constexpr explicit operator bool() const noexcept { return has_value_; }
 
   /** @brief Rust `Option::is_some()` alias for `has_value()`. */
-  [[nodiscard]] constexpr bool is_some() const noexcept RELOCO_TEST_TYPESTATE(unconsumed) { return has_value_; }
+  [[nodiscard]] constexpr bool is_some() const noexcept { return has_value_; }
 
   /** @brief Rust `Option::is_none()` alias for `!has_value()`. */
-  [[nodiscard]] constexpr bool is_none() const noexcept RELOCO_TEST_TYPESTATE(unconsumed) { return !has_value_; }
+  [[nodiscard]] constexpr bool is_none() const noexcept { return !has_value_; }
 
   /**
    * @brief Rust `Option::is_some_and` equivalent: `true` if a value is
@@ -162,64 +154,57 @@ public:
    */
   template <typename F> [[nodiscard]] bool is_some_and(F &&f) const noexcept { return has_value_ && f(value_); }
 
-  [[nodiscard]] T &value() & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+  [[nodiscard]] T &value() & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(has_value_, "optional has no value");
     return value_;
   }
 
-  [[nodiscard]] const T &value() const & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+  [[nodiscard]] const T &value() const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(has_value_, "optional has no value");
     return value_;
   }
 
-  [[nodiscard]] T &&value() && noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+  [[nodiscard]] T &&value() && noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(has_value_, "optional has no value");
     return std::move(value_);
   }
 
   /** @brief Rust `Option::unwrap()` alias for `value()`. */
-  [[nodiscard]] T &unwrap() & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") { return value(); }
+  [[nodiscard]] T &unwrap() & noexcept RELOCO_LIFETIMEBOUND { return value(); }
   /** @brief Rust `Option::unwrap()` alias for `value()`. */
-  [[nodiscard]] const T &unwrap() const & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
-    return value();
-  }
+  [[nodiscard]] const T &unwrap() const & noexcept RELOCO_LIFETIMEBOUND { return value(); }
   /** @brief Rust `Option::unwrap()` alias for `value()`. */
-  [[nodiscard]] T &&unwrap() && noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
-    return std::move(*this).value();
-  }
+  [[nodiscard]] T &&unwrap() && noexcept RELOCO_LIFETIMEBOUND { return std::move(*this).value(); }
 
   /**
    * @brief Rust `Option::expect(msg)` equivalent: like `value()`, but
    * @p msg is used as the `RELOCO_ASSERT_MSG` failure message instead of a
    * generic one, for a more actionable trap site.
    */
-  [[nodiscard]] T &expect(const char *msg) & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+  [[nodiscard]] T &expect(const char *msg) & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT_MSG(has_value_, msg);
     return value_;
   }
   /** @copydoc expect(const char *) & */
-  [[nodiscard]] const T &expect(const char *msg) const & noexcept RELOCO_LIFETIMEBOUND
-      RELOCO_CALLABLE_WHEN("unconsumed") {
+  [[nodiscard]] const T &expect(const char *msg) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT_MSG(has_value_, msg);
     return value_;
   }
   /** @copydoc expect(const char *) & */
-  [[nodiscard]] T &&expect(const char *msg) && noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+  [[nodiscard]] T &&expect(const char *msg) && noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT_MSG(has_value_, msg);
     return std::move(value_);
   }
 
-  [[nodiscard]] T &operator*() & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") { return value(); }
-  [[nodiscard]] const T &operator*() const & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
-    return value();
-  }
+  [[nodiscard]] T &operator*() & noexcept RELOCO_LIFETIMEBOUND { return value(); }
+  [[nodiscard]] const T &operator*() const & noexcept RELOCO_LIFETIMEBOUND { return value(); }
 
-  [[nodiscard]] T *operator->() noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+  [[nodiscard]] T *operator->() noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(has_value_, "optional has no value");
     return std::addressof(value_);
   }
 
-  [[nodiscard]] const T *operator->() const noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+  [[nodiscard]] const T *operator->() const noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(has_value_, "optional has no value");
     return std::addressof(value_);
   }
@@ -435,7 +420,7 @@ public:
    * callable, regardless of typestate (an empty `optional` simply
    * returns another empty one), matching `reset()`.
    */
-  [[nodiscard]] optional take() & noexcept(std::is_nothrow_move_constructible_v<T>) RELOCO_SET_TYPESTATE(consumed) {
+  [[nodiscard]] optional take() & noexcept(std::is_nothrow_move_constructible_v<T>) {
     if (!has_value_)
       return optional(nullopt);
     optional result(std::move(value_));
@@ -450,7 +435,7 @@ public:
    */
   template <typename U = T>
   optional replace(U &&value) & noexcept(std::is_nothrow_constructible_v<T, U &&> &&
-                                         std::is_nothrow_move_constructible_v<T>) RELOCO_SET_TYPESTATE(unconsumed) {
+                                         std::is_nothrow_move_constructible_v<T>) {
     optional old = take();
     construct(std::forward<U>(value));
     return old;
@@ -461,8 +446,7 @@ public:
    * @p value in; either way, returns a reference to the now-present
    * value.
    */
-  T &get_or_insert(T value) & noexcept(std::is_nothrow_move_constructible_v<T>) RELOCO_LIFETIMEBOUND
-      RELOCO_SET_TYPESTATE(unconsumed) {
+  T &get_or_insert(T value) & noexcept(std::is_nothrow_move_constructible_v<T>) RELOCO_LIFETIMEBOUND {
     if (!has_value_)
       construct(std::move(value));
     return value_;
@@ -474,8 +458,7 @@ public:
    * @p factory is never invoked when a value is already present; either
    * way, returns a reference to the now-present value.
    */
-  template <typename F>
-  T &get_or_insert_with(F &&factory) & noexcept RELOCO_LIFETIMEBOUND RELOCO_SET_TYPESTATE(unconsumed) {
+  template <typename F> T &get_or_insert_with(F &&factory) & noexcept RELOCO_LIFETIMEBOUND {
     if (!has_value_)
       construct(factory());
     return value_;
@@ -488,8 +471,7 @@ public:
    * overwrites; this is an alias of `emplace(value)`.
    */
   template <typename U = T>
-  T &insert(U &&value) & noexcept(std::is_nothrow_constructible_v<T, U &&>) RELOCO_LIFETIMEBOUND
-      RELOCO_SET_TYPESTATE(unconsumed) {
+  T &insert(U &&value) & noexcept(std::is_nothrow_constructible_v<T, U &&>) RELOCO_LIFETIMEBOUND {
     return emplace(std::forward<U>(value));
   }
 
@@ -514,14 +496,13 @@ public:
   }
 
   template <typename... Args>
-  T &emplace(Args &&...args) noexcept(std::is_nothrow_constructible_v<T, Args...>) RELOCO_LIFETIMEBOUND
-      RELOCO_SET_TYPESTATE(unconsumed) {
+  T &emplace(Args &&...args) noexcept(std::is_nothrow_constructible_v<T, Args...>) RELOCO_LIFETIMEBOUND {
     destroy();
     construct(std::forward<Args>(args)...);
     return value_;
   }
 
-  RELOCO_REINITIALIZES void reset() noexcept RELOCO_SET_TYPESTATE(consumed) { destroy(); }
+  RELOCO_REINITIALIZES void reset() noexcept { destroy(); }
 
   void swap(optional &other) noexcept(std::is_nothrow_move_constructible_v<T> && std::is_nothrow_move_assignable_v<T>) {
     if (has_value_ == other.has_value_) {
@@ -538,26 +519,6 @@ public:
         other.destroy();
       }
     }
-  }
-
-  /**
-   * @brief Recovers from Clang's "unknown" typestate at a reference/pointer
-   * boundary; see the primary template's @ref checked_value::as_known for
-   * the full explanation.
-   */
-  [[nodiscard]] optional &as_known() & noexcept RELOCO_RETURN_TYPESTATE(unconsumed) {
-    RELOCO_ASSERT(has_value_, "optional: as_known() called on empty object");
-    return *this;
-  }
-
-  [[nodiscard]] const optional &as_known() const & noexcept RELOCO_RETURN_TYPESTATE(unconsumed) {
-    RELOCO_ASSERT(has_value_, "optional: as_known() called on empty object");
-    return *this;
-  }
-
-  [[nodiscard]] optional &&as_known() && noexcept RELOCO_RETURN_TYPESTATE(unconsumed) {
-    RELOCO_ASSERT(has_value_, "optional: as_known() called on empty object");
-    return std::move(*this);
   }
 
 private:
