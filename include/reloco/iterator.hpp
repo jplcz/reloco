@@ -447,9 +447,9 @@ private:
  * copy. Constructed via `reloco::iter()`, never named directly.
  */
 template <typename It, typename Sentinel = It>
-class range_iterator : public iterator_adaptor<
-                            range_iterator<It, Sentinel>,
-                            std::reference_wrapper<std::remove_reference_t<decltype(*std::declval<It &>())>>> {
+class range_iterator
+    : public iterator_adaptor<range_iterator<It, Sentinel>,
+                              std::reference_wrapper<std::remove_reference_t<decltype(*std::declval<It &>())>>> {
 public:
   range_iterator(It first, Sentinel last) noexcept : current_(std::move(first)), last_(std::move(last)) {}
 
@@ -551,9 +551,8 @@ private:
 /** @brief Rust `Iterator::map()`. See `iterator_adaptor::map()`. */
 template <typename Upstream, typename F>
 class map_iterator
-    : public iterator_adaptor<
-          map_iterator<Upstream, F>,
-          std::decay_t<decltype(std::declval<F &>()(detail::unwrap_item(std::declval<typename Upstream::item_type &>())))>> {
+    : public iterator_adaptor<map_iterator<Upstream, F>, std::decay_t<decltype(std::declval<F &>()(detail::unwrap_item(
+                                                             std::declval<typename Upstream::item_type &>())))>> {
 public:
   using item_type =
       std::decay_t<decltype(std::declval<F &>()(detail::unwrap_item(std::declval<typename Upstream::item_type &>())))>;
@@ -738,14 +737,12 @@ using flatten_inner_t = std::remove_reference_t<decltype(unwrap_item(std::declva
 /** @brief Rust `Iterator::flatten()`. See `iterator_adaptor::flatten()`. */
 template <typename Upstream>
 class flatten_iterator
-    : public iterator_adaptor<
-          flatten_iterator<Upstream>,
-          std::reference_wrapper<std::remove_reference_t<
-              decltype(*std::declval<detail::flatten_inner_t<Upstream> &>().begin())>>> {
+    : public iterator_adaptor<flatten_iterator<Upstream>,
+                              std::reference_wrapper<std::remove_reference_t<
+                                  decltype(*std::declval<detail::flatten_inner_t<Upstream> &>().begin())>>> {
 public:
   using inner_type = detail::flatten_inner_t<Upstream>;
-  using item_type =
-      std::reference_wrapper<std::remove_reference_t<decltype(*std::declval<inner_type &>().begin())>>;
+  using item_type = std::reference_wrapper<std::remove_reference_t<decltype(*std::declval<inner_type &>().begin())>>;
 
   explicit flatten_iterator(Upstream upstream) noexcept : upstream_(std::move(upstream)) {}
 
@@ -815,8 +812,7 @@ public:
       auto item = upstream_.next();
       if (!item)
         return nullopt;
-      const bool is_dup =
-          previous_.has_value() && detail::unwrap_item(*previous_) == detail::unwrap_item(*item);
+      const bool is_dup = previous_.has_value() && detail::unwrap_item(*previous_) == detail::unwrap_item(*item);
       previous_ = item;
       if (!is_dup)
         return item;
@@ -870,15 +866,15 @@ private:
 /** @brief Rust slice `windows(N)` equivalent. See
  * `iterator_adaptor::windows()`. */
 template <typename Upstream, std::size_t N>
-class windows_iterator
-    : public iterator_adaptor<
-          windows_iterator<Upstream, N>,
-          std::array<std::remove_reference_t<decltype(detail::unwrap_item(std::declval<typename Upstream::item_type &>()))>,
-                     N>> {
+class windows_iterator : public iterator_adaptor<windows_iterator<Upstream, N>,
+                                                 std::array<std::remove_reference_t<decltype(detail::unwrap_item(
+                                                                std::declval<typename Upstream::item_type &>()))>,
+                                                            N>> {
 public:
   static_assert(N > 0, "windows<N>: N must be > 0");
 
-  using value_type = std::remove_reference_t<decltype(detail::unwrap_item(std::declval<typename Upstream::item_type &>()))>;
+  using value_type =
+      std::remove_reference_t<decltype(detail::unwrap_item(std::declval<typename Upstream::item_type &>()))>;
   using item_type = std::array<value_type, N>;
 
   explicit windows_iterator(Upstream upstream) noexcept : upstream_(std::move(upstream)) {}
@@ -950,9 +946,7 @@ private:
  */
 template <typename F>
 class from_fn_iterator
-    : public iterator_adaptor<
-          from_fn_iterator<F>,
-          typename decltype(std::declval<F &>()())::value_type> {
+    : public iterator_adaptor<from_fn_iterator<F>, typename decltype(std::declval<F &>()())::value_type> {
 public:
   using item_type = typename decltype(std::declval<F &>()())::value_type;
 
@@ -980,9 +974,7 @@ private:
  * // counter.count() == 5, yielding 0, 1, 2, 3, 4.
  * ```
  */
-template <typename F> [[nodiscard]] auto from_fn(F f) noexcept {
-  return from_fn_iterator<F>(std::move(f));
-}
+template <typename F> [[nodiscard]] auto from_fn(F f) noexcept { return from_fn_iterator<F>(std::move(f)); }
 
 /**
  * @brief Rust `std::iter::once()`: a source iterator yielding exactly one
@@ -1152,8 +1144,7 @@ step_by_iterator<Derived> iterator_adaptor<Derived, Item>::step_by(std::size_t n
   return step_by_iterator<Derived>(std::move(derived()), n);
 }
 
-template <typename Derived, typename Item>
-dedup_iterator<Derived> iterator_adaptor<Derived, Item>::dedup() noexcept {
+template <typename Derived, typename Item> dedup_iterator<Derived> iterator_adaptor<Derived, Item>::dedup() noexcept {
   return dedup_iterator<Derived>(std::move(derived()));
 }
 
@@ -1172,6 +1163,42 @@ template <typename Derived, typename Item>
 template <typename Other>
 merge_iterator<Derived, Other> iterator_adaptor<Derived, Item>::merge(Other other) noexcept {
   return merge_iterator<Derived, Other>(std::move(derived()), std::move(other));
+}
+
+template <typename T> class iota_iterator : public iterator_adaptor<iota_iterator<T>, T> {
+public:
+  using item_type = T;
+
+  /**
+   * @brief Constructs a bounded iota iterator [start, end)
+   */
+  constexpr iota_iterator(T start, T end) noexcept : m_current(start), m_end(end) {}
+
+  /**
+   * @brief Generates the next value in the sequence.
+   */
+  [[nodiscard]] constexpr optional<T> next_impl() noexcept RELOCO_RETURN_TYPESTATE(unknown) {
+    if (m_current < m_end) {
+      return m_current++; // Return the current value, then increment
+    }
+    return nullopt; // Sequence exhausted
+  }
+
+private:
+  T m_current;
+  T m_end;
+};
+
+/**
+ * @brief Generates a stream of values from `start` up to (but excluding) `end`.
+ *
+ * @param start The first value in the sequence.
+ * @param end The exclusive upper bound.
+ * @return A zero-allocation CRTP pipeline generator.
+ */
+template <typename T> [[nodiscard]] constexpr iota_iterator<T> iota(T start, T end) noexcept {
+  static_assert(std::is_integral_v<T>, "reloco::iota requires an integral type");
+  return iota_iterator<T>{start, end};
 }
 
 } // namespace reloco
