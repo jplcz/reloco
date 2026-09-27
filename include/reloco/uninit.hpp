@@ -33,11 +33,9 @@ public:
    * @brief Allocates the memory but leaves it completely uninitialized.
    * @note Starts in the 'consumed' (empty/invalid) state.
    */
+  // ReSharper disable once CppPossiblyUninitializedMember
   constexpr uninit() noexcept // NOLINT(*-pro-type-member-init)
-      RELOCO_RETURN_TYPESTATE(consumed) = default;
-
-  // No automatic destruction. T is only destroyed if explicitly requested.
-  ~uninit() noexcept = default;
+      RELOCO_RETURN_TYPESTATE(consumed) {}
 
   uninit(const uninit &) = delete;
   uninit &operator=(const uninit &) = delete;
@@ -48,8 +46,8 @@ public:
    * @post The memory is now initialized ('unconsumed').
    */
   template <typename... Args>
-  RELOCO_UNSAFE_BUFFER_USAGE T &write(Args &&...args) noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(consumed)
-      RELOCO_SET_TYPESTATE(unconsumed) {
+  RELOCO_UNSAFE_BUFFER_USAGE [[nodiscard]] T &write(Args &&...args) noexcept RELOCO_LIFETIMEBOUND
+      RELOCO_CALLABLE_WHEN(consumed) RELOCO_SET_TYPESTATE(unconsumed) {
     return *(new (&m_storage) T(std::forward<Args>(args)...));
   }
 
@@ -58,7 +56,7 @@ public:
    * @pre The memory must be uninitialized ('consumed').
    * @post The memory is now considered initialized ('unconsumed').
    */
-  RELOCO_UNSAFE_BUFFER_USAGE T *assume_init() noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(consumed)
+  RELOCO_UNSAFE_BUFFER_USAGE [[nodiscard]] T *assume_init() noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(consumed)
       RELOCO_SET_TYPESTATE(unconsumed) {
     return std::launder(reinterpret_cast<T *>(&m_storage));
   }
@@ -76,7 +74,8 @@ public:
    * @brief Safe read-only access to the initialized memory.
    * @pre The memory MUST be initialized ('unconsumed').
    */
-  RELOCO_UNSAFE_BUFFER_USAGE const T &get() const noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(unconsumed) {
+  RELOCO_UNSAFE_BUFFER_USAGE [[nodiscard]] const T &get() const noexcept RELOCO_LIFETIMEBOUND
+      RELOCO_CALLABLE_WHEN(unconsumed) {
     return *std::launder(reinterpret_cast<const T *>(&m_storage));
   }
 
@@ -84,7 +83,7 @@ public:
    * @brief Safe mutable access to the initialized memory.
    * @pre The memory MUST be initialized ('unconsumed').
    */
-  RELOCO_UNSAFE_BUFFER_USAGE T &get_mut() noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(unconsumed) {
+  RELOCO_UNSAFE_BUFFER_USAGE [[nodiscard]] T &get_mut() noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(unconsumed) {
     return *std::launder(reinterpret_cast<T *>(&m_storage));
   }
 
@@ -93,7 +92,8 @@ public:
    * @pre The memory MUST be initialized ('unconsumed').
    * @post The memory is returned to the uninitialized ('consumed') state.
    */
-  RELOCO_UNSAFE_BUFFER_USAGE T extract() noexcept RELOCO_CALLABLE_WHEN(unconsumed) RELOCO_SET_TYPESTATE(consumed) {
+  RELOCO_UNSAFE_BUFFER_USAGE [[nodiscard]] T extract() noexcept RELOCO_CALLABLE_WHEN(unconsumed)
+      RELOCO_SET_TYPESTATE(consumed) {
     T val = std::move(get_mut());
     destroy(); // Optional depending on if T is trivially destructible, but good practice.
     return val;

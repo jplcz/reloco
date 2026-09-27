@@ -83,11 +83,11 @@ public:
   // ==========================================================================
   // READER API (Lock-Free Typestate Transactions)
   // ==========================================================================
-  class RELOCO_CONSUMABLE(unverified) read_tx {
+  class RELOCO_CONSUMABLE(consumed) read_tx {
   public:
     // TSA is explicitly disabled here because readers mathematically bypass the mutex.
     explicit read_tx(const guarded_seqlock &lock) noexcept
-        RELOCO_RETURN_TYPESTATE(unverified) RELOCO_NO_THREAD_SAFETY_ANALYSIS : cell_(&lock) {
+        RELOCO_RETURN_TYPESTATE(consumed) RELOCO_NO_THREAD_SAFETY_ANALYSIS : cell_(&lock) {
       start_seq_ = cell_->seq_.load(std::memory_order_acquire);
 
       // Early bailout: Only copy if the sequence is EVEN (no writer is active)
@@ -96,7 +96,7 @@ public:
       }
     }
 
-    [[nodiscard]] bool verify() const noexcept RELOCO_TEST_TYPESTATE(verified) {
+    [[nodiscard]] bool verify() const noexcept RELOCO_TEST_TYPESTATE(unconsumed) {
       if (start_seq_ % 2 != 0)
         return false; // Writer was active when we started
 
@@ -106,7 +106,7 @@ public:
       return start_seq_ == cell_->seq_.load(std::memory_order_relaxed);
     }
 
-    [[nodiscard]] T extract() const noexcept RELOCO_CALLABLE_WHEN(verified) { return snapshot_; }
+    [[nodiscard]] T extract() const noexcept RELOCO_CALLABLE_WHEN(unconsumed) { return snapshot_; }
 
   private:
     const guarded_seqlock *cell_;

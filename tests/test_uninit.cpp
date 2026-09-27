@@ -48,7 +48,7 @@ TEST(UninitTest, PrimitiveWriteAndRead) {
   reloco::uninit<int> u; // NOLINT(*-pro-type-member-init)
 
   // Write transitions state to 'unconsumed'
-  u.write(42);
+  std::ignore = u.write(42);
 
   EXPECT_EQ(u.get(), 42);
 
@@ -70,7 +70,7 @@ TEST(UninitTest, ObjectLifetimeIsStrictlyManaged) {
     EXPECT_EQ(LifetimeTracker::constructions, 0);
 
     // In-place construction
-    tracker.write(99);
+    std::ignore = tracker.write(99);
     EXPECT_EQ(LifetimeTracker::constructions, 1);
     EXPECT_EQ(tracker.get().payload, 99);
 
@@ -87,7 +87,7 @@ TEST(UninitTest, ExtractMovesValueAndDestroys) {
   LifetimeTracker::reset();
 
   reloco::uninit<LifetimeTracker> u; // NOLINT(*-pro-type-member-init)
-  u.write(77);
+  std::ignore = u.write(77);
 
   // Extract should physically move the value out and call destroy() internally
   LifetimeTracker extracted = u.extract();
@@ -117,33 +117,33 @@ TEST(UninitTest, AssumeInitForHardwareDMA) {
 // ============================================================================
 // Compile-Time Typestate Tests (Negative Testing)
 // ============================================================================
-/*
+// #define RELOCO_TEST_COMPILATION_FAILURES
 #ifdef RELOCO_TEST_COMPILATION_FAILURES
 
 void test_typestate_enforcement() {
-    reloco::uninit<int> u;
 
-    // READ BEFORE WRITE (Caught by RELOCO_CALLABLE_WHEN(unconsumed))
-    // error: invalid invocation of method 'get' on object 'u' while it is in the 'consumed' state
-    int x = u.get();
+  reloco::uninit<int> u;
 
-    // DOUBLE INITIALIZATION (Caught by RELOCO_CALLABLE_WHEN(consumed))
-    u.write(1);
-    // error: invalid invocation of method 'write' on object 'u' while it is in the 'unconsumed' state
-    u.write(2);
+  // READ BEFORE WRITE (Caught by RELOCO_CALLABLE_WHEN(unconsumed))
+  // error: invalid invocation of method 'get' on object 'u' while it is in the 'consumed' state
+  [[maybe_unused]] int x = u.get();
 
-    // 3. DANGLING REFERENCE (Caught by RELOCO_LIFETIMEBOUND)
-    // warning: returning reference to local temporary object
-    const int& dangling = []() -> const int& {
-        reloco::uninit<int> temp;
-        temp.write(5);
-        return temp.get();
-    }();
+  // DOUBLE INITIALIZATION (Caught by RELOCO_CALLABLE_WHEN(consumed))
+  [[maybe_unused]] auto &u1 = u.write(1);
+  // error: invalid invocation of method 'write' on object 'u' while it is in the 'unconsumed' state
+  [[maybe_unused]] auto &u2 = u.write(2);
 
-    u.destroy();
+  // DANGLING REFERENCE (Caught by RELOCO_LIFETIMEBOUND)
+  // warning: returning reference to local temporary object
+  [[maybe_unused]] const int &dangling = []() -> const int & {
+    reloco::uninit<int> temp;
+    std::ignore = temp.write(5);
+    return temp.get();
+  }();
+
+  u.destroy();
 }
 
 #endif
-*/
 
 RELOCO_END_UNSAFE_BUFFER_USAGE

@@ -55,6 +55,7 @@
 #pragma once
 #include <atomic>
 #include <cstdint>
+#include <reloco/detail/assert.hpp>
 #include <reloco/lifetime.hpp>
 #include <type_traits>
 
@@ -126,11 +127,11 @@ template <typename T> class epoch_handle;
  * the underlying pointer unless `is_alive()` is called and returns `true`,
  * which transitions the compiler state to 'verified'.
  */
-template <typename T> class RELOCO_OWNER RELOCO_CONSUMABLE(unverified) [[nodiscard]] epoch_guard {
+template <typename T> class RELOCO_OWNER RELOCO_CONSUMABLE(consumed) [[nodiscard]] epoch_guard {
   friend class epoch_handle<T>;
   T *m_ptr;
 
-  constexpr explicit epoch_guard(T *p) noexcept RELOCO_RETURN_TYPESTATE(unverified) : m_ptr(p) {}
+  constexpr explicit epoch_guard(T *p) noexcept RELOCO_RETURN_TYPESTATE(consumed) : m_ptr(p) {}
 
 public:
   epoch_guard(const epoch_guard &) = delete;
@@ -143,28 +144,34 @@ public:
    * @brief Verifies if the object hasn't been recycled.
    * @note CLANG MAGIC: If this returns true, the object transitions to the 'verified' state.
    */
-  [[nodiscard]] bool is_alive() const noexcept RELOCO_TEST_TYPESTATE(verified) { return m_ptr != nullptr; }
+  [[nodiscard]] bool is_alive() const noexcept RELOCO_TEST_TYPESTATE(unconsumed) { return m_ptr != nullptr; }
 
   /**
    * @brief Safe mutable access to the underlying object.
    * @pre You must check `if (guard.is_alive())` first!
    */
-  RELOCO_UNSAFE_BUFFER_USAGE T &get() noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(verified) { return *m_ptr; }
+  T &get() noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(unconsumed) {
+    RELOCO_ASSERT(m_ptr != nullptr, "Object consumed");
+    return *m_ptr;
+  }
 
   /**
    * @brief Safe read-only access to the underlying object.
    * @pre You must check `if (guard.is_alive())` first!
    */
-  RELOCO_UNSAFE_BUFFER_USAGE const T &get() const noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(verified) {
+  const T &get() const noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(unconsumed) {
+    RELOCO_ASSERT(m_ptr != nullptr, "Object consumed");
     return *m_ptr;
   }
 
   // Syntactic sugar for direct pointer access
-  RELOCO_UNSAFE_BUFFER_USAGE T *operator->() noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(verified) {
+  T *operator->() noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(unconsumed) {
+    RELOCO_ASSERT(m_ptr != nullptr, "Object consumed");
     return m_ptr;
   }
 
-  RELOCO_UNSAFE_BUFFER_USAGE const T *operator->() const noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(verified) {
+  const T *operator->() const noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(unconsumed) {
+    RELOCO_ASSERT(m_ptr != nullptr, "Object consumed");
     return m_ptr;
   }
 };

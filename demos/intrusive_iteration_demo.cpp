@@ -70,7 +70,9 @@ int main() {
     if (t.is_blocked)
       return true;             // Extract immediately
     return t.tick();           // Or extract if it finishes this tick
-  }).for_each([&](auto &&tx) { // 'tx' is isolated_node_tx<TaskList, Task>
+  }).for_each([&](auto &&tx_obj) { // 'tx' is isolated_node_tx<TaskList, Task>
+    auto& tx = tx_obj.as_known();
+
     // 1. Safe Mutation Phase (Node is isolated from all graphs)
     Task &t = tx.get_mut();
 

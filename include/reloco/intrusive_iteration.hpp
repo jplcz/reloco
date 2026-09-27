@@ -60,6 +60,21 @@ public:
     return *m_node;
   }
 
+  isolated_node_tx &as_known() & noexcept RELOCO_RETURN_TYPESTATE(unconsumed) {
+    RELOCO_ASSERT(m_node != nullptr, "Called on consumed transaction");
+    return *this;
+  }
+
+  isolated_node_tx &&as_known() && noexcept RELOCO_RETURN_TYPESTATE(unconsumed) {
+    RELOCO_ASSERT(m_node != nullptr, "Called on consumed transaction");
+    return std::move(*this);
+  }
+
+  const isolated_node_tx &as_known() const & noexcept RELOCO_RETURN_TYPESTATE(unconsumed) {
+    RELOCO_ASSERT(m_node != nullptr, "Called on consumed transaction");
+    return *this;
+  }
+  
 private:
   T *m_node{nullptr};
   Container *m_container{nullptr};
@@ -76,8 +91,7 @@ public:
   extract_if_iterator(Container &c, Pred p) noexcept
       : m_container(&c), m_curr(c.begin()), m_pred(static_cast<Pred &&>(p)) {}
 
-  [[nodiscard]] optional<isolated_node_tx<Container, typename Container::value_type>> next_impl() noexcept
-      RELOCO_RETURN_TYPESTATE(unknown) {
+  [[nodiscard]] optional<isolated_node_tx<Container, typename Container::value_type>> next_impl() noexcept {
     while (m_curr != m_container->end()) {
       auto &item = *m_curr;
       ++m_curr; // Lookahead to protect the traversal state
