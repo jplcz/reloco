@@ -252,7 +252,7 @@
  * Marks a class as having a trackable lifetime state (e.g., "unconsumed", "consumed").
  * @example class RELOCO_CONSUMABLE(unconsumed) packet_writer { ...
  */
-#if defined(__clang__) && RELOCO_HAS_ATTRIBUTE(consumable) && defined(RELOCO_ENABLE_TYPESTATE)
+#if defined(__clang__) && RELOCO_HAS_ATTRIBUTE(consumable)
 #define RELOCO_CONSUMABLE(state) __attribute__((consumable(state)))
 #else
 #define RELOCO_CONSUMABLE(state)
@@ -265,7 +265,7 @@
  * @c RELOCO_RETURN_TYPESTATE, which take bare identifiers).
  * @example void write() RELOCO_CALLABLE_WHEN("unconsumed");
  */
-#if defined(__clang__) && RELOCO_HAS_ATTRIBUTE(callable_when) && defined(RELOCO_ENABLE_TYPESTATE)
+#if defined(__clang__) && RELOCO_HAS_ATTRIBUTE(callable_when)
 #define RELOCO_CALLABLE_WHEN(...) __attribute__((callable_when(__VA_ARGS__)))
 #else
 #define RELOCO_CALLABLE_WHEN(...)
@@ -275,7 +275,7 @@
  * Transitions the lifetime state of the object upon calling this method.
  * @example string_view finalize() RELOCO_SET_TYPESTATE(consumed);
  */
-#if defined(__clang__) && RELOCO_HAS_ATTRIBUTE(set_typestate) && defined(RELOCO_ENABLE_TYPESTATE)
+#if defined(__clang__) && RELOCO_HAS_ATTRIBUTE(set_typestate)
 #define RELOCO_SET_TYPESTATE(state) __attribute__((set_typestate(state)))
 #else
 #define RELOCO_SET_TYPESTATE(state)
@@ -284,7 +284,7 @@
 /**
  * Indicates what state an object is in when returned from a function.
  */
-#if defined(__clang__) && RELOCO_HAS_ATTRIBUTE(return_typestate) && defined(RELOCO_ENABLE_TYPESTATE)
+#if defined(__clang__) && RELOCO_HAS_ATTRIBUTE(return_typestate)
 #define RELOCO_RETURN_TYPESTATE(state) __attribute__((return_typestate(state)))
 #else
 #define RELOCO_RETURN_TYPESTATE(state)
@@ -294,7 +294,7 @@
  * Informs the analyzer that if this method returns true, the object is in the given state.
  * @example bool has_value() const RELOCO_TEST_TYPESTATE(unconsumed);
  */
-#if defined(__clang__) && RELOCO_HAS_ATTRIBUTE(test_typestate) && defined(RELOCO_ENABLE_TYPESTATE)
+#if defined(__clang__) && RELOCO_HAS_ATTRIBUTE(test_typestate)
 #define RELOCO_TEST_TYPESTATE(state) __attribute__((test_typestate(state)))
 #else
 #define RELOCO_TEST_TYPESTATE(state)

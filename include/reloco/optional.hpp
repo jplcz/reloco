@@ -61,7 +61,7 @@ public:
   constexpr optional() noexcept RELOCO_RETURN_TYPESTATE(consumed) : has_value_(false) {
     detail::poison_memory_region(std::addressof(value_), sizeof(T));
   }
-  constexpr optional(nullopt_t) noexcept : has_value_(false) {
+  constexpr optional(nullopt_t) noexcept RELOCO_RETURN_TYPESTATE(consumed) : has_value_(false) {
     detail::poison_memory_region(std::addressof(value_), sizeof(T));
   }
 
@@ -76,8 +76,7 @@ public:
     construct(std::move(value));
   }
 
-  optional(const optional &other) noexcept(std::is_nothrow_copy_constructible_v<T>) RELOCO_RETURN_TYPESTATE(unconsumed)
-      : has_value_(false) {
+  optional(const optional &other) noexcept(std::is_nothrow_copy_constructible_v<T>) : has_value_(false) {
     if (other.has_value_) {
       construct(other.value_);
     }
@@ -554,6 +553,11 @@ public:
   [[nodiscard]] const optional &as_known() const & noexcept RELOCO_RETURN_TYPESTATE(unconsumed) {
     RELOCO_ASSERT(has_value_, "optional: as_known() called on empty object");
     return *this;
+  }
+
+  [[nodiscard]] optional &&as_known() && noexcept RELOCO_RETURN_TYPESTATE(unconsumed) {
+    RELOCO_ASSERT(has_value_, "optional: as_known() called on empty object");
+    return std::move(*this);
   }
 
 private:

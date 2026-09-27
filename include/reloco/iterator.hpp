@@ -99,15 +99,58 @@ template <typename T> struct is_reference_wrapper : std::false_type {};
 template <typename T> struct is_reference_wrapper<std::reference_wrapper<T>> : std::true_type {};
 template <typename T> inline constexpr bool is_reference_wrapper_v = is_reference_wrapper<T>::value;
 
-// Unwraps a `std::reference_wrapper<T>` item back into a plain `T &`;
-// passes any other (owned) item type through as an lvalue reference to
-// itself, so callables/predicates always see a plain reference regardless
-// of whether the upstream adaptor borrows or owns its items.
-template <typename Item> [[nodiscard]] constexpr decltype(auto) unwrap_item(Item &item) noexcept {
-  if constexpr (is_reference_wrapper_v<Item>) {
+template <typename T, bool IsWrapper = is_reference_wrapper_v<T>> struct peek_underlying {
+  using type = T;
+};
+
+template <typename T> struct peek_underlying<T, true> {
+  using type = typename T::type;
+};
+
+template <typename Item>
+using unwrapped_raw_t = std::remove_cv_t<
+    std::remove_reference_t<typename detail::peek_underlying<std::remove_cv_t<std::remove_reference_t<Item>>>::type>>;
+
+template <typename T, typename = void> struct has_as_known_impl : std::false_type {};
+
+// std::declval<T&>() ensures we test the exact reference type (const or mutable)
+template <typename T>
+struct has_as_known_impl<T, std::void_t<decltype(std::declval<T &>().as_known())>> : std::true_type {};
+
+template <typename T> inline constexpr bool has_as_known_v = detail::has_as_known_impl<T>::value;
+
+template <typename T, bool IsWrapper = is_reference_wrapper_v<std::remove_reference_t<T>>> struct unwrap_return {
+  using type = T &;
+};
+
+// If it's a wrapper, it always returns an lvalue reference to the inner type
+template <typename T> struct unwrap_return<T, true> {
+  using type = typename std::remove_reference_t<T>::type &;
+};
+
+template <typename Item> using unwrap_return_t = typename unwrap_return<Item>::type;
+
+template <typename Item>
+[[nodiscard]] constexpr std::enable_if_t<!has_as_known_v<unwrapped_raw_t<Item>>,
+                                         unwrap_return_t<Item> // <--- Replaces decltype(auto)
+                                         >
+unwrap_item(Item &item) noexcept {
+  if constexpr (is_reference_wrapper_v<std::remove_reference_t<Item>>) {
     return item.get();
   } else {
     return (item);
+  }
+}
+
+template <typename Item>
+[[nodiscard]] constexpr std::enable_if_t<has_as_known_v<unwrapped_raw_t<Item>>,
+                                         unwrap_return_t<Item> // <--- Replaces decltype(auto)
+                                         >
+unwrap_item(Item &item) noexcept RELOCO_RETURN_TYPESTATE(unconsumed) {
+  if constexpr (is_reference_wrapper_v<std::remove_reference_t<Item>>) {
+    return item.get().as_known();
+  } else {
+    return item.as_known();
   }
 }
 
@@ -457,7 +500,7 @@ public:
 
   [[nodiscard]] optional<item_type> next_impl() noexcept {
     if (current_ == last_)
-      return nullopt;
+      return optional<item_type>();
     item_type ref(*current_);
     ++current_;
     return ref;
@@ -1179,9 +1222,9 @@ public:
    */
   [[nodiscard]] constexpr optional<T> next_impl() noexcept RELOCO_RETURN_TYPESTATE(unknown) {
     if (m_current < m_end) {
-      return m_current++; // Return the current value, then increment
+      return optional<T>(m_current++); // Return the current value, then increment
     }
-    return nullopt; // Sequence exhausted
+    return optional<T>(); // Sequence exhausted
   }
 
 private:
