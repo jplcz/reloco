@@ -2,6 +2,8 @@
 #
 # SPDX-License-Identifier: BSD-2-Clause
 
+find_package(Boost 1.77 CONFIG QUIET)
+
 function(add_jplcz_reloco_demo NAME)
     add_executable(${NAME} ${NAME}.cpp)
     target_link_libraries(${NAME} PRIVATE jplcz_reloco)
@@ -16,6 +18,11 @@ add_jplcz_reloco_demo(channel_pipeline)
 add_jplcz_reloco_demo(once_lock_config)
 add_jplcz_reloco_demo(park_ping_pong)
 add_jplcz_reloco_demo(bucket_vector)
+
+if(Boost_FOUND)
+    add_jplcz_reloco_demo(intrusive_iteration_demo)
+    target_link_libraries(intrusive_iteration_demo PRIVATE Boost::boost)
+endif()
 
 add_custom_target(jplcz_reloco_demos
     DEPENDS
