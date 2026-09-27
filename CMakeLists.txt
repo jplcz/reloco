@@ -450,6 +450,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_digraph.cpp
         tests/test_uninit.cpp
         tests/test_epoch.cpp
+        tests/test_ipc_buffer.cpp
     )
 
     target_link_libraries(jplcz_reloco_tests PRIVATE jplcz_reloco GTest::gtest_main)
