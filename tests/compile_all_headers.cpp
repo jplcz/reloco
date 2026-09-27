@@ -24,6 +24,7 @@
 #include <reloco/default_allocator.hpp>
 #include <reloco/digraph.hpp>
 #include <reloco/duration.hpp>
+#include <reloco/epoch.hpp>
 #include <reloco/error.hpp>
 #include <reloco/error_std.hpp>
 #include <reloco/expected.hpp>
