@@ -88,13 +88,46 @@
  * @def RELOCO_END_UNSAFE_BUFFER_USAGE
  * @brief Closes a block opened by RELOCO_BEGIN_UNSAFE_BUFFER_USAGE.
  */
-#if defined(__clang__)
 #define RELOCO_PRAGMA(x) _Pragma(#x)
+
+#if defined(__clang__)
 #define RELOCO_BEGIN_UNSAFE_BUFFER_USAGE RELOCO_PRAGMA(clang unsafe_buffer_usage begin)
 #define RELOCO_END_UNSAFE_BUFFER_USAGE RELOCO_PRAGMA(clang unsafe_buffer_usage end)
 #else
 #define RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 #define RELOCO_END_UNSAFE_BUFFER_USAGE
+#endif
+
+// ============================================================================
+// GCC False-Positive Bounds-Checking Pragma Control Blocks
+// ============================================================================
+
+/**
+ * @def RELOCO_BEGIN_SUPPRESS_GCC_BOUNDS_FALSE_POSITIVE
+ * @brief Suppresses GCC's `-Warray-bounds`/`-Wstringop-overread`/
+ * `-Wstringop-overflow`/`-Waggressive-loop-optimizations` false positives
+ * on generic, runtime-bounds-checked code: GCC's static range analysis can
+ * misjudge a branch guarded by an early-return runtime check (e.g. `if
+ * (index >= size) return ...;`) as reachable with an out-of-range
+ * index/trip-count, and warns on the (never actually taken) pointer
+ * arithmetic/`memmove` inside it. No-op on Clang/MSVC, which do not
+ * exhibit this false positive.
+ */
+/**
+ * @def RELOCO_END_SUPPRESS_GCC_BOUNDS_FALSE_POSITIVE
+ * @brief Closes a block opened by RELOCO_BEGIN_SUPPRESS_GCC_BOUNDS_FALSE_POSITIVE.
+ */
+#if defined(__GNUC__) && !defined(__clang__)
+#define RELOCO_BEGIN_SUPPRESS_GCC_BOUNDS_FALSE_POSITIVE                                                              \
+  RELOCO_PRAGMA(GCC diagnostic push)                                                                                 \
+  RELOCO_PRAGMA(GCC diagnostic ignored "-Warray-bounds")                                                             \
+  RELOCO_PRAGMA(GCC diagnostic ignored "-Wstringop-overread")                                                        \
+  RELOCO_PRAGMA(GCC diagnostic ignored "-Wstringop-overflow")                                                        \
+  RELOCO_PRAGMA(GCC diagnostic ignored "-Waggressive-loop-optimizations")
+#define RELOCO_END_SUPPRESS_GCC_BOUNDS_FALSE_POSITIVE RELOCO_PRAGMA(GCC diagnostic pop)
+#else
+#define RELOCO_BEGIN_SUPPRESS_GCC_BOUNDS_FALSE_POSITIVE
+#define RELOCO_END_SUPPRESS_GCC_BOUNDS_FALSE_POSITIVE
 #endif
 
 // ============================================================================

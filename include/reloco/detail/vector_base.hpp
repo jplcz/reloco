@@ -204,9 +204,15 @@ template <typename T> struct copy_construct_range_resolver {
           auto ctor_res = ops->copy_construct_one(type, alloc, ptr + i, value_ptr);
           if (!ctor_res) {
             if (ops->destroy_one) {
+              // GCC (13/14/15) can misanalyze this rollback loop's trip count
+              // as huge under -O3, treating an unreachable overflow of
+              // `constructed` as possible -- see lifetime.hpp for the full
+              // rationale behind this suppression.
+              RELOCO_BEGIN_SUPPRESS_GCC_BOUNDS_FALSE_POSITIVE;
               for (std::size_t j = from; j < constructed; ++j) {
                 ops->destroy_one(type, ptr + j);
               }
+              RELOCO_END_SUPPRESS_GCC_BOUNDS_FALSE_POSITIVE;
             }
             return unexpected(ctor_res.error());
           }

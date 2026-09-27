@@ -261,7 +261,14 @@ RELOCO_API result<void> unowned_vector_base::try_erase_at_base(const vector_oper
     const void *src = byte_data + (index + 1) * elem_size;
 
     if (type.is_trivially_relocatable()) {
+      // GCC (13/14/15) can constant-fold an out-of-range call-site `index`
+      // through inlining, evaluate `index >= size_` as provably-true dead
+      // code too late relative to its -Warray-bounds= pass, and warn on
+      // this never-reached memmove -- see lifetime.hpp for the full
+      // rationale behind this suppression.
+      RELOCO_BEGIN_SUPPRESS_GCC_BOUNDS_FALSE_POSITIVE;
       std::memmove(dest, src, move_count * elem_size);
+      RELOCO_END_SUPPRESS_GCC_BOUNDS_FALSE_POSITIVE;
     } else {
       // Reuse operations->move_range to safely shift non-trivial elements down
       operations->move_range(type, dest, src, move_count);
