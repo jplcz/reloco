@@ -206,7 +206,6 @@ public:
   size_type bucket_count() const && = delete;
   size_type load_factor_permille() const && = delete;
 
-
   /**
    * @brief Links @p node in, keyed by `KeyOf{}(node)`. Fails with
    * `error::already_exists` if an equivalent key is already present.
@@ -216,7 +215,8 @@ public:
   [[nodiscard]] result<void> try_insert(T &node) & noexcept {
     RELOCO_ASSERT(!hook_of(node).is_linked(),
                   "reloco::intrusive_hash_table::try_insert: node is already linked into a table");
-    const key_type &key = KeyOf{}(node);
+    const KeyOf keyOf{};
+    const key_type &key = keyOf(node);
     if (find_ptr(key) != nullptr)
       return unexpected(error::already_exists);
     link_at(index_for(key), node);
@@ -242,8 +242,7 @@ public:
   }
 
   /** @brief Fails with `error::not_found` if @p key is absent. */
-  template <typename K>
-  [[nodiscard]] result<std::reference_wrapper<const T>> try_find(const K &key) const & noexcept {
+  template <typename K> [[nodiscard]] result<std::reference_wrapper<const T>> try_find(const K &key) const & noexcept {
     const T *found = find_ptr(key);
     if (found == nullptr)
       return unexpected(error::not_found);
@@ -301,10 +300,11 @@ public:
     for (size_type i = 0; i < old_buckets.size(); ++i) {
       T *cur = old_buckets[i];
       while (cur != nullptr) {
+        const KeyOf keyOf{};
         T *next = hook_of(*cur).next;
         hook_of(*cur).next = nullptr;
         hook_of(*cur).pprev = nullptr;
-        link_at(index_for(KeyOf{}(*cur)), *cur);
+        link_at(index_for(keyOf(*cur)), *cur);
         cur = next;
       }
     }
@@ -361,8 +361,10 @@ private:
     if (buckets_.empty())
       return nullptr;
     size_type idx = Hash{}(key) % buckets_.size();
+    const KeyOf keyOf{};
+    const KeyEqual keyEqual{};
     for (T *cur = buckets_[idx]; cur != nullptr; cur = hook_of(*cur).next) {
-      if (KeyEqual{}(KeyOf{}(*cur), key))
+      if (keyEqual(keyOf(*cur), key))
         return cur;
     }
     return nullptr;
