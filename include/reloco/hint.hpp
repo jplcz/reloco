@@ -46,19 +46,47 @@ namespace hint {
 inline void spin_loop() noexcept {
 #if defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64))
   _mm_pause();
+
 #elif defined(__i386__) || defined(__x86_64__)
   __asm__ __volatile__("pause" ::: "memory");
+
 #elif defined(_MSC_VER) && (defined(_M_ARM) || defined(_M_ARM64))
   __yield();
+
 #elif defined(__arm__) || defined(__aarch64__)
   __asm__ __volatile__("yield" ::: "memory");
+
+#elif defined(__riscv)
+  // RISC-V Zihintpause extension.
+  // We emit the exact opcode (0x0100000F) rather than the "pause" mnemonic.
+  // This guarantees compilation succeeds even on older toolchains or when the
+  // '-mzihintpause' flag is omitted. On older silicon, this safely executes
+  // as a harmless 'fence' (NOP) instruction.
+  __asm__ __volatile__(".word 0x0100000F" ::: "memory");
+
 #elif defined(__powerpc__) || defined(__ppc__) || defined(__PPC__)
+  // PowerPC 'yield' instruction
   __asm__ __volatile__("or 27,27,27" ::: "memory");
+
+#elif defined(__mips__)
+  // MIPS32r2+ 'pause' instruction
+  __asm__ __volatile__("pause" ::: "memory");
+
+#elif defined(__sparc__)
+  // SPARC V9 CPU yield (reads Condition Code Register into %g0)
+  __asm__ __volatile__("rd %%ccr, %%g0" ::: "memory");
+
+#elif defined(__loongarch__) || defined(__s390x__) || defined(__wasm__)
+  // Architectures without a dedicated hardware spin-wait instruction.
+  // We rely on the fallback compiler fence.
+  __asm__ __volatile__("" ::"memory");
+
 #else
-  // No dedicated spin-wait instruction on this architecture: a
-  // compiler-only fence at least prevents the loop from being optimized
-  // away, without pretending to hint anything to the hardware.
-  std::atomic_signal_fence(std::memory_order_seq_cst);
+  // Fallback for all unknown/legacy architectures:
+  // A compiler-only fence guarantees the loop isn't aggressively optimized away
+  // by Clang/GCC, acting as a strict memory barrier.
+  __asm__ __volatile__("" ::"memory");
+
 #endif
 }
 

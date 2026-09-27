@@ -62,6 +62,7 @@
 #include <reloco/rw_lock.hpp>
 #include <reloco/scope.hpp>
 #include <reloco/send_sync.hpp>
+#include <reloco/seqlock.hpp>
 #include <reloco/shared_ptr.hpp>
 #include <reloco/span.hpp>
 #include <reloco/spin_lock.hpp>
