@@ -1,6 +1,7 @@
 #include <boost/intrusive/list.hpp>
 #include <iostream>
 #include <reloco/intrusive_iteration.hpp>
+#include <reloco/scope_guard.hpp>
 
 using namespace boost::intrusive;
 
@@ -58,6 +59,8 @@ int main() {
     // In a real system, this returns the memory to the slab allocator.
     std::cout << "[SYSTEM] Task " << t->id << " memory reclaimed.\n";
   };
+
+  RELOCO_DEFER([&]() { std::cout << "This would put blocked tasks back\n"; });
 
   // ========================================================================
   // 3. The Functional Pipeline
