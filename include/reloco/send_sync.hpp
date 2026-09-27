@@ -75,11 +75,36 @@
  * specialization is always preferred over the primary template, so a
  * type that *does* specialize never instantiates the primary template's
  * body at all, and never trips the assertion).
+ *
+ * **Experimental**: when built with `-freflection` on a P2996-capable
+ * compiler (currently GCC trunk/16+; see `RELOCO_HAS_REFLECTION` in
+ * `detail/compat.hpp`), the "arbitrary `T`" default above stops being a
+ * blind `true` and instead structurally composes the trait from `T`'s
+ * base classes and non-static data members (including private ones),
+ * recursing through the same trait -- much closer to what Rust's compiler
+ * actually does. This only ever changes behavior for a `T` that has *no*
+ * explicit `is_send<T>`/`is_sync<T>` specialization of its own: a real
+ * specialization is always preferred by ordinary C++ overload resolution
+ * for class template specializations, so it is chosen instead and the
+ * structural fallback is never even instantiated for that `T`. This closes
+ * (for reflection-enabled builds only) exactly the "composition is not
+ * automatic" caveat two paragraphs up: e.g. a plain user struct embedding
+ * an `rc<T>` field now correctly comes out `is_send == false`, composed
+ * transitively through `rc<T>`'s own specialization, with no manual
+ * annotation required. `detail::requires_explicit_send_sync`-marked types
+ * are unaffected either way -- their hazard (a non-atomic refcount, a
+ * const-invoked-non-const callable, ...) is a property of *behavior*, not
+ * of field types, so it can never be safely derived structurally; they
+ * must keep specializing manually regardless of reflection availability.
  */
 
 #include "detail/compat.hpp"
 
 #include <type_traits>
+
+#if RELOCO_HAS_REFLECTION
+#include <meta>
+#endif
 
 namespace reloco {
 
@@ -99,16 +124,57 @@ namespace detail {
  */
 struct requires_explicit_send_sync {};
 
+#if RELOCO_HAS_REFLECTION
+
+/**
+ * @brief Experimental, `-freflection`-only structural fallback for
+ * `is_send<T>`/`is_sync<T>` (see the file-level "Experimental" section
+ * above). Only ever instantiated for a `T` with no explicit
+ * specialization of `Trait` (a specialization always wins over the
+ * primary template that calls this, so this can never override anyone's
+ * manually-verified judgment). Walks `T`'s base classes and non-static
+ * data members -- via `access_context::unchecked()`, so private members
+ * are seen too, matching how Rust's compiler sees every field regardless
+ * of visibility -- and requires `Trait<Member>::value` for every one of
+ * them, recursing through the same `Trait` so nested reloco-marked types
+ * (`rc<T>`, `function<Sig>`, ...) are picked up transitively. Anything
+ * that isn't `is_class_v` (fundamentals, pointers, references, unions,
+ * arrays, ...) is treated as an opaque `true` leaf, identical to today's
+ * non-reflection default.
+ */
+template <template <typename> class Trait, typename T> consteval bool compose_send_sync() {
+  if constexpr (std::is_class_v<T>) {
+    bool ok = true;
+    template for (constexpr auto b :
+                  define_static_array(std::meta::bases_of(^^T, std::meta::access_context::unchecked())))
+      ok = ok && Trait<typename [:std::meta::type_of(b):]>::value;
+    template for (constexpr auto m : define_static_array(std::meta::nonstatic_data_members_of(
+                      ^^T, std::meta::access_context::unchecked())))
+      ok = ok && Trait<typename [:std::meta::type_of(m):]>::value;
+    return ok;
+  } else {
+    return true;
+  }
+}
+
+#endif // RELOCO_HAS_REFLECTION
+
 } // namespace detail
 
 /**
  * @brief Customization point: is it sound to move a `T` to another thread
- * and continue using it only from there? Defaults to `true`. Specialize
- * to `std::false_type` (or forward to another trait) for a type with
+ * and continue using it only from there? Defaults to `true` (or, on a
+ * `RELOCO_HAS_REFLECTION` build, a structural composition over `T`'s
+ * fields -- see the file-level documentation above). Specialize to
+ * `std::false_type` (or forward to another trait) for a type with
  * non-atomic shared state that makes cross-thread ownership transfer
- * unsound (see the file-level documentation above).
+ * unsound.
  */
+#if RELOCO_HAS_REFLECTION
+template <typename T> struct is_send : std::bool_constant<detail::compose_send_sync<is_send, T>()> {
+#else
 template <typename T> struct is_send : std::true_type {
+#endif
   static_assert(!std::is_base_of_v<detail::requires_explicit_send_sync, T>,
                 "T privately inherits detail::requires_explicit_send_sync but has no "
                 "is_send<T> specialization -- see send_sync.hpp");
@@ -122,12 +188,17 @@ template <typename T> inline constexpr bool is_send_v = is_send<T>::value;
 /**
  * @brief Customization point: is it sound to share a `T` across threads
  * through a `const T &` (i.e. concurrent read access, or access
- * externally synchronized by the caller)? Defaults to `true`. Specialize
- * to `std::false_type` for a type whose `const`-qualified operations still
- * mutate unsynchronized shared state (see the file-level documentation
- * above).
+ * externally synchronized by the caller)? Defaults to `true` (or, on a
+ * `RELOCO_HAS_REFLECTION` build, a structural composition over `T`'s
+ * fields -- see the file-level documentation above). Specialize to
+ * `std::false_type` for a type whose `const`-qualified operations still
+ * mutate unsynchronized shared state.
  */
+#if RELOCO_HAS_REFLECTION
+template <typename T> struct is_sync : std::bool_constant<detail::compose_send_sync<is_sync, T>()> {
+#else
 template <typename T> struct is_sync : std::true_type {
+#endif
   static_assert(!std::is_base_of_v<detail::requires_explicit_send_sync, T>,
                 "T privately inherits detail::requires_explicit_send_sync but has no "
                 "is_sync<T> specialization -- see send_sync.hpp");

@@ -29,6 +29,21 @@
 #define RELOCO_HAS_INCLUDE(header) 0
 #endif
 
+/**
+ * @brief Detects experimental P2996 ("Reflection for C++26") support, as
+ * shipped by GCC trunk (16+) behind `-freflection` and `-std=c++26`/`-std=
+ * gnu++26`. `__cpp_impl_reflection` is the SD-6 feature-test macro P2996
+ * itself defines; it is only ever defined when the compiler was actually
+ * invoked with the flag that turns reflection on, so this is a strict,
+ * zero-cost opt-in: every other build (the overwhelming majority) sees
+ * `RELOCO_HAS_REFLECTION` as `0` and is entirely unaffected.
+ */
+#if defined(__cpp_impl_reflection) && RELOCO_HAS_INCLUDE(<meta>)
+#define RELOCO_HAS_REFLECTION 1
+#else
+#define RELOCO_HAS_REFLECTION 0
+#endif
+
 #if defined(__has_cpp_attribute)
 #define RELOCO_HAS_CPP_ATTRIBUTE(attribute) __has_cpp_attribute(attribute)
 #else
