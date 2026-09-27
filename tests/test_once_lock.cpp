@@ -42,7 +42,10 @@ TEST(OnceLockTest, GetMutAllowsInPlaceMutation) {
   ASSERT_NE(mut, nullptr);
   *mut += " world";
 
-  EXPECT_EQ(*cell.get(), "hello world");
+  const auto get_v = cell.get();
+  ASSERT_NE(get_v, nullptr);
+
+  EXPECT_EQ(*get_v, "hello world");
 }
 
 TEST(OnceLockTest, GetOrTryInitRunsInitializerExactlyOnceOnAnEmptyCell) {

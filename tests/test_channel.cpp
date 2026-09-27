@@ -110,9 +110,9 @@ TEST(ChannelTest, RecvTimeoutFailsWithContainerEmptyAfterAllSendersDropped) {
 TEST(ChannelTest, RecvTimeoutReturnsValueWhenSentBeforeTimeoutElapses) {
   auto ends = reloco::channel<int>();
   ASSERT_TRUE(ends);
-  auto [tx, rx] = std::move(*ends);
+  auto [tx1, rx] = std::move(*ends);
 
-  auto handle = reloco::spawn([tx = std::move(tx)]() mutable noexcept {
+  auto handle = reloco::spawn([tx = std::move(tx1)]() mutable noexcept {
     reloco::this_thread::sleep_for(reloco::duration::from_millis(10));
     static_cast<void>(tx.try_send(99));
   });
@@ -185,9 +185,9 @@ TEST(ChannelTest, ReceiverObservesDisconnectOnlyAfterEveryCloneDrops) {
 TEST(ChannelTest, WorksAcrossSpawnedThreads) {
   auto ends = reloco::channel<int>();
   ASSERT_TRUE(ends);
-  auto [tx, rx] = std::move(*ends);
+  auto [tx1, rx] = std::move(*ends);
 
-  auto handle = reloco::spawn([tx = std::move(tx)]() mutable noexcept {
+  auto handle = reloco::spawn([tx = std::move(tx1)]() mutable noexcept {
     for (int i = 0; i < 5; ++i)
       static_cast<void>(tx.try_send(i));
   });
@@ -218,9 +218,9 @@ TEST(ChannelTest, ReceiverIsSendButNeverSync) {
 TEST(ChannelTest, RangeForConsumesEveryValueUntilSendersDrop) {
   auto ends = reloco::channel<int>();
   ASSERT_TRUE(ends);
-  auto [tx, rx] = std::move(*ends);
+  auto [tx1, rx] = std::move(*ends);
 
-  auto handle = reloco::spawn([tx = std::move(tx)]() mutable noexcept {
+  auto handle = reloco::spawn([tx = std::move(tx1)]() mutable noexcept {
     for (int i = 0; i < 5; ++i)
       static_cast<void>(tx.try_send(i));
     // tx (and every clone) drops here, ending the range-for below.
@@ -290,11 +290,11 @@ TEST(SyncChannelTest, TrySendFailsWithCapacityExceededWhenFull) {
 TEST(SyncChannelTest, SendBlocksUntilRoomFreesUp) {
   auto ends = reloco::sync_channel<int>(1);
   ASSERT_TRUE(ends);
-  auto [tx, rx] = std::move(*ends);
+  auto [tx1, rx] = std::move(*ends);
 
-  ASSERT_TRUE(tx.send(1)); // Fills the only slot without blocking.
+  ASSERT_TRUE(tx1.send(1)); // Fills the only slot without blocking.
 
-  auto handle = reloco::spawn([tx = std::move(tx)]() mutable noexcept {
+  auto handle = reloco::spawn([tx = std::move(tx1)]() mutable noexcept {
     static_cast<void>(tx.send(2)); // Must block until the slot below is drained.
   });
   ASSERT_TRUE(handle);
@@ -328,12 +328,12 @@ TEST(SyncChannelTest, SendFailsWithInvalidStateAfterReceiverDropped) {
 TEST(SyncChannelTest, SendUnblocksWithInvalidStateWhenReceiverDroppedWhileWaiting) {
   auto ends = reloco::sync_channel<int>(1);
   ASSERT_TRUE(ends);
-  auto [tx, rx] = std::move(*ends);
+  auto [tx1, rx] = std::move(*ends);
 
-  ASSERT_TRUE(tx.send(1)); // Fills the only slot.
+  ASSERT_TRUE(tx1.send(1)); // Fills the only slot.
 
   reloco::result<void> send_result = reloco::unexpected(reloco::error::not_initialized);
-  auto handle = reloco::spawn([tx = std::move(tx), &send_result]() mutable noexcept {
+  auto handle = reloco::spawn([tx = std::move(tx1), &send_result]() mutable noexcept {
     send_result = tx.send(2); // Blocks for room that will never come.
   });
   ASSERT_TRUE(handle);
@@ -351,10 +351,10 @@ TEST(SyncChannelTest, SendUnblocksWithInvalidStateWhenReceiverDroppedWhileWaitin
 TEST(SyncChannelTest, RendezvousSendBlocksUntilConsumed) {
   auto ends = reloco::sync_channel<int>(0);
   ASSERT_TRUE(ends);
-  auto [tx, rx] = std::move(*ends);
+  auto [tx1, rx] = std::move(*ends);
 
   std::atomic<bool> send_returned{false};
-  auto handle = reloco::spawn([tx = std::move(tx), &send_returned]() mutable noexcept {
+  auto handle = reloco::spawn([tx = std::move(tx1), &send_returned]() mutable noexcept {
     static_cast<void>(tx.send(7));
     send_returned.store(true, std::memory_order_release);
   });
@@ -377,7 +377,7 @@ TEST(SyncChannelTest, RendezvousSendBlocksUntilConsumed) {
 TEST(SyncChannelTest, RendezvousTrySendSucceedsOnlyWhenReceiverIsWaiting) {
   auto ends = reloco::sync_channel<int>(0);
   ASSERT_TRUE(ends);
-  auto [tx, rx] = std::move(*ends);
+  auto [tx, rx1] = std::move(*ends);
 
   auto too_early = tx.try_send(1);
   ASSERT_FALSE(too_early);
@@ -385,7 +385,7 @@ TEST(SyncChannelTest, RendezvousTrySendSucceedsOnlyWhenReceiverIsWaiting) {
 
   int received_value = 0;
   bool received_ok = false;
-  auto handle = reloco::spawn([rx = std::move(rx), &received_value, &received_ok]() mutable noexcept {
+  auto handle = reloco::spawn([rx = std::move(rx1), &received_value, &received_ok]() mutable noexcept {
     auto value = rx.recv();
     received_ok = static_cast<bool>(value);
     if (value)

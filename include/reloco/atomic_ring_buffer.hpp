@@ -42,9 +42,8 @@
 namespace reloco {
 
 // Detect CPU cache line size to prevent False Sharing.
-// C++17 provides this, but we fallback to 64 bytes for older compilers.
-#if defined(__cpp_lib_hardware_interference_size)
-inline constexpr std::size_t cache_line_size = std::hardware_destructive_interference_size;
+#if defined(RELOCO_CACHE_LINE_SIZE)
+inline constexpr std::size_t cache_line_size = RELOCO_CACHE_LINE_SIZE;
 #else
 inline constexpr std::size_t cache_line_size = 64;
 #endif

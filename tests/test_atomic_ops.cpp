@@ -28,10 +28,12 @@ TEST(AtomicOpsTest, FetchMaxLeavesValueUnchangedWhenNotGreater) {
 }
 
 TEST(AtomicOpsTest, FetchMaxWorksOnPointers) {
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE;
   int arr[4] = {};
   std::atomic<int *> a{&arr[0]};
   EXPECT_EQ(fetch_max(a, &arr[2]), &arr[0]);
   EXPECT_EQ(a.load(), &arr[2]);
+  RELOCO_END_UNSAFE_BUFFER_USAGE;
 }
 
 TEST(AtomicOpsTest, FetchMinReturnsPreviousValueAndLowersWhenSmaller) {
