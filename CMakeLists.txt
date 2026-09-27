@@ -29,14 +29,57 @@ option(JPLCZ_RELOCO_BUILD_DEMOS
 option(JPLCZ_RELOCO_INSTALL
     "Install jplcz_reloco headers and CMake package metadata"
     ${JPLCZ_RELOCO_IS_TOP_LEVEL})
+
+# Included unconditionally (not only under JPLCZ_RELOCO_INSTALL), and
+# harmlessly idempotent if a parent build already included it, purely to
+# make GNUInstallDirs' CMAKE_INSTALL_* cache variables available as
+# defaults for the JPLCZ_RELOCO_INSTALL_* overrides immediately below --
+# these are consulted by every install() destination further down,
+# regardless of JPLCZ_RELOCO_INSTALL's own value at this point in the
+# file (option() processing order).
+include(GNUInstallDirs)
+
+# Each defaults to the plain GNUInstallDirs value, but can be overridden
+# independently of CMAKE_INSTALL_PREFIX/CMAKE_INSTALL_*, e.g. by a custom
+# RTOS/DDK/SDK build tree that already repurposes the standard
+# CMAKE_INSTALL_INCLUDEDIR/CMAKE_INSTALL_DATADIR cache variables for its
+# own unrelated headers/CMake packages and needs reloco installed under a
+# distinct path instead (a vendored third_party/ subtree, a
+# board-support-package-specific include root, ...).
+#
+# Cache type STRING, not PATH, deliberately: these are destination
+# specifiers meant to stay *relative* to CMAKE_INSTALL_PREFIX (exactly
+# like GNUInstallDirs' own CMAKE_INSTALL_INCLUDEDIR/CMAKE_INSTALL_DOCDIR),
+# not literal filesystem paths to browse to. A PATH-typed cache entry
+# whose value was first supplied as a plain `-DVAR=value` (no `:TYPE=`)
+# on the CMake command line gets silently collapsed to an *absolute*
+# path relative to the current working directory the moment a `set(...
+# CACHE PATH ...)` call establishes its type -- turning e.g. "include"
+# into "<cwd>/include" and breaking the relative $<INSTALL_INTERFACE:...>
+# usage below. GNUInstallDirs sidesteps this same trap for its own
+# CMAKE_INSTALL_* variables via a hand-written cache-type-conversion
+# helper (see _GNUInstallDirs_cache_convert_to_path in
+# GNUInstallDirs.cmake); STRING type avoids the whole class of problem
+# here without needing that machinery.
+set(JPLCZ_RELOCO_INSTALL_INCLUDEDIR "${CMAKE_INSTALL_INCLUDEDIR}" CACHE STRING
+    "Install destination for reloco's public headers (relative to \
+CMAKE_INSTALL_PREFIX unless absolute)")
+set(JPLCZ_RELOCO_INSTALL_DOCDIR "${CMAKE_INSTALL_DOCDIR}" CACHE STRING
+    "Install destination for reloco's README/LICENSE/docs/ (relative to \
+CMAKE_INSTALL_PREFIX unless absolute)")
+set(JPLCZ_RELOCO_INSTALL_CMAKEDIR "${CMAKE_INSTALL_DATADIR}/cmake/jplcz_reloco" CACHE STRING
+    "Install destination for jplcz_reloco's CMake package config/targets/\
+version files (relative to CMAKE_INSTALL_PREFIX unless absolute)")
+
 set(JPLCZ_RELOCO_PORTING_HEADERS "" CACHE PATH
     "Directory containing target-specific override headers (any of \
 mutex.hpp/thread.hpp/spin_lock.hpp/tls_provider.hpp/futex.hpp) copied \
 into include/reloco/detail/porting/ and installed alongside reloco's own \
 headers, plus the matching RELOCO_*_BACKEND_CUSTOM/RELOCO_TLS_MODEL macro \
-defined automatically for consumers of the jplcz_reloco target. See \
-include/reloco/detail/porting/*.template.hpp and include/reloco/detail/\
-porting/README.md for the exact shape each file must have.")
+baked into a generated detail/porting/generated_config.hpp for every \
+consumer. See include/reloco/detail/porting/*.template.hpp and \
+include/reloco/detail/porting/README.md for the exact shape each file \
+must have.")
 
 if(JPLCZ_RELOCO_ENABLE_STRICT_WARNINGS OR JPLCZ_RELOCO_ENABLE_UNSAFE_BUFFER_USAGE OR
    JPLCZ_RELOCO_BUILD_HEADER_CHECKS OR JPLCZ_RELOCO_BUILD_TESTS)
@@ -78,7 +121,7 @@ set_target_properties(jplcz_reloco PROPERTIES EXPORT_NAME reloco)
 
 target_include_directories(jplcz_reloco INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>
+    $<INSTALL_INTERFACE:${JPLCZ_RELOCO_INSTALL_INCLUDEDIR}>
 )
 
 add_library(jplcz_reloco::reloco ALIAS jplcz_reloco)
@@ -489,18 +532,22 @@ if(JPLCZ_RELOCO_BUILD_DEMOS)
 endif()
 
 if(JPLCZ_RELOCO_INSTALL)
+    # GNUInstallDirs was already include()d unconditionally near the
+    # JPLCZ_RELOCO_INSTALL_*DIR option() block above; this second
+    # include() is harmless (idempotent) and kept so this block remains
+    # self-contained if ever reordered.
     include(GNUInstallDirs)
     include(CMakePackageConfigHelpers)
 
     install(
         TARGETS jplcz_reloco jplcz_reloco_shared jplcz_reloco_shared_export
         EXPORT jplcz_relocoTargets
-        INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+        INCLUDES DESTINATION "${JPLCZ_RELOCO_INSTALL_INCLUDEDIR}"
     )
 
     install(
         DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/"
-        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+        DESTINATION "${JPLCZ_RELOCO_INSTALL_INCLUDEDIR}"
         COMPONENT Development
     )
 
@@ -512,7 +559,7 @@ if(JPLCZ_RELOCO_INSTALL)
     if(JPLCZ_RELOCO_PORTING_HEADERS)
         install(
             DIRECTORY "${JPLCZ_RELOCO_PORTING_DEST_DIR}/"
-            DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/reloco/detail/porting"
+            DESTINATION "${JPLCZ_RELOCO_INSTALL_INCLUDEDIR}/reloco/detail/porting"
             COMPONENT Development
         )
     endif()
@@ -521,20 +568,20 @@ if(JPLCZ_RELOCO_INSTALL)
         FILES
             "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
             "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
-        DESTINATION "${CMAKE_INSTALL_DOCDIR}"
+        DESTINATION "${JPLCZ_RELOCO_INSTALL_DOCDIR}"
         COMPONENT Documentation
     )
 
     install(
         DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/docs/"
-        DESTINATION "${CMAKE_INSTALL_DOCDIR}/docs"
+        DESTINATION "${JPLCZ_RELOCO_INSTALL_DOCDIR}/docs"
         COMPONENT Documentation
     )
 
     configure_package_config_file(
         "${CMAKE_CURRENT_SOURCE_DIR}/cmake/jplcz_relocoConfig.cmake.in"
         "${CMAKE_CURRENT_BINARY_DIR}/jplcz_relocoConfig.cmake"
-        INSTALL_DESTINATION "${CMAKE_INSTALL_DATADIR}/cmake/jplcz_reloco"
+        INSTALL_DESTINATION "${JPLCZ_RELOCO_INSTALL_CMAKEDIR}"
         NO_SET_AND_CHECK_MACRO
         NO_CHECK_REQUIRED_COMPONENTS_MACRO
     )
@@ -553,7 +600,7 @@ if(JPLCZ_RELOCO_INSTALL)
         EXPORT jplcz_relocoTargets
         FILE jplcz_relocoTargets.cmake
         NAMESPACE jplcz_reloco::
-        DESTINATION "${CMAKE_INSTALL_DATADIR}/cmake/jplcz_reloco"
+        DESTINATION "${JPLCZ_RELOCO_INSTALL_CMAKEDIR}"
         COMPONENT Development
     )
 
@@ -561,7 +608,7 @@ if(JPLCZ_RELOCO_INSTALL)
         FILES
             "${CMAKE_CURRENT_BINARY_DIR}/jplcz_relocoConfig.cmake"
             "${CMAKE_CURRENT_BINARY_DIR}/jplcz_relocoConfigVersion.cmake"
-        DESTINATION "${CMAKE_INSTALL_DATADIR}/cmake/jplcz_reloco"
+        DESTINATION "${JPLCZ_RELOCO_INSTALL_CMAKEDIR}"
         COMPONENT Development
     )
 endif()

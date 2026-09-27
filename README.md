@@ -166,6 +166,26 @@ ExternalProject_Add(
 Set `CMAKE_PREFIX_PATH` or `jplcz_reloco_DIR` to the installed package
 directory when configuring a separate consuming project.
 
+Custom build trees (e.g. an RTOS DDK/SDK with its own directory layout) can
+override where each piece is installed, independent of
+`CMAKE_INSTALL_PREFIX`, via:
+
+- `JPLCZ_RELOCO_INSTALL_INCLUDEDIR` (default: `CMAKE_INSTALL_INCLUDEDIR`)
+- `JPLCZ_RELOCO_INSTALL_DOCDIR` (default: `CMAKE_INSTALL_DOCDIR`)
+- `JPLCZ_RELOCO_INSTALL_CMAKEDIR` (default:
+  `${CMAKE_INSTALL_DATADIR}/cmake/jplcz_reloco`)
+
+Each accepts a path relative to `CMAKE_INSTALL_PREFIX`, and must be set at
+configure time (not `cmake --install`), for example:
+
+```sh
+cmake -S jplcz_reloco -B jplcz_reloco-build \
+  -DJPLCZ_RELOCO_INSTALL_INCLUDEDIR=sdk/include \
+  -DJPLCZ_RELOCO_INSTALL_CMAKEDIR=sdk/cmake/reloco
+cmake --build jplcz_reloco-build
+cmake --install jplcz_reloco-build --prefix /opt/sdk
+```
+
 Alternatively, add `include/` to the compiler include path:
 
 ```cpp
