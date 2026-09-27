@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 #include "reloco/bucket_allocator.hpp"
+#include "reloco/detail/sanitizer.hpp"
 #include "reloco/heap_allocator.hpp"
 #include "reloco/mutex.hpp"
 #include "reloco/spin_lock.hpp"
@@ -38,8 +39,8 @@ TEST_F(BucketAllocatorTest, IsNeitherCopyableNorMovable) {
 }
 
 TEST_F(BucketAllocatorTest, CapabilitiesDetectedCorrectly) {
-  EXPECT_FALSE(ref.can_expand_in_place());
-  EXPECT_FALSE(ref.can_reallocate());
+  EXPECT_TRUE(ref.can_expand_in_place());
+  EXPECT_TRUE(ref.can_reallocate());
   EXPECT_FALSE(ref.can_advise());
 }
 
@@ -117,6 +118,70 @@ TEST_F(BucketAllocatorTest, AllocatedBlocksAreDistinctAcrossBucketsAndRefills) {
       EXPECT_NE(ptrs[i], ptrs[j]);
     }
   }
+}
+
+TEST_F(BucketAllocatorTest, ExpandInPlaceWithinSameBucket) {
+  auto a = ref.allocate(20, 4); // rounds up to the 32-byte bucket
+  ASSERT_TRUE(a.has_value());
+  void *ptr = a->ptr;
+
+  auto res = ref.expand_in_place(ptr, 20, 30); // still <= 32-byte bucket
+#if RELOCO_ASAN_ENABLED
+  // The zero-copy shortcut is deliberately compiled out under
+  // AddressSanitizer -- see the file docs.
+  EXPECT_FALSE(res.has_value());
+#else
+  ASSERT_TRUE(res.has_value());
+  EXPECT_EQ(*res, 30u);
+  EXPECT_EQ(ptr, a->ptr); // no move happened
+#endif
+  ref.deallocate(ptr, 20);
+}
+
+TEST_F(BucketAllocatorTest, ExpandInPlaceFailsBeyondOwningBucketSize) {
+  auto a = ref.allocate(20, 4); // 32-byte bucket
+  ASSERT_TRUE(a.has_value());
+
+  auto res = ref.expand_in_place(a->ptr, 20, 40); // 40 > 32-byte bucket capacity
+  EXPECT_FALSE(res.has_value());
+  ref.deallocate(a->ptr, 20);
+}
+
+TEST_F(BucketAllocatorTest, ExpandInPlaceDefersToUpstreamForOversizedBlock) {
+  auto a = ref.allocate(200, alignment); // > largest bucket, serviced by heap upstream
+  ASSERT_TRUE(a.has_value());
+
+  // heap_allocator_tag does not implement expand_in_place.
+  auto res = ref.expand_in_place(a->ptr, 200, 5000);
+  EXPECT_FALSE(res.has_value());
+  ref.deallocate(a->ptr, a->size);
+}
+
+TEST_F(BucketAllocatorTest, ReallocateMovesToBiggerBucketAndPreservesData) {
+  auto a = ref.allocate(10, 4); // 16-byte bucket
+  ASSERT_TRUE(a.has_value());
+  auto *bytes = static_cast<unsigned char *>(a->ptr);
+  for (unsigned char i = 0; i < 10; ++i)
+    bytes[i] = i;
+
+  auto res = ref.reallocate(a->ptr, 10, 50, 4); // needs the 64-byte bucket
+  ASSERT_TRUE(res.has_value());
+  EXPECT_EQ(res->size, 64u);
+  auto *new_bytes = static_cast<unsigned char *>(res->ptr);
+  for (unsigned char i = 0; i < 10; ++i)
+    EXPECT_EQ(new_bytes[i], i);
+  ref.deallocate(res->ptr, res->size);
+}
+
+TEST_F(BucketAllocatorTest, ReallocateDefersToUpstreamWhenOldBlockWasFromUpstream) {
+  auto a = ref.allocate(200, alignment); // serviced directly by heap upstream
+  ASSERT_TRUE(a.has_value());
+  static_cast<unsigned char *>(a->ptr)[0] = 0x42;
+
+  auto res = ref.reallocate(a->ptr, a->size, 5000, alignment);
+  ASSERT_TRUE(res.has_value()); // heap_allocator_tag does implement reallocate
+  EXPECT_EQ(static_cast<unsigned char *>(res->ptr)[0], 0x42);
+  ref.deallocate(res->ptr, res->size);
 }
 
 TEST_F(BucketAllocatorTest, WorksWithMutexLock) {

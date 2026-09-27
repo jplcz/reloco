@@ -2907,6 +2907,23 @@ forwards *that bucket's own exact block size* to it, since
 allocations above), `deallocate()` forwards straight to the upstream
 `allocator_ref` instead, mirroring `allocate()`'s own fallback.
 
+Unlike `pool_allocator` (whose fixed block size leaves no headroom to
+grow into), `bucket_allocator` implements `expand_in_place`/`reallocate`:
+a bucket's actual block size can exceed the `old_size` a caller records
+for it (the same truncation `deallocate()` accounts for above), so
+`expand_in_place` can grow a block in place, at no cost, as long as the
+new size still fits the block's own bucket -- re-deriving the owning
+bucket from `old_size` exactly like `deallocate()` does. This zero-copy
+shortcut is compiled out under AddressSanitizer (`RELOCO_ASAN_ENABLED`)
+so a sanitizer build keeps exercising `reallocate`'s real
+allocate/copy/deallocate path instead of always taking it. `reallocate`
+itself is a plain allocate-new/copy-`min(old_size, new_size)`-bytes/
+deallocate-old sequence (it may land the new block in a different
+bucket, the same bucket, or upstream directly). For a block that was one
+of the direct-to-upstream allocations, both operations defer entirely to
+the upstream `allocator_ref`'s own `expand_in_place`/`reallocate`
+instead, failing if upstream doesn't support it.
+
 `Lock` must always be given explicitly, even to pick the default
 `null_mutex` (e.g. `bucket_allocator<null_mutex, 16, 32, 64>`): a
 template parameter pack must be the last template parameter, so `Lock`,

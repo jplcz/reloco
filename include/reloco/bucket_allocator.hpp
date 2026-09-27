@@ -59,10 +59,33 @@
  * straight to the upstream `allocator_ref` instead, with the same
  * (possibly-truncated) `bytes` it was given -- exactly mirroring
  * `allocate()`'s own fallback path.
+ *
+ * Unlike `pool_allocator` (whose fixed block size leaves no headroom to
+ * grow into -- `allocate()` already reports the one and only size a block
+ * ever has), `bucket_allocator` *does* implement `expand_in_place`/
+ * `reallocate`, because a bucket's actual block size can exceed the
+ * `old_size`/`bytes` a caller records for it (see the deallocation note
+ * above): `try_expand_in_place` re-derives the owning bucket from
+ * `old_size` the same way `deallocate()` does, and, if `new_size` still
+ * fits that bucket's own block size, succeeds with no copy at all (the
+ * memory was already there). This zero-copy shortcut is compiled out
+ * under AddressSanitizer (`RELOCO_ASAN_ENABLED`, see
+ * `detail/sanitizer.hpp`) so that sanitizer-instrumented test runs keep
+ * exercising `try_reallocate_block`'s real allocate/copy/deallocate path
+ * instead of always taking the free shortcut. `try_reallocate_block`
+ * itself is a plain allocate-new/copy-`min(old_size, new_size)`-bytes/
+ * deallocate-old sequence, exactly like `heap_allocator`'s own fallback
+ * for an overaligned `realloc`. Both operations, when the block being
+ * grown/reallocated is one of the direct-to-upstream allocations (i.e.
+ * `old_size` exceeds every bucket), defer entirely to the upstream
+ * `allocator_ref`'s own `expand_in_place`/`reallocate` instead (failing if
+ * upstream doesn't support the operation) -- mirroring `allocate()`'s/
+ * `deallocate()`'s own upstream fallback.
  */
 
 #include "allocator.hpp"
 #include "detail/compat.hpp"
+#include "detail/sanitizer.hpp"
 #include "error.hpp"
 #include "expected.hpp"
 #include "lifetime.hpp"
@@ -70,6 +93,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstring>
 #include <utility>
 
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
@@ -154,6 +178,55 @@ public:
     pools_[idx].deallocate_block(ptr, bucket_sizes[idx]);
   }
 
+  [[nodiscard]] result<std::size_t> try_expand_in_place(void *ptr, std::size_t old_size,
+                                                        std::size_t new_size) noexcept {
+    const std::size_t idx = find_bucket(old_size);
+    if (idx == bucket_count) {
+      // The block was one of the direct-to-upstream allocations (see
+      // try_allocate_block) -- defer to upstream_'s own expand_in_place,
+      // if it has one, instead of trying (and failing) to interpret
+      // old_size as one of our own buckets.
+      if (!upstream_.can_expand_in_place())
+        return unexpected(error::allocation_failed);
+      return upstream_.expand_in_place(ptr, old_size, new_size);
+    }
+
+#if !RELOCO_ASAN_ENABLED
+    // The owning bucket's pool already carved out bucket_sizes[idx]
+    // physical bytes for this block (see the file docs on why old_size
+    // can be smaller than that) -- growing within that same footprint
+    // needs no copy/move at all. Deliberately compiled out under
+    // AddressSanitizer so a sanitizer-instrumented test run keeps
+    // exercising try_reallocate_block's real allocate/copy/deallocate
+    // path instead of always taking this free shortcut.
+    if (new_size <= bucket_sizes[idx])
+      return new_size;
+#endif
+    return unexpected(error::allocation_failed);
+  }
+
+  [[nodiscard]] result<mem_block> try_reallocate_block(void *ptr, std::size_t old_size, std::size_t new_size,
+                                                       std::size_t alignment) noexcept {
+    if (find_bucket(old_size) == bucket_count) {
+      // Ditto for reallocate(): the old block belongs to upstream_, not
+      // to any bucket, so upstream_ is the only thing that can resize it.
+      if (!upstream_.can_reallocate())
+        return unexpected(error::allocation_failed);
+      return upstream_.reallocate(ptr, old_size, new_size, alignment);
+    }
+
+    // Generic allocate/copy/deallocate scheme: route the new size through
+    // this same context (it may land in a different bucket, the same
+    // bucket, or upstream_ directly, exactly like a fresh allocate()
+    // would), preserve the overlapping bytes, and release the old block.
+    auto new_block = try_allocate_block(new_size, alignment);
+    if (!new_block)
+      return new_block;
+    std::memcpy(new_block->ptr, ptr, old_size < new_size ? old_size : new_size);
+    deallocate_block(ptr, old_size);
+    return new_block;
+  }
+
 private:
   // Helper struct so pools_ can be constructed via an index-sequence
   // delegating constructor while upstream_ is initialized directly (see
@@ -207,8 +280,20 @@ struct allocator_traits<bucket_allocator_tag<Lock, BucketSizes...>> {
     ctx->deallocate_block(ptr, bytes);
   }
 
-  // NOTE: expand_in_place/reallocate/advise intentionally omitted, exactly
-  // like pool_allocator_tag -- see that header's own NOTE.
+  [[nodiscard]] static result<std::size_t> expand_in_place(value_ref<context_type> ctx, void *ptr,
+                                                           std::size_t old_size, std::size_t new_size) noexcept {
+    return ctx->try_expand_in_place(ptr, old_size, new_size);
+  }
+
+  [[nodiscard]] static result<mem_block> reallocate(value_ref<context_type> ctx, void *ptr, std::size_t old_size,
+                                                    std::size_t new_size, std::size_t alignment) noexcept {
+    return ctx->try_reallocate_block(ptr, old_size, new_size, alignment);
+  }
+
+  // NOTE: `advise` is intentionally omitted (no partial-range usage advice
+  // to give); allocator_ref::can_advise() detects its absence and reports
+  // unsupported seamlessly. expand_in_place/reallocate ARE supported --
+  // see the file docs for why that differs from pool_allocator_tag.
 };
 
 /**
