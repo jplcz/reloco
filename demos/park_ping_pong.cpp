@@ -77,7 +77,9 @@ int main() {
   std::printf("main: sending final ping (worker will not reply)\n");
   handle_ptr->unpark();
   bool replied = reloco::this_thread::park_timeout(reloco::duration::from_millis(200));
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE;
   std::printf("main: park_timeout() returned %s (expected false)\n", replied ? "true" : "false");
+  RELOCO_END_UNSAFE_BUFFER_USAGE;
 
   std::move(*worker).join();
   return EXIT_SUCCESS;
