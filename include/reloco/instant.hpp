@@ -29,19 +29,28 @@
  * providing `static duration now() noexcept`. `RELOCO_INSTANT_CLOCK_TAG`
  * selects which tag `instant::now()` actually calls through to:
  *
- * - **Default, when `<time.h>`'s `clock_gettime` is available**:
- *   `reloco::posix_clock_tag`, backed by `clock_gettime(3)` against
- *   `CLOCK_MONOTONIC` when the platform's pthread implementation supports
- *   selecting it (POSIX's optional "Clock Selection" feature -- notably
- *   absent on Darwin/macOS), falling back to `CLOCK_REALTIME` otherwise.
- *   `RELOCO_MUTEX_NO_MONOTONIC_CLOCK` (see `reloco_config.hpp`) forces
- *   `CLOCK_REALTIME` here too, matching `mutex.hpp`'s own
+ * - **Default, native Windows (`_WIN32`, excluding MinGW)**:
+ *   `reloco::win32_clock_tag`, backed by `QueryPerformanceCounter`/
+ *   `QueryPerformanceFrequency` -- Win32's own high-resolution monotonic
+ *   clock, guaranteed available and monotonic (no `CLOCK_MONOTONIC`-style
+ *   fallback needed) since Windows Vista/Server 2008. Takes priority over
+ *   the POSIX backend below on MSVC, which has no `clock_gettime` at all.
+ *   MinGW-w64 (`__MINGW32__`/`__MINGW64__`) is excluded from this and
+ *   falls through to the POSIX backend instead, since it supplies its own
+ *   `clock_gettime`.
+ * - **Default otherwise, when `<time.h>`'s `clock_gettime` is
+ *   available**: `reloco::posix_clock_tag`, backed by `clock_gettime(3)`
+ *   against `CLOCK_MONOTONIC` when the platform's pthread implementation
+ *   supports selecting it (POSIX's optional "Clock Selection" feature --
+ *   notably absent on Darwin/macOS), falling back to `CLOCK_REALTIME`
+ *   otherwise. `RELOCO_MUTEX_NO_MONOTONIC_CLOCK` (see `reloco_config.hpp`)
+ *   forces `CLOCK_REALTIME` here too, matching `mutex.hpp`'s own
  *   `condition_variable::wait_for` deadline clock -- the two headers
  *   share the same opt-out macro and detection logic (duplicated rather
  *   than shared via an include, so `instant.hpp` does not have to depend
  *   on `mutex.hpp`) so `instant::now()` and a timed condition-variable
  *   wait agree on which clock "now" means.
- * - **Not available, and no `RELOCO_INSTANT_CLOCK_TAG` defined**:
+ * - **Neither available, and no `RELOCO_INSTANT_CLOCK_TAG` defined**:
  *   `instant::now()`/`instant::elapsed()` are not declared at all --
  *   every other `instant` member (`duration_since`, arithmetic,
  *   comparisons, ...) still works on values obtained some other way (a
@@ -97,7 +106,33 @@
 
 #include <cstdint>
 
-#if RELOCO_HAS_INCLUDE(<time.h>)
+// Native Win32 (QueryPerformanceCounter) takes priority over the POSIX
+// clock_gettime() backend below on plain Windows/MSVC, which has no
+// clock_gettime() at all -- MinGW-w64 is excluded (it supplies its own
+// clock_gettime(), see the file-level documentation above) and falls
+// through to the POSIX backend instead.
+#if defined(_WIN32) && !defined(__MINGW32__) && !defined(__MINGW64__)
+#define RELOCO_DETAIL_INSTANT_HAS_WIN32_CLOCK 1
+#else
+#define RELOCO_DETAIL_INSTANT_HAS_WIN32_CLOCK 0
+#endif
+
+#if RELOCO_DETAIL_INSTANT_HAS_WIN32_CLOCK
+// Kept minimal (WIN32_LEAN_AND_MEAN/NOMINMAX) rather than avoiding
+// <windows.h> altogether: hand-declaring QueryPerformanceCounter/
+// QueryPerformanceFrequency ourselves would risk a conflicting
+// redeclaration in any translation unit that also includes the real
+// <windows.h> (directly or transitively) elsewhere.
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif // RELOCO_DETAIL_INSTANT_HAS_WIN32_CLOCK
+
+#if !RELOCO_DETAIL_INSTANT_HAS_WIN32_CLOCK && RELOCO_HAS_INCLUDE(<time.h>)
 #include <time.h>
 #define RELOCO_DETAIL_INSTANT_HAS_POSIX_CLOCK 1
 #else
@@ -167,6 +202,38 @@ template <> struct instant_clock_traits<posix_clock_tag> {
 
 #endif // RELOCO_DETAIL_INSTANT_HAS_POSIX_CLOCK
 
+#if RELOCO_DETAIL_INSTANT_HAS_WIN32_CLOCK
+
+/** @brief Tag selecting the built-in native Win32 clock source. Only
+ * defined for non-MinGW Windows builds (`_WIN32` without
+ * `__MINGW32__`/`__MINGW64__`). See the file-level documentation above. */
+struct win32_clock_tag {};
+
+/** @brief Built-in clock source: `QueryPerformanceCounter`, Win32's own
+ * high-resolution monotonic clock. `QueryPerformanceFrequency` is
+ * documented to never change while the system is running, so it is
+ * queried once and cached in a function-local `static`. */
+template <> struct instant_clock_traits<win32_clock_tag> {
+  [[nodiscard]] static duration now() noexcept {
+    static const std::uint64_t frequency = [] {
+      LARGE_INTEGER freq{};
+      QueryPerformanceFrequency(&freq);
+      return static_cast<std::uint64_t>(freq.QuadPart);
+    }();
+
+    LARGE_INTEGER counter{};
+    QueryPerformanceCounter(&counter);
+    auto ticks = static_cast<std::uint64_t>(counter.QuadPart);
+
+    auto secs = ticks / frequency;
+    auto subsec_ticks = ticks % frequency;
+    auto nanos = (subsec_ticks * duration::nanos_per_sec) / frequency;
+    return duration::from_secs(secs) + duration::from_nanos(nanos);
+  }
+};
+
+#endif // RELOCO_DETAIL_INSTANT_HAS_WIN32_CLOCK
+
 namespace detail {
 
 /** @brief `lhs - rhs` as a `duration`, or `error::invalid_argument` if
@@ -205,7 +272,10 @@ namespace detail {
 // type and specialize reloco::instant_clock_traits for it -- see this
 // file's own doc comment above for a worked FreeBSD kernel example.
 #if !defined(RELOCO_INSTANT_CLOCK_TAG)
-#if RELOCO_DETAIL_INSTANT_HAS_POSIX_CLOCK
+#if RELOCO_DETAIL_INSTANT_HAS_WIN32_CLOCK
+#define RELOCO_INSTANT_CLOCK_TAG ::reloco::win32_clock_tag
+#define RELOCO_DETAIL_INSTANT_HAS_NOW 1
+#elif RELOCO_DETAIL_INSTANT_HAS_POSIX_CLOCK
 #define RELOCO_INSTANT_CLOCK_TAG ::reloco::posix_clock_tag
 #define RELOCO_DETAIL_INSTANT_HAS_NOW 1
 #else
