@@ -171,3 +171,15 @@ built on this trait; `is_trivially_relocatable` is provided now so both
 generic algorithms and reloco's own future containers have a single,
 already-verified customization point to build on, rather than every author
 inventing (and getting slightly wrong) their own relocatability trait.
+
+## Experimental: reflection-derived composition
+
+On a `-freflection`-enabled build, the "composition is not automatic"
+limitation above is actually closed for types with no explicit
+specialization of their own, using the same conditional rule the P1144
+standard proposal itself defines: no user-provided special member function,
+plus every base/member itself trivially relocatable. See
+[Reflection support](reflection.md) for the full writeup, including why
+this rule is safe to auto-derive (unlike `is_send`/`is_sync`, composing
+this trait blindly could turn a real hazard into a silent `true` -- P1144's
+rule is specifically the one place that composition is provably sound).

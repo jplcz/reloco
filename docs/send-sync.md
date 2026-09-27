@@ -78,6 +78,21 @@ the specific types it ships that are unsound to transfer or share:
 > another type's trait at all; every other reloco container is left at the
 > default `true` until a container is found that genuinely needs
 > otherwise.
+>
+> Any reloco type built on non-atomic shared state or unsynchronized
+> interior mutability privately inherits a marker,
+> `detail::requires_explicit_send_sync`, that turns "forgot to specialize"
+> into a hard `static_assert` failure instead of a silent, unsound default
+> `true` — see [Reflection support](reflection.md#the-requires_explicit_send_sync-marker)
+> for how it works and which types use it today (`rc<T>`/`weak_rc<T>`,
+> `cell<T>`/`ref_cell<T>`, `shared_ptr<T>`/`weak_ptr<T>`, `function<Sig>`,
+> `function_ref<Sig>`, `bytes`, `once_lock<T>`, `lazy_lock<T, F>`,
+> `join_handle<R>`/`scoped_join_handle<R>`, and channel's
+> `sender<T>`/`sync_sender<T>`/`receiver<T>`).
+>
+> **Experimental**: on a `-freflection`-enabled build, the composition gap
+> above is actually closed for every *other* type -- see
+> [Reflection support](reflection.md) for the full writeup.
 
 ## Where it is actually checked
 
