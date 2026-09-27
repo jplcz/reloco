@@ -124,15 +124,16 @@ public:
   /// type) == node`.
   [[nodiscard]] static header *header_of(void *payload, const type_metadata &type) noexcept {
     RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
-    return std::launder(reinterpret_cast<header *>(static_cast<std::byte *>(payload) - payload_offset(type)));
+    return std::launder(
+        reinterpret_cast<header *>(static_cast<void *>(static_cast<std::byte *>(payload) - payload_offset(type))));
     RELOCO_END_UNSAFE_BUFFER_USAGE
   }
 
   /// @brief `const`-qualified overload of `header_of(void *, const type_metadata &)`.
   [[nodiscard]] static const header *header_of(const void *payload, const type_metadata &type) noexcept {
     RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
-    return std::launder(
-        reinterpret_cast<const header *>(static_cast<const std::byte *>(payload) - payload_offset(type)));
+    return std::launder(reinterpret_cast<const header *>(
+        static_cast<const void *>(static_cast<const std::byte *>(payload) - payload_offset(type))));
     RELOCO_END_UNSAFE_BUFFER_USAGE
   }
 

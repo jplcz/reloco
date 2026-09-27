@@ -264,11 +264,13 @@ private:
 
   template <typename F> struct object_vtable_factory {
     static constexpr vtable soo_instance = {
-        [](storage *s, Args... args) -> R { return (*reinterpret_cast<F *>(s->buffer))(std::forward<Args>(args)...); },
-        [](storage *s, allocator_ref) noexcept { reinterpret_cast<F *>(s->buffer)->~F(); },
+        [](storage *s, Args... args) -> R {
+          return (*reinterpret_cast<F *>(static_cast<void *>(s->buffer)))(std::forward<Args>(args)...);
+        },
+        [](storage *s, allocator_ref) noexcept { reinterpret_cast<F *>(static_cast<void *>(s->buffer))->~F(); },
         [](storage *src, storage *dest) noexcept {
-          new (dest->buffer) F(std::move(*reinterpret_cast<F *>(src->buffer)));
-          reinterpret_cast<F *>(src->buffer)->~F();
+          new (dest->buffer) F(std::move(*reinterpret_cast<F *>(static_cast<void *>(src->buffer))));
+          reinterpret_cast<F *>(static_cast<void *>(src->buffer))->~F();
         },
         [](const storage *, allocator_ref) noexcept -> result<void *> {
           if constexpr (std::is_nothrow_copy_constructible_v<F>) {
@@ -279,7 +281,7 @@ private:
         },
         [](const storage *src, storage *dest) noexcept {
           if constexpr (std::is_nothrow_copy_constructible_v<F>) {
-            new (dest->buffer) F(*reinterpret_cast<const F *>(src->buffer));
+            new (dest->buffer) F(*reinterpret_cast<const F *>(static_cast<const void *>(src->buffer)));
           } else {
             RELOCO_ASSERT(false, "function: copy_soo called on a non-copyable captured type");
           }

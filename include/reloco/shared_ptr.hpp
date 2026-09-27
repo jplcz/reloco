@@ -146,7 +146,7 @@ template <typename T> struct sp_control_block_combined final : sp_control_block 
 
   explicit sp_control_block_combined(allocator_ref alloc) noexcept : alloc_(alloc) {}
 
-  T *object() noexcept { return reinterpret_cast<T *>(storage_); }
+  T *object() noexcept { return reinterpret_cast<T *>(static_cast<void *>(storage_)); }
 
   void destroy_object() noexcept override { object()->~T(); }
 
