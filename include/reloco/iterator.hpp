@@ -1220,7 +1220,7 @@ public:
   /**
    * @brief Generates the next value in the sequence.
    */
-  [[nodiscard]] constexpr optional<T> next_impl() noexcept RELOCO_RETURN_TYPESTATE(unknown) {
+  [[nodiscard]] constexpr optional<T> next_impl() noexcept {
     if (m_current < m_end) {
       return optional<T>(m_current++); // Return the current value, then increment
     }
