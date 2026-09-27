@@ -41,6 +41,7 @@ where, not a tutorial.
 | `rc.hpp` | `rc<T>`, `weak_rc<T>`, `enable_rc_from_this<T>` | Single-threaded (non-atomic) reference-counted smart pointer, matching Rust's `Rc<T>`/`Weak<T>` |
 | `bytes.hpp` | `bytes`, `bytes_mut` | Immutable, reference-counted, cheaply-cloneable byte buffer and its growable, exclusively-owned mutable counterpart, matching Rust's `bytes::Bytes`/`bytes::BytesMut` |
 | `binary_heap.hpp` | `binary_heap<T, Compare>` | Allocator-backed priority queue matching Rust's `BinaryHeap<T>`, built on `vector<T>` |
+| `digraph.hpp` | `digraph` | Allocator-backed directed graph over dense node indices, rejecting any edge that would close a cycle -- for lock-order/witness-style (`witness(4)`/lockdep) dependency tracking |
 | `boxed_slice.hpp` | `boxed_slice<T>` | Fixed-size, allocator-backed owned array with no spare capacity, matching Rust's `Box<[T]>` |
 | `cow.hpp` | `cow<T>`, `cow_traits<T>` | Clone-on-write wrapper matching Rust's `Cow<'a, T>`, with a user-specializable clone customization point |
 | `function.hpp` | `function<R(Args...)>` | Type-erased, allocator-backed callable wrapper with fallible construction |
@@ -971,6 +972,53 @@ its elements as a `vector<T>` in ascending order. Iteration
 (`begin()`/`end()`) walks unspecified heap order, not sorted order,
 matching Rust's `BinaryHeap::iter()`, and is `const`-only since mutating an
 element in place could silently break the invariant.
+
+## `digraph`
+
+`include/reloco/digraph.hpp`
+
+Allocator-backed directed graph over dense `std::size_t` node indices,
+purpose-built for lock-order/witness-style dependency tracking (see
+FreeBSD's `witness(4)` and Linux's `lockdep`): nodes are allocated in order
+by `try_add_node()` (identified by the index it returns), and
+`try_add_edge(from, to)` records a directed edge `from -> to` only if doing
+so does not close a cycle -- if `to` can already reach `from`, the new edge
+would create one (in witness/lockdep terms, a lock-order inversion that
+could deadlock), so it is rejected with `error::deadlock` and the graph is
+left unchanged.
+
+```cpp
+auto g_res = reloco::digraph::try_create();
+reloco::digraph g = std::move(g_res.value());
+auto a = g.try_add_node().value(); // lock class A
+auto b = g.try_add_node().value(); // lock class B
+auto c = g.try_add_node().value(); // lock class C
+g.try_add_edge(a, b); // "A observed locked before B"
+g.try_add_edge(b, c); // "B observed locked before C"
+
+auto rejected = g.try_add_edge(c, a); // would close A -> B -> C -> A
+assert(rejected.error() == reloco::error::deadlock);
+auto cycle = g.try_find_path(a, c); // {a, b, c}, useful for a diagnostic
+```
+
+`try_add_edge` fails with `error::out_of_bounds` if either node does not
+exist, and with `error::deadlock` for a self-loop (`from == to`) or a
+cycle-closing edge; adding an already-present edge succeeds without
+duplicating it. `has_edge`/`try_remove_edge` query/retract a single edge;
+nodes are never removed (matching lock-class identifiers, which persist
+for the registering subsystem's lifetime). `try_is_reachable(from, to)`
+and `try_find_path(from, to)` (shortest node sequence, or
+`error::not_found`) answer reachability queries -- typically used after a
+`try_add_edge` rejection, as `try_find_path(to, from)`, to recover the
+existing path that together with the rejected edge forms the cycle.
+`try_clone`/`try_clone(alloc)` deep-copy every node's adjacency list.
+
+Every traversal is iterative (an explicit worklist `vector<size_type>`,
+never recursion), so `digraph` stays safe to use from a kernel/freestanding
+build (`RELOCO_KERNEL`) with a bounded stack. There is deliberately no
+generic weighted-shortest-path/traversal-algorithm layer: reloco never uses
+floating point, so this module stays scoped to what integer-weighted,
+allocator-fallible reachability queries can express.
 
 ## `flat_set<T, Compare = std::less<T>>`
 
