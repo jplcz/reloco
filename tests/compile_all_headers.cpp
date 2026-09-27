@@ -58,6 +58,7 @@
 #include <reloco/park.hpp>
 #include <reloco/pool_allocator.hpp>
 #include <reloco/relocatable.hpp>
+#include <reloco/reloco_ipc_ring.hpp>
 #include <reloco/rvalue_safety.hpp>
 #include <reloco/rw_lock.hpp>
 #include <reloco/scope.hpp>
