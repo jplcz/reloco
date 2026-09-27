@@ -276,6 +276,8 @@ class thread_id {
 public:
   constexpr thread_id() noexcept = default;
 
+  [[nodiscard]] static thread_id current() noexcept { return thread_id(std::this_thread::get_id()); }
+
   [[nodiscard]] friend bool operator==(const thread_id &lhs, const thread_id &rhs) noexcept {
     return lhs.id_ == rhs.id_;
   }
@@ -367,7 +369,7 @@ private:
 
 namespace this_thread {
 
-[[nodiscard]] inline thread_id get_id() noexcept { return thread_id(std::this_thread::get_id()); }
+[[nodiscard]] inline thread_id get_id() noexcept { return thread_id::current(); }
 
 inline void yield() noexcept { std::this_thread::yield(); }
 
