@@ -85,7 +85,7 @@ struct scope_data {
  * @brief Handle to a thread spawned via `thread_scope::spawn`, matching
  * Rust's `std::thread::ScopedJoinHandle<'scope, T>`. Move-only.
  */
-template <typename R> class [[nodiscard]] RELOCO_OWNER scoped_join_handle {
+template <typename R> class [[nodiscard]] RELOCO_OWNER scoped_join_handle : private detail::requires_explicit_send_sync {
 public:
   scoped_join_handle(scoped_join_handle &&) noexcept = default;
   scoped_join_handle &operator=(scoped_join_handle &&) noexcept = default;
@@ -111,7 +111,7 @@ private:
 };
 
 /** @brief `void`-returning specialization: no result to retrieve. */
-template <> class [[nodiscard]] RELOCO_OWNER scoped_join_handle<void> {
+template <> class [[nodiscard]] RELOCO_OWNER scoped_join_handle<void> : private detail::requires_explicit_send_sync {
 public:
   scoped_join_handle(scoped_join_handle &&) noexcept = default;
   scoped_join_handle &operator=(scoped_join_handle &&) noexcept = default;

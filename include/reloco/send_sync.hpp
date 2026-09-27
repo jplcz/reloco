@@ -59,6 +59,22 @@
  * `guarded_mutex<T>`, matching Rust's `unsafe impl<T: Send> Sync for
  * Mutex<T>`: the mutex synchronizes every access, so only `T: Send` is
  * required -- not `T: Sync` -- for the guarded value itself).
+ *
+ * The default-`true` fallback above is unavoidable for arbitrary
+ * user-supplied `T` (reloco has no way to walk `T`'s fields the way Rust's
+ * compiler does), but it would be silently unsound if it ever applied to
+ * one of reloco's own types that owns non-atomic shared state or
+ * unsynchronized interior mutability -- exactly the bug class this file's
+ * own `rc<T>`/`function<Sig>`/`bytes` specializations exist to close.
+ * `detail::requires_explicit_send_sync` (below) turns "forgot to
+ * specialize" into a hard compile error for exactly those types, instead
+ * of a silent, wrong default: any reloco type built on top of such
+ * non-atomic/unsynchronized state privately inherits that marker, which
+ * makes the primary template's `static_assert` fire unless that specific
+ * type has its own `is_send<T>`/`is_sync<T>` specialization (a
+ * specialization is always preferred over the primary template, so a
+ * type that *does* specialize never instantiates the primary template's
+ * body at all, and never trips the assertion).
  */
 
 #include "detail/compat.hpp"
@@ -67,6 +83,24 @@
 
 namespace reloco {
 
+namespace detail {
+
+/**
+ * @brief Private marker base class: any reloco type built on non-atomic
+ * shared state or unsynchronized interior mutability (a raw `rc<T>`
+ * member, a type-erased callable invoked non-`const`, etc.) should
+ * privately inherit from this tag instead of relying on
+ * `is_send<T>`/`is_sync<T>`'s default `true`. Doing so turns a missing
+ * `is_send<T>`/`is_sync<T>` specialization for that type into a hard
+ * compile error instead of a silent, unsound default -- see the
+ * `static_assert`s in the primary templates below. `std::is_base_of_v`
+ * ignores accessibility, so a *private* base is enough; it need not
+ * affect the derived type's public interface at all.
+ */
+struct requires_explicit_send_sync {};
+
+} // namespace detail
+
 /**
  * @brief Customization point: is it sound to move a `T` to another thread
  * and continue using it only from there? Defaults to `true`. Specialize
@@ -74,7 +108,11 @@ namespace reloco {
  * non-atomic shared state that makes cross-thread ownership transfer
  * unsound (see the file-level documentation above).
  */
-template <typename T> struct is_send : std::true_type {};
+template <typename T> struct is_send : std::true_type {
+  static_assert(!std::is_base_of_v<detail::requires_explicit_send_sync, T>,
+                "T privately inherits detail::requires_explicit_send_sync but has no "
+                "is_send<T> specialization -- see send_sync.hpp");
+};
 
 /**
  * @brief Convenience variable template for `is_send<T>::value`.
@@ -89,7 +127,11 @@ template <typename T> inline constexpr bool is_send_v = is_send<T>::value;
  * mutate unsynchronized shared state (see the file-level documentation
  * above).
  */
-template <typename T> struct is_sync : std::true_type {};
+template <typename T> struct is_sync : std::true_type {
+  static_assert(!std::is_base_of_v<detail::requires_explicit_send_sync, T>,
+                "T privately inherits detail::requires_explicit_send_sync but has no "
+                "is_sync<T> specialization -- see send_sync.hpp");
+};
 
 /**
  * @brief Convenience variable template for `is_sync<T>::value`.

@@ -75,7 +75,8 @@ template <typename T> inline constexpr bool is_result_v = is_result<T>::value;
  * `operator()` (`RELOCO_ASSERT`s); use `try_call` for a checked invocation
  * that reports `error::container_empty` instead.
  */
-template <typename R, typename... Args> class [[nodiscard]] RELOCO_OWNER function<R(Args...)> {
+template <typename R, typename... Args>
+class [[nodiscard]] RELOCO_OWNER function<R(Args...)> : private detail::requires_explicit_send_sync {
 public:
   /** @brief Inline capacity available to the small-object-optimization
    * storage tier, in bytes. */
@@ -343,13 +344,15 @@ template <typename R, typename... Args> struct is_trivially_relocatable<function
  * threads through a shared `const function &` is a data race whenever the
  * captured callable has any mutable state (a mutable lambda, a plain
  * counter, ...), which the type-erased `Sig` gives no way to rule out.
- * Never `Sync`, regardless of `Sig`. `is_send` is left at its default
- * (`true`): moving the whole `function` to another thread and calling it
+ * Never `Sync`, regardless of `Sig`. `is_send` is explicitly kept at
+ * `true`: moving the whole `function` to another thread and calling it
  * only from there is fine as long as the (erased) captured callable
  * itself is `Send`, which -- like `vector<T>`'s own element type -- this
  * trait has no way to check automatically (see this file's top-level
  * caveat in `send_sync.hpp`).
  */
+template <typename R, typename... Args> struct is_send<function<R(Args...)>> : std::true_type {};
+/** @copydoc is_send<function<R(Args...)>> */
 template <typename R, typename... Args> struct is_sync<function<R(Args...)>> : std::false_type {};
 
 } // namespace reloco

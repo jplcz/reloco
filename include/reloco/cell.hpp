@@ -62,7 +62,7 @@ namespace reloco {
  * out, there is never a live reference into the cell for a concurrent
  * mutation to invalidate, so no runtime borrow tracking is needed.
  */
-template <typename T> class cell {
+template <typename T> class cell : private detail::requires_explicit_send_sync {
 public:
   constexpr cell() noexcept(std::is_nothrow_default_constructible_v<T>) : value_() {}
   constexpr explicit cell(T value) noexcept(std::is_nothrow_move_constructible_v<T>) : value_(std::move(value)) {}
@@ -118,7 +118,7 @@ private:
  * types release their borrow automatically on destruction (they are
  * move-only, matching every other reloco RAII guard).
  */
-template <typename T> class ref_cell {
+template <typename T> class ref_cell : private detail::requires_explicit_send_sync {
 public:
   /**
    * @brief A live shared borrow of the wrapped value. Move-only; releases

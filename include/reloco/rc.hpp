@@ -155,7 +155,7 @@ struct RELOCO_EXPORT enable_rc_from_this_base {};
  * `try_allocate_combined_rc`/`try_create_combined_rc` (single allocation,
  * recommended default) rather than directly.
  */
-template <typename T> class RELOCO_OWNER rc {
+template <typename T> class RELOCO_OWNER rc : private detail::requires_explicit_send_sync {
 public:
   RELOCO_BLOCK_RVALUE_ACCESS(T);
 
@@ -333,7 +333,7 @@ template <typename T, typename U> [[nodiscard]] bool operator<(const rc<T> &lhs,
  * Does not keep the object alive; call `lock()` to obtain an `rc` (or
  * `error::pointer_expired` if the object is already gone).
  */
-template <typename T> class RELOCO_POINTER weak_rc {
+template <typename T> class RELOCO_POINTER weak_rc : private detail::requires_explicit_send_sync {
 public:
   constexpr weak_rc() noexcept = default;
 

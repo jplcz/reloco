@@ -417,7 +417,7 @@ template <typename F, typename R = std::invoke_result_t<std::decay_t<F> &>>
  * silently leak a still-running, unreachable thread. Call `detach()`
  * explicitly to opt in to Rust's/`std::thread`'s original behavior.
  */
-template <typename R> class [[nodiscard]] RELOCO_OWNER join_handle {
+template <typename R> class [[nodiscard]] RELOCO_OWNER join_handle : private detail::requires_explicit_send_sync {
 public:
   constexpr join_handle() noexcept = default;
 
@@ -467,7 +467,7 @@ private:
 };
 
 /** @brief `void`-returning specialization: no result slot to retrieve. */
-template <> class [[nodiscard]] RELOCO_OWNER join_handle<void> {
+template <> class [[nodiscard]] RELOCO_OWNER join_handle<void> : private detail::requires_explicit_send_sync {
 public:
   constexpr join_handle() noexcept = default;
 

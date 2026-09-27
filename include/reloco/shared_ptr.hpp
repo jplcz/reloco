@@ -169,7 +169,7 @@ struct RELOCO_EXPORT enable_shared_from_this_base {};
  * `try_allocate_combined_shared`/`try_create_combined_shared` (single
  * allocation, recommended default) rather than directly.
  */
-template <typename T> class RELOCO_OWNER shared_ptr {
+template <typename T> class RELOCO_OWNER shared_ptr : private detail::requires_explicit_send_sync {
 public:
   RELOCO_BLOCK_RVALUE_ACCESS(T);
 
@@ -351,7 +351,7 @@ template <typename T, typename U>
  * Does not keep the object alive; call `lock()` to obtain a `shared_ptr`
  * (or `error::pointer_expired` if the object is already gone).
  */
-template <typename T> class RELOCO_POINTER weak_ptr {
+template <typename T> class RELOCO_POINTER weak_ptr : private detail::requires_explicit_send_sync {
 public:
   constexpr weak_ptr() noexcept = default;
 

@@ -90,7 +90,7 @@ namespace reloco {
  * after that, matching Rust's `std::sync::OnceLock<T>`. See the
  * file-level documentation above.
  */
-template <typename T> class once_lock {
+template <typename T> class once_lock : private detail::requires_explicit_send_sync {
   static_assert(std::is_nothrow_move_constructible_v<T>, "once_lock<T>: T must be nothrow move constructible");
   static_assert(is_send_v<T>, "once_lock<T>: T must be Send (see send_sync.hpp) -- the cell hands ownership of T to "
                               "whichever thread wins the race to initialize it");

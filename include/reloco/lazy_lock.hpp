@@ -79,7 +79,7 @@ namespace reloco {
  * captured at construction time, matching Rust's stable
  * `std::sync::LazyLock<T, F>`. See the file-level documentation above.
  */
-template <typename T, typename F> class lazy_lock {
+template <typename T, typename F> class lazy_lock : private detail::requires_explicit_send_sync {
   static_assert(std::is_invocable_r_v<T, F &>, "lazy_lock<T, F>: F must be invocable as T()");
 
 public:

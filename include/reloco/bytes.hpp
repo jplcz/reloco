@@ -110,7 +110,7 @@ struct RELOCO_EXPORT bytes_storage {
  * is produced by `try_copy_from`, `slice`/`try_slice`, `split_to`,
  * `split_off`, or `bytes_mut::try_freeze`.
  */
-class RELOCO_POINTER bytes {
+class RELOCO_POINTER bytes : private detail::requires_explicit_send_sync {
 public:
   constexpr bytes() noexcept = default;
 

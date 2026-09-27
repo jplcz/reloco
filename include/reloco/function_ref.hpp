@@ -32,7 +32,8 @@ namespace reloco {
 
 template <typename Signature> class function_ref; // Primary template undefined
 
-template <typename R, typename... Args> class RELOCO_POINTER function_ref<R(Args...)> {
+template <typename R, typename... Args>
+class RELOCO_POINTER function_ref<R(Args...)> : private detail::requires_explicit_send_sync {
 private:
   // We use a union because strict ISO C++ forbids casting function pointers to `void*`.
   // This ensures UB-free handling of raw function pointers on all architectures.
@@ -105,12 +106,14 @@ public:
  * interior mutability (see `function.hpp`), calling the same
  * `function_ref` concurrently from multiple threads is a data race
  * whenever the borrowed callable has any mutable state. Never `Sync`,
- * regardless of `Sig`. `is_send` is left at its default (`true`): a
+ * regardless of `Sig`. `is_send` is explicitly kept at `true`: a
  * `function_ref` is just two pointers, so moving it to another thread is
  * always fine -- whether the *referenced* callable itself is safe to keep
  * calling from that other thread is on the caller, exactly like any other
  * borrowed reference.
  */
+template <typename R, typename... Args> struct is_send<function_ref<R(Args...)>> : std::true_type {};
+/** @copydoc is_send<function_ref<R(Args...)>> */
 template <typename R, typename... Args> struct is_sync<function_ref<R(Args...)>> : std::false_type {};
 
 } // namespace reloco

@@ -186,7 +186,7 @@ template <typename T> void push_node(channel_shared<T> &shared, unique_ptr<chann
  * convention); every clone may call `try_send` independently from any
  * thread.
  */
-template <typename T> class RELOCO_OWNER sender {
+template <typename T> class RELOCO_OWNER sender : private detail::requires_explicit_send_sync {
 public:
   sender(const sender &other) noexcept : shared_(other.shared_) {
     if (shared_) {
@@ -268,7 +268,7 @@ private:
  * documentation for the bounded-specific behavior that only kicks in when
  * this receiver's `sync_sender<T>` counterpart exists.
  */
-template <typename T> class RELOCO_OWNER receiver {
+template <typename T> class RELOCO_OWNER receiver : private detail::requires_explicit_send_sync {
 public:
   receiver(receiver &&) noexcept = default;
   receiver &operator=(receiver &&) noexcept = default;
@@ -461,7 +461,7 @@ private:
  * from any thread. See the file-level documentation above for the
  * blocking/rendezvous semantics.
  */
-template <typename T> class RELOCO_OWNER sync_sender {
+template <typename T> class RELOCO_OWNER sync_sender : private detail::requires_explicit_send_sync {
 public:
   sync_sender(const sync_sender &other) noexcept : shared_(other.shared_) {
     if (shared_) {
