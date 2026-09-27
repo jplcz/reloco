@@ -120,6 +120,7 @@ TEST(OutlineVectorTest, TryPopBackFailsOnEmpty) {
 }
 
 TEST(OutlineVectorTest, ClearDestroysElementsAndResetsSize) {
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE;
   bool destroyed[2] = {false, false};
   backing_storage<move_only, 4> storage;
   outline_vector<move_only> v(storage.as_span());
@@ -131,6 +132,7 @@ TEST(OutlineVectorTest, ClearDestroysElementsAndResetsSize) {
   EXPECT_TRUE(destroyed[1]);
   EXPECT_EQ(v.size(), 0u);
   EXPECT_TRUE(v.empty());
+  RELOCO_END_UNSAFE_BUFFER_USAGE;
 }
 
 TEST(OutlineVectorTest, TryInsertAtShiftsElementsRight) {
@@ -207,6 +209,7 @@ TEST(OutlineVectorTest, TryEraseAtOutOfBoundsFails) {
 }
 
 TEST(OutlineVectorTest, TryEraseAtNonRelocatableDestroysAndMoves) {
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE;
   bool destroyed[3] = {false, false, false};
   backing_storage<move_only, 4> storage;
   outline_vector<move_only> v(storage.as_span());
@@ -219,6 +222,7 @@ TEST(OutlineVectorTest, TryEraseAtNonRelocatableDestroysAndMoves) {
   ASSERT_EQ(v.size(), 2u);
   EXPECT_EQ(v[0].value, 2);
   EXPECT_EQ(v[1].value, 3);
+  RELOCO_END_UNSAFE_BUFFER_USAGE;
 }
 
 TEST(OutlineVectorTest, TryAtChecksBounds) {
@@ -331,6 +335,7 @@ TEST(OutlineVectorTest, TryResizeFailsWithCapacityExceeded) {
 }
 
 TEST(OutlineVectorTest, TryResizeShrinksAndDestroysTrailingElements) {
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE;
   bool destroyed[3] = {false, false, false};
   backing_storage<move_only, 4> storage;
   outline_vector<move_only> v(storage.as_span());
@@ -343,9 +348,11 @@ TEST(OutlineVectorTest, TryResizeShrinksAndDestroysTrailingElements) {
   EXPECT_TRUE(destroyed[1]);
   EXPECT_TRUE(destroyed[2]);
   EXPECT_FALSE(destroyed[0]);
+  RELOCO_END_UNSAFE_BUFFER_USAGE;
 }
 
 TEST(OutlineVectorTest, DestructorDestroysElementsButNotStorage) {
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE;
   bool destroyed[2] = {false, false};
   backing_storage<move_only, 4> storage;
   {
@@ -355,6 +362,7 @@ TEST(OutlineVectorTest, DestructorDestroysElementsButNotStorage) {
   }
   EXPECT_TRUE(destroyed[0]);
   EXPECT_TRUE(destroyed[1]);
+  RELOCO_END_UNSAFE_BUFFER_USAGE;
 
   // The backing storage itself is still ours and reusable after the outline_vector's
   // destructor has run.

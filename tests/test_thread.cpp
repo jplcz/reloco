@@ -118,6 +118,7 @@ TEST(ThreadBuilderTest, OversizedNameIsReportedAsCapacityExceeded) {
 
 #if defined(__linux__)
 TEST(ThreadBuilderTest, NameIsAppliedToTheSpawnedThreadOnLinux) {
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE;
   char observed[16] = {};
   auto handle = reloco::thread_builder().name("reloco-wrk").spawn([&observed]() noexcept {
     prctl(PR_GET_NAME, observed);
@@ -125,6 +126,7 @@ TEST(ThreadBuilderTest, NameIsAppliedToTheSpawnedThreadOnLinux) {
   ASSERT_TRUE(handle.has_value());
   std::move(*handle).join();
   EXPECT_STREQ(observed, "reloco-wrk");
+  RELOCO_END_UNSAFE_BUFFER_USAGE;
 }
 #endif
 
