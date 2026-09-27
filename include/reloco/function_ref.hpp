@@ -21,6 +21,7 @@
 
 #include "detail/compat.hpp"
 #include "lifetime.hpp"
+#include "send_sync.hpp"
 
 #include <functional>
 #include <memory>
@@ -96,5 +97,20 @@ public:
    */
   R operator()(Args... args) const { return callback_(data_, std::forward<Args>(args)...); }
 };
+
+/** @brief `function_ref<R(Args...)>`'s `operator()` is `const`-qualified
+ * but its trampoline invokes the *borrowed* callable non-`const` (see
+ * `object_trampoline` above), so it may freely mutate the referenced
+ * callable's state -- exactly like `function<Sig>`'s own unsynchronized
+ * interior mutability (see `function.hpp`), calling the same
+ * `function_ref` concurrently from multiple threads is a data race
+ * whenever the borrowed callable has any mutable state. Never `Sync`,
+ * regardless of `Sig`. `is_send` is left at its default (`true`): a
+ * `function_ref` is just two pointers, so moving it to another thread is
+ * always fine -- whether the *referenced* callable itself is safe to keep
+ * calling from that other thread is on the caller, exactly like any other
+ * borrowed reference.
+ */
+template <typename R, typename... Args> struct is_sync<function_ref<R(Args...)>> : std::false_type {};
 
 } // namespace reloco

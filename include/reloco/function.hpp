@@ -46,6 +46,7 @@
 #include "error.hpp"
 #include "lifetime.hpp"
 #include "relocatable.hpp"
+#include "send_sync.hpp"
 
 #include <cstddef>
 #include <new>
@@ -334,6 +335,22 @@ private:
  * for documentation.
  */
 template <typename R, typename... Args> struct is_trivially_relocatable<function<R(Args...)>> : std::false_type {};
+
+/** @brief `function<R(Args...)>`'s `operator()` is `const`-qualified but
+ * invokes the wrapped callable non-const (`storage_` is `mutable`, see
+ * above) -- exactly like `cell<T>`'s unsynchronized interior mutability,
+ * calling the *same* `function` instance concurrently from multiple
+ * threads through a shared `const function &` is a data race whenever the
+ * captured callable has any mutable state (a mutable lambda, a plain
+ * counter, ...), which the type-erased `Sig` gives no way to rule out.
+ * Never `Sync`, regardless of `Sig`. `is_send` is left at its default
+ * (`true`): moving the whole `function` to another thread and calling it
+ * only from there is fine as long as the (erased) captured callable
+ * itself is `Send`, which -- like `vector<T>`'s own element type -- this
+ * trait has no way to check automatically (see this file's top-level
+ * caveat in `send_sync.hpp`).
+ */
+template <typename R, typename... Args> struct is_sync<function<R(Args...)>> : std::false_type {};
 
 } // namespace reloco
 
