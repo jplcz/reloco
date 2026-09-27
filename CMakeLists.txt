@@ -448,6 +448,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_ring_buffer.cpp
         tests/test_atomic_ring_buffer.cpp
         tests/test_digraph.cpp
+        tests/test_uninit.cpp
     )
 
     target_link_libraries(jplcz_reloco_tests PRIVATE jplcz_reloco GTest::gtest_main)

@@ -72,6 +72,7 @@
 #include <reloco/tree_map.hpp>
 #include <reloco/tree_set.hpp>
 #include <reloco/type_id.hpp>
+#include <reloco/uninit.hpp>
 #include <reloco/unique_ptr.hpp>
 #include <reloco/value_ptr.hpp>
 #include <reloco/value_ref.hpp>
