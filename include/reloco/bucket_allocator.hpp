@@ -19,12 +19,21 @@
  * compile-time-sized array -- deliberately not a data structure that
  * could itself need to allocate, or a search whose cost depends on
  * anything other than the fixed bucket count), and forwards to that
- * bucket's own `pool_allocator_context<Lock>`. A request bigger than the
- * largest configured bucket, or more aligned than `alignment` (the one
- * alignment shared by every bucket, see below), fails with
- * `error::allocation_failed` -- exactly like `pool_allocator` itself,
- * this backend never falls through to a "handle anything" allocation
- * path.
+ * bucket's own `pool_allocator_context<Lock>`.
+ *
+ * A request whose size fits some configured bucket, but whose alignment
+ * exceeds `alignment` (the one alignment shared by every bucket, see
+ * below), fails with `error::allocation_failed` -- that bucket's own
+ * `pool_allocator_context<Lock>` rejects it, exactly like `pool_allocator`
+ * itself, and this backend does not retry it against upstream. A request
+ * bigger than the *largest* configured bucket, however, is forwarded
+ * directly to the shared upstream `allocator_ref` instead of failing (the
+ * one case where this backend does defer, rather than reject), with
+ * whatever alignment was requested -- once a request no longer fits any
+ * bucket, there is no smaller size class left to round it up to and check
+ * against, and refusing outright would make `bucket_allocator` a poor
+ * drop-in replacement for a plain allocator once request sizes grow past
+ * the configured range.
  *
  * Every bucket shares one `alignment` (a constructor parameter, not part
  * of `BucketSizes`) and one upstream `allocator_ref` `pool_allocator`
@@ -45,11 +54,14 @@
  * from, then forwards *that bucket's own exact block size* -- not the
  * possibly-smaller `bytes` it was given -- to the underlying
  * `pool_allocator_context<Lock>::deallocate_block`, which requires an
- * exact match.
+ * exact match. If `bytes` exceeds every bucket (i.e. the block was one
+ * of the direct-to-upstream allocations above), `deallocate()` forwards
+ * straight to the upstream `allocator_ref` instead, with the same
+ * (possibly-truncated) `bytes` it was given -- exactly mirroring
+ * `allocate()`'s own fallback path.
  */
 
 #include "allocator.hpp"
-#include "detail/assert.hpp"
 #include "detail/compat.hpp"
 #include "error.hpp"
 #include "expected.hpp"
@@ -97,15 +109,18 @@ public:
    *   two and divide every one of `BucketSizes...` -- see
    *   `pool_allocator_context`'s constructor, which each bucket's
    *   underlying pool asserts this through individually.
-   * @param upstream Allocator every bucket obtains its slabs from. Must
-   *   outlive this context.
-   * @param blocks_per_slab Forwarded to every bucket's own
+   * @param upstream Allocator every bucket obtains its slabs from, and
+   *   also the fallback used directly for any request bigger than the
+   *   largest configured bucket (see the file docs). Must outlive this
+   *   context.
+   * @param slab_bytes Forwarded to every bucket's own
    *   `pool_allocator_context` (see its constructor) -- one shared slab
-   *   granularity across every bucket, not configurable per-bucket.
+   *   byte size across every bucket, not configurable per-bucket.
    */
   constexpr bucket_allocator_context(std::size_t alignment, allocator_ref upstream,
-                                     std::size_t blocks_per_slab) noexcept
-      : bucket_allocator_context(std::make_index_sequence<bucket_count>{}, alignment, upstream, blocks_per_slab) {}
+                                     std::size_t slab_bytes) noexcept
+      : upstream_(upstream),
+        pools_(std::make_index_sequence<bucket_count>{}, alignment, upstream, slab_bytes) {}
 
   bucket_allocator_context(const bucket_allocator_context &) = delete;
   bucket_allocator_context &operator=(const bucket_allocator_context &) = delete;
@@ -114,8 +129,13 @@ public:
 
   [[nodiscard]] result<mem_block> try_allocate_block(std::size_t bytes, std::size_t alignment) noexcept {
     const std::size_t idx = find_bucket(bytes);
-    if (idx == bucket_count)
-      return unexpected(error::allocation_failed);
+    if (idx == bucket_count) {
+      // Bigger than every configured bucket: defer straight to upstream_
+      // (with whatever alignment was requested) rather than reject -- see
+      // the file docs. A too-large-alignment-but-in-range request is
+      // still rejected by the bucket's own pool below, not retried here.
+      return upstream_.allocate(bytes, alignment);
+    }
     return pools_[idx].try_allocate_block(bytes, alignment);
   }
 
@@ -125,18 +145,31 @@ public:
     // hand that bucket's own exact block size to it, since
     // pool_allocator_context::deallocate_block requires an exact match.
     const std::size_t idx = find_bucket(bytes);
-    RELOCO_DEBUG_ASSERT(idx != bucket_count,
-                        "bucket_allocator: deallocate() called with a size larger than every configured bucket");
-    if (idx == bucket_count)
+    if (idx == bucket_count) {
+      // Mirrors the allocate() fallback above: this block was handed out
+      // directly by upstream_, so free it there too.
+      upstream_.deallocate(ptr, bytes);
       return;
+    }
     pools_[idx].deallocate_block(ptr, bucket_sizes[idx]);
   }
 
 private:
-  template <std::size_t... Is>
-  constexpr bucket_allocator_context(std::index_sequence<Is...>, std::size_t alignment, allocator_ref upstream,
-                                     std::size_t blocks_per_slab) noexcept
-      : pools_{pool_allocator_context<Lock>(bucket_sizes[Is], alignment, upstream, blocks_per_slab)...} {}
+  // Helper struct so pools_ can be constructed via an index-sequence
+  // delegating constructor while upstream_ is initialized directly (see
+  // the mem-initializer list above) -- std::array itself has no such
+  // constructor, so this wraps it in a tiny aggregate-like helper that
+  // does.
+  struct pools_holder {
+    template <std::size_t... Is>
+    constexpr pools_holder(std::index_sequence<Is...>, std::size_t alignment, allocator_ref upstream,
+                           std::size_t slab_bytes) noexcept
+        : pools{pool_allocator_context<Lock>(bucket_sizes[Is], alignment, upstream, slab_bytes)...} {}
+
+    [[nodiscard]] constexpr pool_allocator_context<Lock> &operator[](std::size_t idx) noexcept { return pools[idx]; }
+
+    std::array<pool_allocator_context<Lock>, bucket_count> pools;
+  };
 
   // Smallest bucket index whose size is >= target, or bucket_count if
   // target exceeds every bucket. A plain linear scan bounded by the fixed,
@@ -151,7 +184,8 @@ private:
     return bucket_count;
   }
 
-  std::array<pool_allocator_context<Lock>, bucket_count> pools_;
+  allocator_ref upstream_;
+  pools_holder pools_;
 };
 
 /**
@@ -190,7 +224,7 @@ struct allocator_traits<bucket_allocator_tag<Lock, BucketSizes...>> {
  *
  * @code
  *   reloco::bucket_allocator<reloco::null_mutex, 16, 32, 64, 128, 256> pool(
- *       alignof(std::max_align_t), reloco::default_allocator(), 32);
+ *       alignof(std::max_align_t), reloco::default_allocator(), 65536);
  *   auto vec = reloco::vector<int>::try_allocate(pool.ref());
  * @endcode
  *
@@ -200,8 +234,8 @@ struct allocator_traits<bucket_allocator_tag<Lock, BucketSizes...>> {
  */
 template <typename Lock, std::size_t... BucketSizes> class RELOCO_OWNER bucket_allocator {
 public:
-  constexpr bucket_allocator(std::size_t alignment, allocator_ref upstream, std::size_t blocks_per_slab) noexcept
-      : context_(alignment, upstream, blocks_per_slab) {}
+  constexpr bucket_allocator(std::size_t alignment, allocator_ref upstream, std::size_t slab_bytes) noexcept
+      : context_(alignment, upstream, slab_bytes) {}
 
   bucket_allocator(const bucket_allocator &) = delete;
   bucket_allocator &operator=(const bucket_allocator &) = delete;

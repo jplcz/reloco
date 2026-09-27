@@ -21,8 +21,11 @@ class BucketAllocatorTest : public ::testing::Test {
 protected:
   static constexpr std::size_t alignment = alignof(std::max_align_t);
   static constexpr std::size_t blocks_per_slab = 4;
+  // Must be a multiple of every bucket size (16, 32, 64, 128): shared
+  // across all buckets, not configured per-bucket.
+  static constexpr std::size_t slab_bytes = (blocks_per_slab + 1) * 128;
 
-  bucket_allocator<null_mutex, 16, 32, 64, 128> pool{alignment, heap_ref(), blocks_per_slab};
+  bucket_allocator<null_mutex, 16, 32, 64, 128> pool{alignment, heap_ref(), slab_bytes};
   allocator_ref ref{pool.ref()};
 };
 
@@ -62,13 +65,20 @@ TEST_F(BucketAllocatorTest, RoutesToSmallestFittingBucket) {
   ref.deallocate(exact->ptr, exact->size);
 }
 
-TEST_F(BucketAllocatorTest, RejectsRequestLargerThanLargestBucket) {
+TEST_F(BucketAllocatorTest, DefersToUpstreamWhenLargerThanLargestBucket) {
+  // No configured bucket is >= 129, so this must be forwarded straight to
+  // the shared upstream allocator (heap_ref()) instead of failing.
   auto res = ref.allocate(129, 4);
-  ASSERT_FALSE(res.has_value());
-  EXPECT_EQ(res.error(), error::allocation_failed);
+  ASSERT_TRUE(res.has_value());
+  EXPECT_NE(res->ptr, nullptr);
+  EXPECT_GE(res->size, 129u);
+  ref.deallocate(res->ptr, res->size); // also forwarded straight to upstream_
 }
 
-TEST_F(BucketAllocatorTest, RejectsOveralignedRequest) {
+TEST_F(BucketAllocatorTest, RejectsOveralignedRequestWithinBucketRange) {
+  // 8 bytes fits the 16-byte bucket, but the requested alignment exceeds
+  // every bucket's shared alignment -- rejected by that bucket, not
+  // retried against upstream.
   auto res = ref.allocate(8, alignment * 2);
   ASSERT_FALSE(res.has_value());
   EXPECT_EQ(res.error(), error::allocation_failed);
@@ -110,14 +120,14 @@ TEST_F(BucketAllocatorTest, AllocatedBlocksAreDistinctAcrossBucketsAndRefills) {
 }
 
 TEST_F(BucketAllocatorTest, WorksWithMutexLock) {
-  bucket_allocator<mutex, 16, 32> mtx_pool(8, heap_ref(), 4);
+  bucket_allocator<mutex, 16, 32> mtx_pool(8, heap_ref(), 5 * 32);
   auto res = mtx_pool.ref().allocate(10, 4);
   ASSERT_TRUE(res.has_value());
   mtx_pool.ref().deallocate(res->ptr, res->size);
 }
 
 TEST_F(BucketAllocatorTest, WorksWithSpinLock) {
-  bucket_allocator<spin_lock, 16, 32> spin_pool(8, heap_ref(), 4);
+  bucket_allocator<spin_lock, 16, 32> spin_pool(8, heap_ref(), 5 * 32);
   auto res = spin_pool.ref().allocate(10, 4);
   ASSERT_TRUE(res.has_value());
   spin_pool.ref().deallocate(res->ptr, res->size);

@@ -25,8 +25,12 @@
  * a slab store a link to the next one): no separate tracking allocation is
  * ever made, and no metadata lives outside what the upstream allocator
  * itself handed back. A slab reserves exactly one whole block's worth of
- * space at its front for that per-slab link, so `block_size` is the only
- * size unit involved anywhere in the layout.
+ * space at its front for that per-slab link. Slab size is configured as an
+ * exact `slab_bytes` byte count (not a block count), so a caller can size
+ * slabs by whatever granularity matters to the upstream allocator (e.g.
+ * `65536` for a 64 KiB slab, regardless of `block_size`) -- the number of
+ * usable blocks per slab (`slab_bytes / block_size - 1`, after reserving
+ * the header block) is derived from it, not configured directly.
  *
  * When the free list is empty, `try_allocate_block` releases its internal
  * `Lock` *before* calling into the (potentially slow, potentially
@@ -109,22 +113,27 @@ public:
    *   Must be a power of two.
    * @param upstream Allocator used to obtain each slab. Must outlive this
    *   context.
-   * @param blocks_per_slab Number of blocks carved out of each slab
-   *   obtained from @p upstream (plus one reserved, hidden block used to
-   *   hold that slab's own link to the next one -- see the file docs).
-   *   Must be at least 1.
+   * @param slab_bytes Exact size, in bytes, requested from @p upstream for
+   *   each slab (e.g. `65536` to obtain 64 KiB slabs regardless of
+   *   `block_size`) -- not a block count, so the caller can size slabs by
+   *   the granularity that matters to the upstream allocator (a page, a
+   *   huge page, ...) rather than by how many blocks happen to fit. Must
+   *   be a multiple of @p block_size and cover at least 2 blocks' worth:
+   *   one reserved, hidden block used to hold the slab's own link to the
+   *   next one (see the file docs), plus at least one usable block.
    */
   constexpr pool_allocator_context(std::size_t block_size, std::size_t block_alignment, allocator_ref upstream,
-                                   std::size_t blocks_per_slab) noexcept
-      : block_size_(block_size), block_alignment_(block_alignment), upstream_(upstream),
-        blocks_per_slab_(blocks_per_slab) {
+                                   std::size_t slab_bytes) noexcept
+      : block_size_(block_size), block_alignment_(block_alignment), upstream_(upstream), slab_bytes_(slab_bytes) {
     RELOCO_ASSERT(block_size_ >= sizeof(void *),
                   "pool_allocator: block_size must be >= sizeof(void*) to hold an intrusive free-list link");
     RELOCO_ASSERT(detail::pool_allocator_is_power_of_two(block_alignment_),
                   "pool_allocator: block_alignment must be a power of two");
     RELOCO_ASSERT(block_size_ % block_alignment_ == 0,
                   "pool_allocator: block_size must be a multiple of block_alignment");
-    RELOCO_ASSERT(blocks_per_slab_ >= 1, "pool_allocator: blocks_per_slab must be at least 1");
+    RELOCO_ASSERT(slab_bytes_ % block_size_ == 0, "pool_allocator: slab_bytes must be a multiple of block_size");
+    RELOCO_ASSERT(slab_bytes_ / block_size_ >= 2,
+                  "pool_allocator: slab_bytes must cover at least 2 blocks (1 header + >=1 usable block)");
   }
 
   pool_allocator_context(const pool_allocator_context &) = delete;
@@ -181,16 +190,16 @@ public:
   }
 
 private:
-  // Bytes needed for one slab: `blocks_per_slab_` ordinary blocks plus one
-  // reserved header block (holding this slab's link to the next one, see
-  // the file docs).
-  [[nodiscard]] constexpr std::size_t slab_bytes() const noexcept { return (blocks_per_slab_ + 1) * block_size_; }
+  // Number of ordinary (non-header) blocks carved out of each slab: the
+  // fixed slab_bytes_ minus one block's worth reserved for the slab's own
+  // link to the next one (see the file docs), divided by block_size_.
+  [[nodiscard]] constexpr std::size_t blocks_per_slab() const noexcept { return slab_bytes_ / block_size_ - 1; }
 
   // Obtains one new slab from upstream_ and splices its blocks onto
   // free_list_. Called with lock_ NOT held; only reacquires it once the
   // (potentially slow/blocking) upstream call has already completed.
   [[nodiscard]] result<void> refill() noexcept {
-    auto slab_res = upstream_.allocate(slab_bytes(), block_alignment_);
+    auto slab_res = upstream_.allocate(slab_bytes_, block_alignment_);
     if (!slab_res)
       return unexpected(slab_res.error());
 
@@ -201,7 +210,7 @@ private:
     slab_list_ = base;
 
     std::byte *block = base + block_size_;
-    for (std::size_t i = 0; i < blocks_per_slab_; ++i, block += block_size_) {
+    for (std::size_t i = 0, n = blocks_per_slab(); i < n; ++i, block += block_size_) {
       *reinterpret_cast<void **>(block) = free_list_;
       free_list_ = block;
     }
@@ -210,11 +219,10 @@ private:
   }
 
   void release_all_slabs() noexcept {
-    const std::size_t bytes = slab_bytes();
     void *slab = slab_list_;
     while (slab != nullptr) {
       void *next = *static_cast<void **>(slab);
-      upstream_.deallocate(slab, bytes);
+      upstream_.deallocate(slab, slab_bytes_);
       slab = next;
     }
     slab_list_ = nullptr;
@@ -224,7 +232,7 @@ private:
   std::size_t block_size_;
   std::size_t block_alignment_;
   allocator_ref upstream_;
-  std::size_t blocks_per_slab_;
+  std::size_t slab_bytes_;
   void *free_list_ = nullptr;
   void *slab_list_ = nullptr;
   RELOCO_NO_UNIQUE_ADDRESS Lock lock_{};
@@ -261,7 +269,7 @@ template <typename Lock> struct allocator_traits<pool_allocator_tag<Lock>> {
  *
  * @code
  *   reloco::pool_allocator<> pool(64, alignof(std::max_align_t),
- *                                 reloco::default_allocator(), 32);
+ *                                 reloco::default_allocator(), 65536);
  *   auto vec = reloco::vector<int>::try_allocate(pool.ref());
  * @endcode
  *
@@ -272,8 +280,8 @@ template <typename Lock> struct allocator_traits<pool_allocator_tag<Lock>> {
 template <typename Lock = null_mutex> class RELOCO_OWNER pool_allocator {
 public:
   constexpr pool_allocator(std::size_t block_size, std::size_t block_alignment, allocator_ref upstream,
-                           std::size_t blocks_per_slab) noexcept
-      : context_(block_size, block_alignment, upstream, blocks_per_slab) {}
+                           std::size_t slab_bytes) noexcept
+      : context_(block_size, block_alignment, upstream, slab_bytes) {}
 
   pool_allocator(const pool_allocator &) = delete;
   pool_allocator &operator=(const pool_allocator &) = delete;

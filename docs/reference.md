@@ -2824,7 +2824,7 @@ zone.
 
 ```cpp
 reloco::pool_allocator<> pool(64, alignof(std::max_align_t),
-                              reloco::default_allocator(), 32);
+                              reloco::default_allocator(), 65536);
 auto vec = reloco::vector<int>::try_allocate(pool.ref());
 ```
 
@@ -2833,7 +2833,12 @@ All bookkeeping — the free-block list and the list of slabs themselves
 memory (the first `sizeof(void*)` bytes of a free block, or of a slab,
 link to the next one): no separate tracking allocation is ever made. Each
 slab reserves exactly one whole block's worth of space at its front for
-that per-slab link.
+that per-slab link. Slab size is configured as an exact `slab_bytes` byte
+count (not a block count), so a caller can size each slab request to
+whatever granularity matters to the upstream allocator (e.g. a page or
+huge page) rather than an arbitrary number of blocks; the number of
+*usable* blocks per slab (`slab_bytes / block_size - 1`, after reserving
+the header block) is derived from it.
 
 When the free list is empty, allocation releases the pool's internal
 `Lock` *before* calling into the (potentially slow/blocking) upstream
@@ -2868,7 +2873,7 @@ request to the smallest configured bucket that fits:
 
 ```cpp
 reloco::bucket_allocator<reloco::null_mutex, 16, 32, 64, 128, 256> pool(
-    alignof(std::max_align_t), reloco::default_allocator(), 32);
+    alignof(std::max_align_t), reloco::default_allocator(), 65536);
 auto vec = reloco::vector<int>::try_allocate(pool.ref());
 ```
 
@@ -2876,13 +2881,19 @@ auto vec = reloco::vector<int>::try_allocate(pool.ref());
 `static_assert`, not a runtime check). Every bucket shares one
 `alignment` (a constructor parameter, not part of `BucketSizes`) and one
 upstream `allocator_ref` every bucket's own `pool_allocator_context<Lock>`
-obtains its slabs from. A request bigger than the largest configured
-bucket, or more aligned than `alignment`, fails with
-`error::allocation_failed` -- exactly like `pool_allocator` itself, this
-never falls through to a "handle anything" allocation path. Bucket
-selection is a plain linear scan bounded by `sizeof...(BucketSizes)` --
-deliberately simple and deterministic rather than, say, a binary search,
-since the bucket count is expected to stay small.
+obtains its slabs from. A request that fits some bucket but whose
+alignment exceeds `alignment` fails with `error::allocation_failed` --
+that bucket's own pool rejects it, exactly like `pool_allocator` itself,
+and it is not retried against upstream. A request bigger than the
+*largest* configured bucket, however, is forwarded directly to the shared
+upstream `allocator_ref` instead of failing -- once nothing configured
+fits, there's no smaller size class left to round up to and reject
+against, so falling back to upstream keeps `bucket_allocator` usable as a
+general-purpose front end rather than one that hard-fails past its
+configured range. Bucket selection is a plain linear scan bounded by
+`sizeof...(BucketSizes)` -- deliberately simple and deterministic rather
+than, say, a binary search, since the bucket count is expected to stay
+small.
 
 Deallocation's one subtlety: the `bytes` a caller passes back to
 `deallocate()` is not always exactly the bucket size the block was
@@ -2891,7 +2902,10 @@ carved from (a container may record, and later hand back, any value
 `mem_block` contract). `deallocate()` re-runs the same bucket-selection
 search to recover which bucket the block actually came from, then
 forwards *that bucket's own exact block size* to it, since
-`pool_allocator_context::deallocate_block` requires an exact match.
+`pool_allocator_context::deallocate_block` requires an exact match. If
+`bytes` exceeds every bucket (the block was one of the direct-to-upstream
+allocations above), `deallocate()` forwards straight to the upstream
+`allocator_ref` instead, mirroring `allocate()`'s own fallback.
 
 `Lock` must always be given explicitly, even to pick the default
 `null_mutex` (e.g. `bucket_allocator<null_mutex, 16, 32, 64>`): a

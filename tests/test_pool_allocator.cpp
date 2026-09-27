@@ -22,8 +22,9 @@ protected:
   static constexpr std::size_t block_size = 64;
   static constexpr std::size_t block_align = alignof(std::max_align_t);
   static constexpr std::size_t blocks_per_slab = 4;
+  static constexpr std::size_t slab_bytes = (blocks_per_slab + 1) * block_size;
 
-  pool_allocator<> pool{block_size, block_align, heap_ref(), blocks_per_slab};
+  pool_allocator<> pool{block_size, block_align, heap_ref(), slab_bytes};
   allocator_ref ref{pool.ref()};
 };
 
@@ -84,9 +85,10 @@ TEST_F(PoolAllocatorTest, DeallocatedBlockIsReusedByNextAllocation) {
 }
 
 TEST_F(PoolAllocatorTest, RefillsAcrossMultipleSlabs) {
-  // blocks_per_slab == 4: allocate well beyond a single slab's worth and
-  // confirm every block is unique (i.e. refill() correctly grows the pool
-  // instead of reusing/corrupting memory).
+  // blocks_per_slab == 4 (slab_bytes covers 4 usable blocks + 1 header
+  // block): allocate well beyond a single slab's worth and confirm every
+  // block is unique (i.e. refill() correctly grows the pool instead of
+  // reusing/corrupting memory).
   constexpr int count = 37;
   void *ptrs[count];
   for (int i = 0; i < count; ++i) {
@@ -105,14 +107,14 @@ TEST_F(PoolAllocatorTest, RefillsAcrossMultipleSlabs) {
 }
 
 TEST_F(PoolAllocatorTest, WorksWithMutexLock) {
-  pool_allocator<mutex> mtx_pool(32, 8, heap_ref(), 4);
+  pool_allocator<mutex> mtx_pool(32, 8, heap_ref(), 5 * 32);
   auto res = mtx_pool.ref().allocate(8, 4);
   ASSERT_TRUE(res.has_value());
   mtx_pool.ref().deallocate(res->ptr, res->size);
 }
 
 TEST_F(PoolAllocatorTest, WorksWithSpinLock) {
-  pool_allocator<spin_lock> spin_pool(32, 8, heap_ref(), 4);
+  pool_allocator<spin_lock> spin_pool(32, 8, heap_ref(), 5 * 32);
   auto res = spin_pool.ref().allocate(8, 4);
   ASSERT_TRUE(res.has_value());
   spin_pool.ref().deallocate(res->ptr, res->size);
