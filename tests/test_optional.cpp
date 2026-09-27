@@ -160,7 +160,7 @@ TEST_F(OptionalTest, LifecycleTracking) {
     opt2 = std::move(opt1); // Move assign full to empty
     EXPECT_EQ(LifetimeTracker::instances_alive, 2);
     EXPECT_EQ(opt2->value, 42);
-    EXPECT_EQ(opt1.as_known()->value, -1); // Moved from
+    EXPECT_EQ(opt1->value, -1); // Moved from
   }
 
   // Both out of scope
@@ -173,13 +173,13 @@ TEST_F(OptionalTest, Swap) {
 
   empty.swap(full);
   EXPECT_TRUE(empty.has_value());
-  EXPECT_EQ(*empty.as_known(), 10);
+  EXPECT_EQ(*empty, 10);
   EXPECT_FALSE(full.has_value());
 
   optional<int> full2(20);
   empty.swap(full2);
-  EXPECT_EQ(*empty.as_known(), 20);
-  EXPECT_EQ(*full2.as_known(), 10);
+  EXPECT_EQ(*empty, 20);
+  EXPECT_EQ(*full2, 10);
 }
 
 TEST_F(OptionalTest, Comparisons) {
@@ -208,21 +208,21 @@ TEST_F(OptionalTest, TypestateAsKnownEscapeHatch) {
   optional<int> opt(77);
 
   // Test mutable escape hatch
-  int &val_mut = opt.as_known().value();
+  int &val_mut = opt.value();
   EXPECT_EQ(val_mut, 77);
   val_mut = 88;
   EXPECT_EQ(*opt, 88);
 
   // Test const escape hatch
   const optional<int> &c_opt = opt;
-  EXPECT_EQ(c_opt.as_known().value(), 88);
+  EXPECT_EQ(c_opt.value(), 88);
 }
 
 TEST_F(OptionalTest, Take) {
   optional<int> full(42);
   optional<int> taken = full.take();
   EXPECT_TRUE(taken.has_value());
-  EXPECT_EQ(*taken.as_known(), 42);
+  EXPECT_EQ(*taken, 42);
   EXPECT_FALSE(full.has_value());
 
   optional<int> empty;
@@ -234,15 +234,15 @@ TEST_F(OptionalTest, Replace) {
   optional<int> full(1);
   optional<int> old = full.replace(2);
   EXPECT_TRUE(old.has_value());
-  EXPECT_EQ(*old.as_known(), 1);
+  EXPECT_EQ(*old, 1);
   EXPECT_TRUE(full.has_value());
-  EXPECT_EQ(*full.as_known(), 2);
+  EXPECT_EQ(*full, 2);
 
   optional<int> empty;
   optional<int> old_empty = empty.replace(9);
   EXPECT_FALSE(old_empty.has_value());
   EXPECT_TRUE(empty.has_value());
-  EXPECT_EQ(*empty.as_known(), 9);
+  EXPECT_EQ(*empty, 9);
 }
 
 TEST_F(OptionalTest, GetOrInsert) {
@@ -254,7 +254,7 @@ TEST_F(OptionalTest, GetOrInsert) {
   optional<int> full(10);
   int &ref2 = full.get_or_insert(20);
   EXPECT_EQ(ref2, 10);
-  EXPECT_EQ(*full.as_known(), 10);
+  EXPECT_EQ(*full, 10);
 }
 
 TEST_F(OptionalTest, GetOrInsertWith) {
@@ -279,7 +279,7 @@ TEST_F(OptionalTest, GetOrInsertWith) {
 TEST_F(OptionalTest, Then) {
   optional<int> yes = then(true, []() { return 42; });
   ASSERT_TRUE(yes.has_value());
-  EXPECT_EQ(*yes.as_known(), 42);
+  EXPECT_EQ(*yes, 42);
 
   bool invoked = false;
   optional<int> no = then(false, [&invoked]() {
@@ -293,7 +293,7 @@ TEST_F(OptionalTest, Then) {
 TEST_F(OptionalTest, ThenSome) {
   optional<int> yes = then_some(true, 5);
   ASSERT_TRUE(yes.has_value());
-  EXPECT_EQ(*yes.as_known(), 5);
+  EXPECT_EQ(*yes, 5);
 
   optional<int> no = then_some(false, 5);
   EXPECT_FALSE(no.has_value());

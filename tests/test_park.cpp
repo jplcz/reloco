@@ -43,7 +43,7 @@ TEST(ParkTest, ThreadHandleUnparkWakesTheOwningThread) {
   {
     std::lock_guard<reloco::mutex> lock(handle_mutex);
     ASSERT_TRUE(worker_handle.has_value());
-    worker_handle.as_known()->unpark();
+    worker_handle->unpark();
   }
 
   std::move(*worker).join();

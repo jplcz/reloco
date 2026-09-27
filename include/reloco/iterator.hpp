@@ -115,7 +115,7 @@ template <typename T, typename = void> struct has_as_known_impl : std::false_typ
 
 // std::declval<T&>() ensures we test the exact reference type (const or mutable)
 template <typename T>
-struct has_as_known_impl<T, std::void_t<decltype(std::declval<T &>().as_known())>> : std::true_type {};
+struct has_as_known_impl<T, std::void_t<decltype(std::declval<T &>())>> : std::true_type {};
 
 template <typename T> inline constexpr bool has_as_known_v = detail::has_as_known_impl<T>::value;
 
@@ -148,9 +148,9 @@ template <typename Item>
                                          >
 unwrap_item(Item &item) noexcept RELOCO_RETURN_TYPESTATE(unconsumed) {
   if constexpr (is_reference_wrapper_v<std::remove_reference_t<Item>>) {
-    return item.get().as_known();
+    return item.get();
   } else {
-    return item.as_known();
+    return item;
   }
 }
 
@@ -1093,8 +1093,8 @@ public:
     if (!current_)
       return nullopt;
     optional<item_type> result = std::move(current_);
-    current_ = f_(*result.as_known());
-    return result.as_known();
+    current_ = f_(*result);
+    return result;
   }
 
 private:
