@@ -3056,12 +3056,15 @@ before configuring reloco (top-level, or via
 exist there into `detail/porting/` (staged in the build tree, then
 installed alongside reloco's own headers -- never replacing any of
 reloco's own headers, only adding files under `detail/porting/`) and
-defines the matching macro on the `jplcz_reloco` INTERFACE target
-automatically, so every consumer -- including a downstream
-`find_package(jplcz_reloco)` consumer, via the exported target's own
-INTERFACE properties -- picks up the replacement with no further
-per-consumer configuration. See `detail/porting/README.md` for the full
-table of macros/paths/scaffolds.
+bakes the matching macro into a generated
+`detail/porting/generated_config.hpp` file placed alongside them,
+picked up automatically by `reloco_config.hpp` -- so every consumer
+picks up the replacement with no further per-consumer configuration,
+including one that never links `jplcz_reloco` as an actual CMake target
+(a hand-copied `include/` directory, or a downstream
+`find_package(jplcz_reloco)` consumer using a different build system
+than the one that produced the install tree). See
+`detail/porting/README.md` for the full table of macros/paths/scaffolds.
 
 ## `rw_lock<T, SharedMutexT>`
 

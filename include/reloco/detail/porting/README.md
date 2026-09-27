@@ -38,11 +38,20 @@ built-in backend would otherwise have defined the same API. That means:
   configuring reloco (top-level build, or via `add_subdirectory`/
   `FetchContent`); the build copies whichever of those files exist there
   into this directory (in the build tree, then installed alongside
-  reloco's own headers) and defines the matching `RELOCO_*_BACKEND_
-  CUSTOM`/`RELOCO_TLS_MODEL` macro on the `jplcz_reloco` INTERFACE target
-  automatically -- for every consumer linking against it, including a
-  downstream `find_package(jplcz_reloco)` consumer, via the exported
-  target's own INTERFACE properties.
+  reloco's own headers) and bakes the matching `RELOCO_*_BACKEND_
+  CUSTOM`/`RELOCO_TLS_MODEL` macro into a generated
+  `detail/porting/generated_config.hpp` placed right alongside them (see
+  `cmake/generated_porting_config.hpp.in`), rather than an INTERFACE
+  `target_compile_definitions` on the `jplcz_reloco` CMake target -- so
+  the override takes effect for every consumer of the plain `include/`
+  tree, including one that never links `jplcz_reloco` as an actual CMake
+  target (a hand-copied `include/` directory, or a downstream
+  `find_package(jplcz_reloco)` consumer using a different build system
+  than the one that produced the install tree). `reloco_config.hpp`
+  picks this generated file up automatically via a plain
+  `__has_include`-guarded `#include`, so it is a no-op when
+  `JPLCZ_RELOCO_PORTING_HEADERS` was never set (the file is simply never
+  generated).
 - If you are not using CMake (or prefer to manage it yourself), just copy
   the relevant `*.template.hpp` scaffold to its non-`.template` name in
   this same directory, fill it in, and define the matching macro

@@ -86,12 +86,16 @@ add_library(jplcz_reloco::reloco ALIAS jplcz_reloco)
 # JPLCZ_RELOCO_PORTING_HEADERS: copy whichever of mutex.hpp/thread.hpp/
 # spin_lock.hpp/tls_provider.hpp/futex.hpp exist in the given directory
 # into a staging tree (never into reloco's own source include/ tree, so
-# reloco's own headers are never touched/replaced) and define the
-# matching RELOCO_*_BACKEND_CUSTOM/RELOCO_TLS_MODEL macro on
-# jplcz_reloco's INTERFACE so every consumer (including a downstream
-# find_package(jplcz_reloco) consumer, via the exported target's own
-# INTERFACE properties) picks it up automatically.
-# See include/reloco/detail/porting/README.md for the full mechanism.
+# reloco's own headers are never touched/replaced), and bake the matching
+# RELOCO_*_BACKEND_CUSTOM/RELOCO_TLS_MODEL macro into a generated header
+# (see cmake/generated_porting_config.hpp.in) placed in that same staging
+# tree -- rather than an INTERFACE target_compile_definitions, so the
+# override takes effect for every consumer of the plain include/ tree,
+# including one that never links jplcz_reloco as an actual CMake target
+# (e.g. a hand-copied include directory, or a downstream
+# find_package(jplcz_reloco) consumer using a different build system than
+# the one that produced the install tree). See
+# include/reloco/detail/porting/README.md for the full mechanism.
 #
 # The build-tree staging layout is "porting_include/detail/porting/*.hpp"
 # (no "reloco/" prefix) added as its own extra -I directory: each reloco
@@ -113,21 +117,22 @@ if(JPLCZ_RELOCO_PORTING_HEADERS)
     file(MAKE_DIRECTORY "${JPLCZ_RELOCO_PORTING_DEST_DIR}")
 
     set(JPLCZ_RELOCO_PORTING_HEADER_NAMES mutex.hpp thread.hpp spin_lock.hpp tls_provider.hpp futex.hpp)
-    set(JPLCZ_RELOCO_PORTING_HEADER_DEFINES
-        "RELOCO_MUTEX_BACKEND_CUSTOM"
-        "RELOCO_THREAD_BACKEND_CUSTOM"
-        "RELOCO_SPIN_LOCK_BACKEND_CUSTOM"
-        "RELOCO_TLS_MODEL=RELOCO_TLS_MODEL_OS"
-        "RELOCO_FUTEX_BACKEND_CUSTOM"
+    # CMake variable consulted by cmake/generated_porting_config.hpp.in's
+    # matching #cmakedefine, one per header name above, same order.
+    set(JPLCZ_RELOCO_PORTING_HEADER_VARS
+        RELOCO_MUTEX_BACKEND_CUSTOM
+        RELOCO_THREAD_BACKEND_CUSTOM
+        RELOCO_SPIN_LOCK_BACKEND_CUSTOM
+        RELOCO_TLS_MODEL_CUSTOM_OS
+        RELOCO_FUTEX_BACKEND_CUSTOM
     )
 
     list(LENGTH JPLCZ_RELOCO_PORTING_HEADER_NAMES JPLCZ_RELOCO_PORTING_HEADER_COUNT)
     math(EXPR JPLCZ_RELOCO_PORTING_HEADER_LAST "${JPLCZ_RELOCO_PORTING_HEADER_COUNT} - 1")
 
-    set(JPLCZ_RELOCO_PORTING_ACTIVE_DEFINES "")
     foreach(JPLCZ_RELOCO_PORTING_I RANGE ${JPLCZ_RELOCO_PORTING_HEADER_LAST})
         list(GET JPLCZ_RELOCO_PORTING_HEADER_NAMES ${JPLCZ_RELOCO_PORTING_I} JPLCZ_RELOCO_PORTING_HEADER_NAME)
-        list(GET JPLCZ_RELOCO_PORTING_HEADER_DEFINES ${JPLCZ_RELOCO_PORTING_I} JPLCZ_RELOCO_PORTING_HEADER_DEFINE)
+        list(GET JPLCZ_RELOCO_PORTING_HEADER_VARS ${JPLCZ_RELOCO_PORTING_I} JPLCZ_RELOCO_PORTING_HEADER_VAR)
         set(JPLCZ_RELOCO_PORTING_SRC "${JPLCZ_RELOCO_PORTING_HEADERS}/${JPLCZ_RELOCO_PORTING_HEADER_NAME}")
         if(EXISTS "${JPLCZ_RELOCO_PORTING_SRC}")
             configure_file(
@@ -135,16 +140,18 @@ if(JPLCZ_RELOCO_PORTING_HEADERS)
                 "${JPLCZ_RELOCO_PORTING_DEST_DIR}/${JPLCZ_RELOCO_PORTING_HEADER_NAME}"
                 COPYONLY
             )
-            list(APPEND JPLCZ_RELOCO_PORTING_ACTIVE_DEFINES "${JPLCZ_RELOCO_PORTING_HEADER_DEFINE}")
+            set(${JPLCZ_RELOCO_PORTING_HEADER_VAR} ON)
             message(STATUS
                 "jplcz_reloco: using custom porting header '${JPLCZ_RELOCO_PORTING_HEADER_NAME}' "
-                "from ${JPLCZ_RELOCO_PORTING_SRC} (defining ${JPLCZ_RELOCO_PORTING_HEADER_DEFINE})")
+                "from ${JPLCZ_RELOCO_PORTING_SRC} (defining ${JPLCZ_RELOCO_PORTING_HEADER_VAR})")
         endif()
     endforeach()
 
-    if(JPLCZ_RELOCO_PORTING_ACTIVE_DEFINES)
-        target_compile_definitions(jplcz_reloco INTERFACE ${JPLCZ_RELOCO_PORTING_ACTIVE_DEFINES})
-    endif()
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/generated_porting_config.hpp.in"
+        "${JPLCZ_RELOCO_PORTING_DEST_DIR}/generated_config.hpp"
+        @ONLY
+    )
 
     # reloco's own source tree never ships a same-named, non-`.template.hpp`
     # file under detail/porting/ (only *.template.hpp scaffolds do), so
