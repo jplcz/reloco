@@ -16,6 +16,7 @@
 #include <reloco/checked.hpp>
 #include <reloco/checked_value.hpp>
 #include <reloco/collection_view.hpp>
+#include <reloco/commit.hpp>
 #include <reloco/concepts.hpp>
 #include <reloco/construction_helpers.hpp>
 #include <reloco/container_ref.hpp>
