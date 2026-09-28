@@ -108,6 +108,7 @@ public:
   /// bytes until the caller constructs a `T` there via `type_operations`.
   [[nodiscard]] static void *payload_of(header *node, const type_metadata &type) noexcept {
     RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+    // codeql[cpp/suspicious-pointer-scaling] - False positive: payload_offset is intentionally in bytes
     return std::launder(reinterpret_cast<std::byte *>(node) + payload_offset(type));
     RELOCO_END_UNSAFE_BUFFER_USAGE
   }
@@ -115,6 +116,7 @@ public:
   /// @brief `const`-qualified overload of `payload_of(header *, const type_metadata &)`.
   [[nodiscard]] static const void *payload_of(const header *node, const type_metadata &type) noexcept {
     RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+    // codeql[cpp/suspicious-pointer-scaling] - False positive: payload_offset is intentionally in bytes
     return std::launder(reinterpret_cast<const std::byte *>(node) + payload_offset(type));
     RELOCO_END_UNSAFE_BUFFER_USAGE
   }
