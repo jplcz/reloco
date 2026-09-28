@@ -116,3 +116,80 @@ template <typename T> using result = expected<T, error>;
 // each `X` rather than centralized in one place (see `type_id.hpp` for the
 // full `RELOCO_TYPE_ID_NAME` rationale).
 RELOCO_TYPE_ID_NAME(reloco::error, "reloco::error");
+
+namespace reloco::detail {
+// Macro hygiene: prevents -Wshadow warnings for nested RELOCO_TRY calls
+#define RELOCO_TRY_CONCAT_INNER(a, b) a##b
+#define RELOCO_TRY_CONCAT(a, b) RELOCO_TRY_CONCAT_INNER(a, b)
+#define RELOCO_TRY_UNIQUE_NAME(prefix) RELOCO_TRY_CONCAT(prefix, __LINE__)
+
+// Overload for result<T> - Extracts the value
+template <typename T, typename E> [[nodiscard]] constexpr T &&try_unwrap(::reloco::expected<T, E> &&res) noexcept {
+  return std::move(*res);
+}
+
+// Overload for result<void> - Does nothing seamlessly
+template <typename E> constexpr void try_unwrap(::reloco::expected<void, E> &&) noexcept {}
+
+} // namespace reloco::detail
+
+/**
+ * @def RELOCO_RETURN_IF_ERROR(expr)
+ * @brief Evaluates an expression returning a `result<T>` or `result<void>`.
+ * If it contains an error, returns early from the current function.
+ * Discards the value on success.
+ */
+#define RELOCO_RETURN_IF_ERROR(...)                                                                                    \
+  do {                                                                                                                 \
+    auto &&RELOCO_TRY_UNIQUE_NAME(_reloco_res_) = (__VA_ARGS__);                                                       \
+    if (!RELOCO_TRY_UNIQUE_NAME(_reloco_res_)) {                                                                       \
+      return ::reloco::unexpected(std::move(RELOCO_TRY_UNIQUE_NAME(_reloco_res_).error()));                            \
+    }                                                                                                                  \
+  } while (0)
+
+// ==============================================================================
+// OPTION 1: The True Rust `?` Equivalent (Requires GCC/Clang extensions)
+// ==============================================================================
+#if defined(__GNUC__) || defined(__clang__)
+
+/**
+ * @def RELOCO_TRY(...)
+ * @brief The true Rust `?` operator equivalent. Unwraps the value on success,
+ * or returns the error early. Can be used directly inside expressions!
+ *
+ * @code
+ * auto val = RELOCO_TRY(get_value());
+ * do_something(RELOCO_TRY(get_value()), 42);
+ * @endcode
+ */
+#define RELOCO_TRY(...)                                                                                                \
+  __extension__({                                                                                                      \
+    auto RELOCO_TRY_UNIQUE_NAME(_reloco_res_) = (__VA_ARGS__);                                                         \
+    if (!RELOCO_TRY_UNIQUE_NAME(_reloco_res_)) {                                                                       \
+      return ::reloco::unexpected(std::move(RELOCO_TRY_UNIQUE_NAME(_reloco_res_).error()));                            \
+    }                                                                                                                  \
+    ::reloco::detail::try_unwrap(std::move(RELOCO_TRY_UNIQUE_NAME(_reloco_res_)));                                     \
+  })
+
+#endif
+
+// ==============================================================================
+// OPTION 2: The ISO C++17 Approach (Google / Abseil Style)
+// ==============================================================================
+
+/**
+ * @def RELOCO_ASSIGN_OR_RETURN(lhs, ...)
+ * @brief Evaluates the expression, returning early on error. On success,
+ * assigns the unwrapped value to `lhs`. Fully standard C++17 compliant.
+ *
+ * @code
+ * RELOCO_ASSIGN_OR_RETURN(auto v, get_value()); // Declares new variable
+ * RELOCO_ASSIGN_OR_RETURN(existing_var, get_value()); // Assigns to existing
+ * @endcode
+ */
+#define RELOCO_ASSIGN_OR_RETURN(lhs, ...)                                                                              \
+  auto RELOCO_TRY_UNIQUE_NAME(_reloco_res_) = (__VA_ARGS__);                                                           \
+  if (!RELOCO_TRY_UNIQUE_NAME(_reloco_res_)) {                                                                         \
+    return ::reloco::unexpected(std::move(RELOCO_TRY_UNIQUE_NAME(_reloco_res_).error()));                              \
+  }                                                                                                                    \
+  lhs = std::move(*RELOCO_TRY_UNIQUE_NAME(_reloco_res_))

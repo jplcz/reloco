@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 #include <gtest/gtest.h>
+#include <reloco/error.hpp>
 #include <reloco/expected.hpp>
 
 #include <string>
@@ -259,3 +260,24 @@ TEST(ExpectedTest, VoidSpecializationSupportsRustResultExtensions) {
   EXPECT_EQ(seen_error, "bad");
   err.inspect([] { FAIL() << "should not be invoked on failure"; });
 }
+
+#if defined(__GNUC__) || defined(__clang__)
+
+namespace {
+
+reloco::result<void> fails_now() { return reloco::unexpected(reloco::error::already_exists); }
+
+reloco::result<void> try_fail() {
+  RELOCO_TRY(fails_now());
+  RELOCO_ASSERT(false, "Not reachable");
+}
+
+} // namespace
+
+TEST(ErrorTest, CheckRelocoTry) {
+  const auto res = try_fail();
+  ASSERT_FALSE(res.has_value());
+  ASSERT_EQ(res.error(), reloco::error::already_exists);
+}
+
+#endif
