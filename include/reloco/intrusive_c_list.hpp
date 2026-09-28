@@ -132,7 +132,7 @@ public:
     return *this;
   }
 
-  [[nodiscard]] bool empty() const noexcept { return first_ == nullptr; }
+  [[nodiscard]] bool empty() const & noexcept { return first_ == nullptr; }
 
   [[nodiscard]] iterator begin() & noexcept { return iterator(first_); }
   [[nodiscard]] iterator end() & noexcept { return iterator(nullptr); }
@@ -208,7 +208,7 @@ public:
     first_ = nullptr;
   }
 
-  private:
+private:
   T *first_ = nullptr;
 };
 
