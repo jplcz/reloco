@@ -214,7 +214,8 @@ private:
 
   [[nodiscard]] static uintptr_t sign_cookie() noexcept {
     return g_sign_cookie_.get_or_init([]() noexcept {
-      return detail::avalanche_mix(detail::generate_weak_process_cookie() ^ 0x5c5c5c5c5c5c5c5cULL);
+      return detail::avalanche_mix(
+          static_cast<uint32_t>(detail::generate_weak_process_cookie() ^ UINT64_C(0x5c5c5c5c5c5c5c5c)));
     });
   }
 

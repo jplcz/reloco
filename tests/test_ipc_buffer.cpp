@@ -227,8 +227,8 @@ TEST(IpcRingBufferCApiTest, BasicWriteAndRead) {
   SharedMemorySim sim;
   format_shared_page(sim.data(), 32);
 
-  reloco_ipc_producer p;
-  reloco_ipc_consumer c;
+  reloco_ipc_producer p{};
+  reloco_ipc_consumer c{};
   ASSERT_EQ(0, reloco_ipc_producer_init(&p, sim.get_page(), 32));
   ASSERT_EQ(0, reloco_ipc_consumer_init(&c, sim.get_page(), 32));
 
@@ -250,8 +250,8 @@ TEST(IpcRingBufferCApiTest, MemoryWrapAround) {
   SharedMemorySim sim;
   format_shared_page(sim.data(), 8); // Tiny 8-byte capacity
 
-  reloco_ipc_producer p;
-  reloco_ipc_consumer c;
+  reloco_ipc_producer p{};
+  reloco_ipc_consumer c{};
   ASSERT_EQ(0, reloco_ipc_producer_init(&p, sim.get_page(), 8));
   ASSERT_EQ(0, reloco_ipc_consumer_init(&c, sim.get_page(), 8));
 
@@ -281,8 +281,8 @@ TEST(IpcRingBufferCApiTest, SecurityIndexSpoofing) {
   format_shared_page(sim.data(), 16);
   auto *page = sim.get_page();
 
-  reloco_ipc_producer p;
-  reloco_ipc_consumer c;
+  reloco_ipc_producer p{};
+  reloco_ipc_consumer c{};
   ASSERT_EQ(0, reloco_ipc_producer_init(&p, page, 16));
   ASSERT_EQ(0, reloco_ipc_consumer_init(&c, page, 16));
 
@@ -321,7 +321,7 @@ TEST(IpcRingBufferInteropTest, CProducer_To_CppConsumer) {
   format_shared_page(sim.data(), 32);
 
   // Mount C Producer (e.g., The Kernel)
-  reloco_ipc_producer p_c;
+  reloco_ipc_producer p_c{};
   ASSERT_EQ(0, reloco_ipc_producer_init(&p_c, sim.get_page(), 32));
 
   // Mount C++ Consumer (e.g., The Host App)
@@ -353,7 +353,7 @@ TEST(IpcRingBufferInteropTest, CppProducer_To_CConsumer_WithWrap) {
   auto p_cpp = reloco::ipc_producer::create(sim.data(), 8).value();
 
   // Mount C Consumer (e.g., The Kernel)
-  reloco_ipc_consumer c_c;
+  reloco_ipc_consumer c_c{};
   ASSERT_EQ(0, reloco_ipc_consumer_init(&c_c, sim.get_page(), 8));
 
   // Shift indices near the end to force a wrap. write_idx = 6.

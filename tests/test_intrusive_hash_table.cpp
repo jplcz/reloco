@@ -296,8 +296,8 @@ TEST(IntrusiveHashTableTest, SuggestBucketCountForRemoveNeverUnderflows) {
 namespace {
 template <typename T, typename U, typename = void> struct can_try_insert : std::false_type {};
 template <typename T, typename U>
-struct can_try_insert<T, U, std::void_t<decltype(std::declval<T &>().try_insert(std::declval<U>()))>>
-    : std::true_type {};
+struct can_try_insert<T, U, std::void_t<decltype(std::declval<T &>().try_insert(std::declval<U>()))>> : std::true_type {
+};
 
 template <typename T, typename = void> struct can_query_size : std::false_type {};
 template <typename T> struct can_query_size<T, std::void_t<decltype(std::declval<T>().size())>> : std::true_type {};
@@ -318,8 +318,7 @@ TEST(IntrusiveHashTableTest, RvalueHardeningIsCompileTimeRejected) {
   static_assert(can_query_size<const table_type &>::value, "lvalue size() must remain callable");
   static_assert(!can_query_size<const table_type>::value, "rvalue-this size() must be rejected");
   static_assert(can_query_load_factor<const table_type &>::value, "lvalue load_factor_permille() must remain callable");
-  static_assert(!can_query_load_factor<const table_type>::value,
-                "rvalue-this load_factor_permille() must be rejected");
+  static_assert(!can_query_load_factor<const table_type>::value, "rvalue-this load_factor_permille() must be rejected");
   static_assert(can_suggest_for_insert<const table_type &>::value,
                 "lvalue suggest_bucket_count_for_insert() must remain callable");
   static_assert(!can_suggest_for_insert<const table_type>::value,
@@ -375,8 +374,9 @@ TEST(IntrusiveHashTableTest, IteratorToAndEraseUnlinkNode) {
 
   // Whatever `next` points at (`b`, or `end()` if `b` hashed into a bucket
   // before `a`'s) must still be a valid, dereferenceable-or-end iterator.
-  if (next != table.end())
+  if (next != table.end()) {
     EXPECT_EQ(next->key, 2);
+  }
 }
 
 TEST(IntrusiveHashTableTest, UsableWithExtractIfIsolatedNodeTx) {
@@ -393,13 +393,13 @@ TEST(IntrusiveHashTableTest, UsableWithExtractIfIsolatedNodeTx) {
   ASSERT_TRUE(table.try_insert(c).has_value());
 
   std::vector<int> extracted;
-  reloco::extract_if_iterator<table_type, bool (*)(const node &)>(
-      table, [](const node &n) { return n.key != 2; })
-      .for_each([&](auto &&tx_obj) {
-        auto &tx = tx_obj.as_known();
-        extracted.push_back(tx.get().key);
-        tx.release_to([](node *) {});
-      });
+  reloco::extract_if_iterator<table_type, bool (*)(const node &)>(table, [](const node &n) {
+    return n.key != 2;
+  }).for_each([&](auto &&tx_obj) {
+    auto &tx = tx_obj.as_known();
+    extracted.push_back(tx.get().key);
+    tx.release_to([](node *) {});
+  });
 
   std::sort(extracted.begin(), extracted.end());
   EXPECT_EQ(extracted, (std::vector<int>{1, 3}));
