@@ -8,13 +8,36 @@
 // futex.hpp itself when RELOCO_FUTEX_BACKEND_WINDOWS is defined -- never
 // include this file directly.
 
+// Pre-emptively map MSVC architecture macros to Windows SDK architecture macros.
+// This resolves the C1189 "#error: No Target Architecture" on newer Windows SDKs
+// when using the conformant preprocessor (/Zc:preprocessor).
+#if defined(_M_AMD64) && !defined(_AMD64_)
+#define _AMD64_
+#endif
+#if defined(_M_IX86) && !defined(_X86_)
+#define _X86_
+#endif
+#if defined(_M_ARM64) && !defined(_ARM64_)
+#define _ARM64_
+#endif
+#if defined(_M_ARM) && !defined(_ARM_)
+#define _ARM_
+#endif
+
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
 
-#include <cstdint>
-#include <synchapi.h>
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
+// clang-format off
 #include <windows.h>
+#include <synchapi.h>
+// clang-format on
+
+#include <cstdint>
 
 // WaitOnAddress is exported from synchronization.lib
 #pragma comment(lib, "synchronization.lib")
