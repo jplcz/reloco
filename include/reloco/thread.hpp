@@ -279,12 +279,15 @@ public:
   [[nodiscard]] static thread_id current() noexcept { return thread_id(std::this_thread::get_id()); }
 
   [[nodiscard]] friend bool operator==(const thread_id &lhs, const thread_id &rhs) noexcept {
+    // Reloco contract: Two "no thread" ids are never equal.
+    // std::thread::id{} is the standard's guaranteed "no thread" state.
+    if (lhs.id_ == std::thread::id{})
+      return false;
+
     return lhs.id_ == rhs.id_;
   }
 
-  [[nodiscard]] friend bool operator!=(const thread_id &lhs, const thread_id &rhs) noexcept {
-    return lhs.id_ != rhs.id_;
-  }
+  [[nodiscard]] friend bool operator!=(const thread_id &lhs, const thread_id &rhs) noexcept { return !(lhs == rhs); }
 
 private:
   friend class thread;
