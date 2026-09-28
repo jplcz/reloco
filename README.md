@@ -34,6 +34,7 @@ Start with the guide that matches what you are building:
 | [Thread-transfer/-sharing safety](docs/send-sync.md) | `is_send<T>`/`is_sync<T>`: which types are sound to hand to another thread or share concurrently, matching Rust's `Send`/`Sync` |
 | [Reflection support](docs/reflection.md) | Experimental P2996/`-freflection` (GCC 16+ trunk): automatic `is_send`/`is_sync`/`is_trivially_relocatable` composition for types without an explicit specialization |
 | [Futex backend](docs/futex.md) | `futex_word`/`futex_wait`/`futex_wake_one`/`futex_wake_all`: the low-level word-wait/wake primitive behind `barrier.hpp`, its Linux/FreeBSD/custom/portable backends, and the `RELOCO_FUTEX_BACKEND_CUSTOM` FreeBSD-kernel example |
+| [Fault injection](docs/fault-injection.md) | `RELOCO_FAULT_POINT`/`RELOCO_FAULT_POINT_ARGS`/`fault_injector<Tag, Args...>`: deterministically reproducing concurrency races and other "impossible timing" bugs in single-threaded tests, opt-in via `RELOCO_ENABLE_FAULT_INJECTION` |
 | [Over-alignment](docs/alignment.md) | `alignment_of<T>`: requesting SIMD-friendly over-aligned container storage without redeclaring `T` |
 | [Lifetime safety](docs/lifetime-safety.md) | Borrowed values and pointers, lifetime annotations, consumed-value tracking, and compiler diagnostics |
 | [Container contract](docs/container-contract.md) | Copy-paste template and checklist for lifetime annotations, rvalue protection, and the tri-tier accessor convention on a new container |

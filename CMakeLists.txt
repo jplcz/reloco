@@ -418,6 +418,9 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_flat_hash_set.cpp
         tests/test_flat_hash_map.cpp
         tests/test_intrusive_hash_table.cpp
+        tests/test_bucket_growth.cpp
+        tests/test_keyed_intrusive_registry.cpp
+        tests/test_tls_slot_vector.cpp
         tests/test_iterator.cpp
         tests/test_alignment.cpp
         tests/test_flat_set.cpp
@@ -451,6 +454,10 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_uninit.cpp
         tests/test_epoch.cpp
         tests/test_ipc_buffer.cpp
+        tests/test_fault_injection.cpp
+        tests/test_fault_injection_patterns.cpp
+        tests/test_masked_byte_region.cpp
+        tests/test_masked_pointer.cpp
     )
 
     target_link_libraries(jplcz_reloco_tests PRIVATE jplcz_reloco GTest::gtest_main)
@@ -525,6 +532,62 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         jplcz_reloco_enable_warnings(jplcz_reloco_tls_pthread_tests)
         gtest_discover_tests(jplcz_reloco_tls_pthread_tests)
     endif()
+
+    # tests/test_fault_injection_backends.cpp is likewise compiled once per
+    # RELOCO_TLS_MODEL: fault_injection.hpp itself auto-selects between its
+    # two internal designs (single shared TLS slot vs. one slot per Tag)
+    # based on RELOCO_TLS_MODEL (see fault_injection.hpp's own file-level
+    # docs), so each backend needs its own binary to actually exercise the
+    # design it selects, matching the jplcz_reloco_tls_*_tests targets
+    # above. The test file names its gtest suite after RELOCO_TLS_MODEL
+    # (FaultInjectionModelTest_ThreadLocal/_Single/_Pthread), so no
+    # TEST_PREFIX is needed here either.
+    add_executable(jplcz_reloco_fault_injection_thread_local_tests tests/test_fault_injection_backends.cpp)
+    target_link_libraries(jplcz_reloco_fault_injection_thread_local_tests PRIVATE
+        jplcz_reloco GTest::gtest_main)
+    target_compile_definitions(jplcz_reloco_fault_injection_thread_local_tests PRIVATE
+        RELOCO_TLS_MODEL=RELOCO_TLS_MODEL_THREAD_LOCAL)
+    jplcz_reloco_enable_warnings(jplcz_reloco_fault_injection_thread_local_tests)
+    gtest_discover_tests(jplcz_reloco_fault_injection_thread_local_tests)
+
+    add_executable(jplcz_reloco_fault_injection_single_tests tests/test_fault_injection_backends.cpp)
+    target_link_libraries(jplcz_reloco_fault_injection_single_tests PRIVATE
+        jplcz_reloco GTest::gtest_main)
+    target_compile_definitions(jplcz_reloco_fault_injection_single_tests PRIVATE
+        RELOCO_TLS_MODEL=RELOCO_TLS_MODEL_SINGLE)
+    jplcz_reloco_enable_warnings(jplcz_reloco_fault_injection_single_tests)
+    gtest_discover_tests(jplcz_reloco_fault_injection_single_tests)
+
+    if(JPLCZ_RELOCO_HAVE_PTHREAD_H)
+        add_executable(jplcz_reloco_fault_injection_pthread_tests tests/test_fault_injection_backends.cpp)
+        target_link_libraries(jplcz_reloco_fault_injection_pthread_tests PRIVATE
+            jplcz_reloco GTest::gtest_main)
+        if(Threads_FOUND)
+            target_link_libraries(jplcz_reloco_fault_injection_pthread_tests PRIVATE Threads::Threads)
+        endif()
+        target_compile_definitions(jplcz_reloco_fault_injection_pthread_tests PRIVATE
+            RELOCO_TLS_MODEL=RELOCO_TLS_MODEL_PTHREAD)
+        jplcz_reloco_enable_warnings(jplcz_reloco_fault_injection_pthread_tests)
+        gtest_discover_tests(jplcz_reloco_fault_injection_pthread_tests)
+    endif()
+
+    # tests/test_ipc_ring_fault_injection.cpp defines
+    # RELOCO_ENABLE_FAULT_INJECTION, which changes the *body* of
+    # reloco_ipc_ring.hpp's implicitly-inline (external/vague linkage)
+    # ipc_producer::write_slices()/ipc_consumer::read_slices() member
+    # functions. Linking that translation unit into the same binary as
+    # any other TU that includes reloco_ipc_ring.hpp *without* the macro
+    # (e.g. test_ipc_buffer.cpp, in jplcz_reloco_tests) would be an ODR
+    # violation: the linker silently keeps only one of the two differing
+    # definitions for both TUs, so the "other" TU's calls may silently
+    # run the wrong (non-instrumented) body instead of failing to link.
+    # This file therefore gets its own, fully separate binary, exactly
+    # like the per-RELOCO_TLS_MODEL split above.
+    add_executable(jplcz_reloco_ipc_ring_fault_injection_tests tests/test_ipc_ring_fault_injection.cpp)
+    target_link_libraries(jplcz_reloco_ipc_ring_fault_injection_tests PRIVATE
+        jplcz_reloco GTest::gtest_main)
+    jplcz_reloco_enable_warnings(jplcz_reloco_ipc_ring_fault_injection_tests)
+    gtest_discover_tests(jplcz_reloco_ipc_ring_fault_injection_tests)
 endif()
 
 if(JPLCZ_RELOCO_BUILD_DEMOS)

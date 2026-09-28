@@ -95,7 +95,12 @@ enum class [[nodiscard]] error : int {
                           // about lock state) and `try_again` (any transient retryable failure).
   io_error,               // A lower-level I/O operation (e.g. one performed by an allocator backend) failed
                           // for a reason not otherwise covered by a more specific member.
-  operation_canceled      // The operation was explicitly canceled before it could complete.
+  operation_canceled,     // The operation was explicitly canceled before it could complete.
+  security_violation      // A trust/security boundary check on data from another, untrusted or
+                          // compromised execution context (e.g. a peer process/CPU sharing memory,
+                          // as in `reloco_ipc_ring.h`/`.hpp`) failed. Unlike every other member above,
+                          // this is not a transient or locally-recoverable condition: the caller must
+                          // treat the shared resource as compromised and stop using it rather than retry.
 };
 
 /**

@@ -1,3 +1,23 @@
+// SPDX-FileCopyrightText: 2026 Jarosław Pelczar <jarek@jpelczar.com>
+//
+// SPDX-License-Identifier: BSD-2-Clause
+
+/**
+ * @file intrusive_iteration_demo.cpp
+ * @brief Demo: `extract_if_iterator`/`isolated_node_tx`
+ * (`intrusive_iteration.hpp`) driving an RTOS-scheduler-style pipeline
+ * over a `boost::intrusive::list`, plus `RELOCO_DEFER` (`scope_guard.hpp`).
+ *
+ * Simulates one scheduler "tick" over a queue of statically allocated
+ * `Task` nodes: `reloco::extract_if()` walks the active queue once,
+ * atomically detaching every task that finished or is now blocked into an
+ * `isolated_node_tx` (safely unlinked from all graphs), and the
+ * `.for_each()` pipeline then routes each isolated task to either the
+ * blocked queue (`relink_to`) or back to a simulated memory pool
+ * (`release_to`) -- never leaving a node reachable from two containers at
+ * once, and asserting immediately if a caller forgets to route one.
+ */
+
 #include <boost/intrusive/list.hpp>
 #include <iostream>
 #include <reloco/intrusive_iteration.hpp>

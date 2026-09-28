@@ -11,6 +11,7 @@
 #include <reloco/atomic_ops.hpp>
 #include <reloco/barrier.hpp>
 #include <reloco/bucket_allocator.hpp>
+#include <reloco/bucket_growth.hpp>
 #include <reloco/bytes.hpp>
 #include <reloco/channel.hpp>
 #include <reloco/checked.hpp>
@@ -28,6 +29,8 @@
 #include <reloco/error.hpp>
 #include <reloco/error_std.hpp>
 #include <reloco/expected.hpp>
+#include <reloco/fault_injection.hpp>
+#include <reloco/fault_injection_patterns.hpp>
 #include <reloco/flat_hash_map.hpp>
 #include <reloco/flat_hash_set.hpp>
 #include <reloco/flat_map.hpp>
@@ -48,9 +51,12 @@
 #include <reloco/intrusive_hash_table.hpp>
 #include <reloco/intrusive_iteration.hpp>
 #include <reloco/iterator.hpp>
+#include <reloco/keyed_intrusive_registry.hpp>
 #include <reloco/lazy_lock.hpp>
 #include <reloco/lifetime.hpp>
 #include <reloco/lru_cache.hpp>
+#include <reloco/masked_byte_region.hpp>
+#include <reloco/masked_pointer.hpp>
 #include <reloco/mutex.hpp>
 #include <reloco/once.hpp>
 #include <reloco/once_lock.hpp>
@@ -70,8 +76,10 @@
 #include <reloco/stack_allocator.hpp>
 #include <reloco/string.hpp>
 #include <reloco/string_view.hpp>
+#include <reloco/tamper.hpp>
 #include <reloco/thread.hpp>
 #include <reloco/tls_provider.hpp>
+#include <reloco/tls_slot_vector.hpp>
 #include <reloco/tree_map.hpp>
 #include <reloco/tree_set.hpp>
 #include <reloco/type_id.hpp>

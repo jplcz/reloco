@@ -56,6 +56,19 @@
 #define RELOCO_HAS_ATTRIBUTE(attribute) 0
 #endif
 
+/**
+ * @brief Clang's `__has_feature(feature)`, guarded to expand to `0` on
+ * every other compiler instead of failing to compile at all -- GCC and
+ * MSVC never define the `__has_feature` object-like macro, so testing it
+ * directly (`#if __has_feature(...)`) without first checking
+ * `defined(__has_feature)` is a hard error on those compilers.
+ */
+#if defined(__has_feature)
+#define RELOCO_HAS_FEATURE(feature) __has_feature(feature)
+#else
+#define RELOCO_HAS_FEATURE(feature) 0
+#endif
+
 #if RELOCO_CXX17 && RELOCO_HAS_CPP_ATTRIBUTE(nodiscard)
 #define RELOCO_NODISCARD [[nodiscard]]
 #else

@@ -4,10 +4,13 @@
 
 #include <gtest/gtest.h>
 #include <reloco/intrusive_hash_table.hpp>
+#include <reloco/intrusive_iteration.hpp>
 
+#include <algorithm>
 #include <array>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 namespace {
 
@@ -247,6 +250,40 @@ TEST(IntrusiveHashTableTest, IsNotCopyable) {
   EXPECT_FALSE(std::is_copy_assignable_v<table_type>);
 }
 
+TEST(IntrusiveHashTableTest, SuggestBucketCountForInsertTargetsLoadFactorOne) {
+  std::array<node *, 4> buckets{};
+  auto table_res = table_type::try_create(reloco::span<node *>(buckets.data(), buckets.size()));
+  ASSERT_TRUE(table_res.has_value());
+  auto &table = *table_res;
+
+  node a{1, "one", {}};
+  ASSERT_TRUE(table.try_insert(a).has_value());
+
+  // size() == 1; inserting 5 more projects to 6, clamped into [2, 64].
+  EXPECT_EQ(table.suggest_bucket_count_for_insert(5, 2, 64), 6);
+  // Projection below min_buckets is clamped up.
+  EXPECT_EQ(table.suggest_bucket_count_for_insert(0, 8, 64), 8);
+  // Projection above max_buckets is clamped down.
+  EXPECT_EQ(table.suggest_bucket_count_for_insert(100, 2, 16), 16);
+}
+
+TEST(IntrusiveHashTableTest, SuggestBucketCountForRemoveNeverUnderflows) {
+  std::array<node *, 4> buckets{};
+  auto table_res = table_type::try_create(reloco::span<node *>(buckets.data(), buckets.size()));
+  ASSERT_TRUE(table_res.has_value());
+  auto &table = *table_res;
+
+  node a{1, "one", {}};
+  node b{2, "two", {}};
+  ASSERT_TRUE(table.try_insert(a).has_value());
+  ASSERT_TRUE(table.try_insert(b).has_value());
+
+  // size() == 2; removing 1 projects to 1, clamped up into [2, 64].
+  EXPECT_EQ(table.suggest_bucket_count_for_remove(1, 2, 64), 2);
+  // Removing more than size() clamps at 0, then up to min_buckets.
+  EXPECT_EQ(table.suggest_bucket_count_for_remove(1000, 1, 64), 1);
+}
+
 // Rvalue-argument and rvalue-`this` hardening: these must all be compile-time
 // rejections (see `intrusive_hash_table.hpp`'s explicit `= delete` overloads).
 // `std::is_invocable` can't be used here since `&table_type::try_insert`/
@@ -268,6 +305,11 @@ template <typename T> struct can_query_size<T, std::void_t<decltype(std::declval
 template <typename T, typename = void> struct can_query_load_factor : std::false_type {};
 template <typename T>
 struct can_query_load_factor<T, std::void_t<decltype(std::declval<T>().load_factor_permille())>> : std::true_type {};
+
+template <typename T, typename = void> struct can_suggest_for_insert : std::false_type {};
+template <typename T>
+struct can_suggest_for_insert<T, std::void_t<decltype(std::declval<T>().suggest_bucket_count_for_insert(
+                                     std::size_t{0}, std::size_t{1}, std::size_t{1}))>> : std::true_type {};
 } // namespace
 
 TEST(IntrusiveHashTableTest, RvalueHardeningIsCompileTimeRejected) {
@@ -278,4 +320,91 @@ TEST(IntrusiveHashTableTest, RvalueHardeningIsCompileTimeRejected) {
   static_assert(can_query_load_factor<const table_type &>::value, "lvalue load_factor_permille() must remain callable");
   static_assert(!can_query_load_factor<const table_type>::value,
                 "rvalue-this load_factor_permille() must be rejected");
+  static_assert(can_suggest_for_insert<const table_type &>::value,
+                "lvalue suggest_bucket_count_for_insert() must remain callable");
+  static_assert(!can_suggest_for_insert<const table_type>::value,
+                "rvalue-this suggest_bucket_count_for_insert() must be rejected");
+}
+
+TEST(IntrusiveHashTableTest, IterationVisitsEveryLinkedNode) {
+  std::array<node *, 4> buckets{};
+  auto table_res = table_type::try_create(reloco::span<node *>(buckets.data(), buckets.size()));
+  ASSERT_TRUE(table_res.has_value());
+  auto &table = *table_res;
+
+  node a{1, "one", {}};
+  node b{2, "two", {}};
+  node c{3, "three", {}};
+  ASSERT_TRUE(table.try_insert(a).has_value());
+  ASSERT_TRUE(table.try_insert(b).has_value());
+  ASSERT_TRUE(table.try_insert(c).has_value());
+
+  std::vector<int> seen;
+  for (auto &n : table)
+    seen.push_back(n.key);
+  std::sort(seen.begin(), seen.end());
+  EXPECT_EQ(seen, (std::vector<int>{1, 2, 3}));
+
+  const table_type &const_table = table;
+  std::vector<int> const_seen;
+  for (const auto &n : const_table)
+    const_seen.push_back(n.key);
+  std::sort(const_seen.begin(), const_seen.end());
+  EXPECT_EQ(const_seen, (std::vector<int>{1, 2, 3}));
+}
+
+TEST(IntrusiveHashTableTest, IteratorToAndEraseUnlinkNode) {
+  std::array<node *, 4> buckets{};
+  auto table_res = table_type::try_create(reloco::span<node *>(buckets.data(), buckets.size()));
+  ASSERT_TRUE(table_res.has_value());
+  auto &table = *table_res;
+
+  node a{1, "one", {}};
+  node b{2, "two", {}};
+  ASSERT_TRUE(table.try_insert(a).has_value());
+  ASSERT_TRUE(table.try_insert(b).has_value());
+
+  auto it = table.iterator_to(a);
+  EXPECT_EQ(&*it, &a);
+
+  table_type::iterator next = table.erase(it);
+  EXPECT_EQ(table.size(), 1);
+  EXPECT_FALSE(table.contains(1));
+  EXPECT_TRUE(table.contains(2));
+  EXPECT_FALSE(a.hook.is_linked());
+
+  // Whatever `next` points at (`b`, or `end()` if `b` hashed into a bucket
+  // before `a`'s) must still be a valid, dereferenceable-or-end iterator.
+  if (next != table.end())
+    EXPECT_EQ(next->key, 2);
+}
+
+TEST(IntrusiveHashTableTest, UsableWithExtractIfIsolatedNodeTx) {
+  std::array<node *, 4> buckets{};
+  auto table_res = table_type::try_create(reloco::span<node *>(buckets.data(), buckets.size()));
+  ASSERT_TRUE(table_res.has_value());
+  auto &table = *table_res;
+
+  node a{1, "one", {}};
+  node b{2, "two", {}};
+  node c{3, "three", {}};
+  ASSERT_TRUE(table.try_insert(a).has_value());
+  ASSERT_TRUE(table.try_insert(b).has_value());
+  ASSERT_TRUE(table.try_insert(c).has_value());
+
+  std::vector<int> extracted;
+  reloco::extract_if_iterator<table_type, bool (*)(const node &)>(
+      table, [](const node &n) { return n.key != 2; })
+      .for_each([&](auto &&tx_obj) {
+        auto &tx = tx_obj.as_known();
+        extracted.push_back(tx.get().key);
+        tx.release_to([](node *) {});
+      });
+
+  std::sort(extracted.begin(), extracted.end());
+  EXPECT_EQ(extracted, (std::vector<int>{1, 3}));
+  EXPECT_EQ(table.size(), 1);
+  EXPECT_TRUE(table.contains(2));
+  EXPECT_FALSE(a.hook.is_linked());
+  EXPECT_FALSE(c.hook.is_linked());
 }

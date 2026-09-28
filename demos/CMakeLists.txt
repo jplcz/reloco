@@ -18,6 +18,8 @@ add_jplcz_reloco_demo(channel_pipeline)
 add_jplcz_reloco_demo(once_lock_config)
 add_jplcz_reloco_demo(park_ping_pong)
 add_jplcz_reloco_demo(bucket_vector)
+add_jplcz_reloco_demo(tls_local_slots_demo)
+add_jplcz_reloco_demo(keyed_intrusive_registry_demo)
 
 if(Boost_FOUND)
     add_jplcz_reloco_demo(intrusive_iteration_demo)

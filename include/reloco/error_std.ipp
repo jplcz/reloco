@@ -79,6 +79,8 @@ RELOCO_API std::string error_category_impl::message(int ev) const {
     return "a lower-level I/O operation failed";
   case error::operation_canceled:
     return "the operation was explicitly canceled before it could complete";
+  case error::security_violation:
+    return "a trust/security boundary check on untrusted data failed";
   }
   return "unknown reloco::error";
 }
@@ -105,6 +107,8 @@ RELOCO_API std::error_condition error_category_impl::default_error_condition(int
   case error::capacity_exceeded:
     return std::make_error_condition(std::errc::no_buffer_space);
   case error::permission_denied:
+    return std::make_error_condition(std::errc::permission_denied);
+  case error::security_violation:
     return std::make_error_condition(std::errc::permission_denied);
   case error::interrupted:
     return std::make_error_condition(std::errc::interrupted);

@@ -94,15 +94,20 @@ public:
   [[nodiscard]] optional<isolated_node_tx<Container, typename Container::value_type>> next_impl() noexcept {
     while (m_curr != m_container->end()) {
       auto &item = *m_curr;
-      ++m_curr; // Lookahead to protect the traversal state
 
       if (m_pred(item)) {
-        // The pipeline performs the unsafe topological mutation internally
-        m_container->erase(m_container->iterator_to(item));
+        // The pipeline performs the unsafe topological mutation internally.
+        // `erase` returns the iterator to the element following the one just
+        // unlinked (matching `boost::intrusive`/`std::list::erase`), so the
+        // traversal cursor advances directly off of it instead of needing a
+        // separate lookahead `++m_curr` before mutating.
+        m_curr = m_container->erase(m_curr);
 
         // Yield the safe RAII typestate wrapper downstream
         return isolated_node_tx<Container, typename Container::value_type>{item, *m_container};
       }
+
+      ++m_curr;
     }
     return nullopt;
   }

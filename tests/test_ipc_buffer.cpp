@@ -1,4 +1,5 @@
 #include "reloco/lifetime.hpp"
+#include <cerrno>
 #include <cstring>
 #include <gtest/gtest.h>
 #include <reloco/reloco_ipc_ring.hpp>
@@ -64,12 +65,17 @@ TEST(IpcRingBufferCppTest, BasicByteStreamWriteAndRead) {
   std::array<uint8_t, 4> in_data = {0xDE, 0xAD, 0xBE, 0xEF};
 
   // Write 4 bytes
-  EXPECT_EQ(4, p.try_write(reloco::span<const uint8_t>(in_data.data(), in_data.size())));
+  EXPECT_EQ(4, p.try_write(reloco::span<const uint8_t>(in_data.data(), in_data.size())).value());
 
   std::array<uint8_t, 6> out_data = {0};
 
-  // Attempt to read 6 bytes (should only return 4 available)
-  EXPECT_EQ(4, c.try_read(reloco::span<uint8_t>(out_data.data(), out_data.size())));
+  // try_read is strictly all-or-nothing: requesting 6 bytes when only 4
+  // are available is a benign "not enough data yet" (Ok(0)), not a
+  // partial read.
+  EXPECT_EQ(0, c.try_read(reloco::span<uint8_t>(out_data.data(), out_data.size())).value());
+
+  // Requesting exactly the 4 available bytes succeeds in full.
+  EXPECT_EQ(4, c.try_read(reloco::span<uint8_t>(out_data.data(), 4)).value());
 
   EXPECT_EQ(0xDE, out_data[0]);
   EXPECT_EQ(0xAD, out_data[1]);
@@ -86,7 +92,9 @@ TEST(IpcRingBufferCppTest, ZeroCopyTransactions_Linear) {
 
   // ---- PRODUCER ----
   {
-    auto tx = p.begin_write(5);
+    auto tx_res = p.begin_write(5);
+    ASSERT_TRUE(tx_res.has_value());
+    auto tx = std::move(tx_res).value();
     ASSERT_TRUE(static_cast<bool>(tx));
 
     EXPECT_EQ(16, tx.chunk1().size()); // 16 contiguous bytes available
@@ -103,7 +111,9 @@ TEST(IpcRingBufferCppTest, ZeroCopyTransactions_Linear) {
 
   // ---- CONSUMER ----
   {
-    auto tx = c.begin_read(3);
+    auto tx_res = c.begin_read(3);
+    ASSERT_TRUE(tx_res.has_value());
+    auto tx = std::move(tx_res).value();
     ASSERT_TRUE(static_cast<bool>(tx));
     auto chunk1 = tx.chunk1();
 
@@ -130,7 +140,9 @@ TEST(IpcRingBufferCppTest, ZeroCopyTransactions_WrapAroundSplit) {
   // Step 2: The producer requests 4 bytes.
   // Physical index is 6, capacity is 8. It must split (2 bytes at end, 2 at start).
   {
-    auto tx = p.begin_write(4);
+    auto tx_res = p.begin_write(4);
+    ASSERT_TRUE(tx_res.has_value());
+    auto tx = std::move(tx_res).value();
     ASSERT_TRUE(static_cast<bool>(tx));
 
     auto chunk1 = tx.chunk1();
@@ -149,7 +161,9 @@ TEST(IpcRingBufferCppTest, ZeroCopyTransactions_WrapAroundSplit) {
 
   // Step 3: The consumer reads the 4 bytes.
   {
-    auto tx = c.begin_read(4);
+    auto tx_res = c.begin_read(4);
+    ASSERT_TRUE(tx_res.has_value());
+    auto tx = std::move(tx_res).value();
     ASSERT_TRUE(static_cast<bool>(tx));
 
     auto chunk1 = tx.chunk1();
@@ -172,7 +186,9 @@ TEST(IpcRingBufferCppTest, TransactionMoveSemantics) {
   format_shared_page(sim.data(), 8);
   auto p = reloco::ipc_producer::create(sim.data(), 8).value();
 
-  auto tx1 = p.begin_write(2);
+  auto tx1_res = p.begin_write(2);
+  ASSERT_TRUE(tx1_res.has_value());
+  auto tx1 = std::move(tx1_res).value();
   ASSERT_TRUE(static_cast<bool>(tx1));
 
   auto tx2 = std::move(tx1);
@@ -280,8 +296,9 @@ TEST(IpcRingBufferCApiTest, SecurityIndexSpoofing) {
   uint8_t fill[15] = {0};
   EXPECT_EQ(15, reloco_ipc_try_write(&p, fill, 15));
 
-  // The trap snaps shut - returns 0 instead of memory corruption
-  EXPECT_EQ(0, reloco_ipc_try_write(&p, &dummy, 1));
+  // The trap snaps shut - returns -EFAULT (corruption detected), not a
+  // benign 0, and the caller must stop using the ring altogether.
+  EXPECT_EQ(-EFAULT, reloco_ipc_try_write(&p, &dummy, 1));
 
   // Reset page for Attack 2
   format_shared_page(sim.data(), 16);
@@ -292,7 +309,7 @@ TEST(IpcRingBufferCApiTest, SecurityIndexSpoofing) {
   page->write_idx = 64;
 
   // Consumer trap snaps shut
-  EXPECT_EQ(0, reloco_ipc_try_read(&c, &dummy, 1));
+  EXPECT_EQ(-EFAULT, reloco_ipc_try_read(&c, &dummy, 1));
 }
 
 // =========================================================================
@@ -315,7 +332,9 @@ TEST(IpcRingBufferInteropTest, CProducer_To_CppConsumer) {
   EXPECT_EQ(4, reloco_ipc_try_write(&p_c, payload_in, 4));
 
   // Host reads data via C++ Zero-Copy API
-  auto tx = c_cpp.begin_read(4);
+  auto tx_res = c_cpp.begin_read(4);
+  ASSERT_TRUE(tx_res.has_value());
+  auto tx = std::move(tx_res).value();
   ASSERT_TRUE(static_cast<bool>(tx));
 
   auto chunk1 = tx.chunk1();
@@ -344,7 +363,9 @@ TEST(IpcRingBufferInteropTest, CppProducer_To_CConsumer_WithWrap) {
 
   // Host writes data via C++ Zero-Copy API (Spanning across the wrap)
   {
-    auto tx = p_cpp.begin_write(4);
+    auto tx_res = p_cpp.begin_write(4);
+    ASSERT_TRUE(tx_res.has_value());
+    auto tx = std::move(tx_res).value();
     ASSERT_TRUE(static_cast<bool>(tx));
 
     auto chunk1 = tx.chunk1();

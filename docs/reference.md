@@ -38,6 +38,9 @@ where, not a tutorial.
 | `stack_allocator.hpp` | `stack_allocator`, `stack_allocator_tag`, `stack_allocator_context` | Bump-pointer `allocator_traits` backend over a caller-owned buffer |
 | `pool_allocator.hpp` | `pool_allocator<Lock>`, `pool_allocator_tag<Lock>`, `pool_allocator_context<Lock>`, `null_mutex` | Fixed-block-size `allocator_traits` backend carving blocks out of slabs obtained from an upstream allocator, with kernel-style "unlock, allocate, relock" refill |
 | `bucket_allocator.hpp` | `bucket_allocator<Lock, BucketSizes...>`, `bucket_allocator_tag<Lock, BucketSizes...>`, `bucket_allocator_context<Lock, BucketSizes...>` | General-purpose `allocator_traits` backend combining a compile-time list of `pool_allocator`s, one per size bucket, routing each request to the smallest bucket that fits |
+| `bucket_growth.hpp` | `bucket_growth::linear`, `bucket_growth::doubling_then_ratio`, `bucket_growth::fixed_ratio`, `bucket_growth::power_of_two`, `bucket_growth::prime_growth`, `bucket_growth::chunked`, `bucket_growth::sqrt_curve` | Optional, integer-only bucket-count growth curves for hash containers whose bucket array is caller-sized (e.g. `intrusive_hash_table`); each exposes the same `next_bucket_count(current_buckets, projected_elements, elements_per_bucket, min_buckets, max_buckets)` interface |
+| `keyed_intrusive_registry.hpp` | `keyed_intrusive_registry<T, OwnerKey, Tag, Lock, Hash, KeyEqual>` | Locked, self-allocating "one `T` per `OwnerKey`" registry built on `intrusive_hash_table`; the hash-table-per-owner-key building block for a `RELOCO_TLS_MODEL_OS` kernel/RTOS port (see `tls_provider.hpp`) |
+| `tls_slot_vector.hpp` | `tls_slot_vector<Lock, Growth>`, `tls_slot_index<T, Tag>`, `tls_local_slots<Lock, Growth, Tag>`, `tls_local_state_traits<Tag>` | The classic pthread-key design (global slot table + atomic generation counter, per-context growable pointer vector) as an alternative to `keyed_intrusive_registry.hpp` for the same `RELOCO_TLS_MODEL_OS` use case; `O(1)` slot indexing instead of a hash lookup per `get()`/`set()` |
 | `unique_ptr.hpp` | `unique_ptr<T>` | Move-only, allocator-backed smart pointer with fallible construction |
 | `shared_ptr.hpp` | `shared_ptr<T>`, `weak_ptr<T>`, `enable_shared_from_this<T>` | Reference-counted, allocator-backed smart pointer with fallible construction |
 | `rc.hpp` | `rc<T>`, `weak_rc<T>`, `enable_rc_from_this<T>` | Single-threaded (non-atomic) reference-counted smart pointer, matching Rust's `Rc<T>`/`Weak<T>` |
@@ -86,6 +89,15 @@ where, not a tutorial.
 | `hint.hpp` | `hint::spin_loop()` | Architecture spin-wait hint (`pause`/`yield`/...) for busy-wait loops, matching Rust's `std::hint::spin_loop()`; no OS dependency, usable in a freestanding/bare-kernel build |
 | `wait_group.hpp` | `wait_group` | Waits for an unknown-in-advance number of cloned handles to all be dropped, matching crossbeam-utils's `WaitGroup`; built on `shared_ptr` + `futex.hpp` |
 | `scope.hpp` | `scope`, `thread_scope`, `scoped_join_handle<R>` | Matches Rust's `std::thread::scope`: spawns threads guaranteed to finish before `scope()` returns, so they may safely borrow references to the caller's stack frame |
+| `scope_guard.hpp` | `scope_guard<Callable>`, `RELOCO_DEFER(fn)` | Zero-allocation RAII scope-exit guard matching Rust's `scopeguard`/Go's `defer`; runs a captured callable exactly once on destruction unless `cancel()`ed |
+| `commit.hpp` | `tx_guard<T, RollbackFn>`, `shadow_tx<T>`, `checkpoint_guard<T>` | Zero-allocation transactional RAII guards: rollback-on-drop (`tx_guard`), deferred shadow-copy write-back (`shadow_tx`), and live-value checkpoint/restore (`checkpoint_guard`) |
+| `epoch.hpp` | `epoch_trackable`, `epoch_handle<T>`, `epoch_guard<T>`, `epoch_t` | O(1), 8-byte generation-counter "weak pointer" for statically-allocated/RTOS memory pools, detecting stale handles after a slot is recycled; the resolved `epoch_guard<T>` is typestate-checked (`-Wconsumed`) so `get()`/`operator->` require `is_alive()` to have been checked first |
+| `uninit.hpp` | `uninit<T>` | Typestate-tracked (`-Wconsumed`) wrapper over raw uninitialized storage, preventing reads-before-write and double-initialization at compile time; `assume_init()` is the escape hatch for externally-filled memory (e.g. DMA) |
+| `seqlock.hpp` | `guarded_seqlock<T, MutexT = mutex>` | Fuses `guarded_mutex`-style hardware exclusion for writers with a lock-free, sequence-counter-verified snapshot read path for readers, matching the Linux kernel's `seqlock(9)` |
+| `intrusive_iteration.hpp` | `isolated_node_tx<Container, T>`, `extract_if_iterator<Container, Pred>` | Typestate-enforced RAII handle for safely detaching a node from one intrusive container (e.g. `boost::intrusive::list`) and relinking/disposing it elsewhere, plus the `iterator_adaptor`-based `extract_if()` pipeline that produces one |
+| `reloco_ipc_ring.h` / `reloco_ipc_ring.hpp` | `reloco_ipc_spsc_page`, `reloco_ipc_producer`, `reloco_ipc_consumer` (C ABI); `ipc_producer`, `ipc_consumer` (C++ wrapper) | Cross-process, allocation-free single-producer/single-consumer byte-stream ring buffer over a shared-memory page; the standalone C header is usable from a Linux/FreeBSD kernel module, the C++ wrapper adds fallible mounting and a zero-copy typestate-checked transaction API |
+| `fault_injection.hpp` | `fault_injector<Tag, Args...>`, `fault_armed<Tag, Args...>()`, `RELOCO_FAULT_POINT(Tag)`, `RELOCO_FAULT_POINT_ARGS(Tag, ...)`, `RELOCO_FAULT_TAG(name)`, `RELOCO_FAULT_INJECTOR(var, Tag, ...)` | Header-based, opt-in (`RELOCO_ENABLE_FAULT_INJECTION`) fault injection framework for deterministically reproducing concurrency races in single-threaded tests; caller-owned, stackable scoped control blocks, backed by unowned `tls_provider<void *, ...>` pointer(s) -- one shared TLS slot for the whole program by default, or one per `Tag` under `RELOCO_FAULT_INJECTION_UNLIMITED_TLS` -- the framework itself never allocates |
+| `fault_injection_patterns.hpp` | `RELOCO_FAULT_MUTATE`, `RELOCO_FAULT_SET`, `RELOCO_FAULT_SPY`, `RELOCO_FAULT_FIRE_N`, `RELOCO_FAULT_FIRE_ONCE`, `RELOCO_FAULT_WHEN`, `RELOCO_FAULT_SKIP_N`, `RELOCO_FAULT_NTH`, `RELOCO_FAULT_EVERY_N`, `RELOCO_FAULT_TOGGLE`, `RELOCO_FAULT_INCREMENT` | Convenience macros, built entirely on `fault_injection.hpp`'s own public/`detail` API, for common and more advanced fault-arming patterns: overwrite/mutate/toggle/nudge a single exposed value, count firings, fire only the first *N* times (or once) or only after skipping the first *N*, fire on exactly one or every *N*'th hit, or fire only when a predicate over the exposed arguments holds |
 | `lifetime.hpp` | `RELOCO_LIFETIMEBOUND`, `RELOCO_OWNER`, `RELOCO_POINTER`, `RELOCO_UNSAFE_BUFFER_USAGE`, ... | Compiler-specific lifetime/ownership/safe-buffers annotation macros |
 | `rvalue_safety.hpp` | `RELOCO_BLOCK_RVALUE_ACCESS` | Deletes rvalue accessors that would otherwise dangle past a temporary |
 | `reloco_config.hpp` | (user override header hook) | How to override library-wide defaults from `reloco_user_config.hpp` |
@@ -179,6 +191,7 @@ so this is enforced rather than just a convention.
 | `busy` | The resource is currently in use by someone else and the operation could not proceed non-blockingly; distinct from `still_locked`/`not_locked` (lock state specifically) and `try_again` (any transient retryable failure). |
 | `io_error` | A lower-level I/O operation (e.g. one performed by an allocator backend) failed for a reason not otherwise covered by a more specific member. |
 | `operation_canceled` | The operation was explicitly canceled before it could complete. |
+| `security_violation` | A trust/security boundary check on data from another, untrusted or compromised execution context failed (e.g. `reloco_ipc_ring.h`/`.hpp`'s spoofed-index detection). Unlike every other member above, this is not transient or locally recoverable: the caller must treat the shared resource as compromised and stop using it rather than retry. |
 
 Several members (`no_owner`/`invalid_owner`, `deadlock`/`still_locked`/
 `not_locked`/`timed_out`, `not_initialized`, `busy`/`interrupted`/
@@ -225,7 +238,7 @@ shared-library boundary.
 `already_exists`, `deadlock`, `timed_out`, `try_again`,
 `unsupported_operation`, `capacity_exceeded`, `permission_denied`,
 `interrupted`, `busy`, `io_error`, `operation_canceled`,
-`integer_overflow`, `division_by_zero`) onto the closest matching `std::errc` value, so a
+`integer_overflow`, `division_by_zero`, `security_violation`) onto the closest matching `std::errc` value, so a
 `reloco::error`-based `std::error_code` compares equal to that generic
 condition *and* to any other category's code that reports the same
 `errno`-derived condition (e.g. one built from `errno` via
@@ -1422,8 +1435,39 @@ table.remove(a); // O(1): no hashing/bucket-chain walk needed
   whenever the caller already has the node (e.g. from a prior
   `try_find`).
 - `rehash(new_buckets)` — the caller-driven growth protocol (see below).
+- `suggest_bucket_count_for_insert(n, min_buckets, max_buckets,
+  elements_per_bucket = 1)` / `suggest_bucket_count_for_remove(n,
+  min_buckets, max_buckets, elements_per_bucket = 1)` — purely advisory
+  sizing hints for the caller's *next* `rehash()`: target an average
+  chain length of `elements_per_bucket` at the projected `size() + n`
+  (insert) or `size() - min(n, size())` (remove), clamped to the
+  inclusive `[min_buckets, max_buckets]` range the caller considers
+  sensible for their platform. Raising `elements_per_bucket` above `1`
+  trades bucket-array size for longer chains -- e.g. 100 projected
+  elements only need 25 buckets at `elements_per_bucket == 4` rather
+  than 100 at the default `1`. Never touch the table or allocate --
+  `intrusive_hash_table` cannot pick that range itself, since it never
+  owns its own bucket storage; the result is never rounded to a power of
+  two either, since `index_for` uses plain modulo, not a power-of-two
+  mask, so any bucket count works. Both always compute the tight,
+  path-independent linear fit described above; for an *amortized* growth
+  curve instead (fewer rehashes overall, at the cost of some slack in
+  the bucket array) see `bucket_growth.hpp`'s standalone
+  `linear`/`doubling_then_ratio`/`fixed_ratio`/`sqrt_curve` strategies,
+  callable directly against `bucket_count()`/`size()` independently of
+  these two convenience methods.
 - `clear()` — unlinks every node and zeroes every bucket;
   `bucket_count()` is unchanged.
+- `begin()`/`end()`/`cbegin()`/`cend()` — forward iteration over every
+  currently linked node (order unspecified, like every other reloco hash
+  container), plus `iterator_to(node)` (rehashes @p node's key to locate
+  its bucket, `RELOCO_ASSERT`ing it is linked) and `erase(iterator)`
+  (O(1) unlink, returning an iterator to the following node, matching
+  `std::list::erase`). This is exactly the `begin()`/`end()`/
+  `erase(iterator)` surface `extract_if_iterator`/`isolated_node_tx`
+  (`intrusive_iteration.hpp`) need from a `Container`, so
+  `intrusive_hash_table` is usable with `extract_if()` the same way
+  `boost::intrusive::list` is.
 
 Growing the bucket array is a two-step, caller-driven protocol rather
 than something `try_insert` ever does on its own: the caller allocates a
@@ -1462,7 +1506,7 @@ Unlike every other reloco container, `intrusive_hash_table` has no
 which is exactly the decision this whole file exists to leave to the
 caller.
 
-## `iter()` / `iterator_adaptor<Derived, Item>` (`Fuse`, `Zip`, `Map`, `Filter`, `Enumerate`, `Take`, `Skip`, `Chain`, `Peekable`, `Flatten`, `StepBy`, `Dedup`, `Intersperse`, `Windows`, `Merge`, `from_fn`, `once`, `repeat`, `successors`, `empty`)
+## `iter()` / `iterator_adaptor<Derived, Item>` (`Fuse`, `Zip`, `Map`, `Filter`, `Enumerate`, `Take`, `Skip`, `Chain`, `Peekable`, `Flatten`, `StepBy`, `Dedup`, `Intersperse`, `Windows`, `Merge`, `from_fn`, `once`, `repeat`, `successors`, `iota`, `empty`)
 
 `include/reloco/iterator.hpp`
 
@@ -1596,7 +1640,7 @@ for (auto x : fibonacci{}.take(10)) // 0, 1, 1, 2, 3, 5, 8, 13, 21, 34
   ...
 ```
 
-Five ready-made source iterators (Rust's `std::iter` free functions) cover
+Six ready-made source iterators (Rust's `std::iter` free functions) cover
 the common cases without a hand-written class:
 
 | Function | Rust equivalent | Behavior |
@@ -1605,6 +1649,7 @@ the common cases without a hand-written class:
 | `once(value)` | `std::iter::once()` | Yields exactly one item (a move of `value`), then stops. |
 | `repeat(value)` | `std::iter::repeat()` | Infinite stream of copies of `value`; always pair with `.take(n)` or another early-stopping adaptor. |
 | `successors(first, f)` | `std::iter::successors()` | Seeded with `optional<T> first`; each next item is `f(previous)`, stopping once `first`/`f(...)` is empty. |
+| `iota(start, end)` | `std::iter::successors`/Python's `range()` | Yields the half-open integral range `[start, end)`, one value per `next()` (`T` must be integral; asserted). |
 | `empty<T>()` | `std::iter::empty()` | Always immediately exhausted; a neutral placeholder wherever a concrete iterator type is required. |
 
 ```cpp
@@ -1616,6 +1661,9 @@ auto counter = reloco::from_fn([n]() mutable -> reloco::optional<int> {
 auto powers = reloco::successors(reloco::optional<int>(1), [](int &prev) {
   return prev <= 32 ? reloco::optional<int>(prev * 2) : reloco::nullopt;
 }); // 1, 2, 4, 8, 16, 32, 64
+
+for (int i : reloco::iota(0, 5)) // 0, 1, 2, 3, 4
+  ...
 ```
 
 ### Itertools-style adaptors
@@ -3089,8 +3137,7 @@ through a held lock). `try_lock()` is the fallible tier, returning
 `result<guard>` and failing with `error::busy` if already held elsewhere
 -- matching Rust's own `Mutex::try_lock() -> Result<MutexGuard<T>,
 TryLockError<...>>` more closely than an `optional<guard>` would (and
-sidesteps `optional<T>`'s Clang consumed-state typestate tracking, which
-does not mix with a guard's branching acquire-or-fail control flow).
+`error::busy` carries more information than a bare "empty" would).
 `get_mut()` bypasses locking entirely for callers that already hold an
 exclusive `guarded_mutex&` (Rust's `Mutex::get_mut()`, which borrows `&mut
 self` at compile time instead). `guard` is move-only and releases the
@@ -3465,6 +3512,143 @@ elsewhere for "fallibly return a reference"). `PTHREAD`'s raw-pointer/
 small-trivial specializations have no such addressable storage (the value
 lives only as a bit pattern inside the key itself), so their `get()`
 returns `result<T>` by value instead.
+
+## `keyed_intrusive_registry<T, OwnerKey, Tag, Lock, Hash, KeyEqual>`
+
+`include/reloco/keyed_intrusive_registry.hpp`
+
+A locked, self-allocating "one `T` per `OwnerKey`" registry, built directly
+on `intrusive_hash_table` -- the hash-table-per-owner-key building block a
+`RELOCO_TLS_MODEL_OS` kernel/RTOS port can use for `tls_provider<T, Tag>`
+(its own `detail/porting/tls_provider.hpp` scaffold explicitly calls out
+"a real port should ... use a proper hash table" in place of its
+illustrative linked-list scan). Unlike `intrusive_hash_table` itself,
+`keyed_intrusive_registry` *owns* its nodes: `get_or_create(owner_key)`
+allocates a node through an `allocator_ref` and links it in; `erase()`
+unlinks and deallocates it. Each node stores the exact `allocator_ref` it
+was allocated with, so `erase()` never needs (and can't accidentally be
+passed a mismatched) allocator parameter.
+
+```cpp
+struct thread_id_tag {};
+reloco::intrusive_hash_hook<...> // (embedded via node internally)
+reloco::keyed_intrusive_registry<my_value, std::uintptr_t, thread_id_tag>
+    registry(bucket_span);
+
+auto* slot = registry.get_or_create(current_thread_key, default_allocator());
+if (slot)
+  slot->get().touch();
+```
+
+Bucket growth is manual (the caller owns the bucket array's lifetime and
+decides when/whether to `rehash()` into a larger one, mirroring
+`intrusive_hash_table`'s own caller-sized-buckets design), but sizing that
+decision is not left to guesswork: `suggest_bucket_count_for_insert(n)`/
+`suggest_bucket_count_for_remove(n)` (inherited from the underlying
+`intrusive_hash_table`) project the bucket count needed after `n` more
+inserts/removes, bounded by a caller-supplied `[min_buckets, max_buckets]`
+range and an `elements_per_bucket` load-factor target, using one of the
+`bucket_growth.hpp` curves.
+
+Locking is a template parameter (`Lock = null_mutex` by default, so a
+single-threaded/uncontended caller pays nothing); like `pool_allocator`,
+every method that must allocate follows an "unlock, allocate, relock"
+discipline -- the lock is never held across a potentially slow/blocking
+allocator call, and a double-checked lookup after reacquiring it handles
+the case where another thread raced in and created the same key's node in
+the meantime. A per-thread `OwnerKey` is usually reached from an ordinary
+preemptible context, so `reloco::mutex` (blocking) is fine there; a
+per-CPU `OwnerKey`, in a real kernel, is read/written with preemption
+disabled specifically to prevent the caller migrating CPUs mid-access, so
+`Lock` there must be `reloco::spin_lock` (never blocks/sleeps), never
+`reloco::mutex` -- and a caller whose fast path runs with preemption
+disabled must re-enable it before any `get_or_create`/`set` call that
+might actually allocate, retrying the (preemption-disabled) fast path
+afterwards. Because it embeds a non-copyable, non-movable `Lock`
+directly, `keyed_intrusive_registry` itself is non-copyable/non-movable,
+and its constructor is a plain `RELOCO_ASSERT`-guarded constructor rather
+than a fallible `try_create()` factory (a fallible factory would need to
+move-construct the result into a `result<T>`, which a non-movable `Lock`
+member forbids) -- the same convention `pool_allocator_context` already
+uses for the same reason.
+
+## `tls_slot_vector<Lock, Growth>` / `tls_slot_index<T, Tag>` / `tls_local_slots<Lock, Growth, Tag>`
+
+`include/reloco/tls_slot_vector.hpp`
+
+The classic pthread-key design, as an alternative to
+`keyed_intrusive_registry.hpp` for the same "back a `RELOCO_TLS_MODEL_OS`
+kernel/RTOS `tls_provider<T, Tag>` port" use case, trading a hash lookup
+per `get()`/`set()` for `O(1)` slot indexing:
+
+- `detail::tls_slot_table` is a small, fixed-capacity (`RELOCO_TLS_MAX_SLOTS`,
+  default 256), allocation-free global registry of destroy-thunks, one per
+  distinct `(T, Tag)` pair ever used; its live count is an atomic
+  "generation" counter that every per-context vector compares itself
+  against to detect newly registered slots.
+- `tls_slot_index<T, Tag>` lazily claims a slot index for `(T, Tag)` the
+  first time it is needed, via `once_lock` (not a function-local `static`,
+  which needs guard-variable support many bare-metal C++ runtimes lack)
+  registering `T`'s destructor as the destroy-thunk for that slot.
+- `tls_slot_vector<Lock, Growth>` is a per-context (typically per-thread)
+  growable `void **` array: `get_or_create<T, Tag>()`/`set<T, Tag>()`/
+  `try_find<T, Tag>()`/`erase<T, Tag>()` index straight into it by
+  `tls_slot_index<T, Tag>`'s slot number, growing (via a `bucket_growth.hpp`
+  curve, `Growth = doubling_then_ratio` by default) to catch up to the
+  *global* generation whenever it falls behind -- so one grow leaves room
+  for other `(T, Tag)` pairs already registered by other threads, not just
+  the one slot currently being requested. `clear()` runs every populated
+  slot's destroy-thunk and resets the vector to empty, for explicit reuse.
+  `Lock` defaults to `null_mutex` (only the owning context ever touches its
+  own vector); if some other context reaches the *same* instance
+  concurrently, pass `reloco::mutex` for an ordinary preemptible caller
+  or, for a per-CPU vector reached with preemption disabled, `reloco::
+  spin_lock` instead (never `reloco::mutex` there -- blocking while
+  preemption is disabled is illegal on most kernels; see
+  `keyed_intrusive_registry.hpp`'s own "Locking" section for the same
+  distinction). `get_or_create`/`set` already keep the allocator call
+  itself outside `Lock` (the same "unlock, allocate, relock" discipline),
+  but a preemption-disabled caller must still re-enable preemption itself
+  before any call that might allocate, retrying a preemption-disabled-only
+  `try_find` afterwards -- or sidestep the whole concern with
+  `reserve(min_capacity)`: a per-CPU vector's final capacity (the CPU
+  count) is typically known before any AP starts, so reserving it once,
+  single-threaded, during that boot window means no AP-side call ever
+  needs to grow (or allocate) again.
+- `tls_local_state_traits<Tag>` is a deliberately minimal trait --
+  `void *get()` / `void set(void *)`, never failing, no backend-model
+  selection -- through which a kernel/RTOS port supplies "how do I find
+  *this* context's `tls_slot_vector *`" (a `Tag = void` specialization
+  backed by a hosted `thread_local void*` is provided out of the box,
+  but only when `RELOCO_KERNEL` is not defined -- a kernel/bare-metal
+  build must always supply its own, for whatever `Tag` it uses). It
+  is intentionally *not* `tls_provider<tls_slot_vector*, Tag>`: that
+  type's shape differs across backends for pointer `T` (a bare
+  `result<T*>` under `RELOCO_TLS_MODEL_PTHREAD` vs.
+  `result<reference_wrapper<T>>` elsewhere), which would complicate this
+  otherwise backend-agnostic vector-indexing code for no benefit.
+- `tls_local_slots<Lock, Growth, Tag>` ties the three pieces together into
+  a static-only convenience API (`get_or_create/try_find/set/erase`,
+  each finding-or-lazily-creating the current context's `tls_slot_vector`
+  through `tls_local_state_traits<Tag>` first) plus an explicit
+  `clear_current()`.
+
+```cpp
+struct my_tag {};
+using my_slots = reloco::tls_local_slots<>; // Tag = void, hosted thread_local
+
+auto* value = my_slots::get_or_create<reloco::string, my_tag>();
+if (value)
+  *value = "hello";
+```
+
+Dead-context cleanup is the caller's responsibility: nothing here hooks
+thread-exit automatically (some bare-metal/RTOS targets have no such
+hook, or a differently-shaped one) -- a caller that owns a "thread is
+exiting" notification must call `tls_local_slots<...>::clear_current()`
+(or `tls_slot_vector::clear()` directly, if managing the vector itself)
+before the context's `tls_local_state_traits<Tag>` storage goes away or is
+reused for another context.
 
 ## `thread` / `thread::spawn` / `join_handle<R>` / `thread_builder`
 
@@ -3873,14 +4057,18 @@ Sync`.
 A hardware hint that the calling thread is in a busy-wait spin loop,
 matching Rust's `std::hint::spin_loop()`. Emits the target architecture's
 dedicated spin-wait instruction where one exists (x86/x86-64 `pause`,
-AArch64/AArch32 `yield`, POWER `or 27,27,27`), which lets a
-hyperthreaded/SMT sibling core run without actually yielding the CPU back
-to the scheduler; falls back to a plain compiler fence
-(`std::atomic_signal_fence`) on an architecture with no such instruction.
-No OS dependency at all -- usable in a freestanding/bare-kernel build. A
-hand-rolled spinlock (or any other busy-wait loop) should call this once
-per spin iteration, exactly like Rust's own spinlock crates call
-`std::hint::spin_loop()`.
+AArch64/AArch32 `yield`, POWER `or 27,27,27`, RISC-V `Zihintpause` --
+emitted as the raw `0x0100000F` opcode rather than the `pause` mnemonic, so
+it compiles on older toolchains and safely executes as a harmless `fence`
+on silicon that predates the extension --, MIPS32r2+ `pause`, SPARC V9 `rd
+%ccr, %g0`), which lets a hyperthreaded/SMT sibling core run without
+actually yielding the CPU back to the scheduler; falls back to a plain
+inline-asm compiler fence on an architecture with no such instruction
+(including LoongArch, s390x, and WebAssembly, which are explicitly routed
+to this fallback) or on an unrecognized/legacy target. No OS dependency at
+all -- usable in a freestanding/bare-kernel build. A hand-rolled spinlock
+(or any other busy-wait loop) should call this once per spin iteration,
+exactly like Rust's own spinlock crates call `std::hint::spin_loop()`.
 
 ## `wait_group`
 
@@ -3990,6 +4178,548 @@ over-alignment (e.g. 32 bytes for AVX) without redeclaring `T` itself with
 alignment_of_v<T>)` -- the value containers actually use -- and never lets a
 specialization weaken alignment below `alignof(T)`. See
 [Over-alignment](alignment.md).
+
+## `scope_guard<Callable>` / `RELOCO_DEFER(fn)`
+
+`include/reloco/scope_guard.hpp`
+
+A zero-allocation RAII scope-exit guard matching Rust's `scopeguard` crate
+(and Go's `defer`): stores a callable inline and invokes it exactly once,
+when the guard is destroyed, unless `cancel()` was called first.
+
+```cpp
+{
+  reloco::scope_guard guard([] { std::puts("cleanup"); }); // CTAD deduces Callable
+  // ... "cleanup" runs here, at scope exit ...
+}
+```
+
+`cancel()` disarms the guard (its callable no longer runs on destruction);
+moving a `scope_guard` transfers responsibility for running the callable to
+the destination and disarms the moved-from guard. Because a temporary
+`reloco::scope_guard(...)` not bound to a variable would run its callable
+*immediately* (at the end of the full expression) rather than at the
+enclosing scope's exit, `RELOCO_DEFER(fn)` is the safe way to use it as a
+statement: it expands to a uniquely-named local `scope_guard` variable (via
+`__LINE__`-based name mangling), so `RELOCO_DEFER([] { ... });` always
+defers to the actual end of the enclosing scope.
+
+```cpp
+void handle_request(connection &conn) {
+  RELOCO_DEFER([&] { conn.close(); });
+  // ... early returns below still close() exactly once ...
+}
+```
+
+## `tx_guard<T, RollbackFn>` / `shadow_tx<T>` / `checkpoint_guard<T>`
+
+`include/reloco/commit.hpp`
+
+Three zero-allocation RAII transaction primitives for deterministic,
+hard-real-time-safe state mutation, each committing an in-progress change
+exactly once or automatically undoing it if the scope is left first
+(exception-free, so "left early" means an early `return`, not unwinding).
+
+- **`tx_guard<T, RollbackFn>`** owns an arbitrary payload `T` plus a
+  rollback closure. `get()` grants access to the payload while the
+  transaction is open; `commit()` disarms the rollback and returns the
+  payload by value; `rollback()` runs the rollback closure immediately
+  instead of waiting for destruction. If neither is called, the
+  destructor invokes the rollback closure on the still-owned payload.
+  Move-only (copying a linear/affine transaction handle makes no sense);
+  CTAD deduces both template parameters.
+
+  ```cpp
+  reloco::tx_guard tx{allocate_buffer(), [](Buffer *b) { free_buffer(b); }};
+  fill_buffer(tx.get());
+  if (hardware_fail())
+    return; // buffer is freed automatically here
+  Buffer *final_buf = tx.commit(); // rollback disarmed, buffer handed back
+  ```
+
+- **`shadow_tx<T>`** (`T` must be trivially copyable) snapshots a *live*
+  target into a local stack copy on construction; `get()` mutates only the
+  shadow, leaving the live target completely untouched until `commit()`
+  performs a single write-back assignment. If `commit()` is never called,
+  the shadow is simply discarded -- the live target was never touched.
+
+  ```cpp
+  reloco::shadow_tx tx(global_config);
+  tx.get().baud_rate = 115200;
+  if (!validate(tx.get()))
+    return; // global_config is left untouched
+  tx.commit(); // global_config is now updated
+  ```
+
+- **`checkpoint_guard<T>`** (`T` must be trivially copyable) is the
+  opposite strategy: it mutates the *live* target directly, but caches a
+  backup snapshot on construction, and restores that backup automatically
+  on destruction unless `commit()` was called first -- suited to hardware
+  registers or other state that must be observed live while a change is
+  tentative.
+
+  ```cpp
+  reloco::checkpoint_guard tx(UART1_CONFIG_REG);
+  UART1_CONFIG_REG |= ENABLE_DMA;
+  if (dma_timeout())
+    return; // UART1_CONFIG_REG is automatically restored
+  tx.commit(); // change becomes permanent
+  ```
+
+## `epoch_trackable` / `epoch_handle<T>` / `epoch_guard<T>`
+
+`include/reloco/epoch.hpp`
+
+An O(1), 8-byte "weak pointer" equivalent purpose-built for statically
+allocated/RTOS memory pools that recycle fixed slots via placement-new,
+where a full `shared_ptr`/`weak_ptr` refcount is unaffordable. It detects
+*staleness* (the slot having been recycled since a handle was taken) --
+it does **not** provide mutual exclusion; see the header's own extensive
+doc comment for the required external-locking/IRQ-block/thread-confinement
+patterns needed alongside it in a concurrent environment.
+
+`epoch_trackable` is a 4-byte mixin (an `std::atomic<epoch_t>`, `epoch_t =
+uint32_t`) that user RTOS objects inherit from; it is neither copyable nor
+movable, since the generation is tied to the object's physical address.
+`bump_epoch()` (called by the pool when recycling a slot) atomically
+increments the generation, skipping `0` (reserved as "invalid"):
+
+```cpp
+struct RtosTask : reloco::epoch_trackable {
+  explicit RtosTask(int id) : reloco::epoch_trackable(1), id(id) {}
+  int id;
+};
+
+RtosTask task(42);
+reloco::epoch_handle<RtosTask> handle(task); // snapshots address + generation
+task.bump_epoch();                           // pool recycles the slot
+
+auto guard = handle.lock();     // epoch_guard<RtosTask>
+if (guard.is_alive())           // false: generation no longer matches
+  guard.get().id;               // never reached
+```
+
+`epoch_handle<T>::lock()` returns an `epoch_guard<T>`: a `-Wconsumed`
+typestate-tracked, `[[nodiscard]]` type starting in an unverified state.
+`is_alive()` is the `RELOCO_TEST_TYPESTATE`-annotated check that, once it
+returns `true`, transitions the guard to a state from which `get()`/
+`operator->()` become callable -- Clang statically rejects dereferencing
+the guard before that check. `epoch_handle<T>::is_empty()` checks only
+whether the handle itself was ever bound to an object, independent of
+whether that object has since been recycled.
+
+## `uninit<T>`
+
+`include/reloco/uninit.hpp`
+
+A `-Wconsumed` typestate-tracked wrapper over `alignas(T) sizeof(T)` raw
+storage, mathematically preventing (on Clang) both reading before
+initialization and double-initialization without an intervening
+`destroy()`. Every accessor is additionally `RELOCO_UNSAFE_BUFFER_USAGE`-
+gated, since manual placement-new/explicit-destructor lifetime management
+is exactly the kind of code that `-Wunsafe-buffer-usage` exists to make
+visible at the call site.
+
+```cpp
+reloco::uninit<TelemetryPacket> pkt; // starts in the 'consumed' (empty) state
+pkt.write(0x01, 100);                // constructs in place -> 'unconsumed'
+transmit(pkt.get());                 // safe to read
+pkt.destroy();                       // back to 'consumed'
+```
+
+`write(args...)` constructs `T` in place from `args...` and returns a
+reference to it (callable only from `consumed`; transitions to
+`unconsumed`). `assume_init()` is the escape hatch for memory filled by
+something other than a C++ constructor (e.g. DMA/a memory-mapped
+peripheral): it performs no construction, just tells the typestate
+tracker the memory is now initialized, and returns a `T *` via
+`std::launder`. `get()`/`get_mut()` provide checked (callable only from
+`unconsumed`) read/write access; `extract()` move-constructs the value
+out, destroys the original, and returns to the `consumed` state in one
+step, matching `std::optional<T>::value()` combined with `reset()`.
+`destroy()` explicitly runs `~T()` and returns to `consumed`. `uninit<T>`
+is move-disabled (copy is deleted; no move constructor is provided), since
+a bitwise-copied typestate would desynchronize from the actual storage --
+prefer `write`/`extract` to transfer a value between slots.
+
+## `guarded_seqlock<T, MutexT = mutex>`
+
+`include/reloco/seqlock.hpp`
+
+Fuses `guarded_mutex<T, MutexT>`-style hardware exclusion for writers with
+a lock-free, sequence-counter-verified snapshot read path for readers,
+matching the Linux kernel's `seqlock(9)`. `T` must be trivially copyable
+(the read path is a `std::memcpy` snapshot) and `is_send<T>` (safe to hand
+across the thread boundary between writer and readers).
+
+- **Writers** call `write_lock()` (blocks until the underlying `MutexT` is
+  acquired) or `try_write_lock()` (the fallible tier, `result<write_guard>`
+  failing with `error::busy`); either returns a `RELOCO_SCOPED_CAPABILITY`
+  `write_guard` that bumps the sequence counter to *odd* on acquisition
+  (signaling "a write is in progress" to readers) and back to *even* plus
+  releases the mutex on destruction.
+
+  ```cpp
+  reloco::guarded_seqlock<Telemetry> shared;
+  {
+    auto g = shared.write_lock();
+    g->altitude = 1200; // exclusive access, same as guarded_mutex
+  } // sequence becomes even again; mutex released
+  ```
+
+- **Readers** never touch the mutex at all. `read()` spins internally: it
+  constructs a `read_tx` (a `-Wconsumed` typestate-tracked, `snapshot_`-
+  carrying value), which `memcpy`s the payload only if the sequence was
+  even at the start; `verify()` (`RELOCO_TEST_TYPESTATE`) re-checks that
+  the sequence is still even and unchanged after the copy, and `extract()`
+  (callable only once `verify()` has returned `true`) returns the
+  snapshot. `read()` loops calling `hint::spin_loop()` between attempts
+  until a torn-free snapshot is obtained -- there is no reader-side
+  blocking or syscall at all.
+
+  ```cpp
+  Telemetry snapshot = shared.read(); // never blocks on the writer's mutex
+  ```
+
+Clang's thread-safety analysis (`RELOCO_CAPABILITY("mutex")`/
+`RELOCO_GUARDED_BY(this)`) is applied to the payload as if only writers
+ever touch it; the reader path is explicitly
+`RELOCO_NO_THREAD_SAFETY_ANALYSIS`-annotated where it deliberately bypasses
+the mutex, since that bypass is exactly what makes readers lock-free.
+
+## `isolated_node_tx<Container, T>` / `extract_if_iterator<Container, Pred>`
+
+`include/reloco/intrusive_iteration.hpp`
+
+A typestate-enforced RAII handle for safely detaching a node from one
+intrusive container (for example a `boost::intrusive::list`, where a node
+is embedded directly in its owning object rather than heap-allocated
+separately) and explicitly relinking it into another container or
+disposing of it -- without ever leaving the node in a state reachable from
+two containers, or leaking it if the caller forgets to route it anywhere.
+
+`isolated_node_tx` is `RELOCO_CONSUMABLE(unconsumed)`-tagged: its
+destructor `RELOCO_ASSERT`s if the transaction was dropped without being
+consumed, so an un-routed extracted node is a hard, immediate failure
+rather than a silent leak or dangling intrusive-hook state. Exactly one of
+two consuming methods must be called:
+
+- `relink_to(container, inserter)` hands the node to `inserter(container,
+  node)` (a caller-supplied closure choosing *how* to insert -- `push_back`,
+  a sorted insert, etc.) and asserts the destination is not the same
+  container instance the node was extracted from.
+- `release_to(disposer)` hands the raw node pointer to `disposer(node)`,
+  the sink for returning it to an RTOS memory pool/slab allocator instead
+  of another container.
+
+Before either is called, `get()`/`get_mut()` grant checked (`unconsumed`-
+only) read/write access to the isolated node -- safe because it is, by
+construction, no longer linked into any container's traversal structure.
+
+`extract_if_iterator<Container, Pred>` is an `iterator_adaptor` (see
+`iterator.hpp`) whose `item_type` is `isolated_node_tx<Container,
+Container::value_type>`: it walks `Container` once, and for every element
+where `Pred` returns `true`, erases it from the container and yields an
+`isolated_node_tx` wrapping it, ready to be routed via `relink_to`/
+`release_to` in a `.for_each(...)` (or any other terminal operation).
+`Container` only needs `begin()`/`end()` plus an `erase(iterator)` that
+returns an iterator to the following element (matching `std::list::erase`/
+`boost::intrusive::list::erase`) -- the traversal cursor advances directly
+off of that return value, so nothing here ever needs `iterator_to` or a
+lookahead increment. `reloco::intrusive_hash_table` (see above) implements
+exactly this surface, so it is usable with `extract_if()` the same way
+`boost::intrusive::list` is.
+
+```cpp
+reloco::extract_if(active_queue, [](Task &t) { return t.is_blocked || t.tick(); })
+    .for_each([&](auto &&tx) {
+      if (tx.get_mut().is_blocked)
+        tx.relink_to(blocked_queue, [](TaskList &dest, Task &t) { dest.push_back(t); });
+      else
+        tx.release_to([](Task *t) { /* return to memory pool */ });
+    });
+```
+
+See [`demos/intrusive_iteration_demo.cpp`](../demos/intrusive_iteration_demo.cpp)
+for a complete RTOS-scheduler-style walkthrough built on
+`boost::intrusive::list`.
+
+## `reloco_ipc_producer` / `reloco_ipc_consumer` / `ipc_producer` / `ipc_consumer`
+
+`include/reloco/reloco_ipc_ring.h`, `include/reloco/reloco_ipc_ring.hpp`
+
+A cross-process, allocation-free single-producer/single-consumer
+byte-stream ring buffer over a shared-memory page -- the same demand-
+driven-cache-refresh design as `spsc_ring_buffer` (see [Lock-free SPSC
+ring buffers](atomic-ring-buffer.md)), but across a process (or
+process/kernel) boundary via a raw memory mapping instead of across
+threads via a `std::atomic` member.
+
+`reloco_ipc_ring.h` is a standalone, dependency-light C header (no C++
+required) defining the wire layout and the raw mount/read/write API:
+
+- `struct reloco_ipc_spsc_page`: the strictly standard-layout page header
+  (magic/version/flags/capacity, producer's `write_idx`, consumer's
+  `read_idx`, each on its own cache line, followed by the flexible
+  `payload[]` array) that both sides map at the same shared-memory
+  address.
+- `reloco_ipc_validate_mount()`: verifies magic/version/flags/capacity
+  (capacity must be a power of two) before either side trusts the page --
+  the "IPC security boundary" against a misconfigured or malicious peer.
+- `reloco_ipc_producer_init()`/`reloco_ipc_consumer_init()`: mount a
+  validated page for writing/reading.
+- `reloco_ipc_try_write()`/`reloco_ipc_try_read()`: all-or-nothing raw
+  byte transfers, returning a signed `reloco_ipc_ssize_t` (a self-defined
+  `int64_t`, not platform `ssize_t`): the requested count on success;
+  `0` if there is not currently enough free space/data (benign,
+  retryable, like `EAGAIN`); a **negative** `-EFAULT` if the *other*
+  side's index was found spoofed/corrupted -- the caller must treat the
+  whole page as compromised and stop using it, not retry.
+
+Three build configurations select the atomic-load/store backend via
+`RELOCO_IPC_LOAD_ACQUIRE`/`RELOCO_IPC_STORE_RELEASE`/
+`RELOCO_IPC_LOAD_RELAXED`: plain userspace/bare-metal (GCC/Clang
+`__atomic_*` builtins), `RELOCO_IPC_LINUX_KERNEL` (`smp_load_acquire`/
+`smp_store_release`/`READ_ONCE`), and `RELOCO_IPC_FREEBSD_KERNEL`
+(`atomic_load_acq_64`/`atomic_store_rel_64`/`atomic_load_64`) -- the same
+page format and index protocol is readable from a kernel module on either
+side and from ordinary userspace processes on the other.
+
+`reloco_ipc_ring.hpp` wraps the C API in a fallible, RAII, zero-copy C++
+layer:
+
+```cpp
+void *mapped_page = mmap(...); // shared between the two processes/domains
+auto producer = reloco::ipc_producer::create(mapped_page, capacity_bytes);
+if (!producer) { /* ABI mismatch or tampered page: producer.error() */ }
+```
+
+`ipc_producer::create()`/`ipc_consumer::create()` are the fallible
+mounting tier, returning `result<ipc_producer>`/`expected<ipc_consumer,
+error>` and failing with `error::invalid_argument` on any
+`reloco_ipc_validate_mount()` rejection. `try_write(span<const
+uint8_t>)`/`try_read(span<uint8_t>)` mirror the C API's all-or-nothing
+byte transfer directly over a `span`, returning `result<size_type>`: `Ok`
+holding the transferred count (`data.size()`/`dest.size()` on success, or
+`0` for the benign "not enough room/data yet" case), `Err
+(error::security_violation)` if the peer's index was found
+spoofed/corrupted.
+
+`begin_write(min_bytes)`/`begin_read(min_bytes)` open a zero-copy
+transaction instead, also returning a `result<write_tx>`/`result<read_tx>`
+for the same reason (a peer-index security-boundary check happens on the
+same demand-driven refresh here too): `Err(error::security_violation)` on
+detected corruption, `Ok` otherwise holding a `-Wconsumed`
+typestate-tracked, `[[nodiscard]]` transaction exposing up to two `span`s
+(`chunk1()`/`chunk2()`, `RELOCO_CALLABLE_WHEN(unconsumed)`) directly into
+the shared page -- `chunk2()` is non-empty only when the available range
+wraps past the end of the ring, exactly like `spsc_ring_buffer`'s own
+scatter-gather API. Note the exposed span pair is bounded only by the
+ring's total capacity, not clamped to `min_bytes` -- a transaction may
+legitimately expose anywhere from `min_bytes` up to the full capacity.
+`explicit operator bool()` reports whether at least `min_bytes` were
+actually available (an empty transaction is the benign "not enough
+room/data yet" case, distinct from the `Err` corruption case above). The
+caller writes/reads directly into/from those spans (no intermediate
+copy), then calls `commit(bytes)`/`consume(bytes)`
+(`RELOCO_SET_TYPESTATE(consumed)`) to publish exactly how many bytes were
+produced/consumed -- which may be less than what was reserved.
+
+```cpp
+if (auto tx_res = producer.begin_write(5)) {
+  auto &tx = tx_res.value();
+  if (tx) {
+    auto chunk1 = tx.chunk1();
+    std::memcpy(chunk1.data(), "HELLO", 5); // zero-copy write directly into shared memory
+    tx.commit(5);
+  }
+}
+```
+
+**Optional, opt-in attack-surface fault injection** (C++ only): both the
+producer's and consumer's "demand-driven cache refresh" of the *other*
+side's shared-memory index -- the exact moment a malicious or buggy peer
+process's tampered `read_idx`/`write_idx` gets trusted -- are wired up as
+`fault_injection.hpp` fault points, guarded by `#ifdef __cplusplus` in
+`reloco_ipc_ring.h` so a plain C/kernel build never sees any of it:
+`reloco::ipc_fault::producer_read_idx_refresh`/`consumer_write_idx_refresh`
+(only defined when `RELOCO_ENABLE_FAULT_INJECTION` is also defined). Every
+such untrusted-field read goes through the header's own
+`RELOCO_IPC_LOAD_ACQUIRE_FAULT(ptr, FaultTag, local)` macro, which reads
+@p ptr exactly once into @p local and immediately fires @p FaultTag on
+that single captured value -- the sanctioned way to add any further
+peer-owned-field read without introducing a double-fetch/TOCTOU bug. See
+`tests/test_ipc_ring_fault_injection.cpp` for worked index-spoofing and
+single-bit-flip attack simulations against both the C and C++ APIs.
+**ODR warning**: enabling this changes the body of
+`ipc_producer::write_slices()`/`ipc_consumer::read_slices()`
+(implicitly-inline, external linkage), so every translation unit linked
+into the same program must define `RELOCO_ENABLE_FAULT_INJECTION`
+identically -- keep fault-injection-enabled translation units in their
+own separate binary (see `reloco_ipc_ring.hpp`'s own file-level ODR
+note).
+
+Both `ipc_producer`/`ipc_consumer` are `RELOCO_POINTER`-tagged (they are
+thin, non-owning handles over caller-mapped memory -- unmapping the page
+while a handle is still alive is the caller's responsibility, same as any
+other `mmap` lifetime), move-only, and never allocate.
+
+## `fault_injector<Tag, Args...>` / `RELOCO_FAULT_POINT` / `RELOCO_FAULT_POINT_ARGS`
+
+`include/reloco/fault_injection.hpp`
+
+A header-based, C++-only fault injection framework for deterministically
+reproducing concurrency races and other "impossible timing" bugs in
+single-threaded tests, instead of relying on flaky, genuinely concurrent
+repro attempts. See [Fault injection](fault-injection.md) for the full
+guide; summary below.
+
+Production code marks one location as an injectable fault point with a
+caller-defined tag type identifying it (an ordinary otherwise-unused type,
+matching every other reloco `Tag` template parameter's convention, e.g.
+`tls_provider<T, Tag>`):
+
+```cpp
+struct commit_race_point {};
+
+void producer_commit(std::uint64_t &write_idx, std::uint64_t count) {
+  std::uint64_t w = write_idx;
+  RELOCO_FAULT_POINT_ARGS(commit_race_point, w); // hook may mutate `w` right here
+  write_idx = w + count;
+}
+```
+
+A test arms that fault point by constructing a `fault_injector<Tag,
+Args...>` -- a caller-owned, non-copyable, non-movable scoped control
+block (ordinarily a plain stack local) wrapping a hook closure -- for as
+long as it should intercept that fault point on the calling thread:
+
+```cpp
+TEST(Commit, SurvivesConcurrentIndexMutation) {
+  auto hook = [](std::uint64_t &w) { w = 0xDEADBEEF; }; // named local: must outlive `fi`
+  reloco::fault_injector<commit_race_point, std::uint64_t> fi(hook);
+  // ... call producer_commit() and assert on the resulting (mis)behavior ...
+}
+```
+
+Two convenience macros shrink the common case to one line each:
+`RELOCO_FAULT_TAG(name)` expands to `struct name {};`, and
+`RELOCO_FAULT_INJECTOR(var, Tag, ...)` declares a named hook local
+(`var##_hook`) followed by `var`, a `fault_injector<Tag, Args...>` armed
+with it, deducing `Args...` from the hook's own call signature -- so the
+example above can instead be written as `RELOCO_FAULT_INJECTOR(fi,
+commit_race_point, [](std::uint64_t &w) { w = 0xDEADBEEF; });`, which also
+structurally rules out passing a dangling inline temporary (the macro
+always names the hook local first). This deduction only supports a hook
+whose call operator is not itself a template (so not a generic lambda);
+construct the `fault_injector` directly, naming `Args...`, in that case.
+
+By default -- whenever `RELOCO_ENABLE_FAULT_INJECTION` is not defined
+before the first inclusion of this header -- `RELOCO_FAULT_POINT`/
+`RELOCO_FAULT_POINT_ARGS` expand to nothing and `fault_armed<Tag,
+Args...>()` always returns `false`: the entire mechanism compiles out at
+zero cost in a normal build, with no `#ifdef` needed at any fault-point
+call site.
+
+The framework itself never allocates. Its own bookkeeping storage picks
+one of two designs, chosen automatically (unless the consumer defines
+`RELOCO_FAULT_INJECTION_UNLIMITED_TLS` itself, to `0` or `1`) based on
+`RELOCO_TLS_MODEL`:
+
+- Under `RELOCO_TLS_MODEL_PTHREAD`/`RELOCO_TLS_MODEL_OS` (where distinct
+  TLS slots are a scarce, backend-limited resource -- e.g.
+  `pthread_key_create()`'s `PTHREAD_KEYS_MAX`), it spends exactly **one**
+  thread-local, pointer-sized slot for the entire program, shared by every
+  `Tag`, backed by `tls_provider<void *, detail::fault_root_tag>`'s
+  zero-allocation raw-pointer specialization. That slot holds the head of
+  an intrusive, per-thread stack of *every* currently active
+  `fault_injector`, across every `Tag`; each records its own `Tag`/
+  `Args...` signature as a `reloco::type_id` (see [`type_id` /
+  `type_id_of<T>()`](#type_id--type_id_oft)) so a fault point can find the
+  right one by walking the stack and comparing signatures -- `O(number of
+  currently active fault_injectors on this thread)`, trading a small
+  linear scan for a constant, program-wide TLS budget. Because the stack
+  is shared, *all* `fault_injector`s on a thread -- not just same-`Tag`
+  ones -- must be destroyed in strict reverse-construction order.
+- Under `RELOCO_TLS_MODEL_THREAD_LOCAL`/`RELOCO_TLS_MODEL_SINGLE` (where a
+  TLS slot is just an ordinary `thread_local`/`static` variable, so slots
+  are effectively unlimited) it instead spends one such slot **per
+  `Tag`**, backed by `tls_provider<void *, Tag>`, each holding its own
+  private per-`Tag` stack -- `O(1)` lookup, and only same-`Tag` nesting
+  order is constrained.
+
+Either way, the framework never owns the `fault_injector` object its
+slot(s) point to, only the caller does. Constructing a `fault_injector`
+links it onto its stack; destroying it unlinks itself and restores
+whichever `fault_injector` (if any) was active before it, in strict LIFO
+order -- so nesting composes exactly like nested `scope_guard`s, and a
+`fault_injector` must never be copied, moved, or used as a temporary
+(its own address is load-bearing).
+
+Arming is thread-local by construction: a `fault_injector` armed on one
+thread has no effect on a fault point reached on another thread. To
+inject into a specific worker thread (e.g. one spawned via
+`reloco::spawn`), arm the `fault_injector` from inside that thread's own
+closure -- this is precisely what makes reproduction deterministic
+instead of racing against genuine concurrency.
+
+Under the default shared-stack design (`RELOCO_TLS_MODEL_PTHREAD`/`_OS`),
+a mismatched `Args...` for the same `Tag` is safely detected at runtime by
+the `type_id` signature check (the fault point simply won't find a
+match); under the per-`Tag`-slot design
+(`RELOCO_FAULT_INJECTION_UNLIMITED_TLS`), no such check is performed, so
+`Tag` must be used with exactly one `Args...` signature throughout the
+program. Either way, pick a distinct, single-purpose `Tag` per fault
+point -- matching every other reloco `Tag` template parameter's
+convention -- and this is never ambiguous in practice.
+
+## `fault_injection_patterns.hpp`
+
+`include/reloco/fault_injection_patterns.hpp`
+
+Convenience macros for `fault_injection.hpp`'s most common and more
+advanced fault-arming patterns, kept in their own header so
+`fault_injection.hpp` itself stays minimal. Built entirely on top of its
+public/`detail` API (`RELOCO_FAULT_INJECTOR`, `fault_hook_signature`,
+`make_fault_injector`) -- nothing here needs any special access to
+`fault_injection.hpp`'s internals.
+
+- `RELOCO_FAULT_MUTATE(var, Tag, Type, ...)` / `RELOCO_FAULT_SET(var, Tag,
+  Type, value)` -- mutate (arbitrary body) or unconditionally overwrite a
+  single exposed value every time the fault point fires.
+- `RELOCO_FAULT_TOGGLE(var, Tag, Type)` / `RELOCO_FAULT_INCREMENT(var,
+  Tag, Type, delta)` -- `RELOCO_FAULT_MUTATE` sugar for the two other
+  most common bodies: flip a `bool`-like value, or nudge a counter/index
+  by a fixed amount.
+- `RELOCO_FAULT_SPY(var, Tag, counter)` -- count how many times a fault
+  point is reached, without touching any of its arguments.
+- `RELOCO_FAULT_FIRE_N(var, Tag, count, ...)` / `RELOCO_FAULT_FIRE_ONCE(
+  var, Tag, ...)` -- only actually fire the hook the first @p count
+  times (once, for `FIRE_ONCE`); every later hit is a silent no-op.
+- `RELOCO_FAULT_SKIP_N(var, Tag, skip, ...)` -- the mirror image of
+  `FIRE_N`: silently skip the first @p skip hits, then fire on every hit
+  after that, for as long as the injector stays alive.
+- `RELOCO_FAULT_NTH(var, Tag, n, ...)` -- fire exactly once, on the
+  single, exact @p n'th (1-based) hit, and never before or after.
+- `RELOCO_FAULT_EVERY_N(var, Tag, n, ...)` -- fire periodically, once
+  every @p n hits, for simulating an intermittent rather than one-shot
+  fault.
+- `RELOCO_FAULT_WHEN(var, Tag, pred, ...)` -- only fire when a
+  caller-supplied predicate (receiving the fault point's own arguments,
+  by reference) returns `true`.
+
+```cpp
+RELOCO_FAULT_TAG(commit_race_point);
+TEST(Commit, SurvivesConcurrentIndexMutation) {
+  RELOCO_FAULT_SET(fi, commit_race_point, std::uint64_t, 0xDEADBEEF);
+  // ... call producer_commit() and assert on the resulting (mis)behavior ...
+}
+```
+
+Every macro respects `fault_injection.hpp`'s own `RELOCO_ENABLE_FAULT_
+INJECTION` opt-in: with it undefined, the `fault_injector` each ultimately
+constructs is the same true no-op it always is. See [Fault
+injection](fault-injection.md) for the full guide.
 
 ## Lifetime and safety annotation macros
 
