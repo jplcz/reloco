@@ -111,13 +111,13 @@ TEST_F(OptionalTest, OkConvertsSuccessToPresentOptional) {
 }
 
 TEST_F(OptionalTest, OkConvertsFailureToEmptyOptional) {
-  expected<int, error> err{unexpected(error::invalid_argument)};
+  expected<int, error> err{reloco::unexpected{error::invalid_argument}};
   optional<int> opt = Ok(err);
   EXPECT_FALSE(opt.has_value());
 }
 
 TEST_F(OptionalTest, ErrConvertsFailureToPresentOptional) {
-  expected<int, error> err{unexpected(error::invalid_argument)};
+  expected<int, error> err{reloco::unexpected{error::invalid_argument}};
   optional<error> opt = Err(err);
   ASSERT_TRUE(opt.has_value());
   EXPECT_EQ(*opt, error::invalid_argument);
