@@ -12,6 +12,8 @@
 
 #include <cstdint>
 
+RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+
 namespace {
 
 RELOCO_FAULT_TAG(mutate_pattern_point);
@@ -89,8 +91,7 @@ TEST(FaultInjectionPatternsTest, FireOnceFiresExactlyOnce) {
 }
 
 TEST(FaultInjectionPatternsTest, WhenOnlyFiresIfPredicateHolds) {
-  RELOCO_FAULT_WHEN(
-      fi, when_pattern_point, [](int &idx) { return idx > 100; }, [](int &idx) { idx = -1; });
+  RELOCO_FAULT_WHEN(fi, when_pattern_point, [](int &idx) { return idx > 100; }, [](int &idx) { idx = -1; });
 
   int low = 5;
   RELOCO_FAULT_POINT_ARGS(when_pattern_point, low);
@@ -185,3 +186,5 @@ TEST(FaultInjectionPatternsTest, XorFlipsMaskedBits) {
   RELOCO_FAULT_POINT_ARGS(xor_pattern_point, v);
   EXPECT_EQ(0u, v); // flipping the same bit again restores it
 }
+
+RELOCO_END_UNSAFE_BUFFER_USAGE
