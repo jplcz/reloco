@@ -106,6 +106,7 @@ TEST(KeyedIntrusiveRegistryTest, MultipleKeysCoexistAcrossBucketChains) {
 TEST(KeyedIntrusiveRegistryTest, RehashGrowsBucketArrayAndPreservesEntries) {
   using registry_type = reloco::keyed_intrusive_registry<int, int, int_tag>;
   std::array<registry_type::node *, 2> small_buckets{};
+  std::array<registry_type::node *, 16> big_buckets{};
   registry_type registry(reloco::span<registry_type::node *>(small_buckets.data(), small_buckets.size()));
 
   for (int i = 0; i < 10; ++i)
@@ -114,7 +115,6 @@ TEST(KeyedIntrusiveRegistryTest, RehashGrowsBucketArrayAndPreservesEntries) {
   std::size_t suggested = registry.suggest_bucket_count_for_insert(0, 1, 1000);
   EXPECT_GE(suggested, 10u);
 
-  std::array<registry_type::node *, 16> big_buckets{};
   ASSERT_TRUE(registry.rehash(reloco::span<registry_type::node *>(big_buckets.data(), big_buckets.size()))
                   .has_value());
   EXPECT_EQ(registry.bucket_count(), 16u);
