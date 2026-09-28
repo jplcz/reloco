@@ -7,6 +7,8 @@
 #include <new>
 #include <reloco/lifetime.hpp>
 
+RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+
 namespace reloco {
 
 /*
@@ -105,3 +107,5 @@ private:
 };
 
 } // namespace reloco
+
+RELOCO_END_UNSAFE_BUFFER_USAGE
