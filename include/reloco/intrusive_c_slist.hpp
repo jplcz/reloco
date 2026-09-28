@@ -106,23 +106,23 @@ public:
     return *this;
   }
 
-  [[nodiscard]] bool empty() const noexcept { return first_ == nullptr; }
+  [[nodiscard]] bool empty() const & noexcept { return first_ == nullptr; }
 
-  [[nodiscard]] iterator begin() noexcept { return iterator(first_); }
-  [[nodiscard]] iterator end() noexcept { return iterator(nullptr); }
-  [[nodiscard]] const_iterator begin() const noexcept { return const_iterator(first_); }
-  [[nodiscard]] const_iterator end() const noexcept { return const_iterator(nullptr); }
-  [[nodiscard]] const_iterator cbegin() const noexcept { return begin(); }
-  [[nodiscard]] const_iterator cend() const noexcept { return end(); }
+  [[nodiscard]] iterator begin() & noexcept { return iterator(first_); }
+  [[nodiscard]] iterator end() & noexcept { return iterator(nullptr); }
+  [[nodiscard]] const_iterator begin() const & noexcept { return const_iterator(first_); }
+  [[nodiscard]] const_iterator end() const & noexcept { return const_iterator(nullptr); }
+  [[nodiscard]] const_iterator cbegin() const & noexcept { return begin(); }
+  [[nodiscard]] const_iterator cend() const & noexcept { return end(); }
 
-  [[nodiscard]] T *front() const noexcept { return first_; }
+  [[nodiscard]] T *front() const & noexcept { return first_; }
 
-  void push_front(T &node) noexcept {
+  void push_front(T &node) & noexcept {
     detail::c_slist_hook_access<T, Hook>::next(&node) = first_;
     first_ = &node;
   }
 
-  T *pop_front() noexcept {
+  T *pop_front() & noexcept {
     T *node = first_;
     if (node != nullptr) {
       first_ = detail::c_slist_hook_access<T, Hook>::next(node);
@@ -131,12 +131,12 @@ public:
     return node;
   }
 
-  void insert_after(T &pos, T &node) noexcept {
+  void insert_after(T &pos, T &node) & noexcept {
     detail::c_slist_hook_access<T, Hook>::next(&node) = detail::c_slist_hook_access<T, Hook>::next(&pos);
     detail::c_slist_hook_access<T, Hook>::next(&pos) = &node;
   }
 
-  T *remove_after(T &pos) noexcept {
+  T *remove_after(T &pos) & noexcept {
     T *node = detail::c_slist_hook_access<T, Hook>::next(&pos);
     if (node != nullptr) {
       detail::c_slist_hook_access<T, Hook>::next(&pos) = detail::c_slist_hook_access<T, Hook>::next(node);
@@ -145,7 +145,7 @@ public:
     return node;
   }
 
-  void remove(T &node) noexcept {
+  void remove(T &node) & noexcept {
     if (first_ == &node) {
       pop_front();
       return;
@@ -163,7 +163,7 @@ public:
     }
   }
 
-  void clear() noexcept {
+  void clear() & noexcept {
     T *cur = first_;
     while (cur != nullptr) {
       T *next = detail::c_slist_hook_access<T, Hook>::next(cur);

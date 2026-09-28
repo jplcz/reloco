@@ -48,6 +48,7 @@
 #include <reloco/inplace_function.hpp>
 #include <reloco/instant.hpp>
 #include <reloco/int_ops.hpp>
+#include <reloco/intrusive_c_list.hpp>
 #include <reloco/intrusive_c_slist.hpp>
 #include <reloco/intrusive_hash_table.hpp>
 #include <reloco/intrusive_iteration.hpp>
