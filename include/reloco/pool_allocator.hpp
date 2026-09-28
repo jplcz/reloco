@@ -211,7 +211,7 @@ private:
 
     std::byte *block = base + block_size_;
     for (std::size_t i = 0, n = blocks_per_slab(); i < n; ++i, block += block_size_) {
-      *reinterpret_cast<void **>(static_cast<void *>(base)) = free_list_;
+      *reinterpret_cast<void **>(static_cast<void *>(block)) = free_list_;
       free_list_ = block;
     }
     lock_.unlock();
