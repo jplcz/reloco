@@ -137,6 +137,8 @@ public:
 private:
   void skip_empty() noexcept {
     RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+    if (slot_ == end_)
+      return;
     while (slot_ != end_ && !slot_->has_value())
       ++slot_;
     RELOCO_END_UNSAFE_BUFFER_USAGE
