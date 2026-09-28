@@ -86,18 +86,17 @@
 #include <cstddef>
 #include <cstdint>
 
-#if defined(RELOCO_FUTEX_BACKEND_LINUX) && defined(RELOCO_FUTEX_BACKEND_FREEBSD)
+#if (defined(RELOCO_FUTEX_BACKEND_LINUX) ? 1 : 0) + (defined(RELOCO_FUTEX_BACKEND_FREEBSD) ? 1 : 0) +                  \
+        (defined(RELOCO_FUTEX_BACKEND_WINDOWS) ? 1 : 0) + (defined(RELOCO_FUTEX_BACKEND_STD) ? 1 : 0) >                \
+    1
 #error                                                                                                                 \
-    "reloco/futex.hpp: define at most one of RELOCO_FUTEX_BACKEND_LINUX/RELOCO_FUTEX_BACKEND_FREEBSD/RELOCO_FUTEX_BACKEND_STD"
+    "reloco/futex.hpp: define at most one of RELOCO_FUTEX_BACKEND_LINUX/RELOCO_FUTEX_BACKEND_FREEBSD/RELOCO_FUTEX_BACKEND_WINDOWS/RELOCO_FUTEX_BACKEND_STD"
 #endif
-#if defined(RELOCO_FUTEX_BACKEND_STD) && (defined(RELOCO_FUTEX_BACKEND_LINUX) || defined(RELOCO_FUTEX_BACKEND_FREEBSD))
-#error                                                                                                                 \
-    "reloco/futex.hpp: define at most one of RELOCO_FUTEX_BACKEND_LINUX/RELOCO_FUTEX_BACKEND_FREEBSD/RELOCO_FUTEX_BACKEND_STD"
-#endif
+
 #if defined(RELOCO_FUTEX_BACKEND_CUSTOM) &&                                                                            \
     (defined(RELOCO_FUTEX_BACKEND_LINUX) || defined(RELOCO_FUTEX_BACKEND_FREEBSD) ||                                   \
-     defined(RELOCO_FUTEX_BACKEND_STD))
-#error "reloco/futex.hpp: RELOCO_FUTEX_BACKEND_CUSTOM is exclusive of RELOCO_FUTEX_BACKEND_LINUX/_FREEBSD/_STD"
+     defined(RELOCO_FUTEX_BACKEND_WINDOWS) || defined(RELOCO_FUTEX_BACKEND_STD))
+#error "reloco/futex.hpp: RELOCO_FUTEX_BACKEND_CUSTOM is exclusive of RELOCO_FUTEX_BACKEND_LINUX/_FREEBSD/_WINDOWS/_STD"
 #endif
 
 // Auto-select the native backend on Linux/FreeBSD, exactly like
@@ -106,11 +105,14 @@
 // RELOCO_FUTEX_BACKEND_STD, which forces the portable fallback even on
 // Linux/FreeBSD) or opted out entirely via RELOCO_FUTEX_BACKEND_CUSTOM.
 #if !defined(RELOCO_FUTEX_BACKEND_CUSTOM) && !defined(RELOCO_FUTEX_BACKEND_LINUX) &&                                   \
-    !defined(RELOCO_FUTEX_BACKEND_FREEBSD) && !defined(RELOCO_FUTEX_BACKEND_STD)
+    !defined(RELOCO_FUTEX_BACKEND_FREEBSD) && !defined(RELOCO_FUTEX_BACKEND_WINDOWS) &&                                \
+    !defined(RELOCO_FUTEX_BACKEND_STD)
 #if defined(__linux__)
 #define RELOCO_FUTEX_BACKEND_LINUX 1
 #elif defined(__FreeBSD__)
 #define RELOCO_FUTEX_BACKEND_FREEBSD 1
+#elif defined(_WIN32) && defined(_MSC_VER)
+#define RELOCO_FUTEX_BACKEND_WINDOWS 1
 #endif
 #endif
 
@@ -161,6 +163,10 @@ RELOCO_API void futex_wake_all(futex_word &word) noexcept;
 #elif defined(RELOCO_FUTEX_BACKEND_FREEBSD)
 #if RELOCO_SHARED_PROVIDE_DEFINITIONS
 #include "futex_freebsd.ipp"
+#endif
+#elif defined(RELOCO_FUTEX_BACKEND_WINDOWS)
+#if RELOCO_SHARED_PROVIDE_DEFINITIONS
+#include "futex_win32.ipp"
 #endif
 #else
 #include "mutex.hpp"

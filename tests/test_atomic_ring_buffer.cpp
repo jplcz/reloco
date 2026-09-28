@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <reloco/array.hpp>
 #include <reloco/atomic_ring_buffer.hpp>
 #include <reloco/string_view.hpp>
 #include <thread>
@@ -33,7 +34,7 @@ TEST(SpscSmokeTest, InlineBufferStrictCapacity) {
 
 TEST(SpscSmokeTest, OutlineBufferRoundsDownCapacity) {
   // 5 uint32_t elements = 20 bytes total.
-  std::array<uint32_t, 5> external_mem{};
+  reloco::array<uint32_t, 5> external_mem{};
 
   // Wrapping 20 bytes. Must round DOWN to nearest power of 2 to guarantee
   // memory safety with the bitwise-AND masking. Should become 16.
@@ -77,7 +78,7 @@ TEST_F(SpscRingBufferTest, BulkWrapAroundMechanics) {
   std::string_view p1 = "1234567890"; // 10 bytes
   ASSERT_TRUE(buf.try_write(span<const char>(p1.data(), p1.size())).has_value());
 
-  std::array<char, 8> out{};
+  reloco::array<char, 8> out{};
   EXPECT_EQ(buf.read(span<char>(out.data(), 8)), 8);
   EXPECT_EQ(reloco::string_view(out.data(), 8), "12345678");
 
@@ -87,7 +88,7 @@ TEST_F(SpscRingBufferTest, BulkWrapAroundMechanics) {
   ASSERT_TRUE(buf.try_write(span<const char>(p2.data(), p2.size())).has_value());
 
   // Read the remaining 2 old bytes + 10 new bytes = 12 bytes
-  std::array<char, 12> out2{};
+  reloco::array<char, 12> out2{};
   EXPECT_EQ(buf.read(span<char>(out2.data(), 12)), 12);
   EXPECT_EQ(reloco::string_view(out2.data(), 12), reloco::string_view("90ABCDEFGHIJ"));
 }
