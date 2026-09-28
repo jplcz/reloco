@@ -51,6 +51,7 @@
 #include <reloco/intrusive_c_list.hpp>
 #include <reloco/intrusive_c_slist.hpp>
 #include <reloco/intrusive_c_stailq.hpp>
+#include <reloco/intrusive_c_tailq.hpp>
 #include <reloco/intrusive_hash_table.hpp>
 #include <reloco/intrusive_iteration.hpp>
 #include <reloco/iterator.hpp>
