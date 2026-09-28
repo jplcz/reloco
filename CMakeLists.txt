@@ -458,6 +458,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_fault_injection_patterns.cpp
         tests/test_masked_byte_region.cpp
         tests/test_masked_pointer.cpp
+        tests/test_intrusive_c_slist.cpp
     )
 
     target_link_libraries(jplcz_reloco_tests PRIVATE jplcz_reloco GTest::gtest_main)
