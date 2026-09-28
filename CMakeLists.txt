@@ -463,6 +463,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_intrusive_c_stailq.cpp
         tests/test_intrusive_c_tailq.cpp
         tests/test_intrusive_c_list_head.cpp
+        tests/test_phys_addr.cpp
     )
 
     target_link_libraries(jplcz_reloco_tests PRIVATE jplcz_reloco GTest::gtest_main)

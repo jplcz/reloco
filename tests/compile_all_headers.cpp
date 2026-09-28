@@ -101,5 +101,6 @@
 #include <reloco/detail/sanitizer.hpp>
 
 #ifndef _MSC_VER
+#include <reloco/phys_addr.hpp>
 #include <reloco/reloco_ipc_ring.hpp>
 #endif
