@@ -98,7 +98,7 @@ TEST(OutlineVectorTest, TryEmplaceBackConstructsInPlace) {
   outline_vector<reloco::string> v(storage.as_span());
   auto res = v.try_emplace_back(reloco::string_view("xxx"));
   ASSERT_TRUE(res);
-  EXPECT_EQ(res->get(), "xxx");
+  EXPECT_EQ(res->get(), reloco::string_view("xxx"));
 }
 
 TEST(OutlineVectorTest, TryPopBackRemovesLastElement) {
