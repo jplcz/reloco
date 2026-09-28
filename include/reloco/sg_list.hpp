@@ -89,15 +89,8 @@ public:
 
 private:
   Container c_;
-
-  // SFINAE check to see if the container has a .capacity() method
-  template <typename C, typename = void> struct has_capacity : std::false_type {};
-
-  template <typename C> struct has_capacity<C, std::void_t<decltype(std::declval<C>().capacity())>> : std::true_type {};
-
-  template <typename C> static constexpr bool has_capacity_v = has_capacity<C>::value;
 };
 
-template <typename T> struct is_trivially_relocatable<sg_list<T>> : std::true_type {};
+template <typename T> struct is_trivially_relocatable<sg_list<T>> : is_trivially_relocatable<T> {};
 
 } // namespace reloco
