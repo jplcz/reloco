@@ -1,3 +1,5 @@
+#if !defined(_MSC_VER)
+
 // SPDX-FileCopyrightText: 2026 Jarosław Pelczar <jarek@jpelczar.com>
 //
 // SPDX-License-Identifier: BSD-2-Clause
@@ -506,3 +508,5 @@ TEST(IpcRingFaultInjectionTest, ProducerRejectsReadIdxSpoofedOneByteBeyondWriteI
 }
 
 RELOCO_END_UNSAFE_BUFFER_USAGE
+
+#endif

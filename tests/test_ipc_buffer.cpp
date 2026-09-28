@@ -1,3 +1,4 @@
+#if !defined(_MSC_VER)
 #include "reloco/lifetime.hpp"
 #include <cerrno>
 #include <cstring>
@@ -394,3 +395,4 @@ TEST(IpcRingBufferInteropTest, CppProducer_To_CConsumer_WithWrap) {
 }
 
 RELOCO_END_UNSAFE_BUFFER_USAGE
+#endif
