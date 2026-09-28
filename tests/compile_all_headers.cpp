@@ -64,7 +64,6 @@
 #include <reloco/park.hpp>
 #include <reloco/pool_allocator.hpp>
 #include <reloco/relocatable.hpp>
-#include <reloco/reloco_ipc_ring.hpp>
 #include <reloco/rvalue_safety.hpp>
 #include <reloco/rw_lock.hpp>
 #include <reloco/scope.hpp>
@@ -95,3 +94,7 @@
 #include <reloco/detail/compat.hpp>
 #include <reloco/detail/flat_container_base.hpp>
 #include <reloco/detail/sanitizer.hpp>
+
+#ifndef _MSC_VER
+#include <reloco/reloco_ipc_ring.hpp>
+#endif
