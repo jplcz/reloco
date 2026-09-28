@@ -69,7 +69,7 @@ struct reloco_ipc_spsc_page {
   /* ---- CACHE LINE 0: VALIDATION HEADER ---- */
   uint32_t magic;
   uint32_t version;
-  uint32_t untrusted_elem_size;
+  uint32_t flags; /* Reserved, must be 0 (Maintains 16-byte header alignment) */
   uint32_t untrusted_capacity;
 
   /* ---- CACHE LINE 1: PRODUCER STATE ---- */
@@ -95,17 +95,19 @@ struct reloco_ipc_spsc_page {
  * @brief Validates the memory page.
  * @return 0 on success, -1 on fatal mismatch.
  */
-static inline int reloco_ipc_validate_mount(const struct reloco_ipc_spsc_page *page, uint32_t expected_elem_size,
-                                            uint32_t expected_capacity) {
+static inline int reloco_ipc_validate_mount(const struct reloco_ipc_spsc_page *page, uint32_t expected_capacity) {
   if (!page)
     return -1;
   if (page->magic != RELOCO_IPC_MAGIC)
     return -1;
   if (page->version != RELOCO_IPC_VERSION)
     return -1;
-  if (page->untrusted_elem_size != expected_elem_size)
+  if (page->flags != 0)
     return -1;
   if (page->untrusted_capacity != expected_capacity)
+    return -1;
+  /* Capacity must be at least 2 bytes and strictly a power of 2 */
+  if (expected_capacity < 2 || (expected_capacity & (expected_capacity - 1)) != 0)
     return -1;
   return 0;
 }
@@ -117,22 +119,20 @@ static inline int reloco_ipc_validate_mount(const struct reloco_ipc_spsc_page *p
 struct reloco_ipc_producer {
   struct reloco_ipc_spsc_page *page;
   uint64_t cached_read_idx;
-  uint32_t capacity;  /* Trusted, local copy */
-  uint32_t elem_size; /* Trusted, local copy */
+  uint32_t capacity; /* Trusted, local copy */
 };
 
 /**
  * @brief Mounts the page for writing.
  */
 static inline int reloco_ipc_producer_init(struct reloco_ipc_producer *p, struct reloco_ipc_spsc_page *page,
-                                           const uint32_t elem_size, const uint32_t expected_capacity) {
-  if (reloco_ipc_validate_mount(page, elem_size, expected_capacity) != 0)
+                                           const uint32_t expected_capacity) {
+  if (reloco_ipc_validate_mount(page, expected_capacity) != 0)
     return -1;
   p->page = page;
   p->cached_read_idx = RELOCO_IPC_LOAD_ACQUIRE(&page->read_idx);
   /* Lock the verified constants into local trusted memory */
   p->capacity = expected_capacity;
-  p->elem_size = elem_size;
   return 0;
 }
 
@@ -149,7 +149,6 @@ static inline uint32_t reloco_ipc_try_write(struct reloco_ipc_producer *p, const
   uint32_t mask;
   uint32_t physical_w;
   uint32_t first_chunk;
-  uint32_t elem_sz;
   const uint8_t *src;
 
   uint64_t in_use = w - r;
@@ -177,12 +176,11 @@ static inline uint32_t reloco_ipc_try_write(struct reloco_ipc_producer *p, const
   if (first_chunk > count)
     first_chunk = count;
 
-  elem_sz = p->elem_size;
   src = (const uint8_t *)data;
 
-  memcpy(page->payload + (physical_w * elem_sz), src, first_chunk * elem_sz);
+  memcpy(page->payload + physical_w, src, first_chunk);
   if (first_chunk < count) {
-    memcpy(page->payload, src + (first_chunk * elem_sz), (count - first_chunk) * elem_sz);
+    memcpy(page->payload, src + first_chunk, (count - first_chunk));
   }
 
   /* Commit write (Release ensures memory writes are visible before idx update) */
@@ -197,22 +195,20 @@ static inline uint32_t reloco_ipc_try_write(struct reloco_ipc_producer *p, const
 struct reloco_ipc_consumer {
   struct reloco_ipc_spsc_page *page;
   uint64_t cached_write_idx;
-  uint32_t capacity;  /* Trusted, local copy */
-  uint32_t elem_size; /* Trusted, local copy */
+  uint32_t capacity; /* Trusted, local copy */
 };
 
 /**
  * @brief Mounts the page for reading.
  */
 static inline int reloco_ipc_consumer_init(struct reloco_ipc_consumer *c, struct reloco_ipc_spsc_page *page,
-                                           uint32_t elem_size, uint32_t expected_capacity) {
-  if (reloco_ipc_validate_mount(page, elem_size, expected_capacity) != 0)
+                                           uint32_t expected_capacity) {
+  if (reloco_ipc_validate_mount(page, expected_capacity) != 0)
     return -1;
   c->page = page;
   c->cached_write_idx = RELOCO_IPC_LOAD_ACQUIRE(&page->write_idx);
   /* Lock the verified constants into local trusted memory */
   c->capacity = expected_capacity;
-  c->elem_size = elem_size;
   return 0;
 }
 
@@ -229,7 +225,6 @@ static inline uint32_t reloco_ipc_try_read(struct reloco_ipc_consumer *c, void *
   uint32_t mask;
   uint32_t physical_r;
   uint32_t first_chunk;
-  uint32_t elem_sz;
   uint8_t *dst;
   uint64_t available = w - r;
 
@@ -258,12 +253,11 @@ static inline uint32_t reloco_ipc_try_read(struct reloco_ipc_consumer *c, void *
   if (first_chunk > to_read)
     first_chunk = to_read;
 
-  elem_sz = c->elem_size;
   dst = (uint8_t *)dest;
 
-  memcpy(dst, page->payload + (physical_r * elem_sz), first_chunk * elem_sz);
+  memcpy(dst, page->payload + physical_r, first_chunk);
   if (first_chunk < to_read) {
-    memcpy(dst + (first_chunk * elem_sz), page->payload, (to_read - first_chunk) * elem_sz);
+    memcpy(dst + first_chunk, page->payload, (to_read - first_chunk));
   }
 
   /* Commit read (Release ensures we are done reading memory before recycling slot) */

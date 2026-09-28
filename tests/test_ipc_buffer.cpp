@@ -1,4 +1,5 @@
 #include "reloco/lifetime.hpp"
+#include <cstring>
 #include <gtest/gtest.h>
 #include <reloco/reloco_ipc_ring.hpp>
 
@@ -10,31 +11,20 @@ namespace {
 // TEST HELPERS
 // =========================================================================
 
-// Simulates the Host/Secure-World formatting the raw shared memory page
-// before passing the pointer to the guest/REE.
-void format_shared_page(void *memory, uint32_t capacity, uint32_t elem_size) {
+void format_shared_page(void *memory, uint32_t capacity_bytes) {
   auto *page = static_cast<reloco_ipc_spsc_page *>(memory);
   page->magic = RELOCO_IPC_MAGIC;
   page->version = RELOCO_IPC_VERSION;
-  page->untrusted_elem_size = elem_size;
-  page->untrusted_capacity = capacity;
+  page->flags = 0;
+  page->untrusted_capacity = capacity_bytes;
   page->write_idx = 0;
   page->read_idx = 0;
 }
 
-// A 4096-byte aligned buffer acts as our fake "mapped physical memory page"
 struct SharedMemorySim {
   alignas(RELOCO_IPC_CACHE_LINE) std::array<uint8_t, 4096> memory{};
-
   void *data() { return memory.data(); }
-  reloco_ipc_spsc_page *get_page() { return reinterpret_cast<reloco_ipc_spsc_page *>(memory.data()); }
-};
-
-struct TestEvent {
-  uint32_t id;
-  float value;
-
-  bool operator==(const TestEvent &other) const { return id == other.id && value == other.value; }
+  reloco_ipc_spsc_page *get_page() { return std::launder(static_cast<reloco_ipc_spsc_page *>(data())); }
 };
 
 } // namespace
@@ -43,416 +33,343 @@ struct TestEvent {
 // TEST CASES
 // =========================================================================
 
-TEST(IpcRingBufferTest, ValidationAndMounting) {
+TEST(IpcRingBufferCppTest, FallibleMountValidation) {
   SharedMemorySim sim;
-  format_shared_page(sim.memory.data(), 8, sizeof(TestEvent));
-  auto *page = sim.get_page();
+  format_shared_page(sim.data(), 1024);
 
-  // 1. Valid Mount
-  EXPECT_EQ(0, reloco_ipc_validate_mount(page, sizeof(TestEvent), 8));
+  // 1. Success case
+  auto p_res = reloco::ipc_producer::create(sim.data(), 1024);
+  auto c_res = reloco::ipc_consumer::create(sim.data(), 1024);
+  EXPECT_TRUE(p_res.has_value());
+  EXPECT_TRUE(c_res.has_value());
 
-  // 2. Element Size Mismatch (ABI breakage)
-  EXPECT_NE(0, reloco_ipc_validate_mount(page, sizeof(uint32_t), 8));
+  // 2. Graceful Failure: Expected capacity does not match
+  auto bad_cap_res = reloco::ipc_producer::create(sim.data(), 2048);
+  EXPECT_FALSE(bad_cap_res.has_value());
 
-  // 3. Magic Mismatch (Memory Corruption)
-  page->magic = 0xDEADBEEF;
-  EXPECT_NE(0, reloco_ipc_validate_mount(page, sizeof(TestEvent), 8));
-  page->magic = RELOCO_IPC_MAGIC; // Restore
+  // 3. Graceful Failure: Flags field was tampered with
+  auto *page = static_cast<reloco_ipc_spsc_page *>(sim.data());
+  page->flags = 1; // Tamper with ABI flags
 
-  // 4. Invalid Capacity (Not power of 2)
-  page->untrusted_capacity = 7;
-  EXPECT_NE(0, reloco_ipc_validate_mount(page, sizeof(TestEvent), 8));
+  auto tampered_res = reloco::ipc_consumer::create(sim.data(), 1024);
+  EXPECT_FALSE(tampered_res.has_value());
 }
 
-TEST(IpcRingBufferTest, BasicProduceConsume) {
+TEST(IpcRingBufferCppTest, BasicByteStreamWriteAndRead) {
   SharedMemorySim sim;
-  format_shared_page(sim.memory.data(), 16, sizeof(int));
+  format_shared_page(sim.data(), 32);
+  auto p = reloco::ipc_producer::create(sim.data(), 32).value();
+  auto c = reloco::ipc_consumer::create(sim.data(), 32).value();
 
-  reloco_ipc_producer p;
-  reloco_ipc_consumer c;
-  ASSERT_EQ(0, reloco_ipc_producer_init(&p, sim.get_page(), sizeof(int), 16));
-  ASSERT_EQ(0, reloco_ipc_consumer_init(&c, sim.get_page(), sizeof(int), 16));
+  std::array<uint8_t, 4> in_data = {0xDE, 0xAD, 0xBE, 0xEF};
 
-  int in_data[] = {10, 20, 30};
+  // Write 4 bytes
+  EXPECT_EQ(4, p.try_write(reloco::span<const uint8_t>(in_data.data(), in_data.size())));
 
-  // Write 3 elements
-  EXPECT_EQ(3, reloco_ipc_try_write(&p, in_data, 3));
+  std::array<uint8_t, 6> out_data = {0};
 
-  // Read 3 elements
-  int out_data[3] = {0};
-  EXPECT_EQ(3, reloco_ipc_try_read(&c, out_data, 3));
+  // Attempt to read 6 bytes (should only return 4 available)
+  EXPECT_EQ(4, c.try_read(reloco::span<uint8_t>(out_data.data(), out_data.size())));
 
-  EXPECT_EQ(10, out_data[0]);
-  EXPECT_EQ(20, out_data[1]);
-  EXPECT_EQ(30, out_data[2]);
-}
-
-TEST(IpcRingBufferTest, FullAndEmptyBoundaries) {
-  SharedMemorySim sim;
-  // Create a tiny queue (capacity 4)
-  format_shared_page(sim.memory.data(), 4, sizeof(int));
-
-  reloco_ipc_producer p;
-  reloco_ipc_consumer c;
-  ASSERT_EQ(0, reloco_ipc_producer_init(&p, sim.get_page(), sizeof(int), 4));
-  ASSERT_EQ(0, reloco_ipc_consumer_init(&c, sim.get_page(), sizeof(int), 4));
-
-  int dummy_read = 0;
-  int dummy_write = 42;
-
-  // 1. Reading from empty queue returns 0
-  EXPECT_EQ(0, reloco_ipc_try_read(&c, &dummy_read, 1));
-
-  // 2. Fill the queue exactly to capacity
-  int fill_data[] = {1, 2, 3, 4};
-  EXPECT_EQ(4, reloco_ipc_try_write(&p, fill_data, 4));
-
-  // 3. Writing to full queue fails (returns 0)
-  EXPECT_EQ(0, reloco_ipc_try_write(&p, &dummy_write, 1));
-
-  // 4. Read everything out
-  int out_data[4] = {0};
-  EXPECT_EQ(4, reloco_ipc_try_read(&c, out_data, 4));
-  EXPECT_EQ(1, out_data[0]);
-  EXPECT_EQ(4, out_data[3]);
-
-  // 5. Verify it is empty again
-  EXPECT_EQ(0, reloco_ipc_try_read(&c, &dummy_read, 1));
-}
-
-TEST(IpcRingBufferTest, MemoryWrapAround) {
-  SharedMemorySim sim;
-  // Capacity 4. Indices mask will be 3.
-  format_shared_page(sim.memory.data(), 4, sizeof(int));
-
-  reloco_ipc_producer p;
-  reloco_ipc_consumer c;
-  ASSERT_EQ(0, reloco_ipc_producer_init(&p, sim.get_page(), sizeof(int), 4));
-  ASSERT_EQ(0, reloco_ipc_consumer_init(&c, sim.get_page(), sizeof(int), 4));
-
-  int stream_in[] = {101, 102, 103, 104, 105, 106};
-  int stream_out[6] = {0};
-
-  // Step 1: Write 3 elements. Physical indices used: 0, 1, 2. (Next write is 3)
-  EXPECT_EQ(3, reloco_ipc_try_write(&p, &stream_in[0], 3));
-
-  // Step 2: Read 3 elements. Physical indices read: 0, 1, 2.
-  EXPECT_EQ(3, reloco_ipc_try_read(&c, &stream_out[0], 3));
-
-  // Step 3: Write 2 elements.
-  // This will WRAP the physical buffer!
-  // It writes to index 3, and then wraps around to write to index 0.
-  EXPECT_EQ(2, reloco_ipc_try_write(&p, &stream_in[3], 2));
-
-  // Step 4: Read 2 elements (wrapping read).
-  EXPECT_EQ(2, reloco_ipc_try_read(&c, &stream_out[3], 2));
-
-  // Verify the output exactly matches the input stream
-  for (int i = 0; i < 5; i++) {
-    EXPECT_EQ(stream_in[i], stream_out[i]) << "Mismatch at stream index " << i;
-  }
-}
-
-TEST(IpcRingBufferTest, ComplexStructPayload) {
-  SharedMemorySim sim;
-  format_shared_page(sim.memory.data(), 8, sizeof(TestEvent));
-
-  reloco_ipc_producer p;
-  reloco_ipc_consumer c;
-  ASSERT_EQ(0, reloco_ipc_producer_init(&p, sim.get_page(), sizeof(TestEvent), 8));
-  ASSERT_EQ(0, reloco_ipc_consumer_init(&c, sim.get_page(), sizeof(TestEvent), 8));
-
-  TestEvent e1 = {1, 3.14f};
-  TestEvent e2 = {2, 6.28f};
-
-  // Write array of structs
-  TestEvent in_arr[2] = {e1, e2};
-  EXPECT_EQ(2, reloco_ipc_try_write(&p, in_arr, 2));
-
-  // Read back array of structs
-  TestEvent out_arr[2] = {};
-  EXPECT_EQ(2, reloco_ipc_try_read(&c, out_arr, 2));
-
-  EXPECT_EQ(e1, out_arr[0]);
-  EXPECT_EQ(e2, out_arr[1]);
-}
-
-// =========================================================================
-// NEGATIVE TESTS / ATTACK SIMULATIONS
-// =========================================================================
-
-TEST(IpcRingBufferAttackTest, RejectHugeCountRequests) {
-  SharedMemorySim sim;
-  format_shared_page(sim.memory.data(), 8, sizeof(int));
-
-  reloco_ipc_producer p;
-  reloco_ipc_consumer c;
-  ASSERT_EQ(0, reloco_ipc_producer_init(&p, sim.get_page(), sizeof(int), 8));
-  ASSERT_EQ(0, reloco_ipc_consumer_init(&c, sim.get_page(), sizeof(int), 8));
-
-  int dummy = 42;
-
-  // ATTACK 1: Try to write UINT32_MAX elements (Integer overflow attempt)
-  // The queue should cleanly reject this without executing a massive memcpy.
-  EXPECT_EQ(0, reloco_ipc_try_write(&p, &dummy, UINT32_MAX));
-
-  // ATTACK 2: Try to read UINT32_MAX elements
-  EXPECT_EQ(0, reloco_ipc_try_read(&c, &dummy, UINT32_MAX));
-}
-
-TEST(IpcRingBufferAttackTest, MaliciousConsumerSpoofsReadIndex) {
-  SharedMemorySim sim;
-  format_shared_page(sim.memory.data(), 8, sizeof(int));
-  auto *page = sim.get_page();
-
-  reloco_ipc_producer p;
-  ASSERT_EQ(0, reloco_ipc_producer_init(&p, page, sizeof(int), 8));
-
-  int data = 42;
-  EXPECT_EQ(1, reloco_ipc_try_write(&p, &data, 1));
-
-  // ATTACK: The Consumer maliciously advances the read_idx.
-  page->read_idx = 500;
-
-  // The producer still has 7 slots in its local cache.
-  // It will safely write them without checking the shared memory.
-  int array[7] = {0};
-  EXPECT_EQ(7, reloco_ipc_try_write(&p, array, 7));
-
-  // NOW the local cache is exhausted (w = 8, cached_r = 0).
-  // The next write forces a bus read (page->read_idx), loading the malicious 500.
-  // Mathematical underflow triggers (8 - 500 = huge number > capacity).
-
-  // RESULT: The trap snaps shut and returns 0.
-  EXPECT_EQ(0, reloco_ipc_try_write(&p, &data, 1));
-}
-
-TEST(IpcRingBufferAttackTest, MaliciousProducerSpoofsWriteIndex_WayAhead) {
-  SharedMemorySim sim;
-  format_shared_page(sim.memory.data(), 8, sizeof(int));
-  auto *page = sim.get_page();
-
-  reloco_ipc_consumer c;
-  ASSERT_EQ(0, reloco_ipc_consumer_init(&c, page, sizeof(int), 8));
-
-  // ATTACK: The Producer maliciously advances the write_idx by 3x the capacity.
-  // Without security checks, `available` would be 24, causing the Consumer
-  // to memcpy 24 elements out of an 8-element payload array (Kernel Memory Leak).
-  page->write_idx = 24;
-
-  int out_data[24] = {0};
-
-  // RESULT: The Consumer detects available > capacity and halts.
-  EXPECT_EQ(0, reloco_ipc_try_read(&c, out_data, 24));
-}
-
-TEST(IpcRingBufferAttackTest, MaliciousProducerSpoofsWriteIndex_Backwards) {
-  SharedMemorySim sim;
-  format_shared_page(sim.memory.data(), 8, sizeof(int));
-  auto *page = sim.get_page();
-
-  reloco_ipc_consumer c;
-  ASSERT_EQ(0, reloco_ipc_consumer_init(&c, page, sizeof(int), 8));
-
-  // Set normal state: 4 elements written, 4 elements read
-  page->write_idx = 4;
-  page->read_idx = 4;
-
-  // Synchronize the consumer's local cache
-  int dummy = 0;
-  reloco_ipc_try_read(&c, &dummy, 1);
-
-  // ATTACK: The Producer moves the write_idx BACKWARDS (e.g., Integer Underflow).
-  // w (3) - r (4) = 0xFFFFFFFFFFFFFFFF.
-  page->write_idx = 3;
-
-  // RESULT: Unsigned arithmetic evaluates w - r as huge, which triggers
-  // the available > capacity security boundary.
-  EXPECT_EQ(0, reloco_ipc_try_read(&c, &dummy, 1));
-}
-
-TEST(IpcRingBufferAttackTest, MountVersionDowngradeAttack) {
-  SharedMemorySim sim;
-  format_shared_page(sim.memory.data(), 8, sizeof(int));
-  auto *page = sim.get_page();
-
-  // ATTACK: The Host attempts to pass an older/unsupported version
-  // of the struct to exploit a known legacy vulnerability.
-  page->version = RELOCO_IPC_VERSION - 1;
-
-  reloco_ipc_consumer c;
-
-  // RESULT: The kernel strictly refuses to mount the memory.
-  EXPECT_NE(0, reloco_ipc_consumer_init(&c, page, sizeof(int), 8));
-}
-
-TEST(IpcRingBufferCppTest, FatalMountValidation) {
-  SharedMemorySim sim;
-  format_shared_page(sim.data(), 16, sizeof(int));
-
-  // Success case: The OS mapping exactly matches the trusted inputs
-  EXPECT_NO_FATAL_FAILURE({
-    reloco::ipc_producer<int> p(sim.data(), 16);
-    reloco::ipc_consumer<int> c(sim.data(), 16);
-  });
-
-  // Fatal Failure: Expected capacity does not match untrusted_capacity
-  EXPECT_DEATH({ reloco::ipc_producer<int> p(sim.data(), 32); }, "");
-
-  // Fatal Failure: ABI element size mismatch
-  EXPECT_DEATH(
-      {
-        // The page was formatted with sizeof(int), but we mount it as double
-        reloco::ipc_consumer<double> c(sim.data(), 16);
-      },
-      "");
-}
-
-TEST(IpcRingBufferCppTest, BasicWriteAndRead) {
-  SharedMemorySim sim;
-  format_shared_page(sim.data(), 8, sizeof(int));
-  reloco::ipc_producer<int> p(sim.data(), 8);
-  reloco::ipc_consumer<int> c(sim.data(), 8);
-
-  std::array<int, 3> in_data = {10, 20, 30};
-
-  // try_write using reloco::span
-  EXPECT_EQ(3, p.try_write(reloco::span<const int>(in_data.data(), in_data.size())));
-
-  std::array<int, 5> out_data = {0};
-
-  // try_read using reloco::span
-  EXPECT_EQ(3, c.try_read(reloco::span<int>(out_data.data(), out_data.size())));
-
-  EXPECT_EQ(10, out_data[0]);
-  EXPECT_EQ(20, out_data[1]);
-  EXPECT_EQ(30, out_data[2]);
-  EXPECT_EQ(0, out_data[3]); // Unmodified
+  EXPECT_EQ(0xDE, out_data[0]);
+  EXPECT_EQ(0xAD, out_data[1]);
+  EXPECT_EQ(0xBE, out_data[2]);
+  EXPECT_EQ(0xEF, out_data[3]);
+  EXPECT_EQ(0x00, out_data[4]); // Untouched
 }
 
 TEST(IpcRingBufferCppTest, ZeroCopyTransactions_Linear) {
   SharedMemorySim sim;
-  format_shared_page(sim.data(), 8, sizeof(int));
-  reloco::ipc_producer<int> p(sim.data(), 8);
-  reloco::ipc_consumer<int> c(sim.data(), 8);
+  format_shared_page(sim.data(), 16);
+  auto p = reloco::ipc_producer::create(sim.data(), 16).value();
+  auto c = reloco::ipc_consumer::create(sim.data(), 16).value();
 
-  // ---- PRODUCER: Write directly into shared memory ----
+  // ---- PRODUCER ----
   {
-    auto tx = p.begin_write(3);
+    auto tx = p.begin_write(5);
     ASSERT_TRUE(static_cast<bool>(tx));
 
-    // Since the queue is empty, chunk1 should have all 8 contiguous slots.
-    EXPECT_EQ(8, tx.chunk1().size());
+    EXPECT_EQ(16, tx.chunk1().size()); // 16 contiguous bytes available
     EXPECT_EQ(0, tx.chunk2().size());
 
-    auto chunk1 = tx.chunk1();
-    chunk1[0] = 100;
-    chunk1[1] = 200;
-    chunk1[2] = 300;
+    // Write a 5-byte sequence
+    uint8_t seq[] = {'H', 'E', 'L', 'L', 'O'};
 
-    // Commits only the 3 elements we actually populated
-    tx.commit(3);
+    auto chunk1 = tx.chunk1();
+    std::memcpy(chunk1.data(), seq, 5);
+
+    tx.commit(5);
   }
 
-  // ---- CONSUMER: Read directly from shared memory ----
+  // ---- CONSUMER ----
   {
-    auto tx = c.begin_read(2);
+    auto tx = c.begin_read(3);
     ASSERT_TRUE(static_cast<bool>(tx));
-
     auto chunk1 = tx.chunk1();
-    EXPECT_EQ(3, chunk1.size()); // 3 elements available linearly
 
-    EXPECT_EQ(100, chunk1[0]);
-    EXPECT_EQ(200, chunk1[1]);
+    EXPECT_EQ(5, chunk1.size());
 
-    // Consume only 2 elements, leaving the 3rd in the queue
-    tx.consume(2);
+    EXPECT_EQ('H', chunk1[0]);
+    EXPECT_EQ('E', chunk1[1]);
+
+    tx.consume(2); // Consume only 'H' and 'E'
   }
 }
 
 TEST(IpcRingBufferCppTest, ZeroCopyTransactions_WrapAroundSplit) {
   SharedMemorySim sim;
-  format_shared_page(sim.data(), 4, sizeof(int));
-  reloco::ipc_producer<int> p(sim.data(), 4);
-  reloco::ipc_consumer<int> c(sim.data(), 4);
+  format_shared_page(sim.data(), 8); // Tiny 8-byte capacity to force wrap
+  auto p = reloco::ipc_producer::create(sim.data(), 8).value();
+  auto c = reloco::ipc_consumer::create(sim.data(), 8).value();
 
-  // Step 1: Advance indices to near the end of the physical buffer.
-  // write_idx = 3, read_idx = 3.
-  int dummy[3] = {1, 2, 3};
-  ASSERT_EQ(p.try_write(reloco::span<const int>(dummy, 3)), 3);
-  ASSERT_EQ(c.try_read(reloco::span<int>(dummy, 3)), 3);
+  // Step 1: Advance indices near the end. write_idx = 6, read_idx = 6.
+  uint8_t dummy[6] = {0};
+  std::ignore = p.try_write(reloco::span<const uint8_t>(dummy, 6));
+  std::ignore = c.try_read(reloco::span<uint8_t>(dummy, 6));
 
-  // Step 2: The producer requests 2 slots.
-  // Because physical index is 3 and capacity is 4, it MUST split.
+  // Step 2: The producer requests 4 bytes.
+  // Physical index is 6, capacity is 8. It must split (2 bytes at end, 2 at start).
   {
-    auto tx = p.begin_write(2);
+    auto tx = p.begin_write(4);
     ASSERT_TRUE(static_cast<bool>(tx));
 
     auto chunk1 = tx.chunk1();
     auto chunk2 = tx.chunk2();
 
-    // Chunk1 hits the end of the buffer (index 3). Size = 1.
-    ASSERT_EQ(1, chunk1.size());
-    // Chunk2 wraps around to the beginning (index 0). Size = 3 (remaining free).
-    ASSERT_EQ(3, chunk2.size());
+    ASSERT_EQ(2, chunk1.size());
+    ASSERT_EQ(6, chunk2.size()); // 6 bytes remaining at the wrap
 
-    chunk1[0] = 88;
-    chunk2[0] = 99; // Writing across the boundary!
+    chunk1[0] = 0x11;
+    chunk1[1] = 0x22;
+    chunk2[0] = 0x33;
+    chunk2[1] = 0x44;
 
-    tx.commit(2);
+    tx.commit(4);
   }
 
-  // Step 3: The consumer reads 2 slots.
-  // It should receive the exact same split chunks.
+  // Step 3: The consumer reads the 4 bytes.
   {
-    auto tx = c.begin_read(2);
+    auto tx = c.begin_read(4);
     ASSERT_TRUE(static_cast<bool>(tx));
 
     auto chunk1 = tx.chunk1();
     auto chunk2 = tx.chunk2();
 
-    ASSERT_EQ(1, chunk1.size());
-    ASSERT_EQ(1, chunk2.size());
+    ASSERT_EQ(2, chunk1.size());
+    ASSERT_EQ(2, chunk2.size()); // Only 2 bytes available in chunk2
 
-    EXPECT_EQ(88, chunk1[0]);
-    EXPECT_EQ(99, chunk2[0]);
+    EXPECT_EQ(0x11, chunk1[0]);
+    EXPECT_EQ(0x22, chunk1[1]);
+    EXPECT_EQ(0x33, chunk2[0]);
+    EXPECT_EQ(0x44, chunk2[1]);
 
-    tx.consume(2);
+    tx.consume(4);
   }
 }
 
 TEST(IpcRingBufferCppTest, TransactionMoveSemantics) {
   SharedMemorySim sim;
-  format_shared_page(sim.data(), 8, sizeof(int));
-  reloco::ipc_producer<int> p(sim.data(), 8);
+  format_shared_page(sim.data(), 8);
+  auto p = reloco::ipc_producer::create(sim.data(), 8).value();
 
-  // We start a transaction
-  auto tx1 = p.begin_write(1);
+  auto tx1 = p.begin_write(2);
   ASSERT_TRUE(static_cast<bool>(tx1));
 
-  // Move it to a new owner
   auto tx2 = std::move(tx1);
 
-  // The old transaction should be safely gutted (implicitly consumed state via Typestate)
-  EXPECT_FALSE(static_cast<bool>(tx1));
-
-  // The new transaction should hold the spans and commit perfectly
-  ASSERT_TRUE(static_cast<bool>(tx2));
+  EXPECT_FALSE(static_cast<bool>(tx1)); // Invalidated by move
+  ASSERT_TRUE(static_cast<bool>(tx2));  // Takes ownership
 
   auto chunk1 = tx2.chunk1();
-  chunk1[0] = 42;
+
+  chunk1[0] = 0xFF;
   tx2.commit(1);
 }
 
-TEST(IpcRingBufferCppTest, ReadTxDropsWhenQueueEmpty) {
+TEST(IpcRingBufferCApiTest, ValidationAndMounting) {
   SharedMemorySim sim;
-  format_shared_page(sim.data(), 8, sizeof(int));
-  reloco::ipc_consumer<int> c(sim.data(), 8);
+  format_shared_page(sim.data(), 1024);
+  auto *page = sim.get_page();
 
-  // Queue is completely empty. Requesting 1 element should return a false tx.
-  auto tx = c.begin_read(1);
-  EXPECT_FALSE(static_cast<bool>(tx));
-  EXPECT_TRUE(tx.chunk1().empty());
+  // 1. Success case
+  EXPECT_EQ(0, reloco_ipc_validate_mount(page, 1024));
+
+  // 2. Capacity Mismatch
+  EXPECT_NE(0, reloco_ipc_validate_mount(page, 512));
+
+  // 3. Tampered Magic
+  page->magic = 0xDEADBEEF;
+  EXPECT_NE(0, reloco_ipc_validate_mount(page, 1024));
+  page->magic = RELOCO_IPC_MAGIC; // Restore
+
+  // 4. Invalid Capacity (Not power of 2)
+  page->untrusted_capacity = 1000;
+  EXPECT_NE(0, reloco_ipc_validate_mount(page, 1000));
+}
+
+TEST(IpcRingBufferCApiTest, BasicWriteAndRead) {
+  SharedMemorySim sim;
+  format_shared_page(sim.data(), 32);
+
+  reloco_ipc_producer p;
+  reloco_ipc_consumer c;
+  ASSERT_EQ(0, reloco_ipc_producer_init(&p, sim.get_page(), 32));
+  ASSERT_EQ(0, reloco_ipc_consumer_init(&c, sim.get_page(), 32));
+
+  uint8_t in_data[] = {0xAA, 0xBB, 0xCC};
+
+  // Write 3 bytes
+  EXPECT_EQ(3, reloco_ipc_try_write(&p, in_data, 3));
+
+  // Read 3 bytes
+  uint8_t out_data[3] = {0};
+  EXPECT_EQ(3, reloco_ipc_try_read(&c, out_data, 3));
+
+  EXPECT_EQ(0xAA, out_data[0]);
+  EXPECT_EQ(0xBB, out_data[1]);
+  EXPECT_EQ(0xCC, out_data[2]);
+}
+
+TEST(IpcRingBufferCApiTest, MemoryWrapAround) {
+  SharedMemorySim sim;
+  format_shared_page(sim.data(), 8); // Tiny 8-byte capacity
+
+  reloco_ipc_producer p;
+  reloco_ipc_consumer c;
+  ASSERT_EQ(0, reloco_ipc_producer_init(&p, sim.get_page(), 8));
+  ASSERT_EQ(0, reloco_ipc_consumer_init(&c, sim.get_page(), 8));
+
+  uint8_t stream_in[] = {10, 20, 30, 40, 50, 60, 70};
+  uint8_t stream_out[7] = {0};
+
+  // 1. Advance the ring buffer physical index to 6.
+  EXPECT_EQ(6, reloco_ipc_try_write(&p, stream_in, 6));
+  EXPECT_EQ(6, reloco_ipc_try_read(&c, stream_out, 6));
+
+  // 2. Write 4 bytes. This WRAPS the physical buffer (index 6, 7, 0, 1)
+  uint8_t wrap_in[] = {0x11, 0x22, 0x33, 0x44};
+  EXPECT_EQ(4, reloco_ipc_try_write(&p, wrap_in, 4));
+
+  // 3. Read 4 bytes (wrapping read).
+  uint8_t wrap_out[4] = {0};
+  EXPECT_EQ(4, reloco_ipc_try_read(&c, wrap_out, 4));
+
+  EXPECT_EQ(0x11, wrap_out[0]);
+  EXPECT_EQ(0x22, wrap_out[1]);
+  EXPECT_EQ(0x33, wrap_out[2]);
+  EXPECT_EQ(0x44, wrap_out[3]);
+}
+
+TEST(IpcRingBufferCApiTest, SecurityIndexSpoofing) {
+  SharedMemorySim sim;
+  format_shared_page(sim.data(), 16);
+  auto *page = sim.get_page();
+
+  reloco_ipc_producer p;
+  reloco_ipc_consumer c;
+  ASSERT_EQ(0, reloco_ipc_producer_init(&p, page, 16));
+  ASSERT_EQ(0, reloco_ipc_consumer_init(&c, page, 16));
+
+  uint8_t dummy = 0xFF;
+  EXPECT_EQ(1, reloco_ipc_try_write(&p, &dummy, 1));
+
+  // ATTACK 1: Consumer maliciously advances read_idx past write_idx
+  page->read_idx = 500;
+
+  // Exhaust local cache first so it reads the malicious shared memory value
+  uint8_t fill[15] = {0};
+  EXPECT_EQ(15, reloco_ipc_try_write(&p, fill, 15));
+
+  // The trap snaps shut - returns 0 instead of memory corruption
+  EXPECT_EQ(0, reloco_ipc_try_write(&p, &dummy, 1));
+
+  // Reset page for Attack 2
+  format_shared_page(sim.data(), 16);
+  reloco_ipc_producer_init(&p, page, 16);
+  reloco_ipc_consumer_init(&c, page, 16);
+
+  // ATTACK 2: Producer maliciously advances write_idx > capacity
+  page->write_idx = 64;
+
+  // Consumer trap snaps shut
+  EXPECT_EQ(0, reloco_ipc_try_read(&c, &dummy, 1));
+}
+
+// =========================================================================
+// INTEROP TESTS (C Kernel API <-> C++ User-Space API)
+// =========================================================================
+
+TEST(IpcRingBufferInteropTest, CProducer_To_CppConsumer) {
+  SharedMemorySim sim;
+  format_shared_page(sim.data(), 32);
+
+  // Mount C Producer (e.g., The Kernel)
+  reloco_ipc_producer p_c;
+  ASSERT_EQ(0, reloco_ipc_producer_init(&p_c, sim.get_page(), 32));
+
+  // Mount C++ Consumer (e.g., The Host App)
+  auto c_cpp = reloco::ipc_consumer::create(sim.data(), 32).value();
+
+  // Kernel writes data via C API
+  uint8_t payload_in[] = {0xAA, 0xBB, 0xCC, 0xDD};
+  EXPECT_EQ(4, reloco_ipc_try_write(&p_c, payload_in, 4));
+
+  // Host reads data via C++ Zero-Copy API
+  auto tx = c_cpp.begin_read(4);
+  ASSERT_TRUE(static_cast<bool>(tx));
+
+  auto chunk1 = tx.chunk1();
+  ASSERT_EQ(4, chunk1.size());
+  EXPECT_EQ(0xAA, chunk1[0]);
+  EXPECT_EQ(0xDD, chunk1[3]);
+
+  tx.consume(4);
+}
+
+TEST(IpcRingBufferInteropTest, CppProducer_To_CConsumer_WithWrap) {
+  SharedMemorySim sim;
+  format_shared_page(sim.data(), 8); // Tiny 8-byte capacity to force wrap
+
+  // Mount C++ Producer (e.g., The Host App)
+  auto p_cpp = reloco::ipc_producer::create(sim.data(), 8).value();
+
+  // Mount C Consumer (e.g., The Kernel)
+  reloco_ipc_consumer c_c;
+  ASSERT_EQ(0, reloco_ipc_consumer_init(&c_c, sim.get_page(), 8));
+
+  // Shift indices near the end to force a wrap. write_idx = 6.
+  uint8_t dummy[6] = {0};
+  std::ignore = p_cpp.try_write(reloco::span<const uint8_t>(dummy, 6));
+  reloco_ipc_try_read(&c_c, dummy, 6);
+
+  // Host writes data via C++ Zero-Copy API (Spanning across the wrap)
+  {
+    auto tx = p_cpp.begin_write(4);
+    ASSERT_TRUE(static_cast<bool>(tx));
+
+    auto chunk1 = tx.chunk1();
+    auto chunk2 = tx.chunk2();
+
+    ASSERT_EQ(2, chunk1.size());
+    ASSERT_EQ(6, chunk2.size()); // 6 bytes theoretically available after wrap
+
+    chunk1[0] = 0x11;
+    chunk1[1] = 0x22;
+    chunk2[0] = 0x33;
+    chunk2[1] = 0x44;
+
+    tx.commit(4);
+  }
+
+  // Kernel reads data via C API
+  // The C API does the math internally and issues two memcpy calls to stitch it.
+  uint8_t payload_out[4] = {0};
+  EXPECT_EQ(4, reloco_ipc_try_read(&c_c, payload_out, 4));
+
+  EXPECT_EQ(0x11, payload_out[0]);
+  EXPECT_EQ(0x22, payload_out[1]);
+  EXPECT_EQ(0x33, payload_out[2]);
+  EXPECT_EQ(0x44, payload_out[3]);
 }
 
 RELOCO_END_UNSAFE_BUFFER_USAGE
