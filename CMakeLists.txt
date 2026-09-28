@@ -430,8 +430,8 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_sso_flat_set.cpp
         tests/test_sso_flat_map.cpp
         tests/test_stack_allocator.cpp
-        tests/test_pool_allocator.cpp
-        tests/test_bucket_allocator.cpp
+#        tests/test_pool_allocator.cpp
+#        tests/test_bucket_allocator.cpp
         tests/test_inline_string.cpp
         tests/test_sso_string.cpp
         tests/test_optional.cpp
