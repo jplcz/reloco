@@ -195,6 +195,25 @@ public:
   keyed_intrusive_registry(keyed_intrusive_registry &&) = delete;
   keyed_intrusive_registry &operator=(keyed_intrusive_registry &&) = delete;
 
+  ~keyed_intrusive_registry() noexcept {
+    // While a destructor inherently assumes exclusive access (the object is dying,
+    // so no other thread should be calling methods on it), we acquire the lock
+    // defensively to ensure memory visibility and consistency.
+    lock_.lock();
+    for (auto it = table_.begin(); it != table_.end();) {
+      node &n = *it;
+      // Advance the iterator before unlinking the node to prevent invalidation.
+      auto next = it;
+      ++next;
+
+      table_.remove(n);
+      destroy_node(n);
+
+      it = next;
+    }
+    lock_.unlock();
+  }
+
   [[nodiscard]] size_type size() & noexcept {
     lock_.lock();
     size_type n = table_.size();
@@ -218,7 +237,7 @@ public:
 
   /** @brief Locked pass-through to `intrusive_hash_table::suggest_bucket_count_for_insert`. */
   [[nodiscard]] size_type suggest_bucket_count_for_insert(size_type n, size_type min_buckets, size_type max_buckets,
-                                                           size_type elements_per_bucket = 1) & noexcept {
+                                                          size_type elements_per_bucket = 1) & noexcept {
     lock_.lock();
     size_type v = table_.suggest_bucket_count_for_insert(n, min_buckets, max_buckets, elements_per_bucket);
     lock_.unlock();
@@ -227,7 +246,7 @@ public:
 
   /** @brief Locked pass-through to `intrusive_hash_table::suggest_bucket_count_for_remove`. */
   [[nodiscard]] size_type suggest_bucket_count_for_remove(size_type n, size_type min_buckets, size_type max_buckets,
-                                                           size_type elements_per_bucket = 1) & noexcept {
+                                                          size_type elements_per_bucket = 1) & noexcept {
     lock_.lock();
     size_type v = table_.suggest_bucket_count_for_remove(n, min_buckets, max_buckets, elements_per_bucket);
     lock_.unlock();
@@ -268,9 +287,8 @@ public:
    * for the unlock/allocate/relock discipline this follows. Fails only
    * if @p alloc's allocation fails.
    */
-  [[nodiscard]] result<std::reference_wrapper<T>> get_or_create(const OwnerKey &owner,
-                                                                 allocator_ref alloc = default_allocator(),
-                                                                 T initial = T{}) & noexcept {
+  [[nodiscard]] result<std::reference_wrapper<T>>
+  get_or_create(const OwnerKey &owner, allocator_ref alloc = default_allocator(), T initial = T{}) & noexcept {
     lock_.lock();
     auto found = table_.try_find(owner);
     if (found) {
@@ -304,8 +322,7 @@ public:
    * @brief Same lazy-allocate behavior as `get_or_create`, but always
    * overwrites @p owner's value (creating a node first if absent).
    */
-  [[nodiscard]] result<void> set(const OwnerKey &owner, T value,
-                                  allocator_ref alloc = default_allocator()) & noexcept {
+  [[nodiscard]] result<void> set(const OwnerKey &owner, T value, allocator_ref alloc = default_allocator()) & noexcept {
     lock_.lock();
     auto found = table_.try_find(owner);
     if (found) {
@@ -358,13 +375,13 @@ public:
   size_type bucket_count() && = delete;
   size_type load_factor_permille() && = delete;
   size_type suggest_bucket_count_for_insert(size_type n, size_type min_buckets, size_type max_buckets,
-                                             size_type elements_per_bucket = 1) && = delete;
+                                            size_type elements_per_bucket = 1) && = delete;
   size_type suggest_bucket_count_for_remove(size_type n, size_type min_buckets, size_type max_buckets,
-                                             size_type elements_per_bucket = 1) && = delete;
+                                            size_type elements_per_bucket = 1) && = delete;
   result<void> rehash(span<node *> new_buckets) && = delete;
   result<std::reference_wrapper<T>> try_find(const OwnerKey &owner) && = delete;
   result<std::reference_wrapper<T>> get_or_create(const OwnerKey &owner, allocator_ref alloc = default_allocator(),
-                                                   T initial = T{}) && = delete;
+                                                  T initial = T{}) && = delete;
   result<void> set(const OwnerKey &owner, T value, allocator_ref alloc = default_allocator()) && = delete;
   result<void> erase(const OwnerKey &owner) && = delete;
 
