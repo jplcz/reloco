@@ -103,4 +103,5 @@
 #ifndef _MSC_VER
 #include <reloco/phys_addr.hpp>
 #include <reloco/reloco_ipc_ring.hpp>
+#include <reloco/sg_list.hpp>
 #endif
