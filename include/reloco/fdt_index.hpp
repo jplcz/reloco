@@ -475,6 +475,23 @@ public:
     return (*n)->parent;
   }
 
+  /** @brief `node(index)`'s name (e.g. `"cpu@0"`, or `""` for the root) --
+   * a thin, `O(1)` convenience wrapper so a `children()`/`all_nodes()`
+   * walk can fetch just the name without spelling out `node(index).name`.
+   * Asserts if `index` is out of bounds; use `try_name_of` if `index` may
+   * be untrusted. */
+  [[nodiscard]] string_view name_of(std::size_t index) const noexcept RELOCO_LIFETIMEBOUND { return node(index).name; }
+
+  /** @brief Fallible variant of `name_of`, failing with
+   * `error::out_of_bounds` instead of asserting if `index >=
+   * node_count()`. */
+  [[nodiscard]] result<string_view> try_name_of(std::size_t index) const noexcept RELOCO_LIFETIMEBOUND {
+    auto n = try_node(index);
+    if (!n)
+      return unexpected(n.error());
+    return (*n)->name;
+  }
+
   /** @brief An `O(1)`-per-hop iterator over `node(index)`'s direct
    * children only -- never descending into grandchildren. Asserts if
    * `index` is out of bounds; use `try_children` if `index` may be
@@ -509,6 +526,76 @@ public:
     if (!n)
       return unexpected(n.error());
     return fdt_index_property_iterator(struct_region_, strings_region_, (*n)->body_offset);
+  }
+
+  /** @brief Looks up `node(index)`'s direct child named @p name (an exact
+   * match against `fdt_index_node::name`, e.g. `"cpu@0"` -- never
+   * descending into grandchildren). Fails with `error::out_of_bounds` if
+   * `index` is out of range, otherwise returns an empty `optional` (not
+   * an error) if no direct child has that name. */
+  [[nodiscard]] result<optional<std::size_t>> find_child(std::size_t index, string_view name) const noexcept {
+    auto kids = try_children(index);
+    if (!kids)
+      return unexpected(kids.error());
+    for (std::size_t child : *kids) {
+      if (node(child).name == name)
+        return optional<std::size_t>(child);
+    }
+    return optional<std::size_t>(nullopt);
+  }
+
+  /** @brief Looks up `node(index)`'s direct property named @p name (an
+   * exact match against `fdt_property_view::name` -- never descending
+   * into children). Fails with `error::out_of_bounds` if `index` is out
+   * of range, or whatever error the property iterator itself hit while
+   * scanning (a malformed struct block); otherwise returns an empty
+   * `optional` (not an error) if no direct property has that name. */
+  [[nodiscard]] result<optional<fdt_property_view>> find_property(std::size_t index, string_view name) const noexcept {
+    auto props = try_properties(index);
+    if (!props)
+      return unexpected(props.error());
+    for (auto prop : *props) {
+      if (!prop)
+        return unexpected(prop.error());
+      if (prop->name == name)
+        return optional<fdt_property_view>(*prop);
+    }
+    return optional<fdt_property_view>(nullopt);
+  }
+
+  /** @brief Translates a full, slash-separated device-tree path (e.g.
+   * `"/cpus/cpu@0"`, or `"/"` for the root) into a node index, walking
+   * `find_child` one path segment at a time from the root -- `O(depth *
+   * children-per-level)`, no blob re-scan from scratch. Fails with
+   * `error::invalid_argument` if @p path doesn't start with `'/'`,
+   * `error::not_found` if the index is empty or any path segment doesn't
+   * match a direct child, or whatever error `find_child` propagates from
+   * a malformed struct block. Repeated/trailing `'/'` characters are
+   * tolerated (treated as empty segments and skipped), matching
+   * `libfdt`'s `fdt_path_offset` behavior. */
+  [[nodiscard]] result<std::size_t> find_by_path(string_view path) const noexcept {
+    if (path.empty() || path[0] != '/')
+      return unexpected(error::invalid_argument);
+    auto current = root();
+    if (!current)
+      return unexpected(current.error());
+    std::size_t pos = 1;
+    while (pos < path.size()) {
+      const std::size_t slash = path.find('/', pos);
+      const string_view segment = (slash == string_view::npos) ? path.substr(pos) : path.substr(pos, slash - pos);
+      if (!segment.empty()) {
+        auto found = find_child(*current, segment);
+        if (!found)
+          return unexpected(found.error());
+        if (!found->has_value())
+          return unexpected(error::not_found);
+        current = **found;
+      }
+      if (slash == string_view::npos)
+        break;
+      pos = slash + 1;
+    }
+    return *current;
   }
 
   /** @brief `O(log n)` lookup of the node whose `phandle`/`linux,phandle`

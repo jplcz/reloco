@@ -3241,7 +3241,25 @@ sibling (`try_node()`, `try_parent_of()`, `try_children()`,
 `try_properties()`) that instead returns `error::out_of_bounds` through
 `result<...>`, for callers walking an index by an untrusted/externally
 supplied node index (e.g. one round-tripped through IPC) where an assert
-would be an unacceptable abort surface. `try_build` fails with
+would be an unacceptable abort surface. Node names are retrievable
+directly while iterating either way: `children()`/`all_nodes()` yield
+node indices, and `name_of(index)`/`try_name_of(index)` are `O(1)`
+convenience wrappers over `node(index).name`/`try_node(index)->name` so a
+walk never has to spell that out; property names need no such wrapper --
+`properties()`/`try_properties()` already yield `fdt_property_view`
+directly, whose `name` field is a plain public member. `find_child()` and
+`find_property()` are always-fallible by-name lookups over a node's
+*direct* children/properties only (never descending further), returning
+`result<optional<...>>`: the outer `result` carries `error::out_of_bounds`
+(bad node index) or a propagated struct-block decode error, while the
+inner `optional` is simply empty (not an error) when no direct
+child/property matches @p name -- e.g. `idx.find_child(cpus, "cpu@0")`,
+`idx.find_property(node, "compatible")`. `find_by_path()` translates a
+full, slash-separated path (e.g. `"/cpus/cpu@0"`, `libfdt`'s
+`fdt_path_offset` convention) into a node index by repeatedly calling
+`find_child()` one segment at a time from the root, failing with
+`error::invalid_argument` if the path doesn't start with `'/'` or
+`error::not_found` if any segment doesn't match. `try_build` fails with
 `error::capacity_exceeded` if any caller-supplied buffer is too small (node
 buffer, phandle buffer, or the scratch stack -- e.g. too shallow for the
 blob's actual nesting depth) and with `error::invalid_argument`/

@@ -126,6 +126,29 @@ TEST(FdtIndexTest, RootAndChildrenNavigateWithoutDescending) {
     EXPECT_NE(idx.node(child).name, "cpu@0");
 }
 
+TEST(FdtIndexTest, NameOfRetrievesNodeNamesWhileIteratingAndOnFailure) {
+  auto blob = build_sample_blob();
+  auto reader = std::move(fdt_reader::try_create(span<const std::byte>(blob.data(), blob.size()))).value();
+  index_storage storage;
+  auto idx = std::move(storage.build(reader)).value();
+
+  auto root = idx.root();
+  ASSERT_TRUE(root);
+  EXPECT_EQ(idx.name_of(*root), "");
+
+  auto root_children = collect_children(idx, *root);
+  for (std::size_t child : root_children)
+    EXPECT_EQ(idx.name_of(child), idx.node(child).name);
+
+  auto ok = idx.try_name_of(*root);
+  ASSERT_TRUE(ok);
+  EXPECT_EQ(*ok, "");
+
+  auto bad = idx.try_name_of(idx.node_count() + 42);
+  ASSERT_FALSE(bad);
+  EXPECT_EQ(bad.error(), error::out_of_bounds);
+}
+
 TEST(FdtIndexTest, ParentLookupIsConstantTime) {
   auto blob = build_sample_blob();
   auto reader = std::move(fdt_reader::try_create(span<const std::byte>(blob.data(), blob.size()))).value();
@@ -211,6 +234,89 @@ TEST(FdtIndexTest, FindByPhandleLocatesNodesAndRejectsUnknown) {
 
   EXPECT_FALSE(idx.find_by_phandle(0x99).has_value());
   EXPECT_FALSE(idx.find_by_phandle(0).has_value()); // 0 is reserved, never indexed.
+}
+
+TEST(FdtIndexTest, FindChildLocatesByNameAndReportsAbsence) {
+  auto blob = build_sample_blob();
+  auto reader = std::move(fdt_reader::try_create(span<const std::byte>(blob.data(), blob.size()))).value();
+  index_storage storage;
+  auto idx = std::move(storage.build(reader)).value();
+
+  auto root = idx.root();
+  ASSERT_TRUE(root);
+
+  auto cpus = idx.find_child(*root, "cpus");
+  ASSERT_TRUE(cpus);
+  ASSERT_TRUE(cpus->has_value());
+  EXPECT_EQ(idx.node(**cpus).name, "cpus");
+
+  auto missing = idx.find_child(*root, "does-not-exist");
+  ASSERT_TRUE(missing); // not an error -- just absent.
+  EXPECT_FALSE(missing->has_value());
+
+  // Grandchildren must not be found directly under root.
+  auto grandchild = idx.find_child(*root, "cpu@0");
+  ASSERT_TRUE(grandchild);
+  EXPECT_FALSE(grandchild->has_value());
+
+  auto bad = idx.find_child(idx.node_count() + 42, "cpus");
+  ASSERT_FALSE(bad);
+  EXPECT_EQ(bad.error(), error::out_of_bounds);
+}
+
+TEST(FdtIndexTest, FindPropertyLocatesByNameAndReportsAbsence) {
+  auto blob = build_sample_blob();
+  auto reader = std::move(fdt_reader::try_create(span<const std::byte>(blob.data(), blob.size()))).value();
+  index_storage storage;
+  auto idx = std::move(storage.build(reader)).value();
+
+  auto root = idx.root();
+  ASSERT_TRUE(root);
+
+  auto compatible = idx.find_property(*root, "compatible");
+  ASSERT_TRUE(compatible);
+  ASSERT_TRUE(compatible->has_value());
+  EXPECT_EQ((*compatible)->name, "compatible");
+
+  auto missing = idx.find_property(*root, "no-such-property");
+  ASSERT_TRUE(missing); // not an error -- just absent.
+  EXPECT_FALSE(missing->has_value());
+
+  auto bad = idx.find_property(idx.node_count() + 42, "compatible");
+  ASSERT_FALSE(bad);
+  EXPECT_EQ(bad.error(), error::out_of_bounds);
+}
+
+TEST(FdtIndexTest, FindByPathTranslatesFullPathsToNodes) {
+  auto blob = build_sample_blob();
+  auto reader = std::move(fdt_reader::try_create(span<const std::byte>(blob.data(), blob.size()))).value();
+  index_storage storage;
+  auto idx = std::move(storage.build(reader)).value();
+
+  auto root = idx.root();
+  ASSERT_TRUE(root);
+
+  auto root_by_path = idx.find_by_path("/");
+  ASSERT_TRUE(root_by_path);
+  EXPECT_EQ(*root_by_path, *root);
+
+  auto cpu0 = idx.find_by_path("/cpus/cpu@0");
+  ASSERT_TRUE(cpu0);
+  EXPECT_EQ(idx.node(*cpu0).name, "cpu@0");
+
+  auto chosen = idx.find_by_path("/chosen");
+  ASSERT_TRUE(chosen);
+  EXPECT_EQ(idx.node(*chosen).name, "chosen");
+
+  // Repeated/trailing slashes are tolerated.
+  auto cpu1 = idx.find_by_path("/cpus//cpu@1/");
+  ASSERT_TRUE(cpu1);
+  EXPECT_EQ(idx.node(*cpu1).name, "cpu@1");
+
+  EXPECT_FALSE(idx.find_by_path("/no/such/node"));
+  EXPECT_EQ(idx.find_by_path("/no/such/node").error(), error::not_found);
+  EXPECT_EQ(idx.find_by_path("relative/path").error(), error::invalid_argument);
+  EXPECT_EQ(idx.find_by_path("").error(), error::invalid_argument);
 }
 
 TEST(FdtIndexTest, AllNodesIsFlatPreorderView) {
