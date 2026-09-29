@@ -13,6 +13,36 @@
 namespace reloco {
 
 /**
+ * @brief ARCHETYPE: The expected interface for the FreeList template parameter.
+ *
+ * Your custom list does NOT need to inherit from this. It just needs to
+ * provide methods with matching signatures.
+ *
+ * @tparam OsPage The legacy pointer or compressed handle type.
+ */
+template <typename OsPage> struct free_list_archetype {
+  // Must provide an iterator that supports !=, *, and prefix ++
+  struct iterator {
+    bool operator!=(const iterator &other) const noexcept;
+    OsPage operator*() const noexcept;
+    iterator &operator++() noexcept;
+  };
+
+  // State Management
+  void clear() & noexcept;
+  [[nodiscard]] bool empty() const & noexcept;
+
+  // Intrusive Operations
+  void push_front(OsPage p) & noexcept;
+  void remove(OsPage p) & noexcept;
+  OsPage pop_front() & noexcept;
+
+  // Iteration
+  [[nodiscard]] iterator begin() const & noexcept;
+  [[nodiscard]] iterator end() const & noexcept;
+};
+
+/**
  * @brief A completely decoupled, traits-driven Buddy Allocator.
  *
  * @tparam FreeList An intrusive list container providing:
@@ -242,41 +272,192 @@ public:
    * Parses the binary decomposition of `num_pages` and frees the individual power-of-two chunks.
    */
   [[nodiscard]] result<void> free_n(page_type p, size_t num_pages) noexcept {
-    if (p.is_null() || num_pages == 0)
+    if (p.is_null() || num_pages == 0) {
       return unexpected(error::invalid_argument);
+    }
 
     page_type current = p;
     size_t remaining = num_pages;
 
-    // Find the MSB (highest order) required to cover num_pages
-    size_t order = MaxOrder;
-    while (order > 0 && (1ULL << order) > remaining) {
+    while (remaining > 0) {
+      size_t order = 0;
+
+      // Find the maximum order that fits in the remaining space AND
+      // strictly maintains natural power-of-two physical alignment.
+      while (order < MaxOrder) {
+        size_t next_order_pages = 1ULL << (order + 1);
+
+        // Must fit in the remaining requested pages
+        if (next_order_pages > remaining)
+          break;
+
+        // The physical PFN MUST be a multiple of the next order's size
+        if ((current.pfn() & (next_order_pages - 1)) != 0)
+          break;
+
+        order++;
+      }
+
+      auto free_res = free(current, order);
+      if (!free_res)
+        return unexpected(free_res.error());
+
+      remaining -= (1ULL << order);
+
+      if (remaining > 0) {
+        auto next_res = current.try_add(1ULL << order);
+        if (!next_res)
+          return unexpected(next_res.error());
+        current = *next_res;
+      }
+    }
+
+    return {};
+  }
+
+  struct physical_constraint {
+    uint64_t low_pfn{0};         // Minimum acceptable PFN
+    uint64_t high_pfn{~0ULL};    // Maximum acceptable PFN (inclusive)
+    uint64_t alignment_pages{1}; // Must be a power of two
+    uint64_t boundary_pages{0};  // 0 = no boundary restrictions. Otherwise power of two.
+  };
+
+  /**
+   * @brief Allocates physical pages fulfilling strict hardware constraints (low, high, alignment, boundary).
+   * Operates similarly to FreeBSD's vm_page_alloc_contig().
+   */
+  [[nodiscard]] result<page_type> allocate_constrained(size_t num_pages, const physical_constraint &c) noexcept {
+    if (num_pages == 0 || c.alignment_pages == 0)
+      return unexpected(error::invalid_argument);
+
+    // We only need to check blocks large enough to potentially hold our constraints
+    auto min_order_res = pages_to_order(num_pages);
+    if (!min_order_res)
+      return unexpected(min_order_res.error());
+
+    for (size_t order = *min_order_res; order <= MaxOrder; order++) {
+      // Iterate through the free list at this order
+      for (auto os_page : free_areas_[order]) {
+        page_type block = page_type::from_os_page(os_page);
+
+        // Calculate the ideal aligned starting PFN within this block
+        uint64_t block_pfn = block.pfn();
+        uint64_t start_pfn = block_pfn;
+
+        if (start_pfn < c.low_pfn) {
+          start_pfn = c.low_pfn;
+        }
+
+        // Align up to requested alignment
+        start_pfn = (start_pfn + c.alignment_pages - 1) & ~(c.alignment_pages - 1);
+
+        // Check Boundary Crossing
+        if (c.boundary_pages > 0) {
+          uint64_t end_pfn = start_pfn + num_pages - 1;
+          if ((start_pfn / c.boundary_pages) != (end_pfn / c.boundary_pages)) {
+            // It crosses a boundary. Push start_pfn to the next boundary.
+            start_pfn = (start_pfn + c.boundary_pages) & ~(c.boundary_pages - 1);
+            // Re-apply alignment if the boundary push misaligned it
+            start_pfn = (start_pfn + c.alignment_pages - 1) & ~(c.alignment_pages - 1);
+          }
+        }
+
+        uint64_t end_pfn = start_pfn + num_pages - 1;
+        uint64_t block_end_pfn = block_pfn + (1ULL << order) - 1;
+
+        // Verify it still fits inside this buddy block and satisfies high_pfn
+        if (end_pfn <= block_end_pfn && end_pfn <= c.high_pfn) {
+
+          // WE FOUND A MATCH!
+          // Remove this massive block from the free list
+          free_areas_[order].remove(block.get_os_page());
+          block.set_buddy_free(false);
+
+          // Carve out the front padding and return it to the buddy system
+          size_t front_padding = start_pfn - block_pfn;
+          if (front_padding > 0) {
+            // We use our exact page freeing logic to decompose the front padding!
+            auto free_res = free_n(block, front_padding);
+            if (!free_res)
+              return unexpected(free_res.error());
+          }
+
+          // Navigate to our actual starting page
+          auto alloc_page = block.try_add(front_padding).value();
+
+          // Carve out the back padding and return it to the buddy system
+          size_t back_padding = (1ULL << order) - front_padding - num_pages;
+          if (back_padding > 0) {
+            auto back_page = alloc_page.try_add(num_pages).value();
+            auto free_res = free_n(back_page, back_padding);
+            if (!free_res)
+              return unexpected(free_res.error());
+          }
+
+          // Mark our specific exact allocation as consumed (using chunk_order 0 for exact slices)
+          alloc_page.set_buddy_order(0);
+          alloc_page.set_buddy_free(false);
+
+          return alloc_page;
+        }
+      }
+    }
+
+    // No block in any order satisfies the hardware constraints
+    return unexpected(error::allocation_failed);
+  }
+
+  struct range_allocation {
+    page_type page;
+    size_t count;
+  };
+
+  /**
+   * @brief Opportunistic greedy allocation for vmalloc-like memory population.
+   * Tries to allocate exactly `max_pages`. If memory is too fragmented,
+   * falls back to returning the largest contiguous chunk available <= `max_pages`.
+   */
+  [[nodiscard]] result<range_allocation> allocate_up_to(size_t max_pages) noexcept {
+    if (max_pages == 0)
+      return unexpected(error::invalid_argument);
+
+    // Try the optimal path: exact allocation
+    auto exact_res = allocate_n(max_pages);
+    if (exact_res) {
+      return range_allocation{exact_res.value(), max_pages};
+    }
+
+    // If it failed for a reason other than fragmentation (e.g., bounds violation)
+    if (exact_res.error() != error::allocation_failed) {
+      return unexpected(exact_res.error());
+    }
+
+    // The Fallback Path: We are fragmented.
+    // Find the highest power-of-two order strictly less than or equal to max_pages.
+    size_t order = 0;
+    while ((1ULL << (order + 1)) <= max_pages) {
+      order++;
+    }
+    if (order > MaxOrder)
+      order = MaxOrder;
+
+    // Scan downwards for the largest surviving block
+    while (true) {
+      if (!free_areas_[order].empty()) {
+        page_type block = page_type::from_os_page(free_areas_[order].pop_front());
+        block.set_buddy_free(false);
+        block.set_buddy_order(static_cast<uint16_t>(order));
+
+        // We found a smaller, but perfectly contiguous power-of-two block!
+        return range_allocation{block, 1ULL << order};
+      }
+      if (order == 0)
+        break;
       order--;
     }
 
-    // Traverse from MSB to LSB, freeing chunks exactly as allocate_n carved them
-    while (remaining > 0) {
-      size_t chunk_size = 1ULL << order;
-      if (remaining >= chunk_size) {
-
-        // Free this specific power-of-two chunk
-        auto free_res = free(current, order);
-        if (!free_res)
-          return unexpected(free_res.error());
-
-        remaining -= chunk_size;
-
-        if (remaining > 0) {
-          auto next_res = current.try_add(chunk_size);
-          if (!next_res)
-            return unexpected(next_res.error());
-          current = *next_res;
-        }
-      }
-      if (order > 0)
-        order--;
-    }
-    return {};
+    // Truly out of memory
+    return unexpected(error::allocation_failed);
   }
 
 private:
@@ -293,7 +474,7 @@ private:
     return order;
   }
 
-  array<free_list_type, MaxOrder + 1> free_areas_{};
+  reloco::array<free_list_type, MaxOrder + 1> free_areas_{};
 };
 
 } // namespace reloco
