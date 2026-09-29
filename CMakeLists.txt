@@ -466,6 +466,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_phys_addr.cpp
         tests/test_phys_translator.cpp
         tests/test_sg_list.cpp
+        tests/test_phys_page.cpp
     )
 
     target_link_libraries(jplcz_reloco_tests PRIVATE jplcz_reloco GTest::gtest_main)
