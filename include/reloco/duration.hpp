@@ -59,12 +59,14 @@
 #define RELOCO_DETAIL_DURATION_HAS_TIMESPEC 0
 #endif
 
-#if RELOCO_HAS_INCLUDE(<sys / time.h>)
+// clang-format off
+#if RELOCO_HAS_INCLUDE(<sys/time.h>)
 #include <sys/time.h>
 #define RELOCO_DETAIL_DURATION_HAS_TIMEVAL 1
 #else
 #define RELOCO_DETAIL_DURATION_HAS_TIMEVAL 0
 #endif
+// clang-format on
 
 namespace reloco {
 

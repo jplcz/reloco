@@ -76,7 +76,7 @@ set(JPLCZ_RELOCO_PORTING_HEADERS "" CACHE PATH
 mutex.hpp/thread.hpp/spin_lock.hpp/tls_provider.hpp/futex.hpp) copied \
 into include/reloco/detail/porting/ and installed alongside reloco's own \
 headers, plus the matching RELOCO_*_BACKEND_CUSTOM/RELOCO_TLS_MODEL macro \
-baked into a generated detail/porting/generated_config.hpp for every \
+baked into a generated detail/porting/reloco_generated_config.hpp for every \
 consumer. See include/reloco/detail/porting/*.template.hpp and \
 include/reloco/detail/porting/README.md for the exact shape each file \
 must have.")
@@ -159,7 +159,7 @@ if(JPLCZ_RELOCO_PORTING_HEADERS)
     set(JPLCZ_RELOCO_PORTING_DEST_DIR "${JPLCZ_RELOCO_PORTING_STAGING_DIR}/detail/porting")
     file(MAKE_DIRECTORY "${JPLCZ_RELOCO_PORTING_DEST_DIR}")
 
-    set(JPLCZ_RELOCO_PORTING_HEADER_NAMES mutex.hpp thread.hpp spin_lock.hpp tls_provider.hpp futex.hpp)
+    set(JPLCZ_RELOCO_PORTING_HEADER_NAMES mutex.hpp thread.hpp spin_lock.hpp tls_provider.hpp futex.hpp time_backend.hpp)
     # CMake variable consulted by cmake/generated_porting_config.hpp.in's
     # matching #cmakedefine, one per header name above, same order.
     set(JPLCZ_RELOCO_PORTING_HEADER_VARS
@@ -168,6 +168,7 @@ if(JPLCZ_RELOCO_PORTING_HEADERS)
         RELOCO_SPIN_LOCK_BACKEND_CUSTOM
         RELOCO_TLS_MODEL_CUSTOM_OS
         RELOCO_FUTEX_BACKEND_CUSTOM
+        RELOCO_TIME_BACKEND_CUSTOM
     )
 
     list(LENGTH JPLCZ_RELOCO_PORTING_HEADER_NAMES JPLCZ_RELOCO_PORTING_HEADER_COUNT)
@@ -192,7 +193,7 @@ if(JPLCZ_RELOCO_PORTING_HEADERS)
 
     configure_file(
         "${CMAKE_CURRENT_SOURCE_DIR}/cmake/generated_porting_config.hpp.in"
-        "${JPLCZ_RELOCO_PORTING_DEST_DIR}/generated_config.hpp"
+        "${JPLCZ_RELOCO_PORTING_DEST_DIR}/reloco_generated_config.hpp"
         @ONLY
     )
 
@@ -468,6 +469,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_sg_list.cpp
         tests/test_phys_page.cpp
         tests/test_buddy_allocator.cpp
+        tests/test_packed_bits.cpp
     )
 
     target_link_libraries(jplcz_reloco_tests PRIVATE jplcz_reloco GTest::gtest_main)

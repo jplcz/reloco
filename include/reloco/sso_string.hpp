@@ -52,10 +52,12 @@
  */
 
 #include "allocator.hpp"
+#include "contiguous_iterator.hpp"
 #include "default_allocator.hpp"
 #include "detail/assert.hpp"
 #include "error.hpp"
 #include "expected.hpp"
+#include "iterator.hpp"
 #include "lifetime.hpp"
 #include "relocatable.hpp"
 #include "rvalue_safety.hpp"
@@ -92,15 +94,13 @@ public:
   using const_reference = const CharT &;
   using pointer = CharT *;
   using const_pointer = const CharT *;
-  using iterator = CharT *;
-  using const_iterator = const CharT *;
-  using reverse_iterator = std::reverse_iterator<iterator>;
-  using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
   static constexpr size_type npos = view_type::npos;
   static constexpr size_type sso_capacity = RELOCO_SSO_STRING_CAPACITY;
 
   RELOCO_BLOCK_RVALUE_ACCESS(CharT);
+  RELOCO_GENERATE_DYNAMIC_CONTIGUOUS_ITERATORS(char, basic_sso_string, data(), size())
+  RELOCO_GENERATE_ITER()
 
   constexpr basic_sso_string() noexcept : basic_sso_string(default_allocator()) {}
 
@@ -508,7 +508,11 @@ public:
 
   [[nodiscard]] const_pointer data() const & noexcept RELOCO_LIFETIMEBOUND { return data_; }
 
+  [[nodiscard]] const_pointer unsafe_data() const & noexcept RELOCO_LIFETIMEBOUND { return data_; }
+
   [[nodiscard]] pointer data() & noexcept RELOCO_LIFETIMEBOUND { return data_; }
+
+  [[nodiscard]] pointer unsafe_data() & noexcept RELOCO_LIFETIMEBOUND { return data_; }
 
   /**
    * @brief Returns a null-terminated pointer suitable for C-string interop.
@@ -531,23 +535,6 @@ public:
 
   explicit operator std::basic_string<CharT, TraitsT>() const {
     return std::basic_string<CharT, TraitsT>(data(), size_);
-  }
-
-  // ---- iteration ----
-
-  [[nodiscard]] iterator begin() & noexcept RELOCO_LIFETIMEBOUND { return data(); }
-  [[nodiscard]] iterator end() & noexcept RELOCO_LIFETIMEBOUND { return data() + size_; }
-  [[nodiscard]] const_iterator begin() const & noexcept RELOCO_LIFETIMEBOUND { return data(); }
-  [[nodiscard]] const_iterator end() const & noexcept RELOCO_LIFETIMEBOUND { return data() + size_; }
-  [[nodiscard]] const_iterator cbegin() const & noexcept RELOCO_LIFETIMEBOUND { return data(); }
-  [[nodiscard]] const_iterator cend() const & noexcept RELOCO_LIFETIMEBOUND { return data() + size_; }
-  [[nodiscard]] reverse_iterator rbegin() & noexcept RELOCO_LIFETIMEBOUND { return reverse_iterator(end()); }
-  [[nodiscard]] reverse_iterator rend() & noexcept RELOCO_LIFETIMEBOUND { return reverse_iterator(begin()); }
-  [[nodiscard]] const_reverse_iterator rbegin() const & noexcept RELOCO_LIFETIMEBOUND {
-    return const_reverse_iterator(end());
-  }
-  [[nodiscard]] const_reverse_iterator rend() const & noexcept RELOCO_LIFETIMEBOUND {
-    return const_reverse_iterator(begin());
   }
 
   // ---- searching ----

@@ -494,3 +494,17 @@ TEST(VectorTest, TryResizeToSameSizeIsNoop) {
   EXPECT_EQ((*v)[0], 1);
   EXPECT_EQ((*v)[1], 2);
 }
+
+TEST(VectorTest, MapVector) {
+  auto v = vector<int>::try_create().unwrap();
+  ASSERT_TRUE(v.try_push_back(1));
+  ASSERT_TRUE(v.try_push_back(2));
+  ASSERT_TRUE(v.try_push_back(3));
+  ASSERT_TRUE(v.try_push_back(4));
+  auto result = v.iter().map([](int x) { return x * 2; });
+  ASSERT_EQ(result.next().unwrap(), 2);
+  ASSERT_EQ(result.next().unwrap(), 4);
+  ASSERT_EQ(result.next().unwrap(), 6);
+  ASSERT_EQ(result.next().unwrap(), 8);
+  ASSERT_FALSE(result.next().has_value());
+}

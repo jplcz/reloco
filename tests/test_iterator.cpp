@@ -344,12 +344,14 @@ TEST(IteratorTest, IntersperseOfSingleElementYieldsNoSeparator) {
 
 TEST(IteratorTest, WindowsYieldsOverlappingFixedSizeSlices) {
   std::vector<int> v{1, 2, 3, 4, 5};
-  std::vector<std::array<int, 3>> out;
-  reloco::iter(v).map([](int x) { return x; }).windows<3>().for_each([&](std::array<int, 3> a) { out.push_back(a); });
+  std::vector<reloco::array<int, 3>> out;
+  reloco::iter(v).map([](int x) { return x; }).windows<3>().for_each([&](const reloco::array<int, 3> &a) {
+    out.push_back(a);
+  });
   ASSERT_EQ(out.size(), 3u);
-  EXPECT_EQ(out[0], (std::array<int, 3>{1, 2, 3}));
-  EXPECT_EQ(out[1], (std::array<int, 3>{2, 3, 4}));
-  EXPECT_EQ(out[2], (std::array<int, 3>{3, 4, 5}));
+  EXPECT_EQ(out[0], (reloco::array<int, 3>{1, 2, 3}));
+  EXPECT_EQ(out[1], (reloco::array<int, 3>{2, 3, 4}));
+  EXPECT_EQ(out[2], (reloco::array<int, 3>{3, 4, 5}));
 }
 
 TEST(IteratorTest, WindowsShorterThanNYieldsNothing) {

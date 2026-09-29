@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 
 #include <reloco/array.hpp>
+#include <reloco/span.hpp>
 
 #include <type_traits>
 #include <utility>

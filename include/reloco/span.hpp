@@ -7,10 +7,12 @@
 /** @file span.hpp
  * @brief Hardened C++17-compatible non-owning contiguous view. */
 
+#include "contiguous_iterator.hpp"
 #include "detail/assert.hpp"
 #include "detail/compat.hpp"
 #include "error.hpp"
 #include "expected.hpp"
+#include "iterator.hpp"
 #include "lifetime.hpp"
 #include "optional.hpp"
 #include "relocatable_std.hpp"
@@ -222,12 +224,10 @@ public:
   using const_pointer = const T *;
   using reference = T &;
   using const_reference = const T &;
-  using iterator = T *;
-  using const_iterator = const T *;
-  using reverse_iterator = std::reverse_iterator<iterator>;
-  using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
   RELOCO_BLOCK_RVALUE_ACCESS(T);
+  RELOCO_GENERATE_VIEW_ITERATORS(T, m_ptr, m_size)
+  RELOCO_GENERATE_ITER()
 
   /**
    * @brief Constructs an empty span with `nullptr` data and `0` size.
@@ -632,46 +632,6 @@ public:
     return span<const std::byte>(reinterpret_cast<const std::byte *>(m_ptr), size_bytes());
   }
 
-  /**
-   * @brief Returns an iterator to the first element of the span.
-   */
-  [[nodiscard]] constexpr iterator begin() & noexcept RELOCO_LIFETIMEBOUND { return m_ptr; }
-  [[nodiscard]] constexpr iterator begin() const & noexcept RELOCO_LIFETIMEBOUND { return m_ptr; }
-
-  /**
-   * @brief Returns an iterator to one past the last element of the span.
-   */
-  [[nodiscard]] constexpr iterator end() & noexcept RELOCO_LIFETIMEBOUND { return pointer_at(m_size); }
-  [[nodiscard]] constexpr iterator end() const & noexcept RELOCO_LIFETIMEBOUND { return pointer_at(m_size); }
-
-  [[nodiscard]] constexpr reverse_iterator rbegin() & noexcept RELOCO_LIFETIMEBOUND { return reverse_iterator(end()); }
-  [[nodiscard]] constexpr reverse_iterator rbegin() const & noexcept RELOCO_LIFETIMEBOUND {
-    return reverse_iterator(end());
-  }
-
-  [[nodiscard]] constexpr reverse_iterator rend() & noexcept RELOCO_LIFETIMEBOUND { return reverse_iterator(begin()); }
-  [[nodiscard]] constexpr reverse_iterator rend() const & noexcept RELOCO_LIFETIMEBOUND {
-    return reverse_iterator(begin());
-  }
-
-  /**
-   * @brief Returns a const iterator to the first element of the span.
-   */
-  [[nodiscard]] constexpr const_iterator cbegin() const & noexcept RELOCO_LIFETIMEBOUND { return m_ptr; }
-
-  /**
-   * @brief Returns a const iterator to one past the last element of the span.
-   */
-  [[nodiscard]] constexpr const_iterator cend() const & noexcept RELOCO_LIFETIMEBOUND { return pointer_at(m_size); }
-
-  [[nodiscard]] constexpr const_reverse_iterator crbegin() const & noexcept RELOCO_LIFETIMEBOUND {
-    return const_reverse_iterator(cend());
-  }
-
-  [[nodiscard]] constexpr const_reverse_iterator crend() const & noexcept RELOCO_LIFETIMEBOUND {
-    return const_reverse_iterator(cbegin());
-  }
-
 private:
   [[nodiscard]] constexpr T *pointer_at(std::size_t offset) const noexcept RELOCO_LIFETIMEBOUND {
     return offset == 0 ? m_ptr : m_ptr + offset;
@@ -680,6 +640,12 @@ private:
   T *m_ptr;
   std::size_t m_size;
 };
+
+template <typename T, std::size_t N> constexpr span<T> array<T, N>::as_span() & noexcept { return span<T>(data_, N); }
+
+template <typename T, std::size_t N> constexpr span<const T> array<T, N>::as_span() const & noexcept {
+  return span<const T>(data_, N);
+}
 
 } // namespace reloco
 

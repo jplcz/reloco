@@ -31,6 +31,7 @@
 #include "default_allocator.hpp"
 #include "detail/assert.hpp"
 #include "error.hpp"
+#include "iterator.hpp"
 #include "lifetime.hpp"
 #include "relocatable.hpp"
 #include "rvalue_safety.hpp"
@@ -49,8 +50,9 @@ template <typename T> class RELOCO_OWNER boxed_slice {
 public:
   using value_type = T;
   using size_type = std::size_t;
-  using iterator = T *;
-  using const_iterator = const T *;
+
+  RELOCO_GENERATE_STATIC_OWNING_ITERATORS(T, ptr_, size_)
+  RELOCO_GENERATE_ITER()
 
   constexpr boxed_slice() noexcept = default;
 
@@ -223,13 +225,6 @@ public:
 
   [[nodiscard]] T *data() & noexcept RELOCO_LIFETIMEBOUND { return ptr_; }
   [[nodiscard]] const T *data() const & noexcept RELOCO_LIFETIMEBOUND { return ptr_; }
-
-  [[nodiscard]] iterator begin() & noexcept RELOCO_LIFETIMEBOUND { return ptr_; }
-  [[nodiscard]] iterator end() & noexcept RELOCO_LIFETIMEBOUND { return ptr_ + size_; }
-  [[nodiscard]] const_iterator begin() const & noexcept RELOCO_LIFETIMEBOUND { return ptr_; }
-  [[nodiscard]] const_iterator end() const & noexcept RELOCO_LIFETIMEBOUND { return ptr_ + size_; }
-  [[nodiscard]] const_iterator cbegin() const & noexcept RELOCO_LIFETIMEBOUND { return ptr_; }
-  [[nodiscard]] const_iterator cend() const & noexcept RELOCO_LIFETIMEBOUND { return ptr_ + size_; }
 
 private:
   boxed_slice(T *ptr, size_type size, allocator_ref alloc) noexcept : ptr_(ptr), size_(size), alloc_(alloc) {}

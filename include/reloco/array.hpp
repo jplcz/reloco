@@ -7,11 +7,12 @@
 /** @file array.hpp @brief Hardened fixed-size C++17-compatible array. */
 
 #include "alignment.hpp"
+#include "contiguous_iterator.hpp"
 #include "error.hpp"
 #include "expected.hpp"
 #include "lifetime.hpp"
 #include "rvalue_safety.hpp"
-#include "span.hpp"
+
 #include <cstddef>
 #include <functional>
 #include <iterator>
@@ -22,6 +23,8 @@
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
 namespace reloco {
+
+template <typename T> class RELOCO_POINTER span;
 
 template <typename T, std::size_t N> struct RELOCO_OWNER array {
   static_assert(N > 0, "use the zero-size array specialization");
@@ -35,12 +38,9 @@ template <typename T, std::size_t N> struct RELOCO_OWNER array {
   using const_pointer = const T *;
   using reference = T &;
   using const_reference = const T &;
-  using iterator = T *;
-  using const_iterator = const T *;
-  using reverse_iterator = std::reverse_iterator<iterator>;
-  using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
   RELOCO_BLOCK_RVALUE_ACCESS(T);
+  RELOCO_GENERATE_STATIC_OWNING_ITERATORS(T, data_, N)
 
   [[nodiscard]] result<std::reference_wrapper<T>> try_at(size_type index) & noexcept RELOCO_LIFETIMEBOUND {
     if (index >= N)
@@ -114,11 +114,9 @@ template <typename T, std::size_t N> struct RELOCO_OWNER array {
   T &unsafe_back() && = delete;
   const T &unsafe_back() const && = delete;
 
-  [[nodiscard]] constexpr span<T> as_span() & noexcept RELOCO_LIFETIMEBOUND { return span<T>(data_, N); }
+  [[nodiscard]] constexpr span<T> as_span() & noexcept RELOCO_LIFETIMEBOUND;
 
-  [[nodiscard]] constexpr span<const T> as_span() const & noexcept RELOCO_LIFETIMEBOUND {
-    return span<const T>(data_, N);
-  }
+  [[nodiscard]] constexpr span<const T> as_span() const & noexcept RELOCO_LIFETIMEBOUND;
 
   [[nodiscard]] static constexpr size_type size() noexcept { return N; }
   [[nodiscard]] static constexpr bool empty() noexcept { return false; }
@@ -129,33 +127,6 @@ template <typename T, std::size_t N> struct RELOCO_OWNER array {
   [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) constexpr const T *data() const & noexcept
       RELOCO_LIFETIMEBOUND {
     return data_;
-  }
-
-  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) constexpr iterator
-      begin() & noexcept RELOCO_LIFETIMEBOUND {
-    return data_;
-  }
-  [[nodiscard]] constexpr iterator end() & noexcept RELOCO_LIFETIMEBOUND { return data_ + N; }
-  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) constexpr const_iterator
-      begin() const & noexcept RELOCO_LIFETIMEBOUND {
-    return data_;
-  }
-  [[nodiscard]] constexpr const_iterator end() const & noexcept RELOCO_LIFETIMEBOUND { return data_ + N; }
-  [[nodiscard]] constexpr const_iterator cbegin() const & noexcept RELOCO_LIFETIMEBOUND { return data_; }
-  [[nodiscard]] constexpr const_iterator cend() const & noexcept RELOCO_LIFETIMEBOUND { return data_ + N; }
-  [[nodiscard]] constexpr reverse_iterator rbegin() & noexcept RELOCO_LIFETIMEBOUND { return reverse_iterator(end()); }
-  [[nodiscard]] constexpr reverse_iterator rend() & noexcept RELOCO_LIFETIMEBOUND { return reverse_iterator(begin()); }
-  [[nodiscard]] constexpr const_reverse_iterator rbegin() const & noexcept RELOCO_LIFETIMEBOUND {
-    return const_reverse_iterator(end());
-  }
-  [[nodiscard]] constexpr const_reverse_iterator rend() const & noexcept RELOCO_LIFETIMEBOUND {
-    return const_reverse_iterator(begin());
-  }
-  [[nodiscard]] constexpr const_reverse_iterator crbegin() const & noexcept RELOCO_LIFETIMEBOUND {
-    return const_reverse_iterator(cend());
-  }
-  [[nodiscard]] constexpr const_reverse_iterator crend() const & noexcept RELOCO_LIFETIMEBOUND {
-    return const_reverse_iterator(cbegin());
   }
 
   constexpr void fill(const T &value) noexcept {
@@ -217,6 +188,11 @@ template <typename T, std::size_t N> struct RELOCO_OWNER array {
   [[nodiscard]] friend constexpr bool operator<=(const array &lhs, const array &rhs) noexcept { return !(rhs < lhs); }
 
   [[nodiscard]] friend constexpr bool operator>=(const array &lhs, const array &rhs) noexcept { return !(lhs < rhs); }
+
+  [[nodiscard]] auto iter() & noexcept RELOCO_LIFETIMEBOUND;
+  [[nodiscard]] auto iter() const & noexcept RELOCO_LIFETIMEBOUND;
+  auto iter() && noexcept = delete;
+  auto iter() const && noexcept = delete;
 };
 
 template <typename T> struct array<T, 0> {
@@ -227,12 +203,9 @@ template <typename T> struct array<T, 0> {
   using const_pointer = const T *;
   using reference = T &;
   using const_reference = const T &;
-  using iterator = T *;
-  using const_iterator = const T *;
-  using reverse_iterator = std::reverse_iterator<iterator>;
-  using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
   RELOCO_BLOCK_RVALUE_ACCESS(T);
+  RELOCO_GENERATE_EMPTY_CONTIGUOUS_ITERATORS(T)
 
   [[nodiscard]] result<std::reference_wrapper<T>> try_at(size_type) & noexcept RELOCO_LIFETIMEBOUND {
     return unexpected(error::out_of_bounds);
@@ -331,26 +304,6 @@ template <typename T> struct array<T, 0> {
 
   [[nodiscard]] constexpr T *data() & noexcept RELOCO_LIFETIMEBOUND { return nullptr; }
   [[nodiscard]] constexpr const T *data() const & noexcept RELOCO_LIFETIMEBOUND { return nullptr; }
-  [[nodiscard]] constexpr iterator begin() & noexcept RELOCO_LIFETIMEBOUND { return nullptr; }
-  [[nodiscard]] constexpr iterator end() & noexcept RELOCO_LIFETIMEBOUND { return nullptr; }
-  [[nodiscard]] constexpr const_iterator begin() const & noexcept RELOCO_LIFETIMEBOUND { return nullptr; }
-  [[nodiscard]] constexpr const_iterator end() const & noexcept RELOCO_LIFETIMEBOUND { return nullptr; }
-  [[nodiscard]] constexpr const_iterator cbegin() const & noexcept RELOCO_LIFETIMEBOUND { return nullptr; }
-  [[nodiscard]] constexpr const_iterator cend() const & noexcept RELOCO_LIFETIMEBOUND { return nullptr; }
-  [[nodiscard]] constexpr reverse_iterator rbegin() & noexcept RELOCO_LIFETIMEBOUND { return reverse_iterator(end()); }
-  [[nodiscard]] constexpr reverse_iterator rend() & noexcept RELOCO_LIFETIMEBOUND { return reverse_iterator(begin()); }
-  [[nodiscard]] constexpr const_reverse_iterator rbegin() const & noexcept RELOCO_LIFETIMEBOUND {
-    return const_reverse_iterator(end());
-  }
-  [[nodiscard]] constexpr const_reverse_iterator rend() const & noexcept RELOCO_LIFETIMEBOUND {
-    return const_reverse_iterator(begin());
-  }
-  [[nodiscard]] constexpr const_reverse_iterator crbegin() const & noexcept RELOCO_LIFETIMEBOUND {
-    return const_reverse_iterator(cend());
-  }
-  [[nodiscard]] constexpr const_reverse_iterator crend() const & noexcept RELOCO_LIFETIMEBOUND {
-    return const_reverse_iterator(cbegin());
-  }
 
   constexpr void fill(const T &) noexcept {}
   constexpr void swap(array &) noexcept {}
@@ -377,6 +330,11 @@ template <typename T> struct array<T, 0> {
   [[nodiscard]] friend constexpr bool operator>(const array &, const array &) noexcept { return false; }
   [[nodiscard]] friend constexpr bool operator<=(const array &, const array &) noexcept { return true; }
   [[nodiscard]] friend constexpr bool operator>=(const array &, const array &) noexcept { return true; }
+
+  [[nodiscard]] auto iter() & noexcept RELOCO_LIFETIMEBOUND;
+  [[nodiscard]] auto iter() const & noexcept RELOCO_LIFETIMEBOUND;
+  auto iter() && noexcept = delete;
+  auto iter() const && noexcept = delete;
 };
 
 template <typename T, std::size_t N>

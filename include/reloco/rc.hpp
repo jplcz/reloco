@@ -72,7 +72,7 @@ struct RELOCO_EXPORT rc_control_block {
   std::size_t shared_count_{1};
   std::size_t weak_count_{1};
 
-  rc_control_block() noexcept = default;
+  constexpr rc_control_block() noexcept = default;
   virtual ~rc_control_block() = default;
 
   rc_control_block(const rc_control_block &) = delete;
@@ -82,10 +82,12 @@ struct RELOCO_EXPORT rc_control_block {
   virtual void destroy_self() noexcept = 0;
 
   void release_shared() noexcept {
+    RELOCO_BEGIN_SUPPRESS_GCC_UNINITIALIZED_FALSE_POSITIVE;
     if (--shared_count_ == 0) {
       destroy_object();
       release_weak();
     }
+    RELOCO_END_SUPPRESS_GCC_UNINITIALIZED_FALSE_POSITIVE;
   }
 
   void release_weak() noexcept {
@@ -129,20 +131,21 @@ template <typename T> struct rc_control_block_combined final : rc_control_block 
   alignas(T) std::byte storage_[sizeof(T)];
   allocator_ref alloc_;
 
-  explicit rc_control_block_combined(allocator_ref alloc) noexcept : alloc_(alloc) {}
+  // ReSharper disable once CppPossiblyUninitializedMember
+  explicit rc_control_block_combined(allocator_ref alloc) noexcept : alloc_(alloc) {} // NOLINT(*-pro-type-member-init)
 
   T *object() noexcept { return reinterpret_cast<T *>(static_cast<void *>(storage_)); }
 
   void destroy_object() noexcept override { object()->~T(); }
 
   void destroy_self() noexcept override {
-    allocator_ref alloc = alloc_;
+    const allocator_ref alloc = alloc_;
     this->~rc_control_block_combined();
     alloc.deallocate(this, sizeof(*this));
   }
 };
 
-struct RELOCO_EXPORT enable_rc_from_this_base {};
+struct RELOCO_EXPORT enable_rc_from_this_base{};
 
 } // namespace detail
 

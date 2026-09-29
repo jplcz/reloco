@@ -130,6 +130,17 @@
 #define RELOCO_END_SUPPRESS_GCC_BOUNDS_FALSE_POSITIVE
 #endif
 
+#if defined(__GNUC__) && !defined(__clang__)
+#define RELOCO_BEGIN_SUPPRESS_GCC_UNINITIALIZED_FALSE_POSITIVE                                                         \
+  RELOCO_PRAGMA(GCC diagnostic push)                                                                                   \
+  RELOCO_PRAGMA(GCC diagnostic ignored "-Wmaybe-uninitialized")                                                        \
+  RELOCO_PRAGMA(GCC diagnostic ignored "-Wuninitialized")
+#define RELOCO_END_SUPPRESS_GCC_UNINITIALIZED_FALSE_POSITIVE RELOCO_PRAGMA(GCC diagnostic pop)
+#else
+#define RELOCO_BEGIN_SUPPRESS_GCC_UNINITIALIZED_FALSE_POSITIVE
+#define RELOCO_END_SUPPRESS_GCC_UNINITIALIZED_FALSE_POSITIVE
+#endif
+
 // ============================================================================
 // Nullability Attributes (GCC / Clang Static Analyzer)
 // ============================================================================

@@ -40,7 +40,7 @@ built-in backend would otherwise have defined the same API. That means:
   into this directory (in the build tree, then installed alongside
   reloco's own headers) and bakes the matching `RELOCO_*_BACKEND_
   CUSTOM`/`RELOCO_TLS_MODEL` macro into a generated
-  `detail/porting/generated_config.hpp` placed right alongside them (see
+  `detail/porting/reloco_generated_config.hpp` placed right alongside them (see
   `cmake/generated_porting_config.hpp.in`), rather than an INTERFACE
   `target_compile_definitions` on the `jplcz_reloco` CMake target -- so
   the override takes effect for every consumer of the plain `include/`

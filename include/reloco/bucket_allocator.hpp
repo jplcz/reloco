@@ -84,6 +84,7 @@
  */
 
 #include "allocator.hpp"
+#include "array.hpp"
 #include "detail/compat.hpp"
 #include "detail/sanitizer.hpp"
 #include "error.hpp"
@@ -114,7 +115,7 @@ template <typename Lock, std::size_t... BucketSizes> class RELOCO_OWNER bucket_a
   static constexpr std::size_t bucket_count = sizeof...(BucketSizes);
   static_assert(bucket_count >= 1, "bucket_allocator: at least one bucket size is required");
 
-  static constexpr std::array<std::size_t, bucket_count> bucket_sizes = {BucketSizes...};
+  static constexpr array<std::size_t, bucket_count> bucket_sizes = {BucketSizes...};
 
   [[nodiscard]] static constexpr bool bucket_sizes_strictly_ascending() noexcept {
     for (std::size_t i = 1; i < bucket_count; ++i) {
@@ -228,7 +229,7 @@ public:
 private:
   // Helper struct so pools_ can be constructed via an index-sequence
   // delegating constructor while upstream_ is initialized directly (see
-  // the mem-initializer list above) -- std::array itself has no such
+  // the mem-initializer list above) -- array itself has no such
   // constructor, so this wraps it in a tiny aggregate-like helper that
   // does.
   struct pools_holder {
@@ -239,7 +240,7 @@ private:
 
     [[nodiscard]] constexpr pool_allocator_context<Lock> &operator[](std::size_t idx) noexcept { return pools[idx]; }
 
-    std::array<pool_allocator_context<Lock>, bucket_count> pools;
+    array<pool_allocator_context<Lock>, bucket_count> pools;
   };
 
   // Smallest bucket index whose size is >= target, or bucket_count if

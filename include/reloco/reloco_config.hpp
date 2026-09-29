@@ -60,8 +60,8 @@
 // A build that never set JPLCZ_RELOCO_PORTING_HEADERS never generates this
 // file, so __has_include below is false and this is a no-op.
 #if defined(__has_include)
-#if __has_include("detail/porting/generated_config.hpp")
-#include "detail/porting/generated_config.hpp"
+#if __has_include("detail/porting/reloco_generated_config.hpp")
+#include "detail/porting/reloco_generated_config.hpp"
 #endif
 #endif
 

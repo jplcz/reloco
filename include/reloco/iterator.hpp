@@ -79,11 +79,11 @@
  * generating iterators never need a hand-written one at all.
  */
 
+#include "array.hpp"
 #include "error.hpp"
 #include "lifetime.hpp"
 #include "optional.hpp"
 
-#include <array>
 #include <cstddef>
 #include <functional>
 #include <type_traits>
@@ -312,7 +312,7 @@ public:
 
   /** @brief Rust slice `[T]::windows(N)` equivalent: yields every
    * contiguous, overlapping run of `N` consecutive items as an owned
-   * `std::array<value_type, N>` (a copy of each window, so this works
+   * `array<value_type, N>` (a copy of each window, so this works
    * regardless of whether `*this` borrows or owns its items). Requires
    * `value_type` to be default-constructible and copyable. */
   template <std::size_t N> [[nodiscard]] windows_iterator<Derived, N> windows() noexcept;
@@ -910,15 +910,15 @@ private:
  * `iterator_adaptor::windows()`. */
 template <typename Upstream, std::size_t N>
 class windows_iterator : public iterator_adaptor<windows_iterator<Upstream, N>,
-                                                 std::array<std::remove_reference_t<decltype(detail::unwrap_item(
-                                                                std::declval<typename Upstream::item_type &>()))>,
-                                                            N>> {
+                                                 reloco::array<std::remove_reference_t<decltype(detail::unwrap_item(
+                                                                   std::declval<typename Upstream::item_type &>()))>,
+                                                               N>> {
 public:
   static_assert(N > 0, "windows<N>: N must be > 0");
 
   using value_type =
       std::remove_reference_t<decltype(detail::unwrap_item(std::declval<typename Upstream::item_type &>()))>;
-  using item_type = std::array<value_type, N>;
+  using item_type = reloco::array<value_type, N>;
 
   explicit windows_iterator(Upstream upstream) noexcept : upstream_(std::move(upstream)) {}
 
@@ -928,7 +928,7 @@ public:
         auto item = upstream_.next();
         if (!item)
           return nullopt;
-        buffer_[i] = detail::unwrap_item(*item);
+        buffer_.data_[i] = detail::unwrap_item(*item);
       }
       filled_ = true;
       return item_type(buffer_);
@@ -937,14 +937,14 @@ public:
     if (!item)
       return nullopt;
     for (std::size_t i = 0; i + 1 < N; ++i)
-      buffer_[i] = std::move(buffer_[i + 1]);
-    buffer_[N - 1] = detail::unwrap_item(*item);
+      buffer_.data_[i] = std::move(buffer_.data_[i + 1]);
+    buffer_.data_[N - 1] = detail::unwrap_item(*item);
     return item_type(buffer_);
   }
 
 private:
   Upstream upstream_;
-  std::array<value_type, N> buffer_{};
+  reloco::array<value_type, N> buffer_{};
   bool filled_{false};
 };
 
@@ -1243,6 +1243,12 @@ template <typename T> [[nodiscard]] constexpr iota_iterator<T> iota(T start, T e
   static_assert(std::is_integral_v<T>, "reloco::iota requires an integral type");
   return iota_iterator<T>{start, end};
 }
+
+template <typename T> auto array<T, 0>::iter() & noexcept { return reloco::iter(*this); }
+template <typename T> auto array<T, 0>::iter() const & noexcept { return reloco::iter(*this); }
+
+template <typename T, std::size_t N> auto array<T, N>::iter() & noexcept { return reloco::iter(*this); }
+template <typename T, std::size_t N> auto array<T, N>::iter() const & noexcept { return reloco::iter(*this); }
 
 } // namespace reloco
 

@@ -98,6 +98,7 @@
  * @endcode
  */
 
+#include "reloco_config.hpp"
 #include "detail/compat.hpp"
 #include "duration.hpp"
 #include "error.hpp"
@@ -182,6 +183,14 @@ namespace reloco {
  * you need. See the file-level documentation above.
  */
 template <typename Tag> struct instant_clock_traits;
+
+} // namespace reloco
+
+#if defined(RELOCO_TIME_BACKEND_CUSTOM)
+#include "detail/porting/time_backend.hpp"
+#endif
+
+namespace reloco {
 
 #if RELOCO_DETAIL_INSTANT_HAS_POSIX_CLOCK
 

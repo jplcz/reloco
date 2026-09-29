@@ -54,7 +54,7 @@ public:
 
   constexpr basic_inline_string() noexcept { data_[0] = CharT(); }
 
-  // Trivial copy and move semantics (behaves like std::array)
+  // Trivial copy and move semantics (behaves like array)
   constexpr basic_inline_string(const basic_inline_string &) noexcept = default;
   constexpr basic_inline_string &operator=(const basic_inline_string &) noexcept = default;
   constexpr basic_inline_string(basic_inline_string &&) noexcept = default;

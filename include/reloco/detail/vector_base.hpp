@@ -70,8 +70,10 @@
  */
 
 #include "../construction_helpers.hpp"
+#include "../contiguous_iterator.hpp"
 #include "../error.hpp"
 #include "../function_ref.hpp"
+#include "../iterator.hpp"
 #include "../reloco_extern.hpp"
 #include "type_metadata.hpp"
 #include "type_operations.hpp"
@@ -561,12 +563,10 @@ public:
   using const_reference = const T &;
   using pointer = T *;
   using const_pointer = const T *;
-  using iterator = T *;
-  using const_iterator = const T *;
-  using reverse_iterator = std::reverse_iterator<iterator>;
-  using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
   RELOCO_BLOCK_RVALUE_ACCESS(T);
+  RELOCO_GENERATE_DYNAMIC_CONTIGUOUS_ITERATORS(T, typed_vector_base, static_cast<T *>(this->data_), this->size())
+  RELOCO_GENERATE_ITER()
 
 protected:
   // Forward constructors to the underlying Base policy
@@ -642,6 +642,11 @@ public:
    */
   [[nodiscard]] result<void> try_pop_back() & noexcept {
     return Base::try_pop_back_base(detail::get_operations_for<T>(), metadata_for<T>);
+  }
+
+  void pop_back() noexcept {
+    RELOCO_ASSERT(!this->empty(), "Trying to pop back from empty container");
+    std::ignore = try_pop_back();
   }
 
   // ---- capacity ----
@@ -931,37 +936,6 @@ public:
     RELOCO_DEBUG_ASSERT(this->data_ != nullptr, "vector data is null");
     return static_cast<const T *>(this->data_);
   }
-
-  // ---- iteration ----
-
-  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) iterator begin() & noexcept RELOCO_LIFETIMEBOUND {
-    return static_cast<T *>(this->data_);
-  }
-  [[nodiscard]] iterator end() & noexcept RELOCO_LIFETIMEBOUND { return static_cast<T *>(this->data_) + Base::size_; }
-  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) const_iterator
-      begin() const & noexcept RELOCO_LIFETIMEBOUND {
-    return static_cast<const T *>(this->data_);
-  }
-  [[nodiscard]] const_iterator end() const & noexcept RELOCO_LIFETIMEBOUND {
-    return static_cast<const T *>(this->data_) + Base::size_;
-  }
-  [[nodiscard]] const_iterator cbegin() const & noexcept RELOCO_LIFETIMEBOUND {
-    return static_cast<const T *>(this->data_);
-  }
-  [[nodiscard]] const_iterator cend() const & noexcept RELOCO_LIFETIMEBOUND {
-    return static_cast<const T *>(this->data_) + Base::size_;
-  }
-
-  [[nodiscard]] reverse_iterator rbegin() & noexcept RELOCO_LIFETIMEBOUND { return reverse_iterator(end()); }
-  [[nodiscard]] reverse_iterator rend() & noexcept RELOCO_LIFETIMEBOUND { return reverse_iterator(begin()); }
-  [[nodiscard]] const_reverse_iterator rbegin() const & noexcept RELOCO_LIFETIMEBOUND {
-    return const_reverse_iterator(end());
-  }
-  [[nodiscard]] const_reverse_iterator rend() const & noexcept RELOCO_LIFETIMEBOUND {
-    return const_reverse_iterator(begin());
-  }
-  [[nodiscard]] const_reverse_iterator crbegin() const & noexcept RELOCO_LIFETIMEBOUND { return rbegin(); }
-  [[nodiscard]] const_reverse_iterator crend() const & noexcept RELOCO_LIFETIMEBOUND { return rend(); }
 
 private:
   template <typename... Args>

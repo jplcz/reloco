@@ -58,6 +58,8 @@ public:
   using page_type = PageView;
   using os_page_type = typename page_type::os_page_type;
 
+  static constexpr size_t MAX_ORDER = MaxOrder;
+
   constexpr buddy_allocator() noexcept = default;
 
   /**

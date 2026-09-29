@@ -110,7 +110,7 @@ namespace reloco {
  * equivalent attribute (e.g. MSVC).
  */
 struct RELOCO_EXPORT reloco_global_alloc {
-  [[nodiscard]] static RELOCO_API allocator_ref default_allocator() noexcept;
+  [[nodiscard]] static allocator_ref default_allocator() noexcept;
 };
 
 /**

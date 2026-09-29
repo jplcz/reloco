@@ -61,6 +61,7 @@
 #include "rvalue_safety.hpp"
 #include "send_sync.hpp"
 #include "span.hpp"
+#include "iterator.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -112,12 +113,17 @@ struct RELOCO_EXPORT bytes_storage {
  */
 class RELOCO_POINTER bytes : private detail::requires_explicit_send_sync {
 public:
+  RELOCO_GENERATE_STATIC_OWNING_ITERATORS(const std::byte, ptr_, len_)
+  RELOCO_GENERATE_ITER()
+
   constexpr bytes() noexcept = default;
 
   bytes(const bytes &) = default;
   bytes(bytes &&) noexcept = default;
   bytes &operator=(const bytes &) = default;
   bytes &operator=(bytes &&) noexcept = default;
+
+  ~bytes() noexcept = default;
 
   /**
    * @brief Allocates a new buffer and copies `data` into it. Returns an
