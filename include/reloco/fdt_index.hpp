@@ -222,8 +222,8 @@ public:
   using item_type = result<fdt_property_view>;
 
   fdt_index_property_iterator(span<const std::byte> struct_region, span<const std::byte> strings_region,
-                               std::size_t cursor) noexcept
-      : struct_region_(struct_region), strings_region_(strings_region), cursor_(cursor) {}
+                               std::size_t start_offset) noexcept
+      : struct_region_(struct_region), strings_region_(strings_region), cursor_(start_offset) {}
 
   [[nodiscard]] optional<item_type> next_impl() noexcept {
     if (done_)

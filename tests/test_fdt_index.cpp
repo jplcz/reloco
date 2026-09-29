@@ -209,10 +209,11 @@ TEST(FdtIndexTest, PropertiesOfNodeExcludeChildNodesAndGrandchildProperties) {
   std::size_t count = 0;
   for (auto prop : idx.properties(*root)) {
     ASSERT_TRUE(prop);
-    if (count == 0)
+    if (count == 0) {
       EXPECT_EQ(prop->name, "#address-cells");
-    else if (count == 1)
+    } else if (count == 1) {
       EXPECT_EQ(prop->name, "compatible");
+    }
     ++count;
   }
   EXPECT_EQ(count, 2u);
