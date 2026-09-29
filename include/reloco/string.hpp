@@ -55,6 +55,7 @@
 #include "error.hpp"
 #include "expected.hpp"
 #include "lifetime.hpp"
+#include "optional.hpp"
 #include "relocatable.hpp"
 #include "rvalue_safety.hpp"
 #include "string_view.hpp"
@@ -64,7 +65,6 @@
 #include <cstddef>
 #include <functional>
 #include <iterator>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -553,14 +553,14 @@ private:
   /**
    * @brief If @p sv aliases this string's own buffer (see @ref aliases),
    * returns an independent, freshly allocated copy of its contents;
-   * otherwise returns `std::nullopt` so the caller can use @p sv directly.
+   * otherwise returns `nullopt` so the caller can use @p sv directly.
    *
    * The returned `result<basic_string>` may itself hold an allocation
    * failure, which the caller must propagate.
    */
-  [[nodiscard]] std::optional<result<basic_string>> materialize_if_aliasing(view_type sv) const noexcept {
+  [[nodiscard]] optional<result<basic_string>> materialize_if_aliasing(view_type sv) const noexcept {
     if (!aliases(sv))
-      return std::nullopt;
+      return nullopt;
     basic_string copy(alloc_);
     auto res = copy.try_append(sv);
     if (!res)
