@@ -180,10 +180,12 @@ public:
     return tmp;
   }
 
-  [[nodiscard]] friend bool operator==(const intrusive_hash_iterator &lhs, const intrusive_hash_iterator &rhs) noexcept {
+  [[nodiscard]] friend bool operator==(const intrusive_hash_iterator &lhs,
+                                       const intrusive_hash_iterator &rhs) noexcept {
     return lhs.m_cur == rhs.m_cur;
   }
-  [[nodiscard]] friend bool operator!=(const intrusive_hash_iterator &lhs, const intrusive_hash_iterator &rhs) noexcept {
+  [[nodiscard]] friend bool operator!=(const intrusive_hash_iterator &lhs,
+                                       const intrusive_hash_iterator &rhs) noexcept {
     return !(lhs == rhs);
   }
 
@@ -306,7 +308,7 @@ public:
    * max_buckets`, and `elements_per_bucket >= 1`.
    */
   [[nodiscard]] size_type suggest_bucket_count_for_insert(size_type n, size_type min_buckets, size_type max_buckets,
-                                                           size_type elements_per_bucket = 1) const & noexcept {
+                                                          size_type elements_per_bucket = 1) const & noexcept {
     RELOCO_ASSERT(min_buckets >= 1,
                   "reloco::intrusive_hash_table::suggest_bucket_count_for_insert: min_buckets must be >= 1");
     RELOCO_ASSERT(min_buckets <= max_buckets,
@@ -324,7 +326,7 @@ public:
    * max_buckets]`.
    */
   [[nodiscard]] size_type suggest_bucket_count_for_remove(size_type n, size_type min_buckets, size_type max_buckets,
-                                                           size_type elements_per_bucket = 1) const & noexcept {
+                                                          size_type elements_per_bucket = 1) const & noexcept {
     RELOCO_ASSERT(min_buckets >= 1,
                   "reloco::intrusive_hash_table::suggest_bucket_count_for_remove: min_buckets must be >= 1");
     RELOCO_ASSERT(min_buckets <= max_buckets,
@@ -402,9 +404,9 @@ public:
   size_type bucket_count() const && = delete;
   size_type load_factor_permille() const && = delete;
   size_type suggest_bucket_count_for_insert(size_type n, size_type min_buckets, size_type max_buckets,
-                                             size_type elements_per_bucket = 1) const && = delete;
+                                            size_type elements_per_bucket = 1) const && = delete;
   size_type suggest_bucket_count_for_remove(size_type n, size_type min_buckets, size_type max_buckets,
-                                             size_type elements_per_bucket = 1) const && = delete;
+                                            size_type elements_per_bucket = 1) const && = delete;
   iterator begin() && = delete;
   iterator end() && = delete;
   const_iterator begin() const && = delete;
@@ -561,7 +563,7 @@ private:
   // target bucket count (an average-chain-length-of-1 projection) into
   // the caller-supplied "sensible" range.
   [[nodiscard]] static size_type clamp_bucket_count(size_type target, size_type min_buckets,
-                                                     size_type max_buckets) noexcept {
+                                                    size_type max_buckets) noexcept {
     if (target < min_buckets)
       return min_buckets;
     if (target > max_buckets)

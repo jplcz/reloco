@@ -146,11 +146,11 @@ template <template <typename> class Trait, typename T> consteval bool compose_se
   if constexpr (std::is_class_v<T>) {
     bool ok = true;
     template for (constexpr auto b :
-                  define_static_array(std::meta::bases_of(^^T, std::meta::access_context::unchecked())))
-      ok = ok && Trait<typename [:std::meta::type_of(b):]>::value;
-    template for (constexpr auto m : define_static_array(std::meta::nonstatic_data_members_of(
-                      ^^T, std::meta::access_context::unchecked())))
-      ok = ok && Trait<typename [:std::meta::type_of(m):]>::value;
+                  define_static_array(std::meta::bases_of(^^T, std::meta::access_context::unchecked()))) ok =
+        ok &&Trait<typename[:std::meta::type_of(b):]>::value;
+    template for (constexpr auto m : define_static_array(
+                      std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked()))) ok =
+        ok &&Trait<typename[:std::meta::type_of(m):]>::value;
     return ok;
   } else {
     return true;

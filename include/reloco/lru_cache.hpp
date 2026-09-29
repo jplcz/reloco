@@ -202,7 +202,7 @@ public:
    * whatever the allocator itself fails with.
    */
   [[nodiscard]] static result<lru_cache> try_create(size_type capacity,
-                                                     allocator_ref alloc = default_allocator()) noexcept {
+                                                    allocator_ref alloc = default_allocator()) noexcept {
     if (capacity == 0)
       return unexpected(error::invalid_argument);
 
@@ -319,8 +319,7 @@ public:
    * returning a mutable reference to its value. Fails with
    * `error::not_found` if absent.
    */
-  template <typename K>
-  [[nodiscard]] result<std::reference_wrapper<Mapped>> try_get(const K &key) & noexcept {
+  template <typename K> [[nodiscard]] result<std::reference_wrapper<Mapped>> try_get(const K &key) & noexcept {
     auto found = index_.try_at(key);
     if (!found)
       return unexpected(found.error());
@@ -345,8 +344,7 @@ public:
    * @brief Like `try_peek`, but returns a mutable reference without
    * promoting @p key.
    */
-  template <typename K>
-  [[nodiscard]] result<std::reference_wrapper<Mapped>> try_peek_mut(const K &key) & noexcept {
+  template <typename K> [[nodiscard]] result<std::reference_wrapper<Mapped>> try_peek_mut(const K &key) & noexcept {
     auto found = index_.try_at(key);
     if (!found)
       return unexpected(found.error());

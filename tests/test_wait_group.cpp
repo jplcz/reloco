@@ -45,9 +45,8 @@ TEST(WaitGroupTest, WaitBlocksUntilAllClonesAcrossMultipleThreadsAreDropped) {
   std::vector<std::thread> threads;
   for (int i = 0; i < kWorkers; ++i) {
     reloco::wait_group clone = *wg;
-    threads.emplace_back([clone = std::move(clone), &completed]() mutable {
-      completed.fetch_add(1, std::memory_order_relaxed);
-    });
+    threads.emplace_back(
+        [clone = std::move(clone), &completed]() mutable { completed.fetch_add(1, std::memory_order_relaxed); });
   }
 
   std::move(*wg).wait();

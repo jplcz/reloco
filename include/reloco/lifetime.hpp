@@ -118,11 +118,11 @@
  * @brief Closes a block opened by RELOCO_BEGIN_SUPPRESS_GCC_BOUNDS_FALSE_POSITIVE.
  */
 #if defined(__GNUC__) && !defined(__clang__)
-#define RELOCO_BEGIN_SUPPRESS_GCC_BOUNDS_FALSE_POSITIVE                                                              \
-  RELOCO_PRAGMA(GCC diagnostic push)                                                                                 \
-  RELOCO_PRAGMA(GCC diagnostic ignored "-Warray-bounds")                                                             \
-  RELOCO_PRAGMA(GCC diagnostic ignored "-Wstringop-overread")                                                        \
-  RELOCO_PRAGMA(GCC diagnostic ignored "-Wstringop-overflow")                                                        \
+#define RELOCO_BEGIN_SUPPRESS_GCC_BOUNDS_FALSE_POSITIVE                                                                \
+  RELOCO_PRAGMA(GCC diagnostic push)                                                                                   \
+  RELOCO_PRAGMA(GCC diagnostic ignored "-Warray-bounds")                                                               \
+  RELOCO_PRAGMA(GCC diagnostic ignored "-Wstringop-overread")                                                          \
+  RELOCO_PRAGMA(GCC diagnostic ignored "-Wstringop-overflow")                                                          \
   RELOCO_PRAGMA(GCC diagnostic ignored "-Waggressive-loop-optimizations")
 #define RELOCO_END_SUPPRESS_GCC_BOUNDS_FALSE_POSITIVE RELOCO_PRAGMA(GCC diagnostic pop)
 #else

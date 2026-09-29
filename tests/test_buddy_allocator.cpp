@@ -189,8 +189,7 @@ TEST_F(BuddyAllocatorTest, PowerOfTwoSplitAndCoalesce) {
   EXPECT_EQ(mock_ram[8].buddy_order, 3);
 
   // Free the block. It should instantly coalesce back to Order 4!
-  auto free_res = allocator.free(p, 2);
-  ASSERT_TRUE(free_res.has_value());
+  allocator.free(p, 2);
 
   EXPECT_TRUE(mock_ram[0].is_free);
   EXPECT_EQ(mock_ram[0].buddy_order, 4);
@@ -237,8 +236,7 @@ TEST_F(BuddyAllocatorTest, ExactPageFree_BinaryDecomposition) {
 
   // Ensure free_n traverses the exact same MSB-to-LSB logic
   // and coalesces everything flawlessly back into Order 4 (16 pages).
-  auto free_res = allocator.free_n(p, 5);
-  ASSERT_TRUE(free_res.has_value());
+  allocator.free_n(p, 5);
 
   EXPECT_TRUE(mock_ram[0].is_free);
   EXPECT_EQ(mock_ram[0].buddy_order, 4);
@@ -318,8 +316,7 @@ TEST_F(BuddyAllocatorTest, Constrained_AlignmentAndLowPfn) {
   EXPECT_FALSE(mock_ram[8].is_free);
 
   // Freeing the 3 pages should heal the entire 1024-page block
-  auto free_res = allocator.free_n(p, 3);
-  ASSERT_TRUE(free_res.has_value());
+  allocator.free_n(p, 3);
   EXPECT_TRUE(mock_ram[0].is_free);
   EXPECT_EQ(mock_ram[0].buddy_order, 10);
 }
@@ -352,7 +349,7 @@ TEST_F(BuddyAllocatorTest, Constrained_BoundaryCrossingPrevention) {
   // The allocation (PFN 16..19) is consumed
   EXPECT_FALSE(mock_ram[16].is_free);
 
-  ASSERT_TRUE(allocator.free_n(p, 4));
+  allocator.free_n(p, 4);
 }
 
 TEST_F(BuddyAllocatorTest, Constrained_HighPfnRejection) {
@@ -405,7 +402,7 @@ TEST_F(BuddyAllocatorTest, Constrained_ExactFitNoPadding) {
   EXPECT_FALSE(mock_ram[0].is_free);
   EXPECT_EQ(mock_ram[0].buddy_order, 0); // Exact allocations are stamped with 0
 
-  ASSERT_TRUE(allocator.free_n(alloc_res.value(), 16));
+  allocator.free_n(alloc_res.value(), 16);
   EXPECT_TRUE(mock_ram[0].is_free);
   EXPECT_EQ(mock_ram[0].buddy_order, 4); // Heals back to Order 4 (16 pages)
 }
@@ -427,7 +424,7 @@ TEST_F(BuddyAllocatorTest, AllocateUpTo_ExactFit) {
   EXPECT_EQ(alloc_res.value().page.pfn(), 0u);
 
   // Clean up
-  ASSERT_TRUE(allocator.free_n(alloc_res.value().page, 13));
+  allocator.free_n(alloc_res.value().page, 13);
 }
 
 TEST_F(BuddyAllocatorTest, AllocateUpTo_FragmentedFallback) {

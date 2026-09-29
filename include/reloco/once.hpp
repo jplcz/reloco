@@ -103,11 +103,10 @@ public:
    * possible.
    */
   template <typename F> void call_once(F &&f) noexcept(std::is_nothrow_invocable_v<F &>) {
-    auto init_result = try_call_once(
-        [&f]() noexcept(std::is_nothrow_invocable_v<F &>) -> result<void> {
-          std::forward<F>(f)();
-          return {};
-        });
+    auto init_result = try_call_once([&f]() noexcept(std::is_nothrow_invocable_v<F &>) -> result<void> {
+      std::forward<F>(f)();
+      return {};
+    });
     RELOCO_ASSERT(init_result.has_value(), "once::call_once: unreachable -- wrapped closure never fails");
   }
 

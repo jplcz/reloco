@@ -127,11 +127,11 @@ template <typename T> consteval bool compose_relocatable() {
       return false;
     bool ok = true;
     template for (constexpr auto b :
-                  define_static_array(std::meta::bases_of(^^T, std::meta::access_context::unchecked())))
-      ok = ok && is_trivially_relocatable<typename [:std::meta::type_of(b):]>::value;
-    template for (constexpr auto m : define_static_array(std::meta::nonstatic_data_members_of(
-                      ^^T, std::meta::access_context::unchecked())))
-      ok = ok && is_trivially_relocatable<typename [:std::meta::type_of(m):]>::value;
+                  define_static_array(std::meta::bases_of(^^T, std::meta::access_context::unchecked()))) ok =
+        ok &&is_trivially_relocatable<typename[:std::meta::type_of(b):]>::value;
+    template for (constexpr auto m : define_static_array(
+                      std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked()))) ok =
+        ok &&is_trivially_relocatable<typename[:std::meta::type_of(m):]>::value;
     return ok;
   } else {
     return false;

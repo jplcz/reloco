@@ -38,7 +38,8 @@ TEST(OnceTest, CallOnceRunsTheClosureExactlyOnce) {
 TEST(OnceTest, TryCallOncePropagatesFailureAndAllowsRetry) {
   reloco::once flag;
 
-  auto failed = flag.try_call_once([]() -> reloco::result<void> { return reloco::unexpected(reloco::error::out_of_range); });
+  auto failed =
+      flag.try_call_once([]() -> reloco::result<void> { return reloco::unexpected(reloco::error::out_of_range); });
   ASSERT_FALSE(failed);
   EXPECT_EQ(failed.error(), reloco::error::out_of_range);
   EXPECT_FALSE(flag.is_completed());

@@ -59,8 +59,9 @@ inline bool futex_wait_timeout(const futex_word &word, std::uint32_t expected, d
   // FUTEX_WAIT/UMTX_OP_WAIT_UINT's own relative-timeout convention in
   // userspace. EWOULDBLOCK means the timeout elapsed first, exactly like
   // ETIMEDOUT there.
-  sbintime_t sbt = (static_cast<sbintime_t>(timeout.as_secs()) << 32) |
-                   static_cast<sbintime_t>((static_cast<std::uint64_t>(timeout.subsec_nanos()) << 32) / 1'000'000'000ULL);
+  sbintime_t sbt =
+      (static_cast<sbintime_t>(timeout.as_secs()) << 32) |
+      static_cast<sbintime_t>((static_cast<std::uint64_t>(timeout.subsec_nanos()) << 32) / 1'000'000'000ULL);
   mtx_lock(&futex_kernel_lock);
   int error = 0;
   if (word.load(std::memory_order_acquire) == expected)

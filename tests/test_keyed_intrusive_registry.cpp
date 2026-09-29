@@ -115,8 +115,7 @@ TEST(KeyedIntrusiveRegistryTest, RehashGrowsBucketArrayAndPreservesEntries) {
   std::size_t suggested = registry.suggest_bucket_count_for_insert(0, 1, 1000);
   EXPECT_GE(suggested, 10u);
 
-  ASSERT_TRUE(registry.rehash(reloco::span<registry_type::node *>(big_buckets.data(), big_buckets.size()))
-                  .has_value());
+  ASSERT_TRUE(registry.rehash(reloco::span<registry_type::node *>(big_buckets.data(), big_buckets.size())).has_value());
   EXPECT_EQ(registry.bucket_count(), 16u);
   EXPECT_EQ(registry.size(), 10u);
 

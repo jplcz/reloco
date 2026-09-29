@@ -115,7 +115,8 @@ public:
     return *this;
   }
 
-  wait_group(wait_group &&other) noexcept : state_(std::exchange(other.state_, shared_ptr<detail::wait_group_state>())) {}
+  wait_group(wait_group &&other) noexcept
+      : state_(std::exchange(other.state_, shared_ptr<detail::wait_group_state>())) {}
 
   wait_group &operator=(wait_group &&other) noexcept {
     if (this != &other) {

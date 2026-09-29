@@ -74,7 +74,7 @@ public:
     RELOCO_ASSERT(m_node != nullptr, "Called on consumed transaction");
     return *this;
   }
-  
+
 private:
   T *m_node{nullptr};
   Container *m_container{nullptr};

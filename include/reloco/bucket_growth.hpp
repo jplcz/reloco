@@ -102,7 +102,7 @@ namespace detail {
 }
 
 [[nodiscard]] constexpr std::size_t clamp_bucket_count(std::size_t target, std::size_t min_buckets,
-                                                        std::size_t max_buckets) noexcept {
+                                                       std::size_t max_buckets) noexcept {
   if (target < min_buckets)
     return min_buckets;
   if (target > max_buckets)
@@ -207,13 +207,13 @@ namespace detail {
  */
 struct linear {
   [[nodiscard]] std::size_t next_bucket_count(std::size_t /*current_buckets*/, std::size_t projected_elements,
-                                               std::size_t elements_per_bucket, std::size_t min_buckets,
-                                               std::size_t max_buckets) const noexcept {
+                                              std::size_t elements_per_bucket, std::size_t min_buckets,
+                                              std::size_t max_buckets) const noexcept {
     RELOCO_ASSERT(elements_per_bucket >= 1, "reloco::bucket_growth::linear: elements_per_bucket must be >= 1");
     RELOCO_ASSERT(min_buckets >= 1 && min_buckets <= max_buckets,
                   "reloco::bucket_growth::linear: min_buckets must be >= 1 and <= max_buckets");
     return detail::clamp_bucket_count(detail::ceil_div(projected_elements, elements_per_bucket), min_buckets,
-                                       max_buckets);
+                                      max_buckets);
   }
 };
 
@@ -251,8 +251,8 @@ struct doubling_then_ratio {
   std::size_t ratio_denominator = 4;
 
   [[nodiscard]] std::size_t next_bucket_count(std::size_t current_buckets, std::size_t projected_elements,
-                                               std::size_t elements_per_bucket, std::size_t min_buckets,
-                                               std::size_t max_buckets) const noexcept {
+                                              std::size_t elements_per_bucket, std::size_t min_buckets,
+                                              std::size_t max_buckets) const noexcept {
     RELOCO_ASSERT(elements_per_bucket >= 1,
                   "reloco::bucket_growth::doubling_then_ratio: elements_per_bucket must be >= 1");
     RELOCO_ASSERT(min_buckets >= 1 && min_buckets <= max_buckets,
@@ -264,8 +264,8 @@ struct doubling_then_ratio {
     std::size_t buckets = current_buckets == 0 ? 1 : current_buckets;
     while (buckets < target) {
       std::size_t next = buckets < knee_buckets
-                              ? saturating_mul(buckets, std::size_t{2})
-                              : detail::ceil_div(saturating_mul(buckets, ratio_numerator), ratio_denominator);
+                             ? saturating_mul(buckets, std::size_t{2})
+                             : detail::ceil_div(saturating_mul(buckets, ratio_numerator), ratio_denominator);
       if (next <= buckets) // saturated at SIZE_MAX -- fall back to the plain linear target below
         break;
       buckets = next;
@@ -302,8 +302,8 @@ struct fixed_ratio {
   std::size_t ratio_denominator = 4;
 
   [[nodiscard]] std::size_t next_bucket_count(std::size_t current_buckets, std::size_t projected_elements,
-                                               std::size_t elements_per_bucket, std::size_t min_buckets,
-                                               std::size_t max_buckets) const noexcept {
+                                              std::size_t elements_per_bucket, std::size_t min_buckets,
+                                              std::size_t max_buckets) const noexcept {
     RELOCO_ASSERT(elements_per_bucket >= 1, "reloco::bucket_growth::fixed_ratio: elements_per_bucket must be >= 1");
     RELOCO_ASSERT(min_buckets >= 1 && min_buckets <= max_buckets,
                   "reloco::bucket_growth::fixed_ratio: min_buckets must be >= 1 and <= max_buckets");
@@ -346,8 +346,8 @@ struct fixed_ratio {
  */
 struct power_of_two {
   [[nodiscard]] std::size_t next_bucket_count(std::size_t /*current_buckets*/, std::size_t projected_elements,
-                                               std::size_t elements_per_bucket, std::size_t min_buckets,
-                                               std::size_t max_buckets) const noexcept {
+                                              std::size_t elements_per_bucket, std::size_t min_buckets,
+                                              std::size_t max_buckets) const noexcept {
     RELOCO_ASSERT(elements_per_bucket >= 1, "reloco::bucket_growth::power_of_two: elements_per_bucket must be >= 1");
     RELOCO_ASSERT(min_buckets >= 1 && min_buckets <= max_buckets,
                   "reloco::bucket_growth::power_of_two: min_buckets must be >= 1 and <= max_buckets");
@@ -386,8 +386,8 @@ struct power_of_two {
  */
 struct prime_growth {
   [[nodiscard]] std::size_t next_bucket_count(std::size_t /*current_buckets*/, std::size_t projected_elements,
-                                               std::size_t elements_per_bucket, std::size_t min_buckets,
-                                               std::size_t max_buckets) const noexcept {
+                                              std::size_t elements_per_bucket, std::size_t min_buckets,
+                                              std::size_t max_buckets) const noexcept {
     RELOCO_ASSERT(elements_per_bucket >= 1, "reloco::bucket_growth::prime_growth: elements_per_bucket must be >= 1");
     RELOCO_ASSERT(min_buckets >= 1 && min_buckets <= max_buckets,
                   "reloco::bucket_growth::prime_growth: min_buckets must be >= 1 and <= max_buckets");
@@ -425,8 +425,8 @@ struct chunked {
   std::size_t chunk_size = 64;
 
   [[nodiscard]] std::size_t next_bucket_count(std::size_t /*current_buckets*/, std::size_t projected_elements,
-                                               std::size_t elements_per_bucket, std::size_t min_buckets,
-                                               std::size_t max_buckets) const noexcept {
+                                              std::size_t elements_per_bucket, std::size_t min_buckets,
+                                              std::size_t max_buckets) const noexcept {
     RELOCO_ASSERT(chunk_size >= 1, "reloco::bucket_growth::chunked: chunk_size must be >= 1");
     RELOCO_ASSERT(elements_per_bucket >= 1, "reloco::bucket_growth::chunked: elements_per_bucket must be >= 1");
     RELOCO_ASSERT(min_buckets >= 1 && min_buckets <= max_buckets,
@@ -463,8 +463,8 @@ struct chunked {
  */
 struct sqrt_curve {
   [[nodiscard]] std::size_t next_bucket_count(std::size_t /*current_buckets*/, std::size_t projected_elements,
-                                               std::size_t elements_per_bucket, std::size_t min_buckets,
-                                               std::size_t max_buckets) const noexcept {
+                                              std::size_t elements_per_bucket, std::size_t min_buckets,
+                                              std::size_t max_buckets) const noexcept {
     RELOCO_ASSERT(elements_per_bucket >= 1, "reloco::bucket_growth::sqrt_curve: elements_per_bucket must be >= 1");
     RELOCO_ASSERT(min_buckets >= 1 && min_buckets <= max_buckets,
                   "reloco::bucket_growth::sqrt_curve: min_buckets must be >= 1 and <= max_buckets");

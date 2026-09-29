@@ -21,8 +21,8 @@ struct other_int_tag {};
 // thread_local storage with any other translation unit's tests.
 struct test_traits_tag {};
 using local_slots = reloco::tls_local_slots<>;
-using tagged_local_slots = reloco::tls_local_slots<reloco::null_mutex, reloco::bucket_growth::doubling_then_ratio,
-                                                    test_traits_tag>;
+using tagged_local_slots =
+    reloco::tls_local_slots<reloco::null_mutex, reloco::bucket_growth::doubling_then_ratio, test_traits_tag>;
 } // namespace
 
 template <> struct reloco::tls_local_state_traits<test_traits_tag> {

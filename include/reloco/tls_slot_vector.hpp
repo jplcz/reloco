@@ -451,7 +451,7 @@ private:
     if (needed <= index)
       needed = index + 1;
     std::size_t new_capacity = growth_.next_bucket_count(old_capacity, needed, /*elements_per_bucket=*/1,
-                                                          /*min_buckets=*/1, /*max_buckets=*/RELOCO_TLS_MAX_SLOTS);
+                                                         /*min_buckets=*/1, /*max_buckets=*/RELOCO_TLS_MAX_SLOTS);
     auto block = alloc_.allocate(new_capacity * sizeof(void *), alignof(void *));
     if (!block)
       return unexpected(block.error());
@@ -555,7 +555,7 @@ public:
    * context's vector itself (through @p alloc) first, if needed. */
   template <typename T, typename Tag2>
   [[nodiscard]] static result<std::reference_wrapper<T>> get_or_create(allocator_ref alloc = default_allocator(),
-                                                                        T initial = T{}) noexcept {
+                                                                       T initial = T{}) noexcept {
     auto vec = ensure_vector(alloc);
     if (!vec)
       return unexpected(vec.error());

@@ -88,7 +88,7 @@
 #ifdef RELOCO_IPC_LINUX_KERNEL
 /* Linux Kernel Space */
 #include <asm/barrier.h>
-#include <linux/bug.h> /* For BUG_ON */
+#include <linux/bug.h>   /* For BUG_ON */
 #include <linux/errno.h> /* For EFAULT */
 #include <linux/string.h>
 #include <linux/types.h>
@@ -228,10 +228,10 @@ RELOCO_FAULT_TAG(consumer_write_idx_refresh);
  * of untrusted, peer-owned shared state added to this header should go
  * through this macro rather than a bare `RELOCO_IPC_LOAD_ACQUIRE(...)`.
  */
-#define RELOCO_IPC_LOAD_ACQUIRE_FAULT(ptr, FaultTag, local)                                                           \
-  do {                                                                                                               \
-    (local) = RELOCO_IPC_LOAD_ACQUIRE(ptr);                                                                          \
-    RELOCO_IPC_FAULT_POINT_ARGS(FaultTag, local);                                                                    \
+#define RELOCO_IPC_LOAD_ACQUIRE_FAULT(ptr, FaultTag, local)                                                            \
+  do {                                                                                                                 \
+    (local) = RELOCO_IPC_LOAD_ACQUIRE(ptr);                                                                            \
+    RELOCO_IPC_FAULT_POINT_ARGS(FaultTag, local);                                                                      \
   } while (0)
 
 #ifdef __cplusplus
@@ -460,8 +460,7 @@ static inline int reloco_ipc_producer_init(struct reloco_ipc_producer *p, struct
  * spoofed/corrupted (the security boundary tripped) -- treat the ring as
  * compromised and stop using it, do not retry.
  */
-static inline reloco_ipc_ssize_t reloco_ipc_try_write(struct reloco_ipc_producer *p, const void *data,
-                                                      uint32_t count) {
+static inline reloco_ipc_ssize_t reloco_ipc_try_write(struct reloco_ipc_producer *p, const void *data, uint32_t count) {
   struct reloco_ipc_spsc_page *page = p->page;
   uint64_t w = RELOCO_IPC_LOAD_RELAXED(&page->write_idx);
   uint64_t r = p->cached_read_idx;

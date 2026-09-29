@@ -172,4 +172,3 @@ TEST(FaultInjectionTest, ConvenienceMacroDeducesArgsAndArms) {
   EXPECT_EQ(30, a);
   EXPECT_TRUE(blocked);
 }
-

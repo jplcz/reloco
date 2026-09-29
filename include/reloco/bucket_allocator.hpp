@@ -141,10 +141,8 @@ public:
    *   `pool_allocator_context` (see its constructor) -- one shared slab
    *   byte size across every bucket, not configurable per-bucket.
    */
-  constexpr bucket_allocator_context(std::size_t alignment, allocator_ref upstream,
-                                     std::size_t slab_bytes) noexcept
-      : upstream_(upstream),
-        pools_(std::make_index_sequence<bucket_count>{}, alignment, upstream, slab_bytes) {}
+  constexpr bucket_allocator_context(std::size_t alignment, allocator_ref upstream, std::size_t slab_bytes) noexcept
+      : upstream_(upstream), pools_(std::make_index_sequence<bucket_count>{}, alignment, upstream, slab_bytes) {}
 
   bucket_allocator_context(const bucket_allocator_context &) = delete;
   bucket_allocator_context &operator=(const bucket_allocator_context &) = delete;
@@ -280,8 +278,8 @@ struct allocator_traits<bucket_allocator_tag<Lock, BucketSizes...>> {
     ctx->deallocate_block(ptr, bytes);
   }
 
-  [[nodiscard]] static result<std::size_t> expand_in_place(value_ref<context_type> ctx, void *ptr,
-                                                           std::size_t old_size, std::size_t new_size) noexcept {
+  [[nodiscard]] static result<std::size_t> expand_in_place(value_ref<context_type> ctx, void *ptr, std::size_t old_size,
+                                                           std::size_t new_size) noexcept {
     return ctx->try_expand_in_place(ptr, old_size, new_size);
   }
 

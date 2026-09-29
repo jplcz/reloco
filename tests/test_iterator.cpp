@@ -165,11 +165,8 @@ TEST(IteratorTest, FindReturnsFirstMatch) {
 TEST(IteratorTest, ChainedAdaptorsComposeInOneRangeFor) {
   std::vector<int> v{1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
   std::size_t total = 0;
-  for (auto pair : reloco::iter(v)
-                        .filter([](int &x) { return x % 2 == 0; })
-                        .map([](int &x) { return x * x; })
-                        .take(2)
-                        .enumerate())
+  for (auto pair :
+       reloco::iter(v).filter([](int &x) { return x % 2 == 0; }).map([](int &x) { return x * x; }).take(2).enumerate())
     total += pair.first + static_cast<std::size_t>(pair.second);
   // even -> {2,4,6,8,10}; squared -> {4,16,36,64,100}; take(2) -> {4,16};
   // enumerate -> (0,4),(1,16); total = 0+4+1+16 = 21.
@@ -251,9 +248,8 @@ TEST(IteratorTest, RepeatIsInfiniteUnlessBounded) {
 }
 
 TEST(IteratorTest, SuccessorsStopsWhenGeneratorReturnsEmpty) {
-  auto powers = reloco::successors(optional<int>(1), [](int &prev) {
-    return prev <= 32 ? optional<int>(prev * 2) : nullopt;
-  });
+  auto powers =
+      reloco::successors(optional<int>(1), [](int &prev) { return prev <= 32 ? optional<int>(prev * 2) : nullopt; });
   std::vector<int> out;
   for (auto x : powers)
     out.push_back(x);
@@ -300,9 +296,9 @@ TEST(IteratorTest, FlattenConcatenatesInnerRanges) {
 TEST(IteratorTest, FlatMapMapsThenFlattens) {
   std::vector<int> v{1, 2, 3};
   std::vector<int> out;
-  reloco::iter(v)
-      .flat_map([](int x) { return std::vector<int>{x, x * 10}; })
-      .for_each([&](int x) { out.push_back(x); });
+  reloco::iter(v).flat_map([](int x) { return std::vector<int>{x, x * 10}; }).for_each([&](int x) {
+    out.push_back(x);
+  });
   EXPECT_EQ(out, (std::vector<int>{1, 10, 2, 20, 3, 30}));
 }
 
@@ -323,10 +319,7 @@ TEST(IteratorTest, DedupCollapsesConsecutiveDuplicates) {
 TEST(IteratorTest, IntersperseInsertsSeparatorBetweenItems) {
   std::vector<int> v{1, 2, 3};
   std::vector<int> out;
-  reloco::iter(v)
-      .map([](int x) { return x; })
-      .intersperse(0)
-      .for_each([&](int x) { out.push_back(x); });
+  reloco::iter(v).map([](int x) { return x; }).intersperse(0).for_each([&](int x) { out.push_back(x); });
   EXPECT_EQ(out, (std::vector<int>{1, 0, 2, 0, 3}));
 }
 
@@ -352,8 +345,7 @@ TEST(IteratorTest, IntersperseOfSingleElementYieldsNoSeparator) {
 TEST(IteratorTest, WindowsYieldsOverlappingFixedSizeSlices) {
   std::vector<int> v{1, 2, 3, 4, 5};
   std::vector<std::array<int, 3>> out;
-  reloco::iter(v).map([](int x) { return x; }).windows<3>().for_each(
-      [&](std::array<int, 3> a) { out.push_back(a); });
+  reloco::iter(v).map([](int x) { return x; }).windows<3>().for_each([&](std::array<int, 3> a) { out.push_back(a); });
   ASSERT_EQ(out.size(), 3u);
   EXPECT_EQ(out[0], (std::array<int, 3>{1, 2, 3}));
   EXPECT_EQ(out[1], (std::array<int, 3>{2, 3, 4}));
@@ -370,10 +362,9 @@ TEST(IteratorTest, MergeInterleavesTwoSortedRanges) {
   std::vector<int> a{1, 3, 5};
   std::vector<int> b{2, 4, 6};
   std::vector<int> out;
-  reloco::iter(a)
-      .map([](int x) { return x; })
-      .merge(reloco::iter(b).map([](int x) { return x; }))
-      .for_each([&](int x) { out.push_back(x); });
+  reloco::iter(a).map([](int x) { return x; }).merge(reloco::iter(b).map([](int x) { return x; })).for_each([&](int x) {
+    out.push_back(x);
+  });
   EXPECT_EQ(out, (std::vector<int>{1, 2, 3, 4, 5, 6}));
 }
 
@@ -401,10 +392,12 @@ TEST(IteratorTest, MinMaxFindExtremes) {
 
 TEST(IteratorTest, MinByKeyAndMaxByKeyUseProjection) {
   std::vector<std::string> v{"aaa", "b", "cc"};
-  auto mn = reloco::iter(v).map([](const std::string &s) { return s; }).min_by_key(
-      [](const std::string &s) { return s.size(); });
-  auto mx = reloco::iter(v).map([](const std::string &s) { return s; }).max_by_key(
-      [](const std::string &s) { return s.size(); });
+  auto mn = reloco::iter(v).map([](const std::string &s) { return s; }).min_by_key([](const std::string &s) {
+    return s.size();
+  });
+  auto mx = reloco::iter(v).map([](const std::string &s) { return s; }).max_by_key([](const std::string &s) {
+    return s.size();
+  });
   ASSERT_TRUE(mn.has_value());
   ASSERT_TRUE(mx.has_value());
   EXPECT_EQ(*mn, "b");
@@ -427,8 +420,7 @@ namespace {
 // rvalue-qualified overloads are still only reachable through a direct
 // call-expression check.
 template <typename T, typename = void> struct can_call_begin_on : std::false_type {};
-template <typename T> struct can_call_begin_on<T, std::void_t<decltype(std::declval<T>().begin())>> : std::true_type {
-};
+template <typename T> struct can_call_begin_on<T, std::void_t<decltype(std::declval<T>().begin())>> : std::true_type {};
 
 template <typename T, typename = void> struct can_call_next_on : std::false_type {};
 template <typename T> struct can_call_next_on<T, std::void_t<decltype(std::declval<T>().next())>> : std::true_type {};

@@ -2,9 +2,9 @@
 //
 // SPDX-License-Identifier: BSD-2-Clause
 
-#include "reloco/pool_allocator.hpp"
 #include "reloco/heap_allocator.hpp"
 #include "reloco/mutex.hpp"
+#include "reloco/pool_allocator.hpp"
 #include "reloco/spin_lock.hpp"
 
 #include <gtest/gtest.h>

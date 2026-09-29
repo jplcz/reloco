@@ -141,15 +141,14 @@ namespace detail {
 template <typename T, typename = void> struct has_display : std::false_type {};
 
 template <typename T>
-struct has_display<
-    T, std::void_t<decltype(Display<T>::format(std::declval<const T &>(), std::declval<const sink &>()))>>
+struct has_display<T,
+                   std::void_t<decltype(Display<T>::format(std::declval<const T &>(), std::declval<const sink &>()))>>
     : std::true_type {};
 
 template <typename T, typename = void> struct has_debug : std::false_type {};
 
 template <typename T>
-struct has_debug<T,
-                std::void_t<decltype(Debug<T>::format(std::declval<const T &>(), std::declval<const sink &>()))>>
+struct has_debug<T, std::void_t<decltype(Debug<T>::format(std::declval<const T &>(), std::declval<const sink &>()))>>
     : std::true_type {};
 
 } // namespace detail

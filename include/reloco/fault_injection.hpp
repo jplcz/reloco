@@ -273,7 +273,6 @@ inline void fault_root_set_head(fault_node *head) noexcept {
 
 #endif // RELOCO_ENABLE_FAULT_INJECTION
 
-
 /**
  * @class fault_injector
  * @brief Caller-owned scoped control block that arms one fault point
@@ -325,8 +324,7 @@ public:
    * {...};`) declared before it, not an inline temporary lambda with
    * captures, exactly like any other `function_ref`-taking reloco API.
    */
-  explicit fault_injector(hook_type hook RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
-      : hook_(hook) {
+  explicit fault_injector(hook_type hook RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept : hook_(hook) {
 #if defined(RELOCO_ENABLE_FAULT_INJECTION)
 #if RELOCO_FAULT_INJECTION_UNLIMITED_TLS
     auto current = detail::fault_slot<Tag>::get();
@@ -396,14 +394,13 @@ namespace detail {
  * template parameters) -- this is what lets a separate header build
  * further hook-wrapping utilities (fire-once, conditional, ...) on top of
  * this same deduction without needing to duplicate or otherwise touch it. */
-template <typename Callable>
-struct fault_hook_signature : fault_hook_signature<decltype(&Callable::operator())> {};
+template <typename Callable> struct fault_hook_signature : fault_hook_signature<decltype(&Callable::operator())> {};
 
-#define RELOCO_DETAIL_FAULT_HOOK_SIGNATURE(qualifiers)                                                               \
-  template <typename C, typename R, typename... A> struct fault_hook_signature<R (C::*)(A...) qualifiers> {          \
-    template <typename Tag> using injector_type = fault_injector<Tag, std::remove_reference_t<A>...>;                \
-    template <template <typename...> class Target, typename... Prefix>                                              \
-    using bind = Target<Prefix..., std::remove_reference_t<A>...>;                                                  \
+#define RELOCO_DETAIL_FAULT_HOOK_SIGNATURE(qualifiers)                                                                 \
+  template <typename C, typename R, typename... A> struct fault_hook_signature<R (C::*)(A...) qualifiers> {            \
+    template <typename Tag> using injector_type = fault_injector<Tag, std::remove_reference_t<A>...>;                  \
+    template <template <typename...> class Target, typename... Prefix>                                                 \
+    using bind = Target<Prefix..., std::remove_reference_t<A>...>;                                                     \
   }
 
 RELOCO_DETAIL_FAULT_HOOK_SIGNATURE();
@@ -448,8 +445,7 @@ namespace detail {
  * `Tag`/`Args...` -- `O(number of currently active fault_injectors on
  * this thread)`. Under `RELOCO_FAULT_INJECTION_UNLIMITED_TLS`, simply
  * reads `Tag`'s own private slot -- `O(1)`. */
-template <typename Tag, typename... Args>
-[[nodiscard]] inline fault_injector<Tag, Args...> *fault_active() noexcept {
+template <typename Tag, typename... Args> [[nodiscard]] inline fault_injector<Tag, Args...> *fault_active() noexcept {
 #if RELOCO_FAULT_INJECTION_UNLIMITED_TLS
   auto current = fault_slot<Tag>::get();
   RELOCO_ASSERT(current.has_value(), "reloco::fault_injection: TLS slot unavailable");
@@ -520,7 +516,8 @@ template <typename Tag, typename... Args> [[nodiscard]] inline bool fault_armed(
  * reloco `Tag` template parameter already uses. Purely a naming
  * convenience -- an equivalent hand-written `struct` works identically.
  */
-#define RELOCO_FAULT_TAG(name) struct name {}
+#define RELOCO_FAULT_TAG(name)                                                                                         \
+  struct name {}
 
 /**
  * @def RELOCO_FAULT_INJECTOR(var, Tag, ...)
@@ -547,6 +544,6 @@ template <typename Tag, typename... Args> [[nodiscard]] inline bool fault_armed(
  * // `fi` is a reloco::fault_injector<commit_race_point, std::uint64_t>, already armed.
  * @endcode
  */
-#define RELOCO_FAULT_INJECTOR(var, Tag, ...)                                                                         \
-  auto var##_hook = __VA_ARGS__;                                                                                     \
+#define RELOCO_FAULT_INJECTOR(var, Tag, ...)                                                                           \
+  auto var##_hook = __VA_ARGS__;                                                                                       \
   auto var = ::reloco::detail::make_fault_injector<Tag>(var##_hook)

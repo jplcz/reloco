@@ -126,8 +126,7 @@ template <typename F> lazy_lock(F) -> lazy_lock<std::invoke_result_t<F &>, F>;
  * @brief `is_send<lazy_lock<T, F>>` requires both `is_send<T>` and
  * `is_send<F>` -- see the file-level documentation above.
  */
-template <typename T, typename F>
-struct is_send<lazy_lock<T, F>> : std::bool_constant<is_send_v<T> && is_send_v<F>> {};
+template <typename T, typename F> struct is_send<lazy_lock<T, F>> : std::bool_constant<is_send_v<T> && is_send_v<F>> {};
 
 /**
  * @brief `is_sync<lazy_lock<T, F>>` requires `is_send<T>`, `is_sync<T>`,

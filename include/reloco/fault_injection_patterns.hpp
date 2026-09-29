@@ -174,8 +174,7 @@ private:
   std::size_t remaining_skip_;
 };
 
-template <typename Hook>
-using skip_n_hook_for = typename fault_hook_signature<Hook>::template bind<skip_n_hook, Hook>;
+template <typename Hook> using skip_n_hook_for = typename fault_hook_signature<Hook>::template bind<skip_n_hook, Hook>;
 
 /**
  * @brief Wraps a hook so it fires exactly once, on the single @p target
@@ -250,7 +249,7 @@ using every_n_hook_for = typename fault_hook_signature<Hook>::template bind<ever
  * RELOCO_FAULT_MUTATE(fi, my_point, int, reloco_fault_value += 1000);
  * @endcode
  */
-#define RELOCO_FAULT_MUTATE(var, Tag, Type, ...)                                                                     \
+#define RELOCO_FAULT_MUTATE(var, Tag, Type, ...)                                                                       \
   RELOCO_FAULT_INJECTOR(var, Tag, [&](Type &reloco_fault_value) { __VA_ARGS__; })
 
 /**
@@ -294,10 +293,10 @@ using every_n_hook_for = typename fault_hook_signature<Hook>::template bind<ever
  * // producer_commit() called three times: only the first two observe the corruption.
  * @endcode
  */
-#define RELOCO_FAULT_FIRE_N(var, Tag, count, ...)                                                                    \
-  auto var##_hook = __VA_ARGS__;                                                                                     \
-  ::reloco::detail::fire_n_times_hook_for<decltype(var##_hook)> var##_countdown(var##_hook,                          \
-                                                                                 static_cast<std::size_t>(count));   \
+#define RELOCO_FAULT_FIRE_N(var, Tag, count, ...)                                                                      \
+  auto var##_hook = __VA_ARGS__;                                                                                       \
+  ::reloco::detail::fire_n_times_hook_for<decltype(var##_hook)> var##_countdown(var##_hook,                            \
+                                                                                static_cast<std::size_t>(count));      \
   auto var = ::reloco::detail::make_fault_injector<Tag>(var##_countdown)
 
 /**
@@ -320,11 +319,11 @@ using every_n_hook_for = typename fault_hook_signature<Hook>::template bind<ever
  *                    [](int &idx) { idx = -1; });
  * @endcode
  */
-#define RELOCO_FAULT_WHEN(var, Tag, pred, ...)                                                                       \
-  auto var##_pred = (pred);                                                                                          \
-  auto var##_hook = __VA_ARGS__;                                                                                     \
-  ::reloco::detail::conditional_hook_for<decltype(var##_pred), decltype(var##_hook)> var##_cond(var##_pred,          \
-                                                                                                  var##_hook);        \
+#define RELOCO_FAULT_WHEN(var, Tag, pred, ...)                                                                         \
+  auto var##_pred = (pred);                                                                                            \
+  auto var##_hook = __VA_ARGS__;                                                                                       \
+  ::reloco::detail::conditional_hook_for<decltype(var##_pred), decltype(var##_hook)> var##_cond(var##_pred,            \
+                                                                                                var##_hook);           \
   auto var = ::reloco::detail::make_fault_injector<Tag>(var##_cond)
 
 /**
@@ -339,9 +338,9 @@ using every_n_hook_for = typename fault_hook_signature<Hook>::template bind<ever
  * RELOCO_FAULT_SKIP_N(fi, warm_up_point, 10, [](int &v) { v = -1; });
  * @endcode
  */
-#define RELOCO_FAULT_SKIP_N(var, Tag, skip, ...)                                                                     \
-  auto var##_hook = __VA_ARGS__;                                                                                     \
-  ::reloco::detail::skip_n_hook_for<decltype(var##_hook)> var##_skip(var##_hook, static_cast<std::size_t>(skip));    \
+#define RELOCO_FAULT_SKIP_N(var, Tag, skip, ...)                                                                       \
+  auto var##_hook = __VA_ARGS__;                                                                                       \
+  ::reloco::detail::skip_n_hook_for<decltype(var##_hook)> var##_skip(var##_hook, static_cast<std::size_t>(skip));      \
   auto var = ::reloco::detail::make_fault_injector<Tag>(var##_skip)
 
 /**
@@ -357,9 +356,9 @@ using every_n_hook_for = typename fault_hook_signature<Hook>::template bind<ever
  * RELOCO_FAULT_NTH(fi, retry_point, 3, [](int &attempt) { attempt = -1; });
  * @endcode
  */
-#define RELOCO_FAULT_NTH(var, Tag, n, ...)                                                                           \
-  auto var##_hook = __VA_ARGS__;                                                                                     \
-  ::reloco::detail::nth_call_hook_for<decltype(var##_hook)> var##_nth(var##_hook, static_cast<std::size_t>(n));      \
+#define RELOCO_FAULT_NTH(var, Tag, n, ...)                                                                             \
+  auto var##_hook = __VA_ARGS__;                                                                                       \
+  ::reloco::detail::nth_call_hook_for<decltype(var##_hook)> var##_nth(var##_hook, static_cast<std::size_t>(n));        \
   auto var = ::reloco::detail::make_fault_injector<Tag>(var##_nth)
 
 /**
@@ -374,9 +373,9 @@ using every_n_hook_for = typename fault_hook_signature<Hook>::template bind<ever
  * RELOCO_FAULT_EVERY_N(fi, flaky_point, 5, [](int &v) { v = -1; });
  * @endcode
  */
-#define RELOCO_FAULT_EVERY_N(var, Tag, n, ...)                                                                       \
-  auto var##_hook = __VA_ARGS__;                                                                                     \
-  ::reloco::detail::every_n_hook_for<decltype(var##_hook)> var##_period(var##_hook, static_cast<std::size_t>(n));    \
+#define RELOCO_FAULT_EVERY_N(var, Tag, n, ...)                                                                         \
+  auto var##_hook = __VA_ARGS__;                                                                                       \
+  ::reloco::detail::every_n_hook_for<decltype(var##_hook)> var##_period(var##_hook, static_cast<std::size_t>(n));      \
   auto var = ::reloco::detail::make_fault_injector<Tag>(var##_period)
 
 /**
@@ -390,7 +389,8 @@ using every_n_hook_for = typename fault_hook_signature<Hook>::template bind<ever
  * RELOCO_FAULT_TOGGLE(fi, retry_flag_point, bool);
  * @endcode
  */
-#define RELOCO_FAULT_TOGGLE(var, Tag, Type) RELOCO_FAULT_MUTATE(var, Tag, Type, reloco_fault_value = !reloco_fault_value)
+#define RELOCO_FAULT_TOGGLE(var, Tag, Type)                                                                            \
+  RELOCO_FAULT_MUTATE(var, Tag, Type, reloco_fault_value = !reloco_fault_value)
 
 /**
  * @def RELOCO_FAULT_INCREMENT(var, Tag, Type, delta)
@@ -403,8 +403,7 @@ using every_n_hook_for = typename fault_hook_signature<Hook>::template bind<ever
  * RELOCO_FAULT_INCREMENT(fi, index_point, std::size_t, -1);
  * @endcode
  */
-#define RELOCO_FAULT_INCREMENT(var, Tag, Type, delta)                                                                \
-  RELOCO_FAULT_MUTATE(var, Tag, Type, reloco_fault_value += (delta))
+#define RELOCO_FAULT_INCREMENT(var, Tag, Type, delta) RELOCO_FAULT_MUTATE(var, Tag, Type, reloco_fault_value += (delta))
 
 /**
  * @def RELOCO_FAULT_XOR(var, Tag, Type, mask)

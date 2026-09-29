@@ -97,8 +97,8 @@ TEST(ThreadBuilderTest, SpawnWithoutNameOrStackSizeBehavesLikePlainSpawn) {
 
 TEST(ThreadBuilderTest, StackSizeIsAcceptedAndThreadStillRuns) {
   std::atomic<bool> ran{false};
-  auto handle =
-      reloco::thread_builder().stack_size(1 << 20).spawn([&ran]() noexcept { ran.store(true, std::memory_order_relaxed); });
+  auto handle = reloco::thread_builder().stack_size(1 << 20).spawn(
+      [&ran]() noexcept { ran.store(true, std::memory_order_relaxed); });
 #if defined(RELOCO_THREAD_BACKEND_STD)
   // std::thread has no portable stack-size knob at all.
   ASSERT_FALSE(handle.has_value());
@@ -120,13 +120,11 @@ TEST(ThreadBuilderTest, OversizedNameIsReportedAsCapacityExceeded) {
 TEST(ThreadBuilderTest, NameIsAppliedToTheSpawnedThreadOnLinux) {
   RELOCO_BEGIN_UNSAFE_BUFFER_USAGE;
   char observed[16] = {};
-  auto handle = reloco::thread_builder().name("reloco-wrk").spawn([&observed]() noexcept {
-    prctl(PR_GET_NAME, observed);
-  });
+  auto handle =
+      reloco::thread_builder().name("reloco-wrk").spawn([&observed]() noexcept { prctl(PR_GET_NAME, observed); });
   ASSERT_TRUE(handle.has_value());
   std::move(*handle).join();
   EXPECT_STREQ(observed, "reloco-wrk");
   RELOCO_END_UNSAFE_BUFFER_USAGE;
 }
 #endif
-

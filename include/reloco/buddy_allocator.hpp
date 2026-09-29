@@ -5,6 +5,7 @@
 #pragma once
 
 #include "reloco/array.hpp"
+#include "reloco/detail/assert.hpp"
 #include "reloco/error.hpp"
 #include "reloco/lifetime.hpp"
 #include <cstddef>
@@ -156,10 +157,10 @@ public:
   /**
    * @brief Frees a block, automatically coalescing with its buddies if possible.
    */
-  [[nodiscard]] result<void> free(page_type p, size_t order) noexcept {
-    if (p.is_null() || order > MaxOrder) {
-      return unexpected(error::invalid_argument);
-    }
+  void free(page_type p, size_t order) noexcept {
+    // In a kernel, freeing invalid memory is a fatal bug. Panic immediately.
+    RELOCO_ASSERT(!p.is_null(), "buddy_allocator: Attempted to free a null page");
+    RELOCO_ASSERT(order <= MaxOrder, "buddy_allocator: Invalid order passed to free");
 
     while (order < MaxOrder) {
       // Safely calculate mathematical buddy (bounds & zone verified by PageView)
@@ -188,8 +189,6 @@ public:
     p.set_buddy_order(static_cast<uint16_t>(order));
     p.set_buddy_free(true);
     free_areas_[order].push_front(p.get_os_page());
-
-    return {};
   }
 
   /**
@@ -269,12 +268,12 @@ public:
 
   /**
    * @brief Exact page freeing.
-   * Parses the binary decomposition of `num_pages` and frees the individual power-of-two chunks.
+   * Shreds an arbitrary contiguous range back into the largest possible
+   * aligned power-of-two chunks, returning them to the buddy system.
    */
-  [[nodiscard]] result<void> free_n(page_type p, size_t num_pages) noexcept {
-    if (p.is_null() || num_pages == 0) {
-      return unexpected(error::invalid_argument);
-    }
+  void free_n(page_type p, size_t num_pages) noexcept {
+    RELOCO_ASSERT(!p.is_null(), "buddy_allocator: Attempted to free_n a null page");
+    RELOCO_ASSERT(num_pages > 0, "buddy_allocator: Attempted to free_n 0 pages");
 
     page_type current = p;
     size_t remaining = num_pages;
@@ -298,21 +297,16 @@ public:
         order++;
       }
 
-      auto free_res = free(current, order);
-      if (!free_res)
-        return unexpected(free_res.error());
+      free(current, order);
 
       remaining -= (1ULL << order);
 
       if (remaining > 0) {
         auto next_res = current.try_add(1ULL << order);
-        if (!next_res)
-          return unexpected(next_res.error());
+        RELOCO_ASSERT(next_res.has_value(), "buddy_allocator: free_n crossed illegal zone boundary");
         current = *next_res;
       }
     }
-
-    return {};
   }
 
   struct physical_constraint {
@@ -377,9 +371,7 @@ public:
           size_t front_padding = start_pfn - block_pfn;
           if (front_padding > 0) {
             // We use our exact page freeing logic to decompose the front padding!
-            auto free_res = free_n(block, front_padding);
-            if (!free_res)
-              return unexpected(free_res.error());
+            free_n(block, front_padding);
           }
 
           // Navigate to our actual starting page
@@ -389,9 +381,7 @@ public:
           size_t back_padding = (1ULL << order) - front_padding - num_pages;
           if (back_padding > 0) {
             auto back_page = alloc_page.try_add(num_pages).value();
-            auto free_res = free_n(back_page, back_padding);
-            if (!free_res)
-              return unexpected(free_res.error());
+            free_n(back_page, back_padding);
           }
 
           // Mark our specific exact allocation as consumed (using chunk_order 0 for exact slices)

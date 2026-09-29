@@ -19,7 +19,7 @@ TEST(BucketGrowthTest, LinearIgnoresCurrentBucketsAndClamps) {
 
 TEST(BucketGrowthTest, DoublingThenRatioDoublesBelowKnee) {
   reloco::bucket_growth::doubling_then_ratio strategy{/*knee_buckets=*/1024, /*ratio_numerator=*/5,
-                                                       /*ratio_denominator=*/4};
+                                                      /*ratio_denominator=*/4};
   // Starting from 0 (empty table): 1 -> 2 -> 4 -> 8 -> 16 to reach >= 10.
   EXPECT_EQ(strategy.next_bucket_count(0, 10, 1, 1, 1'000'000), 16);
   // Already big enough: no growth needed.
@@ -30,7 +30,7 @@ TEST(BucketGrowthTest, DoublingThenRatioDoublesBelowKnee) {
 
 TEST(BucketGrowthTest, DoublingThenRatioSlowsDownAboveKnee) {
   reloco::bucket_growth::doubling_then_ratio strategy{/*knee_buckets=*/8, /*ratio_numerator=*/5,
-                                                       /*ratio_denominator=*/4};
+                                                      /*ratio_denominator=*/4};
   // current_buckets (8) is already at the knee: growth should use the 5/4
   // ratio, not doubling, to reach a target just above it.
   std::size_t result = strategy.next_bucket_count(8, 9, 1, 1, 1'000'000);
@@ -111,9 +111,7 @@ TEST(BucketGrowthTest, ChunkedRoundsUpToNextMultipleOfChunkSizeAndClamps) {
 TEST(BucketGrowthTest, AllStrategiesShareTheSameInterfaceShape) {
   // Every strategy takes the same 5 arguments and returns std::size_t,
   // so they are interchangeable behind a template callsite.
-  auto run_all = [](auto &&strategy) -> std::size_t {
-    return strategy.next_bucket_count(4, 10, 2, 1, 1000);
-  };
+  auto run_all = [](auto &&strategy) -> std::size_t { return strategy.next_bucket_count(4, 10, 2, 1, 1000); };
   EXPECT_GT(run_all(reloco::bucket_growth::linear{}), 0u);
   EXPECT_GT(run_all(reloco::bucket_growth::doubling_then_ratio{}), 0u);
   EXPECT_GT(run_all(reloco::bucket_growth::fixed_ratio{}), 0u);
