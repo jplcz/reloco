@@ -109,6 +109,7 @@ namespace reloco {
 // IPC PRODUCER (Writer Domain)
 // =========================================================================
 
+/** @brief C++ producer interface for the IPC single-producer ring. */
 class RELOCO_POINTER ipc_producer {
   reloco_ipc_producer ctx_{};
 
@@ -160,6 +161,7 @@ public:
 
   // ---- RAII Zero-Copy Write Transaction ----
 
+  /** @brief RAII zero-copy transaction for writing one IPC message. */
   class RELOCO_POINTER RELOCO_CONSUMABLE(unconsumed) write_tx {
     ipc_producer *p_;
     std::pair<span<uint8_t>, span<uint8_t>> spans_;
@@ -259,6 +261,7 @@ private:
 // IPC CONSUMER (Reader Domain)
 // =========================================================================
 
+/** @brief C++ consumer interface for the IPC single-consumer ring. */
 class RELOCO_POINTER ipc_consumer {
   reloco_ipc_consumer ctx_{};
 
@@ -306,6 +309,7 @@ public:
 
   // ---- RAII Zero-Copy Read Transaction ----
 
+  /** @brief RAII zero-copy transaction for reading one IPC message. */
   class RELOCO_POINTER RELOCO_CONSUMABLE(unconsumed) read_tx {
     ipc_consumer *c_;
     std::pair<span<const uint8_t>, span<const uint8_t>> spans_;

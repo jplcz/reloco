@@ -4,6 +4,10 @@
 
 namespace reloco {
 
+/**
+ * @brief Invokes a callable on scope exit unless dismissed.
+ * @tparam Callable Callable object type.
+ */
 template <typename Callable> class scope_guard {
 public:
   // Store the callable inline on the stack (Zero allocation)

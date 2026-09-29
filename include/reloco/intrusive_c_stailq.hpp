@@ -17,6 +17,7 @@ namespace detail {
 
 // Extracts the `next` pointer via reinterpret_cast from ANY struct field.
 // This allows binding directly to FreeBSD's anonymous `STAILQ_ENTRY` structs.
+/** @brief Accesses an intrusive singly linked-tail-queue hook in an object. */
 template <typename T, auto Hook> struct c_stailq_hook_access {
   [[nodiscard]] static T *&next(T *node) noexcept {
     RELOCO_BEGIN_UNSAFE_BUFFER_USAGE

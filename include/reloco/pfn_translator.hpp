@@ -8,6 +8,12 @@ namespace reloco {
 // Strongly Typed Page Frame Number (PFN)
 // ============================================================================
 
+/**
+ * @brief Typed physical page-frame number.
+ * @tparam SpaceTag Physical address-space tag.
+ * @tparam PageTraits Page-size traits.
+ * @tparam PhysInt Underlying integer representation.
+ */
 template <typename SpaceTag = default_phys_space, typename PageTraits = page_4k, typename PhysInt = std::uint64_t>
 struct phys_pfn {
   using space_tag = SpaceTag;

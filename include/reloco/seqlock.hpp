@@ -26,6 +26,7 @@ public:
   // ==========================================================================
   // WRITER API (Hardware Exclusion + Sequence Signaling)
   // ==========================================================================
+  /** @brief Exclusive writer guard for a guarded seqlock. */
   class RELOCO_SCOPED_CAPABILITY write_guard {
   public:
     write_guard(write_guard &&other) noexcept RELOCO_NO_THREAD_SAFETY_ANALYSIS : cell_(other.cell_) {
@@ -83,6 +84,7 @@ public:
   // ==========================================================================
   // READER API (Lock-Free Typestate Transactions)
   // ==========================================================================
+  /** @brief Lock-free reader transaction for a guarded seqlock snapshot. */
   class RELOCO_CONSUMABLE(consumed) read_tx {
   public:
     // TSA is explicitly disabled here because readers mathematically bypass the mutex.

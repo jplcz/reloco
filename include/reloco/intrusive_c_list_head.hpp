@@ -16,12 +16,14 @@ namespace reloco {
 namespace detail {
 
 // Defines the exact memory layout of Linux's `struct list_head`.
+/** @brief Linux-style doubly linked list-head node. */
 struct c_list_head_node {
   c_list_head_node *next;
   c_list_head_node *prev;
 };
 
 // Extracts the node and computes the `container_of` offset.
+/** @brief Accesses a Linux-style list-head hook in an object. */
 template <typename T, auto Hook> struct c_linux_hook_access {
   [[nodiscard]] static c_list_head_node *get(T *node) noexcept {
     RELOCO_BEGIN_UNSAFE_BUFFER_USAGE

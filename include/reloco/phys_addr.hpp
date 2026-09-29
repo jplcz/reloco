@@ -138,6 +138,12 @@ struct dmap_mapper {
 // Smart Pointer for Auto-Translating Access
 // ============================================================================
 
+/**
+ * @brief Pointer-like direct-map view of a physical address.
+ * @tparam T Pointed-to type.
+ * @tparam Mapper Direct-map policy.
+ * @tparam PhysInt Physical-address integer type.
+ */
 template <typename T, typename Mapper, typename PhysInt = std::uint64_t> class dmap_ptr {
 public:
   using space_tag = typename Mapper::space_tag;

@@ -11,6 +11,10 @@
 
 namespace reloco {
 
+/**
+ * @brief Contiguous physical memory interval.
+ * @tparam PhysInt Physical-address integer type.
+ */
 template <typename PhysInt = uint64_t> struct memory_region {
   PhysInt base;
   PhysInt size;

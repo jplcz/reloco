@@ -39,14 +39,32 @@ where, not a tutorial.
 | `pool_allocator.hpp` | `pool_allocator<Lock>`, `pool_allocator_tag<Lock>`, `pool_allocator_context<Lock>`, `null_mutex` | Fixed-block-size `allocator_traits` backend carving blocks out of slabs obtained from an upstream allocator, with kernel-style "unlock, allocate, relock" refill |
 | `bucket_allocator.hpp` | `bucket_allocator<Lock, BucketSizes...>`, `bucket_allocator_tag<Lock, BucketSizes...>`, `bucket_allocator_context<Lock, BucketSizes...>` | General-purpose `allocator_traits` backend combining a compile-time list of `pool_allocator`s, one per size bucket, routing each request to the smallest bucket that fits |
 | `bucket_growth.hpp` | `bucket_growth::linear`, `bucket_growth::doubling_then_ratio`, `bucket_growth::fixed_ratio`, `bucket_growth::power_of_two`, `bucket_growth::prime_growth`, `bucket_growth::chunked`, `bucket_growth::sqrt_curve` | Optional, integer-only bucket-count growth curves for hash containers whose bucket array is caller-sized (e.g. `intrusive_hash_table`); each exposes the same `next_bucket_count(current_buckets, projected_elements, elements_per_bucket, min_buckets, max_buckets)` interface |
+| `buddy_allocator.hpp` | `free_list_archetype<OsPage>`, `buddy_allocator<FreeList, PageView, MaxOrder>` | Fixed-order buddy page allocator using caller-provided free-list and page-view abstractions |
+| `compat_sg.hpp` | `sg_descriptor_layout<StorageType, PfnField, OffsetField, LengthField, LastFlagField, HeaderSize>`, `chained_sg_layout<StorageType, PfnField, OffsetField, LengthField, LastFlagField, ChainFlagField, HeaderSize>`, `compact_sg_codec<Layout, PageTraits, SpaceTag>`, `chained_sg_codec<Layout, PageTraits, SpaceTag>`, `two_level_sg_codec<L1Layout, L2Layout, PageTraits, SpaceTag>` | Compile-time scatter-gather descriptor layouts and codecs for compact, chained, and two-level representations |
 | `keyed_intrusive_registry.hpp` | `keyed_intrusive_registry<T, OwnerKey, Tag, Lock, Hash, KeyEqual>` | Locked, self-allocating "one `T` per `OwnerKey`" registry built on `intrusive_hash_table`; the hash-table-per-owner-key building block for a `RELOCO_TLS_MODEL_OS` kernel/RTOS port (see `tls_provider.hpp`) |
 | `tls_slot_vector.hpp` | `tls_slot_vector<Lock, Growth>`, `tls_slot_index<T, Tag>`, `tls_local_slots<Lock, Growth, Tag>`, `tls_local_state_traits<Tag>` | The classic pthread-key design (global slot table + atomic generation counter, per-context growable pointer vector) as an alternative to `keyed_intrusive_registry.hpp` for the same `RELOCO_TLS_MODEL_OS` use case; `O(1)` slot indexing instead of a hash lookup per `get()`/`set()` |
 | `unique_ptr.hpp` | `unique_ptr<T>` | Move-only, allocator-backed smart pointer with fallible construction |
 | `shared_ptr.hpp` | `shared_ptr<T>`, `weak_ptr<T>`, `enable_shared_from_this<T>` | Reference-counted, allocator-backed smart pointer with fallible construction |
 | `rc.hpp` | `rc<T>`, `weak_rc<T>`, `enable_rc_from_this<T>` | Single-threaded (non-atomic) reference-counted smart pointer, matching Rust's `Rc<T>`/`Weak<T>` |
 | `bytes.hpp` | `bytes`, `bytes_mut` | Immutable, reference-counted, cheaply-cloneable byte buffer and its growable, exclusively-owned mutable counterpart, matching Rust's `bytes::Bytes`/`bytes::BytesMut` |
+| `masked_byte_region.hpp` | `masked_byte_region<Size, NoncePolicy>`, `security::inline_nonce_storage` | Fixed-size byte region stored behind a nonce-based masking policy |
+| `phys_addr.hpp` | `default_phys_space`, `host_phys_space`, `guest_phys_space`, `dma_bus_space`, `secure_phys_space`, `nonsecure_phys_space`, `root_phys_space`, `realm_phys_space`, `phys_addr<T, SpaceTag, PhysInt>`, `dmap_mapper<VirtBase, PhysSize, ExpectedSpace, PhysBase>`, `dmap_ptr<T, Mapper, PhysInt>` | Typed physical addresses, address-space tags, and direct-map pointer conversion |
+| `pfn_translator.hpp` | `phys_pfn<SpaceTag, PageTraits, PhysInt>` | Typed physical page-frame number and address conversion |
+| `phys_page.hpp` | `page_traits<Size, Shift>`, `os_traits_base<Derived, OsPage>`, `page_view<PageTraits, OsTraits>` | Page-size traits and an OS-page-backed physical page view |
+| `phys_translator.hpp` | `phys_translator<Policy>` | Policy-based virtual/physical address translator |
+| `region_set.hpp` | `memory_region<PhysInt>`, `region_set<Capacity, PhysInt>` | Fixed-capacity collection of physical memory regions |
+| `sg_list.hpp` | `sg_entry<SpaceTag, PhysInt>`, `sg_list<Container>` | Scatter-gather entries and container |
+| `sg_translator.hpp` | `sg_translator` | Policy-based scatter-gather translator |
+| `tamper.hpp` | `masked_integral<T>`, `tamper_proof_state<EnumT>`, `tamper_bool_impl` | Tamper-detecting integral, enum-state, and boolean storage wrappers |
 | `binary_heap.hpp` | `binary_heap<T, Compare>` | Allocator-backed priority queue matching Rust's `BinaryHeap<T>`, built on `vector<T>` |
 | `digraph.hpp` | `digraph` | Allocator-backed directed graph over dense node indices, rejecting any edge that would close a cycle -- for lock-order/witness-style (`witness(4)`/lockdep) dependency tracking |
+| `intrusive_hash_table.hpp` | `intrusive_hash_hook<T>`, `intrusive_hash_table<T, Hook, KeyOf, Hash, KeyEqual>` | Non-owning, unique-key hash table over caller-owned intrusive nodes |
+| `intrusive_c_list.hpp` | `c_list_hook_layout<T>`, `c_list_hook_access<T, Hook>`, `c_list_iterator<T, Hook, IsConst>`, `c_list<T, Hook>` | Intrusive adapter for a BSD-style doubly linked C list |
+| `intrusive_c_list_head.hpp` | `c_list_head_node`, `c_linux_hook_access<T, Hook>`, `c_list_head_iterator<T, Hook, IsConst>`, `c_list_head<T, Hook>` | Intrusive adapter for a Linux-style list-head doubly linked list |
+| `intrusive_c_slist.hpp` | `c_slist_hook_access<T, Hook>`, `c_slist_iterator<T, Hook, IsConst>`, `c_slist<T, Hook>` | Intrusive adapter for a singly linked C list |
+| `intrusive_c_stailq.hpp` | `c_stailq_hook_access<T, Hook>`, `c_stailq_iterator<T, Hook, IsConst>`, `c_stailq<T, Hook>` | Intrusive adapter for a singly linked tail queue |
+| `intrusive_c_tailq.hpp` | `c_tailq_hook_layout<T>`, `c_tailq_hook_access<T, Hook>`, `c_tailq_iterator<T, Hook, IsConst>`, `c_tailq<T, Hook>` | Intrusive adapter for a doubly linked tail queue |
+| `contiguous_iterator.hpp` | `static_bounds_policy<T>`, `dynamic_bounds_policy<Container, T>`, `contiguous_iterator<T, BoundsPolicy>` | Bounds-aware random-access iterator over contiguous storage |
 | `boxed_slice.hpp` | `boxed_slice<T>` | Fixed-size, allocator-backed owned array with no spare capacity, matching Rust's `Box<[T]>` |
 | `cow.hpp` | `cow<T>`, `cow_traits<T>` | Clone-on-write wrapper matching Rust's `Cow<'a, T>`, with a user-specializable clone customization point |
 | `function.hpp` | `function<R(Args...)>` | Type-erased, allocator-backed callable wrapper with fallible construction |
@@ -1505,6 +1523,27 @@ Unlike every other reloco container, `intrusive_hash_table` has no
 `try_clone`: cloning would require deciding where the clone's nodes live,
 which is exactly the decision this whole file exists to leave to the
 caller.
+
+## Intrusive C list and queue adapters
+
+`include/reloco/intrusive_c_list.hpp`,
+`include/reloco/intrusive_c_list_head.hpp`,
+`include/reloco/intrusive_c_slist.hpp`,
+`include/reloco/intrusive_c_stailq.hpp`,
+`include/reloco/intrusive_c_tailq.hpp`
+
+The `intrusive_c_*` adapters expose BSD list, Linux list-head, singly linked
+list, singly linked tail-queue, and doubly linked tail-queue layouts as C++
+ranges. Nodes and hooks remain caller-owned; the associated hook-layout and
+hook-access types customize how each adapter reaches a node's links.
+
+## `contiguous_iterator<T, BoundsPolicy>`
+
+`include/reloco/contiguous_iterator.hpp`
+
+`contiguous_iterator` is a bounds-aware random-access iterator over
+contiguous storage. `static_bounds_policy` uses a compile-time bound, while
+`dynamic_bounds_policy` obtains the bound from a container.
 
 ## `iter()` / `iterator_adaptor<Derived, Item>` (`Fuse`, `Zip`, `Map`, `Filter`, `Enumerate`, `Take`, `Skip`, `Chain`, `Peekable`, `Flatten`, `StepBy`, `Dedup`, `Intersperse`, `Windows`, `Merge`, `from_fn`, `once`, `repeat`, `successors`, `iota`, `empty`)
 
@@ -2978,6 +3017,61 @@ template parameter pack must be the last template parameter, so `Lock`,
 preceding `BucketSizes...`, cannot itself default while still letting a
 caller supply the (mandatory) bucket list after it. Neither copyable nor
 movable, for the same reasons as `pool_allocator<Lock>`.
+
+## `free_list_archetype<OsPage>` / `buddy_allocator<FreeList, PageView, MaxOrder>`
+
+`include/reloco/buddy_allocator.hpp`
+
+`free_list_archetype` describes the free-list operations required by
+`buddy_allocator`. `buddy_allocator` manages power-of-two page ranges,
+splitting larger blocks and coalescing adjacent free buddies. Its nested
+`physical_constraint` and `range_allocation` types describe allocation
+constraints and returned ranges.
+
+## Scatter-gather compatibility codecs
+
+`include/reloco/compat_sg.hpp`
+
+`sg_descriptor_layout` and `chained_sg_layout` describe descriptor storage
+layouts. `compact_sg_codec`, `chained_sg_codec`, and `two_level_sg_codec`
+encode and decode page ranges using those layouts, page traits, and an
+optional address-space tag.
+
+## Physical addresses, pages, and scatter-gather translation
+
+`include/reloco/phys_addr.hpp`, `include/reloco/pfn_translator.hpp`,
+`include/reloco/phys_page.hpp`, `include/reloco/phys_translator.hpp`,
+`include/reloco/region_set.hpp`, `include/reloco/sg_list.hpp`,
+`include/reloco/sg_translator.hpp`
+
+`phys_addr` carries a physical address together with its address-space tag
+and integer representation. `phys_pfn` represents a page frame number.
+`page_traits`, `os_traits_base`, and `page_view` adapt operating-system page
+objects to typed page operations.
+
+`dmap_mapper` and `dmap_ptr` provide direct-map conversions through a
+caller-supplied mapping policy. `phys_translator` and `sg_translator` apply
+caller-supplied translation policies. `memory_region` and `region_set`
+represent physical ranges; `sg_entry` and `sg_list` represent scatter-gather
+segments.
+
+## `masked_byte_region<Size, NoncePolicy>`
+
+`include/reloco/masked_byte_region.hpp`
+
+`masked_byte_region` stores a fixed-size byte region behind a nonce-based
+masking policy. `security::inline_nonce_storage` supplies an in-object nonce.
+`byte_iterator` and `reference` provide element access through the masked
+representation.
+
+## Tamper-detecting values
+
+`include/reloco/tamper.hpp`
+
+`masked_integral` stores an integral value in an XOR-masked representation.
+`tamper_proof_state` stores enum or boolean state using dual masked
+representations. `tamper_bool_impl` provides the internal boolean
+implementation.
 
 ## Fallible construction: `concepts.hpp` / `construction_helpers.hpp`
 

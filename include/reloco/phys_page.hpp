@@ -16,6 +16,11 @@ namespace reloco {
 // Page Traits
 // ============================================================================
 
+/**
+ * @brief Compile-time page-size and page-shift traits.
+ * @tparam Size Page size in bytes.
+ * @tparam Shift Base-two page-size shift.
+ */
 template <size_t Size, size_t Shift> struct page_traits {
   static_assert((1ULL << Shift) == Size, "Shift must match Size");
   static constexpr size_t page_size = Size;
@@ -33,6 +38,11 @@ using page_1g = page_traits<1024 * 1024 * 1024, 30>;
 // CRTP Base for OS Traits
 // ============================================================================
 
+/**
+ * @brief CRTP helper implementing common operating-system page operations.
+ * @tparam Derived Concrete OS traits type.
+ * @tparam OsPage OS page handle type.
+ */
 template <typename Derived, typename OsPage> struct os_traits_base {
   using os_page_type = OsPage; // Can be a pointer OR a compressed integer/handle!
 
@@ -85,6 +95,11 @@ template <typename Derived, typename OsPage> struct os_traits_base {
 // Page View
 // ============================================================================
 
+/**
+ * @brief Typed view of an operating-system page.
+ * @tparam PageTraits Page-size traits.
+ * @tparam OsTraits Operating-system page traits.
+ */
 template <typename PageTraits, typename OsTraits> class page_view {
 public:
   using page_traits_type = PageTraits;

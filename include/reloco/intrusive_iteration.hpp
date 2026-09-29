@@ -3,6 +3,11 @@
 
 namespace reloco {
 
+/**
+ * @brief Transaction owning an extracted intrusive node until commit or rollback.
+ * @tparam Container Intrusive container type.
+ * @tparam T Node type.
+ */
 template <typename Container, typename T> class RELOCO_CONSUMABLE(unconsumed) isolated_node_tx {
 public:
   // Takes ownership of the statically allocated node
@@ -80,6 +85,11 @@ private:
   Container *m_container{nullptr};
 };
 
+/**
+ * @brief Iterator that extracts nodes satisfying a predicate.
+ * @tparam Container Intrusive container type.
+ * @tparam Pred Selection predicate.
+ */
 template <typename Container, typename Pred>
 class extract_if_iterator : public iterator_adaptor<extract_if_iterator<Container, Pred>,
                                                     isolated_node_tx<Container, typename Container::value_type>> {

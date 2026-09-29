@@ -16,12 +16,14 @@ namespace reloco {
 namespace detail {
 
 // Defines the exact memory layout of FreeBSD's TAILQ_ENTRY(type).
+/** @brief Describes the link layout used by a BSD-style tail queue. */
 template <typename T> struct c_tailq_hook_layout {
   T *next;
   T **prev; // address of previous next element
 };
 
 // Extracts the `next` and `prev` pointers via reinterpret_cast from ANY struct field.
+/** @brief Accesses an intrusive BSD-style tail-queue hook in an object. */
 template <typename T, auto Hook> struct c_tailq_hook_access {
   [[nodiscard]] static T *&next(T *node) noexcept {
     RELOCO_BEGIN_UNSAFE_BUFFER_USAGE

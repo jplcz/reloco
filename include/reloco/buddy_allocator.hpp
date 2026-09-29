@@ -311,6 +311,7 @@ public:
     }
   }
 
+  /** @brief Physical constraints applied when selecting a page range. */
   struct physical_constraint {
     uint64_t low_pfn{0};         // Minimum acceptable PFN
     uint64_t high_pfn{~0ULL};    // Maximum acceptable PFN (inclusive)
@@ -399,6 +400,7 @@ public:
     return unexpected(error::allocation_failed);
   }
 
+  /** @brief A page range returned by a successful buddy allocation. */
   struct range_allocation {
     page_type page;
     size_t count;

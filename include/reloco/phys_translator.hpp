@@ -19,6 +19,10 @@ namespace reloco {
  * - `using to_space`
  * - `result<PhysInt> translate(PhysInt addr, PhysInt size) const noexcept`
  */
+/**
+ * @brief Policy-based virtual/physical address translator.
+ * @tparam Policy Translation policy.
+ */
 template <typename Policy> class phys_translator {
 public:
   using from_space = typename Policy::from_space;

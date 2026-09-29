@@ -91,6 +91,7 @@ private:
   Container c_;
 };
 
+/** @brief Propagates relocatability from an SG list's container element type. */
 template <typename T> struct is_trivially_relocatable<sg_list<T>> : is_trivially_relocatable<T> {};
 
 } // namespace reloco

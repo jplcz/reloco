@@ -183,6 +183,10 @@ template <size_t Size, typename NoncePolicy = security::inline_nonce_storage> cl
 
   uint8_t obfuscated_data_[Size];
 
+  /**
+   * @brief Iterator over bytes in a masked byte region.
+   * @tparam IsConst Whether dereference provides const access.
+   */
   template <bool IsConst> class byte_iterator;
 
 public:
@@ -300,6 +304,10 @@ private:
    * `uint8_t` by value -- there is no plaintext to take the address of,
    * exactly like `std::vector<bool>::const_iterator`, so neither
    * instantiation provides `operator->`.
+   */
+  /**
+   * @brief Random-access iterator for masked byte storage.
+   * @tparam IsConst Whether dereference provides const access.
    */
   template <bool IsConst> class byte_iterator {
   public:

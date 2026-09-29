@@ -88,6 +88,11 @@ private:
   const Container *container_{nullptr};
 };
 
+/**
+ * @brief Bounds-aware random-access iterator over contiguous storage.
+ * @tparam T Element type.
+ * @tparam BoundsPolicy Policy used to validate iterator bounds.
+ */
 template <typename T, typename BoundsPolicy> class contiguous_iterator {
 public:
   using iterator_category = std::random_access_iterator_tag;

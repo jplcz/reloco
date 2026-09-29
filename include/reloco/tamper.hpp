@@ -9,6 +9,7 @@ namespace reloco {
 namespace security {
 
 #if !defined(RELOCO_KERNEL)
+/** @brief Provides the integrity cookies used by tamper-protected values. */
 struct os_integer_region_cookie {
   static inline once_lock<uint64_t> cookie{};
   [[nodiscard]] static inline uint64_t integer_region_cookie() noexcept {
@@ -24,6 +25,7 @@ struct os_integer_region_cookie {
   }
 };
 #else
+/** @brief Provides the integrity cookies used by tamper-protected values. */
 struct os_integer_region_cookie {
   [[nodiscard]] static uint64_t integer_region_cookie() noexcept;
   [[nodiscard]] static uint64_t integer_region_cookie1() noexcept;
@@ -32,6 +34,10 @@ struct os_integer_region_cookie {
 #endif
 } // namespace security
 
+/**
+ * @brief Stores an integral value in an XOR-masked representation.
+ * @tparam T Integral value type.
+ */
 template <typename T, typename std::enable_if_t<std::is_integral_v<T>, int> = 0> class masked_integral {
   T obfuscated_val_;
 
@@ -135,6 +141,10 @@ public:
   }
 };
 
+/**
+ * @brief Stores an enum or boolean state with dual masked representations.
+ * @tparam EnumT Enumeration or boolean type.
+ */
 template <typename EnumT> class tamper_proof_state {
   static_assert(std::is_enum_v<EnumT> || std::is_same_v<EnumT, bool>, "Must be enum or bool");
 
@@ -175,6 +185,7 @@ public:
   [[nodiscard]] operator EnumT() const noexcept { return get(); }
 };
 
+/** @brief Internal dual-mask implementation for tamper-protected booleans. */
 template <typename Dummy = void> class tamper_bool_impl {
   uint32_t val_mask1_;
   uint32_t val_mask2_;
@@ -184,6 +195,7 @@ template <typename Dummy = void> class tamper_bool_impl {
   static constexpr uint32_t FALSE_VAL = 0x00000000;
 
   // Private tag for constructing directly from a raw 32-bit result
+  /** @brief Private tag selecting construction from a validated raw value. */
   struct from_raw_tag {};
 
   inline tamper_bool_impl(uint32_t raw, from_raw_tag) noexcept {
