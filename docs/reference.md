@@ -118,7 +118,7 @@ where, not a tutorial.
 | `fault_injection_patterns.hpp` | `RELOCO_FAULT_MUTATE`, `RELOCO_FAULT_SET`, `RELOCO_FAULT_SPY`, `RELOCO_FAULT_FIRE_N`, `RELOCO_FAULT_FIRE_ONCE`, `RELOCO_FAULT_WHEN`, `RELOCO_FAULT_SKIP_N`, `RELOCO_FAULT_NTH`, `RELOCO_FAULT_EVERY_N`, `RELOCO_FAULT_TOGGLE`, `RELOCO_FAULT_INCREMENT` | Convenience macros, built entirely on `fault_injection.hpp`'s own public/`detail` API, for common and more advanced fault-arming patterns: overwrite/mutate/toggle/nudge a single exposed value, count firings, fire only the first *N* times (or once) or only after skipping the first *N*, fire on exactly one or every *N*'th hit, or fire only when a predicate over the exposed arguments holds |
 | `lifetime.hpp` | `RELOCO_LIFETIMEBOUND`, `RELOCO_OWNER`, `RELOCO_POINTER`, `RELOCO_UNSAFE_BUFFER_USAGE`, ... | Compiler-specific lifetime/ownership/safe-buffers annotation macros |
 | `rvalue_safety.hpp` | `RELOCO_BLOCK_RVALUE_ACCESS` | Deletes rvalue accessors that would otherwise dangle past a temporary |
-| `reloco_config.hpp` | (user override header hook) | How to override library-wide defaults from `reloco_user_config.hpp` |
+| `reloco_config.hpp` | (user override header hook) | How to override library-wide defaults from `detail/porting/reloco_user_config.hpp` |
 
 ## `expected<T, E>` / `result<T>`
 
@@ -4832,9 +4832,10 @@ rvalue accessors so a borrow can never outlive a temporary). See
 
 `include/reloco/reloco_config.hpp`
 
-The library-wide user-override mechanism: define
-`RELOCO_HAS_USER_CONFIG`/create `reloco_user_config.hpp` on the include path
-to override compile-time defaults (e.g. `RELOCO_DEFAULT_ALLOCATOR_CUSTOM`,
+The library-wide user-override mechanism: provide `reloco_user_config.hpp`
+through `JPLCZ_RELOCO_PORTING_HEADERS`, which stages it at
+`detail/porting/reloco_user_config.hpp`. Its presence automatically overrides
+compile-time defaults (e.g. `RELOCO_DEFAULT_ALLOCATOR_CUSTOM`,
 assertion-handling behavior) before any other reloco header is processed.
 See the header's own documentation for the exact mechanism and its
 constraints (why it cannot itself include headers like `allocator.hpp`).

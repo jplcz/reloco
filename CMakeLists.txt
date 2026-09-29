@@ -72,8 +72,9 @@ set(JPLCZ_RELOCO_INSTALL_CMAKEDIR "${CMAKE_INSTALL_DATADIR}/cmake/jplcz_reloco" 
 version files (relative to CMAKE_INSTALL_PREFIX unless absolute)")
 
 set(JPLCZ_RELOCO_PORTING_HEADERS "" CACHE PATH
-    "Directory containing target-specific override headers (any of \
-mutex.hpp/thread.hpp/spin_lock.hpp/tls_provider.hpp/futex.hpp) copied \
+    "Directory containing reloco_user_config.hpp and target-specific \
+override headers (any of mutex.hpp/thread.hpp/spin_lock.hpp/\
+tls_provider.hpp/futex.hpp/time_backend.hpp) copied \
 into include/reloco/detail/porting/ and installed alongside reloco's own \
 headers, plus the matching RELOCO_*_BACKEND_CUSTOM/RELOCO_TLS_MODEL macro \
 baked into a generated detail/porting/reloco_generated_config.hpp for every \
@@ -126,8 +127,9 @@ target_include_directories(jplcz_reloco INTERFACE
 
 add_library(jplcz_reloco::reloco ALIAS jplcz_reloco)
 
-# JPLCZ_RELOCO_PORTING_HEADERS: copy whichever of mutex.hpp/thread.hpp/
-# spin_lock.hpp/tls_provider.hpp/futex.hpp exist in the given directory
+# JPLCZ_RELOCO_PORTING_HEADERS: copy reloco_user_config.hpp and whichever of
+# mutex.hpp/thread.hpp/spin_lock.hpp/tls_provider.hpp/futex.hpp/time_backend.hpp
+# exist in the given directory
 # into a staging tree (never into reloco's own source include/ tree, so
 # reloco's own headers are never touched/replaced), and bake the matching
 # RELOCO_*_BACKEND_CUSTOM/RELOCO_TLS_MODEL macro into a generated header
@@ -158,6 +160,18 @@ if(JPLCZ_RELOCO_PORTING_HEADERS)
     set(JPLCZ_RELOCO_PORTING_STAGING_DIR "${CMAKE_CURRENT_BINARY_DIR}/porting_include")
     set(JPLCZ_RELOCO_PORTING_DEST_DIR "${JPLCZ_RELOCO_PORTING_STAGING_DIR}/detail/porting")
     file(MAKE_DIRECTORY "${JPLCZ_RELOCO_PORTING_DEST_DIR}")
+
+    set(JPLCZ_RELOCO_USER_CONFIG_SRC
+        "${JPLCZ_RELOCO_PORTING_HEADERS}/reloco_user_config.hpp")
+    if(EXISTS "${JPLCZ_RELOCO_USER_CONFIG_SRC}")
+        configure_file(
+            "${JPLCZ_RELOCO_USER_CONFIG_SRC}"
+            "${JPLCZ_RELOCO_PORTING_DEST_DIR}/reloco_user_config.hpp"
+            COPYONLY
+        )
+        message(STATUS
+            "jplcz_reloco: using user configuration from ${JPLCZ_RELOCO_USER_CONFIG_SRC}")
+    endif()
 
     set(JPLCZ_RELOCO_PORTING_HEADER_NAMES mutex.hpp thread.hpp spin_lock.hpp tls_provider.hpp futex.hpp time_backend.hpp)
     # CMake variable consulted by cmake/generated_porting_config.hpp.in's

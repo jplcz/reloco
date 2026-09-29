@@ -33,7 +33,8 @@ built-in backend would otherwise have defined the same API. That means:
   spot, with the exact same result, regardless of anything else.
 - You do not have to place your files here by hand: set the
   `JPLCZ_RELOCO_PORTING_HEADERS` CMake variable (see the top-level
-  `CMakeLists.txt`) to a directory containing any of `mutex.hpp`/
+  `CMakeLists.txt`) to a directory containing `reloco_user_config.hpp`
+  and/or any of `mutex.hpp`/
   `thread.hpp`/`spin_lock.hpp`/`tls_provider.hpp`/`futex.hpp` before
   configuring reloco (top-level build, or via `add_subdirectory`/
   `FetchContent`); the build copies whichever of those files exist there
@@ -52,11 +53,11 @@ built-in backend would otherwise have defined the same API. That means:
   `__has_include`-guarded `#include`, so it is a no-op when
   `JPLCZ_RELOCO_PORTING_HEADERS` was never set (the file is simply never
   generated).
-- If you are not using CMake (or prefer to manage it yourself), just copy
-  the relevant `*.template.hpp` scaffold to its non-`.template` name in
-  this same directory, fill it in, and define the matching macro
-  yourself (via a compiler `-D` flag or `reloco_user_config.hpp`, see
-  `reloco_config.hpp`).
+- If you are not using CMake (or prefer to manage it yourself), place
+  `reloco_user_config.hpp` and any completed non-`.template` backend
+  scaffolds directly in this directory. The user configuration is included
+  automatically when present; define backend macros directly when no
+  generated configuration header is present.
 
 A file placed here **never replaces** any of reloco's own headers --
 each real reloco header (`mutex.hpp`, `thread.hpp`, ...) always exists

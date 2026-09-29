@@ -13,13 +13,11 @@
  * makes it the earliest point at which configuration can be injected
  * regardless of which reloco header an application includes first.
  *
- * User overrides must not be made by editing this file. Instead, define
- * `RELOCO_CONFIG` (via a compiler `-D` flag, e.g. `-DRELOCO_CONFIG=1`) to
- * opt in to including a header named `reloco_user_config.hpp`, which must be
- * reachable on the compiler's include search path (e.g. in an
- * application-owned include directory listed before reloco's own `include/`
- * in the include path). When `RELOCO_CONFIG` is defined,
- * `reloco_user_config.hpp` is included here, before any library header
+ * User overrides must not be made by editing this file. Instead, supply
+ * `detail/porting/reloco_user_config.hpp` through
+ * `JPLCZ_RELOCO_PORTING_HEADERS`, or place it at the same fixed path in a
+ * manually managed include tree. When that header is present, it is included
+ * here, before any library header
  * defines its own default, so every `#define` it contains takes precedence
  * over the library defaults below and over the individual
  * `#ifndef`-guarded defaults each feature header applies on its own.
@@ -43,8 +41,10 @@
  * application through the normal path rather than from here.
  */
 
-#if defined(RELOCO_CONFIG)
-#include "reloco_user_config.hpp"
+#if defined(__has_include)
+#if __has_include("detail/porting/reloco_user_config.hpp")
+#include "detail/porting/reloco_user_config.hpp"
+#endif
 #endif
 
 // Baked-in overrides for every `_CUSTOM` porting backend (see
