@@ -55,6 +55,7 @@ where, not a tutorial.
 | `region_set.hpp` | `memory_region<PhysInt>`, `region_set<Capacity, PhysInt>` | Fixed-capacity collection of physical memory regions |
 | `sg_list.hpp` | `sg_entry<SpaceTag, PhysInt>`, `sg_list<Container>` | Scatter-gather entries and container |
 | `sg_translator.hpp` | `sg_translator` | Policy-based scatter-gather translator |
+| `fdt_reader.hpp` | `fdt_reader`, `mem_reserve_iterator` | Bounds-checked, `iterator_adaptor`-based read-only view over a caller-owned Flattened Device Tree (DTB) span, yielding `result<fdt_event>` per struct-block token |
 | `fdt_writer.hpp` | `fdt_writer` | Move-only, fallibly-constructed streaming writer for Flattened Device Tree (DTB, `/dts-v1/`) blobs into a caller-owned span, with sticky error propagation |
 | `tamper.hpp` | `masked_integral<T>`, `tamper_proof_state<EnumT>`, `tamper_bool_impl` | Tamper-detecting integral, enum-state, and boolean storage wrappers |
 | `binary_heap.hpp` | `binary_heap<T, Compare>` | Allocator-backed priority queue matching Rust's `BinaryHeap<T>`, built on `vector<T>` |
@@ -3055,6 +3056,70 @@ caller-supplied mapping policy. `phys_translator` and `sg_translator` apply
 caller-supplied translation policies. `memory_region` and `region_set`
 represent physical ranges; `sg_entry` and `sg_list` represent scatter-gather
 segments.
+
+## `fdt_reader`
+
+`include/reloco/fdt_reader.hpp`
+
+Read-only, bounds-checked view over a caller-owned Flattened Device Tree
+(DTB, `/dts-v1/`) blob, built on `iterator_adaptor` (see `include/reloco/iterator.hpp`) so the
+struct block can be walked with a plain range-`for` loop. `try_create(span<const std::byte>)` is the
+only way to obtain one -- it validates the fixed 40-byte header (magic,
+`version`, `last_comp_version`, and every offset/size field checked
+against the blob via `span::try_subspan`) up front, in O(1), before any
+struct-block parsing happens, returning `error::invalid_argument` (bad
+magic/misaligned/misconfigured header) or `error::out_of_bounds` (an
+offset/size field points outside the blob) instead of trapping on
+malformed or attacker-controlled input:
+
+```cpp
+auto made = reloco::fdt::fdt_reader::try_create(reloco::span<const std::byte>(blob, blob_size));
+if (!made)
+  return made.error();
+auto reader = std::move(made).value();
+
+for (auto entry : reader.mem_reserves()) {
+  if (!entry)
+    return entry.error();
+  // entry->address, entry->size
+}
+
+for (auto ev : reader) {
+  if (!ev)
+    return ev.error();
+  switch (ev->kind) {
+  case reloco::fdt::fdt_event_kind::begin_node:
+    // ev->node_name
+    break;
+  case reloco::fdt::fdt_event_kind::end_node:
+    break;
+  case reloco::fdt::fdt_event_kind::property:
+    // ev->prop.name, ev->prop.try_as_u32()/try_as_u64()/try_as_string()
+    break;
+  }
+}
+```
+
+Each `next()` call yields a `result<fdt_event>`: `begin_node`/`end_node`
+bracket a node (`node_name` valid for `begin_node`), and `property` carries
+a `fdt_property_view` (`name` plus the raw `value` bytes, with fallible
+`try_as_u32()`/`try_as_u64()`/`try_as_string()` convenience accessors that
+bounds- and format-check before decoding). Every read -- token, string,
+property length -- goes through a `span::try_subspan`-checked helper, so a
+truncated, misaligned, or otherwise corrupt blob fails that one event with
+`error::invalid_argument` or `error::out_of_bounds` and then permanently
+stops iterating (the fused `iterator_adaptor` contract), rather than
+reading past the blob or trapping. `mem_reserves()` returns a second,
+independent `mem_reserve_iterator` over the `/memreserve/`-style memory
+reservation list, which stops at the `{0, 0}` terminator entry or fails
+with `error::invalid_argument` if the region runs out first. Unlike
+`fdt_writer`, `fdt_reader` is an ordinary copyable/movable view (no
+declared move-only/poisoning semantics): copying it just forks an
+independent read cursor over the same immutable bytes, with no
+shared-mutation hazard. `fdt_reader` and `fdt_writer` share their binary-
+format constants and big-endian codec helpers through the internal
+`detail/fdt_format.hpp`, so the two can never drift apart on token IDs,
+header layout, or byte order.
 
 ## `fdt_writer`
 

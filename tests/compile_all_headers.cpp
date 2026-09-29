@@ -32,6 +32,7 @@
 #include <reloco/external_vector.hpp>
 #include <reloco/fault_injection.hpp>
 #include <reloco/fault_injection_patterns.hpp>
+#include <reloco/fdt_reader.hpp>
 #include <reloco/fdt_writer.hpp>
 #include <reloco/flat_hash_map.hpp>
 #include <reloco/flat_hash_set.hpp>
