@@ -382,6 +382,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_hint.cpp
         tests/test_park.cpp
         tests/test_scope.cpp
+        tests/test_scope_guard.cpp
         tests/test_fallible_singleton.cpp
         tests/test_duration.cpp
         tests/test_instant.cpp
@@ -453,6 +454,9 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_atomic_ring_buffer.cpp
         tests/test_digraph.cpp
         tests/test_uninit.cpp
+        tests/test_region_set.cpp
+        tests/test_seqlock.cpp
+        tests/test_tamper.cpp
         tests/test_epoch.cpp
         tests/test_ipc_buffer.cpp
         tests/test_fault_injection.cpp
@@ -467,6 +471,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_phys_addr.cpp
         tests/test_phys_translator.cpp
         tests/test_sg_list.cpp
+        tests/test_sg_translation.cpp
         tests/test_phys_page.cpp
         tests/test_buddy_allocator.cpp
         tests/test_packed_bits.cpp

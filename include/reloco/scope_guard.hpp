@@ -1,4 +1,5 @@
 #pragma once
+#include "detail/compat.hpp"
 #include <type_traits>
 #include <utility>
 

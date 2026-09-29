@@ -4,6 +4,7 @@
 
 #if !defined(_MSC_VER) && defined(__LP64__)
 #include "reloco/phys_addr.hpp"
+#include "reloco/pfn_translator.hpp"
 #include <gtest/gtest.h>
 
 namespace {
@@ -144,6 +145,24 @@ TEST(DmapPtrTest, VoidPointerSupport) {
   auto virt_res = res.value().try_get();
   ASSERT_TRUE(virt_res.has_value());
   EXPECT_EQ(reinterpret_cast<uintptr_t>(virt_res.value()), VIRT_BASE + 0x2000);
+}
+
+TEST(PhysPfnTest, ConvertsAddressesAndAppliesPageMath) {
+  using pfn_type = phys_pfn<guest_phys_space, page_4k>;
+  phys_addr<void, guest_phys_space> address{0x12345};
+
+  const auto pfn = pfn_type::from_addr(address);
+  EXPECT_EQ(pfn.value, 0x12u);
+  EXPECT_EQ(pfn.to_addr().value, 0x12000u);
+  EXPECT_EQ(page_math::offset<page_4k>(address), 0x345u);
+  EXPECT_EQ(page_math::align_down<page_4k>(address).value, 0x12000u);
+  EXPECT_EQ(page_math::align_up<page_4k>(address).value, 0x13000u);
+
+  const phys_addr<void, guest_phys_space> null_address{nullptr};
+  EXPECT_TRUE(pfn_type::from_addr(null_address).is_null());
+  EXPECT_TRUE(pfn_type{}.to_addr().is_null());
+  EXPECT_EQ(page_math::offset<page_4k>(null_address), 0u);
+  EXPECT_TRUE(page_math::align_up<page_4k>(null_address).is_null());
 }
 
 } // namespace

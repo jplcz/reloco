@@ -59,8 +59,8 @@ public:
 
   static constexpr size_t header_elements = Layout::header_size / sizeof(packed_type);
 
-  static_assert(std::is_trivial_v<packed_type> && std::is_standard_layout_v<packed_type>,
-                "packed_bits must remain a POD type for DMA memory arrays");
+  static_assert(std::is_trivially_copyable_v<packed_type> && std::is_standard_layout_v<packed_type>,
+                "packed_bits must remain trivially copyable for DMA memory arrays");
   static_assert(Layout::header_size % sizeof(packed_type) == 0,
                 "Header size must be a multiple of the descriptor storage size");
 
@@ -218,8 +218,8 @@ public:
   static constexpr size_t header_elements = Layout::header_size / sizeof(packed_type);
   static constexpr size_t entries_per_page = (PageTraits::page_size - Layout::header_size) / sizeof(packed_type);
 
-  static_assert(std::is_trivial_v<packed_type> && std::is_standard_layout_v<packed_type>,
-                "packed_bits must remain a POD type for DMA memory arrays");
+  static_assert(std::is_trivially_copyable_v<packed_type> && std::is_standard_layout_v<packed_type>,
+                "packed_bits must remain trivially copyable for DMA memory arrays");
   static_assert(Layout::header_size % sizeof(packed_type) == 0,
                 "Header size must be a multiple of the descriptor storage size");
   static_assert(entries_per_page > 1, "Page size must hold at least two descriptors to form a chain");
@@ -493,8 +493,11 @@ public:
   static constexpr size_t l2_entries_per_page =
       (PageTraits::page_size - L2Layout::header_size) / sizeof(l2_packed_type);
 
-  static_assert(std::is_trivial_v<l1_packed_type> && std::is_trivial_v<l2_packed_type>,
-                "packed_bits must remain POD types for DMA memory arrays");
+  static_assert(std::is_trivially_copyable_v<l1_packed_type> &&
+                    std::is_trivially_copyable_v<l2_packed_type> &&
+                    std::is_standard_layout_v<l1_packed_type> &&
+                    std::is_standard_layout_v<l2_packed_type>,
+                "packed_bits must remain trivially copyable for DMA memory arrays");
   static_assert(L1Layout::header_size % sizeof(l1_packed_type) == 0 &&
                     L2Layout::header_size % sizeof(l2_packed_type) == 0,
                 "Header sizes must be a multiple of the respective descriptor storage size");
