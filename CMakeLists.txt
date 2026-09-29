@@ -623,6 +623,31 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         jplcz_reloco GTest::gtest_main)
     jplcz_reloco_enable_warnings(jplcz_reloco_ipc_ring_fault_injection_tests)
     gtest_discover_tests(jplcz_reloco_ipc_ring_fault_injection_tests)
+
+    # tests/perf_fdt_index.cpp compares reloco::fdt::fdt_index (cached
+    # lookups over a pre-built index) against the reference libfdt C
+    # library (stateless, re-scanning lookups) on the same embedded
+    # real-world DTB used by test_fdt_real_world.cpp. It's a plain
+    # timing executable, not a correctness test, so it's deliberately
+    # its own target: not added to jplcz_reloco_tests' sources and not
+    # registered with gtest_discover_tests/ctest. It only builds when
+    # system libfdt (Debian/Ubuntu package libfdt-dev) is available.
+    find_path(JPLCZ_RELOCO_LIBFDT_INCLUDE_DIR NAMES libfdt.h)
+    find_library(JPLCZ_RELOCO_LIBFDT_LIBRARY NAMES fdt)
+    if(JPLCZ_RELOCO_LIBFDT_INCLUDE_DIR AND JPLCZ_RELOCO_LIBFDT_LIBRARY)
+        add_executable(jplcz_reloco_fdt_index_perf tests/perf_fdt_index.cpp)
+        target_link_libraries(jplcz_reloco_fdt_index_perf PRIVATE jplcz_reloco ${JPLCZ_RELOCO_LIBFDT_LIBRARY})
+        target_include_directories(jplcz_reloco_fdt_index_perf PRIVATE ${JPLCZ_RELOCO_LIBFDT_INCLUDE_DIR})
+        jplcz_reloco_enable_warnings(jplcz_reloco_fdt_index_perf)
+        # Timing numbers are meaningless without optimizations (an
+        # unoptimized build leaves iterator_adaptor/result abstraction
+        # overhead un-inlined, which would make the comparison mostly
+        # measure that instead of the underlying algorithms); force -O2
+        # here regardless of the project-wide CMAKE_BUILD_TYPE.
+        if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+            target_compile_options(jplcz_reloco_fdt_index_perf PRIVATE -O2)
+        endif()
+    endif()
 endif()
 
 if(JPLCZ_RELOCO_BUILD_DEMOS)

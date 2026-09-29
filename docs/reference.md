@@ -3266,6 +3266,24 @@ blob's actual nesting depth) and with `error::invalid_argument`/
 `error::out_of_bounds` on a truncated or corrupt struct block, never
 trapping on malformed input.
 
+`tests/test_fdt_real_world.cpp` decodes a real-world DTB captured from
+QEMU's aarch64 `virt` machine (`qemu-system-aarch64 -M virt,dumpdtb=... -smp
+4 -m 1G`, repacked with `dtc -p 0` to drop QEMU's padding), embedded as a
+plain byte array in `tests/fixtures/qemu_virt_dtb.hpp`. This complements the
+hand-built fixtures elsewhere with a sanity check against actual
+firmware-generated output: 63 nodes, 8 phandles, and known paths/properties
+are all round-tripped through `fdt_reader` and `fdt_index`.
+
+`tests/perf_fdt_index.cpp` is a separate, non-gtest timing executable
+(built as the `jplcz_reloco_fdt_index_perf` CMake target, only when system
+`libfdt` -- Debian/Ubuntu's `libfdt-dev` -- is available) that benchmarks
+property lookup, full-tree enumeration, and path translation against the
+same embedded DTB, comparing `fdt_index`'s cached, pre-resolved lookups
+against the reference `libfdt` C library's stateless, re-scanning
+equivalents (`fdt_getprop`/`fdt_path_offset`/`fdt_next_node`). It reports
+wall-clock nanoseconds per operation, not pass/fail assertions, and is
+intentionally excluded from `ctest`.
+
 ## `masked_byte_region<Size, NoncePolicy>`
 
 `include/reloco/masked_byte_region.hpp`
