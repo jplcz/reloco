@@ -111,7 +111,7 @@ TEST(FdtReaderTest, StructureEventsRoundTripInDepthFirstOrder) {
     fdt_event_kind kind;
     const char *name; // node name (begin_node) or property name (property); unused for end_node.
   };
-  const expected_event expected[] = {
+  const std::array<expected_event, 9> expected = {{
       {fdt_event_kind::begin_node, ""},
       {fdt_event_kind::property, "#address-cells"},
       {fdt_event_kind::property, "compatible"},
@@ -121,12 +121,12 @@ TEST(FdtReaderTest, StructureEventsRoundTripInDepthFirstOrder) {
       {fdt_event_kind::end_node, nullptr},
       {fdt_event_kind::end_node, nullptr},
       {fdt_event_kind::end_node, nullptr},
-  };
+  }};
 
   std::size_t i = 0;
   for (auto ev : r) {
     ASSERT_TRUE(ev) << "event #" << i << " failed with error " << static_cast<int>(ev.error());
-    ASSERT_LT(i, std::size(expected));
+    ASSERT_LT(i, expected.size());
     EXPECT_EQ(ev->kind, expected[i].kind) << "event #" << i;
     switch (ev->kind) {
     case fdt_event_kind::begin_node:
@@ -255,8 +255,8 @@ TEST(FdtReaderTest, UnbalancedEndNodeFailsThatEventThenExhausts) {
   // FDT_BEGIN_NODE, name (4 padded bytes), FDT_END_NODE, FDT_END -- insert
   // the extra FDT_END_NODE right before the final FDT_END token.
   const std::size_t insert_at = off_dt_struct + size_dt_struct - 4;
-  const std::byte extra_end_node[4] = {std::byte{0}, std::byte{0}, std::byte{0}, std::byte{2}};
-  blob.insert(blob.begin() + static_cast<std::ptrdiff_t>(insert_at), extra_end_node, extra_end_node + 4);
+  const std::array<std::byte, 4> extra_end_node = {std::byte{0}, std::byte{0}, std::byte{0}, std::byte{2}};
+  blob.insert(blob.begin() + static_cast<std::ptrdiff_t>(insert_at), extra_end_node.begin(), extra_end_node.end());
 
   // Fix up every header field that counts bytes at or after the insertion
   // point: totalsize, off_dt_strings (strings follow the struct block),

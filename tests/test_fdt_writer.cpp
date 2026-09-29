@@ -19,6 +19,23 @@ uint32_t read_be32(span<const std::byte> blob, std::size_t offset) {
          (static_cast<uint32_t>(blob[offset + 2]) << 8) | static_cast<uint32_t>(blob[offset + 3]);
 }
 
+// Bounds-checked equivalent of strlen()+string construction: scans for a
+// NUL terminator no further than `blob`'s own end (never past it, unlike
+// a raw reinterpret_cast<const char *> + strcmp/strlen would), returning
+// a string_view over just the bytes actually scanned. Mirrors
+// `reloco::fdt::detail::read_cstring`'s own pointer-arithmetic + explicit
+// unsafe-buffer-usage opt-out, since the bound (`i - offset`, computed by
+// the preceding bounds-checked scan) is already proven safe.
+reloco::string_view read_cstring(span<const std::byte> blob, std::size_t offset) {
+  std::size_t i = offset;
+  while (i < blob.size() && blob[i] != std::byte{0})
+    ++i;
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+  reloco::string_view result(reinterpret_cast<const char *>(blob.data() + offset), i - offset);
+  RELOCO_END_UNSAFE_BUFFER_USAGE
+  return result;
+}
+
 } // namespace
 
 TEST(FdtWriterTest, TryCreateRejectsSpanTooSmallForFixedOverhead) {
@@ -143,11 +160,12 @@ TEST(FdtWriterTest, PropertiesRoundTripThroughStructAndStringBlocks) {
       const uint32_t len = read_be32(blob, pos);
       const uint32_t nameoff = read_be32(blob, pos + 4);
       ASSERT_LT(off_dt_strings + nameoff, blob.size());
-      const char *name = reinterpret_cast<const char *>(blob.data() + off_dt_strings + nameoff);
-      if (std::strcmp(name, "compatible") == 0) {
+      const auto name = read_cstring(blob, off_dt_strings + nameoff);
+      if (name == "compatible") {
         saw_compatible = true;
-        EXPECT_STREQ(reinterpret_cast<const char *>(blob.data() + pos + 8), "linux,dummy");
-        EXPECT_EQ(len, std::strlen("linux,dummy") + 1);
+        const auto value = read_cstring(blob, pos + 8);
+        EXPECT_EQ(value, "linux,dummy");
+        EXPECT_EQ(len, value.size() + 1);
       }
       pos += 8 + ((len + 3u) & ~3u);
     } else {

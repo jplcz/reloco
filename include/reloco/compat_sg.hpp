@@ -5,6 +5,7 @@
 #pragma once
 
 #include <algorithm>
+#include <reloco/lifetime.hpp>
 #include <reloco/packed_bits.hpp>
 #include <reloco/phys_addr.hpp>
 #include <reloco/phys_page.hpp>
@@ -236,6 +237,11 @@ public:
   template <typename InIterable, typename Allocator, typename Mapper, typename OutPageContainer>
   [[nodiscard]] static RELOCO_CONSTEXPR20 result<paddr_type>
   encode(const InIterable &input, Allocator &&alloc, Mapper &&mapper, OutPageContainer &allocated_pages) noexcept {
+    // Descriptor pages are raw hardware/DMA memory returned by `mapper()` as
+    // `packed_type *`, not a bounds-checked span: the safety invariant here
+    // is `entries_per_page`/`header_elements`, enforced manually below,
+    // rather than anything the type system can prove.
+    RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
     if (input.empty())
       return paddr_type{nullptr};
 
@@ -359,6 +365,7 @@ public:
     }
 
     return *root_page_res;
+    RELOCO_END_UNSAFE_BUFFER_USAGE
   }
 
   /**
@@ -372,6 +379,9 @@ public:
   template <typename OutContainer, typename Mapper>
   [[nodiscard]] static RELOCO_CONSTEXPR20 result<void> decode(paddr_type root_page, sg_list<OutContainer> &output,
                                                               Mapper &&mapper, size_t max_pages) noexcept {
+    // See the `encode()` note above: descriptor pages are raw hardware/DMA
+    // memory, bounds-enforced manually via `entries_per_page`.
+    RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
     if (root_page.is_null())
       RELOCO_UNLIKELY
     return {};
@@ -459,6 +469,7 @@ public:
         }
       }
     }
+    RELOCO_END_UNSAFE_BUFFER_USAGE
   }
 };
 
@@ -516,6 +527,9 @@ public:
   template <typename InIterable, typename Allocator, typename Mapper, typename OutPageContainer>
   [[nodiscard]] static RELOCO_CONSTEXPR20 result<paddr_type>
   encode(const InIterable &input, Allocator &&alloc, Mapper &&mapper, OutPageContainer &allocated_pages) noexcept {
+    // See `chained_sg_codec::encode()`: L1/L2 pages are raw hardware/DMA
+    // memory, bounds-enforced manually via `l1_/l2_entries_per_page`.
+    RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
     if (input.empty())
       return paddr_type{nullptr};
 
@@ -643,6 +657,7 @@ public:
     }
 
     return l1_paddr;
+    RELOCO_END_UNSAFE_BUFFER_USAGE
   }
 
   /**
@@ -656,6 +671,9 @@ public:
   template <typename OutContainer, typename Mapper>
   [[nodiscard]] static RELOCO_CONSTEXPR20 result<void> decode(paddr_type root_page, sg_list<OutContainer> &output,
                                                               Mapper &&mapper, size_t l1_entry_limit) noexcept {
+    // See `chained_sg_codec::decode()`: L1/L2 pages are raw hardware/DMA
+    // memory, bounds-enforced manually via `l1_/l2_entries_per_page`.
+    RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
     if (root_page.is_null())
       RELOCO_UNLIKELY
     return {};
@@ -752,6 +770,7 @@ public:
     }
 
     return {};
+    RELOCO_END_UNSAFE_BUFFER_USAGE
   }
 };
 

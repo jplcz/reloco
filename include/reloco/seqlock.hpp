@@ -85,16 +85,22 @@ public:
   // READER API (Lock-Free Typestate Transactions)
   // ==========================================================================
   /** @brief Lock-free reader transaction for a guarded seqlock snapshot. */
-  class RELOCO_CONSUMABLE(consumed) read_tx {
+  class RELOCO_CONSUMABLE(unconsumed) read_tx {
   public:
     // TSA is explicitly disabled here because readers mathematically bypass the mutex.
     explicit read_tx(const guarded_seqlock &lock) noexcept
-        RELOCO_RETURN_TYPESTATE(consumed) RELOCO_NO_THREAD_SAFETY_ANALYSIS : cell_(&lock) {
+        RELOCO_RETURN_TYPESTATE(unconsumed) RELOCO_NO_THREAD_SAFETY_ANALYSIS : cell_(&lock) {
       start_seq_ = cell_->seq_.load(std::memory_order_acquire);
 
       // Early bailout: Only copy if the sequence is EVEN (no writer is active)
       if (start_seq_ % 2 == 0) {
+        // `memcpy` of a fixed, statically-known `sizeof(T)` between two
+        // `T`-sized objects (guaranteed trivially copyable by the
+        // static_assert above) can't overrun either object; safe despite
+        // Clang's blanket "libc call" flag.
+        RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
         std::memcpy(&snapshot_, &cell_->payload_, sizeof(T));
+        RELOCO_END_UNSAFE_BUFFER_USAGE
       }
     }
 
