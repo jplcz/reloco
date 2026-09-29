@@ -3123,6 +3123,24 @@ format constants and big-endian codec helpers through the internal
 `detail/fdt_format.hpp`, so the two can never drift apart on token IDs,
 header layout, or byte order.
 
+`try_create` needs the *whole* `totalsize`-length span up front, which is
+a chicken-and-egg problem when a blob's actual length isn't already known
+(e.g. a bootloader hands over just a pointer, with only the fixed 40-byte
+header guaranteed readable). `fdt_reader::try_probe_size(span<const
+std::byte> header)` solves that: it validates only the header's magic and
+version fields and returns the declared `totalsize`, needing just
+`detail::header_size` (40) bytes to be available -- so the caller can
+map/copy/allocate exactly that many bytes next, then hand the full span
+to `try_create`:
+
+```cpp
+auto probed = reloco::fdt::fdt_reader::try_probe_size(reloco::span<const std::byte>(header_bytes, 40));
+if (!probed)
+  return probed.error();
+// *probed is the blob's totalsize; allocate/map that many bytes, then:
+auto made = reloco::fdt::fdt_reader::try_create(reloco::span<const std::byte>(blob, *probed));
+```
+
 ## `fdt_writer`
 
 `include/reloco/fdt_writer.hpp`

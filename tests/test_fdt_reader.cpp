@@ -73,6 +73,46 @@ TEST(FdtReaderTest, TryCreateRejectsTruncatedBlob) {
   EXPECT_EQ(made.error(), error::out_of_bounds);
 }
 
+TEST(FdtReaderTest, TryProbeSizeRejectsSpanTooSmallForHeader) {
+  std::array<std::byte, 8> storage{};
+  auto probed = fdt_reader::try_probe_size(span<const std::byte>(storage.data(), storage.size()));
+  ASSERT_FALSE(probed);
+  EXPECT_EQ(probed.error(), error::out_of_bounds);
+}
+
+TEST(FdtReaderTest, TryProbeSizeRejectsBadMagic) {
+  auto blob = build_sample_blob();
+  blob[0] = std::byte{0xff};
+  auto probed = fdt_reader::try_probe_size(span<const std::byte>(blob.data(), blob.size()));
+  ASSERT_FALSE(probed);
+  EXPECT_EQ(probed.error(), error::invalid_argument);
+}
+
+TEST(FdtReaderTest, TryProbeSizeReturnsDeclaredTotalsizeFromJustTheHeaderPrefix) {
+  auto blob = build_sample_blob();
+
+  // Only the fixed 40-byte header needs to be readable up front -- this is
+  // the whole point: learn how much more to map/allocate before the rest
+  // of the blob is even available.
+  ASSERT_GE(blob.size(), reloco::fdt::detail::header_size);
+  auto probed =
+      fdt_reader::try_probe_size(span<const std::byte>(blob.data(), reloco::fdt::detail::header_size));
+  ASSERT_TRUE(probed);
+  EXPECT_EQ(*probed, blob.size());
+
+  // The probed size is exactly what's needed to hand the full blob to
+  // `try_create`.
+  auto made = fdt_reader::try_create(span<const std::byte>(blob.data(), *probed));
+  ASSERT_TRUE(made);
+}
+
+TEST(FdtReaderTest, TryProbeSizeAcceptsLongerSpanThanTheHeader) {
+  auto blob = build_sample_blob();
+  auto probed = fdt_reader::try_probe_size(span<const std::byte>(blob.data(), blob.size()));
+  ASSERT_TRUE(probed);
+  EXPECT_EQ(*probed, blob.size());
+}
+
 TEST(FdtReaderTest, HeaderAccessorsMatchWriterDefaults) {
   auto blob = build_sample_blob();
   auto made = fdt_reader::try_create(span<const std::byte>(blob.data(), blob.size()));

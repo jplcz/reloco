@@ -193,6 +193,27 @@ public:
    */
   [[nodiscard]] static result<fdt_reader> try_create(span<const std::byte> blob) noexcept;
 
+  /**
+   * @brief Peeks at just the header's magic/version/`totalsize` fields to
+   * determine how large a buffer this blob actually needs, without
+   * requiring the whole blob to be mapped/available yet.
+   *
+   * `try_create` validates the *whole* `totalsize`-length span up front,
+   * so the caller must already know that size before calling it --
+   * exactly the problem this solves. Typical use: a bootloader/firmware
+   * hands over a DTB pointer with no separately-known length (only the
+   * fixed 40-byte header is guaranteed readable up front); call this on
+   * just that header prefix to learn `totalsize`, then map/copy/allocate
+   * exactly that many bytes and pass the full span to `try_create`.
+   *
+   * @param header The first `detail::header_size` (40) bytes of the
+   * blob; a longer span is accepted (only the prefix is read).
+   * @return The blob's declared `totalsize`, or `error::out_of_bounds` if
+   * `header` is shorter than the fixed header, or `error::invalid_argument`
+   * if the magic number or format version doesn't match a valid DTB.
+   */
+  [[nodiscard]] static result<std::size_t> try_probe_size(span<const std::byte> header) noexcept;
+
   /** @brief DTB format version this blob declares itself as. */
   [[nodiscard]] uint32_t version() const noexcept { return version_; }
   /** @brief Oldest format version a reader must support to parse this blob. */
@@ -249,6 +270,27 @@ private:
   int depth_{0};
   bool done_{false};
 };
+
+[[nodiscard]] inline result<std::size_t> fdt_reader::try_probe_size(span<const std::byte> header) noexcept {
+  if (header.size() < detail::header_size)
+    return unexpected(error::out_of_bounds);
+
+  auto magic_r = detail::read_u32_at(header, 0);
+  auto totalsize_r = detail::read_u32_at(header, 4);
+  auto version_r = detail::read_u32_at(header, 20);
+  if (!magic_r || !totalsize_r || !version_r)
+    return unexpected(error::out_of_bounds); // unreachable: header.size() >= header_size already guarantees this.
+
+  if (*magic_r != magic)
+    return unexpected(error::invalid_argument);
+  if (*version_r < reloco::fdt::last_comp_version)
+    return unexpected(error::invalid_argument);
+
+  const auto totalsize = static_cast<std::size_t>(*totalsize_r);
+  if (totalsize < detail::header_size)
+    return unexpected(error::invalid_argument); // Can't be smaller than the header it's embedded in.
+  return totalsize;
+}
 
 [[nodiscard]] inline result<fdt_reader> fdt_reader::try_create(span<const std::byte> blob) noexcept {
   if (blob.size() < detail::header_size)
