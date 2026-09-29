@@ -462,19 +462,53 @@ public:
   }
 
   /** @brief `O(1)` parent lookup: the parent of `node(index)`, or
-   * `fdt_index_npos` if `index` is the root. */
+   * `fdt_index_npos` if `index` is the root. Asserts if `index` is
+   * out of bounds; use `try_parent_of` if `index` may be untrusted. */
   [[nodiscard]] std::size_t parent_of(std::size_t index) const noexcept { return node(index).parent; }
 
+  /** @brief Fallible parent lookup, failing with `error::out_of_bounds`
+   * instead of asserting if `index >= node_count()`. */
+  [[nodiscard]] result<std::size_t> try_parent_of(std::size_t index) const noexcept {
+    auto n = try_node(index);
+    if (!n)
+      return unexpected(n.error());
+    return (*n)->parent;
+  }
+
   /** @brief An `O(1)`-per-hop iterator over `node(index)`'s direct
-   * children only -- never descending into grandchildren. */
+   * children only -- never descending into grandchildren. Asserts if
+   * `index` is out of bounds; use `try_children` if `index` may be
+   * untrusted. */
   [[nodiscard]] fdt_index_child_iterator<node_container> children(std::size_t index) const noexcept {
     return fdt_index_child_iterator<node_container>(&nodes_, node(index).first_child);
   }
 
+  /** @brief Fallible variant of `children`, failing with
+   * `error::out_of_bounds` instead of asserting if `index >=
+   * node_count()`. */
+  [[nodiscard]] result<fdt_index_child_iterator<node_container>> try_children(std::size_t index) const noexcept {
+    auto n = try_node(index);
+    if (!n)
+      return unexpected(n.error());
+    return fdt_index_child_iterator<node_container>(&nodes_, (*n)->first_child);
+  }
+
   /** @brief An iterator over `node(index)`'s direct properties only --
-   * never descending into children -- decoded on demand from the blob. */
+   * never descending into children -- decoded on demand from the blob.
+   * Asserts if `index` is out of bounds; use `try_properties` if `index`
+   * may be untrusted. */
   [[nodiscard]] fdt_index_property_iterator properties(std::size_t index) const noexcept {
     return fdt_index_property_iterator(struct_region_, strings_region_, node(index).body_offset);
+  }
+
+  /** @brief Fallible variant of `properties`, failing with
+   * `error::out_of_bounds` instead of asserting if `index >=
+   * node_count()`. */
+  [[nodiscard]] result<fdt_index_property_iterator> try_properties(std::size_t index) const noexcept {
+    auto n = try_node(index);
+    if (!n)
+      return unexpected(n.error());
+    return fdt_index_property_iterator(struct_region_, strings_region_, (*n)->body_offset);
   }
 
   /** @brief `O(log n)` lookup of the node whose `phandle`/`linux,phandle`

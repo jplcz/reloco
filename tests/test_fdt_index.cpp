@@ -143,6 +143,38 @@ TEST(FdtIndexTest, ParentLookupIsConstantTime) {
   EXPECT_EQ(idx.parent_of(cpus), *root);
 }
 
+TEST(FdtIndexTest, FallibleAccessorsRejectOutOfBoundsIndexWithoutAborting) {
+  auto blob = build_sample_blob();
+  auto reader = std::move(fdt_reader::try_create(span<const std::byte>(blob.data(), blob.size()))).value();
+  index_storage storage;
+  auto idx = std::move(storage.build(reader)).value();
+
+  const std::size_t bogus = idx.node_count() + 42;
+
+  auto bad_node = idx.try_node(bogus);
+  ASSERT_FALSE(bad_node);
+  EXPECT_EQ(bad_node.error(), error::out_of_bounds);
+
+  auto bad_parent = idx.try_parent_of(bogus);
+  ASSERT_FALSE(bad_parent);
+  EXPECT_EQ(bad_parent.error(), error::out_of_bounds);
+
+  auto bad_children = idx.try_children(bogus);
+  ASSERT_FALSE(bad_children);
+  EXPECT_EQ(bad_children.error(), error::out_of_bounds);
+
+  auto bad_properties = idx.try_properties(bogus);
+  ASSERT_FALSE(bad_properties);
+  EXPECT_EQ(bad_properties.error(), error::out_of_bounds);
+
+  // In-bounds calls still succeed and agree with the asserting siblings.
+  auto root = idx.root();
+  ASSERT_TRUE(root);
+  auto ok_parent = idx.try_parent_of(*root);
+  ASSERT_TRUE(ok_parent);
+  EXPECT_EQ(*ok_parent, idx.parent_of(*root));
+}
+
 TEST(FdtIndexTest, PropertiesOfNodeExcludeChildNodesAndGrandchildProperties) {
   auto blob = build_sample_blob();
   auto reader = std::move(fdt_reader::try_create(span<const std::byte>(blob.data(), blob.size()))).value();

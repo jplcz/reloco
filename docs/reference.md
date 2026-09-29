@@ -3234,7 +3234,14 @@ call `children()` on it," an O(1) operation with zero blob re-parsing.
 `find_by_phandle()` is `O(log n)` via `span::binary_search_by` over the
 phandle buffer, sorted once (via `span::sort_by`) at the end of
 `try_build`. `all_nodes()` returns a flat, preorder `span<const
-fdt_index_node>` view of every indexed node. `try_build` fails with
+fdt_index_node>` view of every indexed node. `node()`, `parent_of()`,
+`children()`, and `properties()` all assert (active even with `NDEBUG`) if
+given an out-of-range node index; each has a fallible `try_`-prefixed
+sibling (`try_node()`, `try_parent_of()`, `try_children()`,
+`try_properties()`) that instead returns `error::out_of_bounds` through
+`result<...>`, for callers walking an index by an untrusted/externally
+supplied node index (e.g. one round-tripped through IPC) where an assert
+would be an unacceptable abort surface. `try_build` fails with
 `error::capacity_exceeded` if any caller-supplied buffer is too small (node
 buffer, phandle buffer, or the scratch stack -- e.g. too shallow for the
 blob's actual nesting depth) and with `error::invalid_argument`/
