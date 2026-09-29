@@ -4,7 +4,9 @@
 
 #pragma once
 
+#include "reloco/array.hpp"
 #include "reloco/error.hpp"
+#include "reloco/lifetime.hpp"
 #include <cstddef>
 #include <cstdint>
 
@@ -58,6 +60,13 @@ public:
         order--;
       }
 
+      if (order > 0) {
+        auto zone_check = current.try_add((1ULL << order) - 1);
+        if (!zone_check) {
+          return unexpected(zone_check.error());
+        }
+      }
+
       current.set_buddy_order(static_cast<uint16_t>(order));
       current.set_buddy_free(true);
       free_areas_[order].push_front(current.get_os_page());
@@ -89,7 +98,7 @@ public:
     }
 
     if (current_order > MaxOrder) {
-      return unexpected(error::out_of_memory);
+      return unexpected(error::allocation_failed);
     }
 
     // Pop the block and mark it as allocated
@@ -172,7 +181,7 @@ public:
       current_order++;
     }
     if (current_order > MaxOrder)
-      return unexpected(error::out_of_memory);
+      return unexpected(error::allocation_failed);
 
     page_type block = page_type::from_os_page(free_areas_[current_order].pop_front());
     block.set_buddy_free(false);
@@ -271,7 +280,7 @@ public:
   }
 
 private:
-  [[nodiscard]] static constexpr result<size_t> pages_to_order(size_t num_pages) noexcept {
+  [[nodiscard]] static result<size_t> pages_to_order(size_t num_pages) noexcept {
     if (num_pages == 0)
       return unexpected(error::invalid_argument);
 
@@ -279,12 +288,12 @@ private:
     while ((1ULL << order) < num_pages) {
       order++;
       if (order > MaxOrder)
-        return unexpected(error::out_of_memory);
+        return unexpected(error::allocation_failed);
     }
     return order;
   }
 
-  free_list_type free_areas_[MaxOrder + 1];
+  array<free_list_type, MaxOrder + 1> free_areas_{};
 };
 
 } // namespace reloco
