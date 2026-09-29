@@ -58,6 +58,7 @@ where, not a tutorial.
 | `fdt_reader.hpp` | `fdt_reader`, `mem_reserve_iterator` | Bounds-checked, `iterator_adaptor`-based read-only view over a caller-owned Flattened Device Tree (DTB) span, yielding `result<fdt_event>` per struct-block token |
 | `fdt_writer.hpp` | `fdt_writer` | Move-only, fallibly-constructed streaming writer for Flattened Device Tree (DTB, `/dts-v1/`) blobs into a caller-owned span, with sticky error propagation |
 | `fdt_index.hpp` | `fdt_index<Container>`, `fdt_index_node`, `fdt_index_phandle_entry`, `fdt_index_child_iterator<NodeContainer>`, `fdt_index_property_iterator` | Random-access index over an `fdt_reader` blob, built once (iteratively, never recursively) into caller-supplied `Container<T>` buffers, giving `O(1)` parent lookup and child iteration without descending into subtrees, plus `O(log n)` phandle-to-node lookup |
+| `fdt_memory.hpp` | `try_extract_memory` | Extracts a devicetree's physical memory description straight off `fdt_reader`'s single-pass streaming API (no `fdt_index`, safe to call very early in boot) into caller-provided `region_set`s |
 | `tamper.hpp` | `masked_integral<T>`, `tamper_proof_state<EnumT>`, `tamper_bool_impl` | Tamper-detecting integral, enum-state, and boolean storage wrappers |
 | `binary_heap.hpp` | `binary_heap<T, Compare>` | Allocator-backed priority queue matching Rust's `BinaryHeap<T>`, built on `vector<T>` |
 | `digraph.hpp` | `digraph` | Allocator-backed directed graph over dense node indices, rejecting any edge that would close a cycle -- for lock-order/witness-style (`witness(4)`/lockdep) dependency tracking |
@@ -3283,6 +3284,60 @@ against the reference `libfdt` C library's stateless, re-scanning
 equivalents (`fdt_getprop`/`fdt_path_offset`/`fdt_next_node`). It reports
 wall-clock nanoseconds per operation, not pass/fail assertions, and is
 intentionally excluded from `ctest`.
+
+## `try_extract_memory`
+
+`include/reloco/fdt_memory.hpp`
+
+Reads a devicetree's physical memory description straight off a
+single-pass `fdt_reader` -- deliberately independent of `fdt_index.hpp`,
+since building a random-access index isn't an option before an
+allocator/index scratch buffer exists, which is exactly when this is
+meant to run -- into two caller-provided `reloco::region_set`s: every
+byte of installed RAM (`full`), and what's actually available to hand out
+(`free`, i.e. `full` minus every reservation):
+
+```cpp
+reloco::region_set<8> full;
+reloco::region_set<8> free;
+if (auto extracted = reloco::fdt::try_extract_memory(reader, full, free); !extracted)
+  return extracted.error();
+// full/free now hold merged, non-overlapping physical ranges.
+```
+
+A node is treated as describing physical RAM ("`/memory`-class") if it's
+a direct child of the root with `device_type == "memory"`, or whose name
+-- ignoring any `@unit-address` suffix -- is exactly `"memory"`,
+`"secure-memory"`, or `"secure_memory"` (covers DTBs describing a
+secure/TEE-world RAM carve-out without a `device_type`). Regular
+`/memory` nodes are gated by the ordinary `status` property (active
+unless present and not `"okay"`); `/secure-memory` nodes are instead
+gated by `secure-status` -- the OP-TEE/TF-A convention where a TEE only
+claims a secure-memory node once its own `secure-status` is `"okay"`,
+independent of `status` -- matching the split where the REE consumes
+`/memory` nodes gated by `status` and the TEE consumes `/secure-memory`
+nodes gated by `secure-status`. Either property being absent defaults the
+node to active, per the devicetree spec's fallback for an omitted
+`status`.
+
+Since the struct block doesn't guarantee `/memory` appears before
+`/reserved-memory` (or vice versa), and `fdt_reader` is forward-only,
+`try_extract_memory` runs two independent passes over two independent
+copies of the same reader (`fdt_reader` is a cheap, non-owning cursor
+over caller-owned bytes -- copying it just forks the cursor) rather than
+one interleaved pass with a temporary exclusions buffer: pass one
+collects every active memory-class node's `reg` ranges into `full`
+(decoded with root's `#address-cells`/`#size-cells`, default 2/1, since a
+node's `reg` uses its *parent's* declared cell counts); `free` starts as
+a copy of `full`, has every legacy `/memreserve/`-table entry
+(`reader.mem_reserves()`) subtracted, and then pass two subtracts every
+non-disabled `/reserved-memory` child's `reg` range (decoded with
+`/reserved-memory`'s *own* `#address-cells`/`#size-cells`, since that's
+the node declaring them for its children). Fails with `error::not_found`
+if no memory-class node exists; otherwise propagates whatever error the
+first malformed `reg` property, unsupported cell count (`try_extract_memory`
+only supports 1- or 2-cell address/size fields), or `region_set` capacity
+overflow reports.
 
 ## `masked_byte_region<Size, NoncePolicy>`
 
