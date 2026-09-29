@@ -208,6 +208,18 @@ public:
    * `/memreserve/`-style memory reservation list. */
   [[nodiscard]] mem_reserve_iterator mem_reserves() const noexcept { return mem_reserve_iterator(mem_rsvmap_region_); }
 
+  /** @brief The raw struct block region (`off_dt_struct`/`size_dt_struct`),
+   * for code that needs to decode arbitrary struct-block offsets directly
+   * rather than through this reader's own sequential cursor -- see
+   * `fdt_index.hpp`, which walks this region independently to build a
+   * random-access index. */
+  [[nodiscard]] span<const std::byte> struct_region() const noexcept RELOCO_LIFETIMEBOUND { return struct_region_; }
+
+  /** @brief The raw strings block region (`off_dt_strings`/`size_dt_strings`),
+   * needed alongside `struct_region()` to resolve property name offsets
+   * when decoding struct-block tokens directly. */
+  [[nodiscard]] span<const std::byte> strings_region() const noexcept RELOCO_LIFETIMEBOUND { return strings_region_; }
+
   /** @brief `Derived::next_impl()` primitive required by
    * `reloco::iterator_adaptor`; use `next()`/range-for instead of calling
    * this directly. */
@@ -220,33 +232,6 @@ private:
       : blob_(blob), mem_rsvmap_region_(mem_rsvmap_region), struct_region_(struct_region),
         strings_region_(strings_region), version_(version), last_comp_version_(last_comp_version),
         boot_cpuid_phys_(boot_cpuid_phys) {}
-
-  [[nodiscard]] static result<uint32_t> read_u32_at(span<const std::byte> region, std::size_t offset) noexcept {
-    auto slice = region.try_subspan(offset, 4);
-    if (!slice)
-      return unexpected(error::out_of_bounds);
-    return detail::load_be32(slice->data());
-  }
-
-  // Scans `region` for a NUL byte starting at `start`, returning the
-  // (name, position-just-past-the-NUL) pair. Fails with
-  // `error::out_of_bounds` if `start` itself is out of range, or
-  // `error::invalid_argument` if no NUL terminator is found before the
-  // end of `region` (an unterminated string is malformed, not merely
-  // "not there yet").
-  [[nodiscard]] static result<std::pair<string_view, std::size_t>> read_cstring(span<const std::byte> region,
-                                                                                 std::size_t start) noexcept {
-    if (start > region.size())
-      return unexpected(error::out_of_bounds);
-    std::size_t i = start;
-    while (i < region.size() && region[i] != std::byte{0})
-      ++i;
-    if (i == region.size())
-      return unexpected(error::invalid_argument);
-    return std::pair<string_view, std::size_t>(string_view(reinterpret_cast<const char *>(region.data() + start),
-                                                            i - start),
-                                                i + 1);
-  }
 
   [[nodiscard]] optional<item_type> fail(error e) noexcept {
     done_ = true;
@@ -269,16 +254,16 @@ private:
   if (blob.size() < detail::header_size)
     return unexpected(error::out_of_bounds);
 
-  auto magic_r = read_u32_at(blob, 0);
-  auto totalsize_r = read_u32_at(blob, 4);
-  auto off_struct_r = read_u32_at(blob, 8);
-  auto off_strings_r = read_u32_at(blob, 12);
-  auto off_mem_rsvmap_r = read_u32_at(blob, 16);
-  auto version_r = read_u32_at(blob, 20);
-  auto last_comp_version_r = read_u32_at(blob, 24);
-  auto boot_cpuid_r = read_u32_at(blob, 28);
-  auto size_strings_r = read_u32_at(blob, 32);
-  auto size_struct_r = read_u32_at(blob, 36);
+  auto magic_r = detail::read_u32_at(blob, 0);
+  auto totalsize_r = detail::read_u32_at(blob, 4);
+  auto off_struct_r = detail::read_u32_at(blob, 8);
+  auto off_strings_r = detail::read_u32_at(blob, 12);
+  auto off_mem_rsvmap_r = detail::read_u32_at(blob, 16);
+  auto version_r = detail::read_u32_at(blob, 20);
+  auto last_comp_version_r = detail::read_u32_at(blob, 24);
+  auto boot_cpuid_r = detail::read_u32_at(blob, 28);
+  auto size_strings_r = detail::read_u32_at(blob, 32);
+  auto size_struct_r = detail::read_u32_at(blob, 36);
   if (!magic_r || !totalsize_r || !off_struct_r || !off_strings_r || !off_mem_rsvmap_r || !version_r ||
       !last_comp_version_r || !boot_cpuid_r || !size_strings_r || !size_struct_r)
     return unexpected(error::out_of_bounds); // unreachable: blob.size() >= header_size already guarantees this.
@@ -326,7 +311,7 @@ private:
   if (done_)
     return nullopt;
   for (;;) {
-    auto tok_r = read_u32_at(struct_region_, cursor_);
+    auto tok_r = detail::read_u32_at(struct_region_, cursor_);
     if (!tok_r)
       return fail(tok_r.error());
     const uint32_t tok = *tok_r;
@@ -337,7 +322,7 @@ private:
     }
 
     if (tok == detail::token_begin_node) {
-      auto name_r = read_cstring(struct_region_, cursor_ + 4);
+      auto name_r = detail::read_cstring(struct_region_, cursor_ + 4);
       if (!name_r)
         return fail(name_r.error());
       cursor_ = detail::align4(name_r->second);
@@ -359,16 +344,16 @@ private:
     }
 
     if (tok == detail::token_prop) {
-      auto len_r = read_u32_at(struct_region_, cursor_ + 4);
+      auto len_r = detail::read_u32_at(struct_region_, cursor_ + 4);
       if (!len_r)
         return fail(len_r.error());
-      auto nameoff_r = read_u32_at(struct_region_, cursor_ + 8);
+      auto nameoff_r = detail::read_u32_at(struct_region_, cursor_ + 8);
       if (!nameoff_r)
         return fail(nameoff_r.error());
       auto value_r = struct_region_.try_subspan(cursor_ + 12, static_cast<std::size_t>(*len_r));
       if (!value_r)
         return fail(error::out_of_bounds);
-      auto name_r = read_cstring(strings_region_, static_cast<std::size_t>(*nameoff_r));
+      auto name_r = detail::read_cstring(strings_region_, static_cast<std::size_t>(*nameoff_r));
       if (!name_r)
         return fail(name_r.error());
       // `value_r`'s success already proves `cursor_ + 12 + *len_r` fits within

@@ -14,9 +14,14 @@
  * floating point is used anywhere in this file.
  */
 
+#include "../error.hpp"
+#include "../expected.hpp"
 #include "../lifetime.hpp"
+#include "../span.hpp"
+#include "../string_view.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <utility>
 
 namespace reloco::fdt {
 
@@ -65,6 +70,38 @@ inline void store_be64(std::byte *p, uint64_t v) noexcept {
   for (std::size_t i = 0; i < 8; ++i)
     v = (v << 8) | static_cast<uint64_t>(p[i]);
   return v;
+}
+
+/** @brief Reads a big-endian `uint32_t` at `offset` within `region`,
+ * bounds-checked via `span::try_subspan`. Shared by `fdt_reader.hpp` (its
+ * sequential streaming decode) and `fdt_index.hpp` (its own, independent
+ * struct-block walk when building a random-access index). */
+[[nodiscard]] inline result<uint32_t> read_u32_at(span<const std::byte> region, std::size_t offset) noexcept {
+  auto slice = region.try_subspan(offset, 4);
+  if (!slice)
+    return unexpected(reloco::error::out_of_bounds);
+  return load_be32(slice->data());
+}
+
+/** @brief Scans `region` for a NUL byte starting at `start`, returning the
+ * `(name, position-just-past-the-NUL)` pair. Fails with
+ * `error::out_of_bounds` if `start` itself is out of range, or
+ * `error::invalid_argument` if no NUL terminator is found before the end
+ * of `region` (an unterminated string is malformed, not merely "not there
+ * yet"). Shared by `fdt_reader.hpp` and `fdt_index.hpp` for the same
+ * reason as `read_u32_at` above. */
+[[nodiscard]] inline result<std::pair<string_view, std::size_t>> read_cstring(span<const std::byte> region,
+                                                                              std::size_t start) noexcept {
+  if (start > region.size())
+    return unexpected(reloco::error::out_of_bounds);
+  std::size_t i = start;
+  while (i < region.size() && region[i] != std::byte{0})
+    ++i;
+  if (i == region.size())
+    return unexpected(reloco::error::invalid_argument);
+  return std::pair<string_view, std::size_t>(string_view(reinterpret_cast<const char *>(region.data() + start),
+                                                          i - start),
+                                              i + 1);
 }
 
 } // namespace detail

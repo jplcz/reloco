@@ -57,6 +57,7 @@ where, not a tutorial.
 | `sg_translator.hpp` | `sg_translator` | Policy-based scatter-gather translator |
 | `fdt_reader.hpp` | `fdt_reader`, `mem_reserve_iterator` | Bounds-checked, `iterator_adaptor`-based read-only view over a caller-owned Flattened Device Tree (DTB) span, yielding `result<fdt_event>` per struct-block token |
 | `fdt_writer.hpp` | `fdt_writer` | Move-only, fallibly-constructed streaming writer for Flattened Device Tree (DTB, `/dts-v1/`) blobs into a caller-owned span, with sticky error propagation |
+| `fdt_index.hpp` | `fdt_index<Container>`, `fdt_index_node`, `fdt_index_phandle_entry`, `fdt_index_child_iterator<NodeContainer>`, `fdt_index_property_iterator` | Random-access index over an `fdt_reader` blob, built once (iteratively, never recursively) into caller-supplied `Container<T>` buffers, giving `O(1)` parent lookup and child iteration without descending into subtrees, plus `O(log n)` phandle-to-node lookup |
 | `tamper.hpp` | `masked_integral<T>`, `tamper_proof_state<EnumT>`, `tamper_bool_impl` | Tamper-detecting integral, enum-state, and boolean storage wrappers |
 | `binary_heap.hpp` | `binary_heap<T, Compare>` | Allocator-backed priority queue matching Rust's `BinaryHeap<T>`, built on `vector<T>` |
 | `digraph.hpp` | `digraph` | Allocator-backed directed graph over dense node indices, rejecting any edge that would close a cycle -- for lock-order/witness-style (`witness(4)`/lockdep) dependency tracking |
@@ -3165,6 +3166,80 @@ moved-from writer, is rejected both at compile time (where Clang's
 consumed-state analysis can prove it) and at runtime (`error`-returning,
 via the same sticky-error latch). Copying is not allowed -- only moving --
 matching every other reloco handle that mutates memory in place.
+
+## `fdt_index<Container>`
+
+`include/reloco/fdt_index.hpp`
+
+Random-access index over an `fdt_reader`'s blob: a template class over a
+caller-supplied *class template* `Container` (e.g. `reloco::external_vector`,
+or an alias binding a second parameter, like
+`template <typename T> using my_vec = reloco::inline_vector<T, 32>;`),
+mirroring `digraph`'s dense-index style but resolved once, up front, from
+the struct block rather than grown incrementally. `try_build` walks the
+blob a single time, iteratively (never recursively -- matching
+`digraph.hpp`'s worklist convention, so stack footprint stays bounded
+independent of tree depth), filling three caller-owned buffers: the node
+table, an optional phandle index, and a transient depth-tracking scratch
+stack that is discarded once the build finishes:
+
+```cpp
+using node_vec = reloco::external_vector<reloco::fdt::fdt_index_node>;
+using phandle_vec = reloco::external_vector<reloco::fdt::fdt_index_phandle_entry>;
+using frame_vec = reloco::external_vector<reloco::fdt::detail::fdt_index_build_frame>;
+
+std::array<reloco::fdt::fdt_index_node, 64> node_storage{};
+std::array<reloco::fdt::fdt_index_phandle_entry, 32> phandle_storage{};
+std::array<reloco::fdt::detail::fdt_index_build_frame, 16> stack_storage{};
+
+auto made = reloco::fdt::fdt_index<reloco::external_vector>::try_build(
+    reader, node_vec(reloco::span(node_storage)), phandle_vec(reloco::span(phandle_storage)),
+    frame_vec(reloco::span(stack_storage)));
+if (!made)
+  return made.error();
+auto idx = std::move(made).value();
+
+auto root = idx.root();
+for (std::size_t child : idx.children(*root)) { // O(1) per hop, no descent
+  const auto &node = idx.node(child);           // node.name, node.parent, ...
+  for (auto prop : idx.properties(child)) {
+    if (!prop)
+      return prop.error();
+    // prop->name, prop->try_as_u32()/try_as_string()
+  }
+}
+
+if (auto found = idx.find_by_phandle(0x10))
+  // *found is a node index
+  ;
+```
+
+Every `Container<T>` instantiation is checked against the minimal
+fallible-vector shape `fdt_index` requires (`size`/`empty`/`clear`/
+`try_push_back`/`try_pop_back`/`operator[]`/`data`) -- matching every
+reloco vector -- via a `void_t`-based detection trait, so a mismatched
+`Container` fails with a short `static_assert` instead of a page of nested
+template errors; on a C++20 compiler, the same check is also exposed as
+`detail::fdt_index_compatible_container`, a `concept` alias over the same
+trait (present only when C++20 or newer is active -- `fdt_index.hpp`
+itself still compiles cleanly under C++17). `fdt_index_node` records each
+node's struct-block offset, its body offset (right after its name, so
+`properties()` never re-parses it), `parent`/`first_child`/`next_sibling`
+links (`fdt_index_npos` for "none"), and its `phandle`/`linux,phandle`
+value (`0` if absent -- phandle `0` is reserved per the DTB spec and is
+never indexed). `children()` and `properties()` return Rust-style
+`iterator_adaptor`-based views (see `include/reloco/iterator.hpp`);
+`children()` never descends into a subtree -- skipping one is just "don't
+call `children()` on it," an O(1) operation with zero blob re-parsing.
+`find_by_phandle()` is `O(log n)` via `span::binary_search_by` over the
+phandle buffer, sorted once (via `span::sort_by`) at the end of
+`try_build`. `all_nodes()` returns a flat, preorder `span<const
+fdt_index_node>` view of every indexed node. `try_build` fails with
+`error::capacity_exceeded` if any caller-supplied buffer is too small (node
+buffer, phandle buffer, or the scratch stack -- e.g. too shallow for the
+blob's actual nesting depth) and with `error::invalid_argument`/
+`error::out_of_bounds` on a truncated or corrupt struct block, never
+trapping on malformed input.
 
 ## `masked_byte_region<Size, NoncePolicy>`
 
