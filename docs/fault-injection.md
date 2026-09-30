@@ -358,13 +358,8 @@ testing.
 - `tests/test_fault_injection_backends.cpp` -- the same core behaviors
   re-run under each `RELOCO_TLS_MODEL` backend (thread-local, single,
   and pthread), one dedicated test binary per backend.
-- [`reloco_ipc_ring.h`/`.hpp`](reference.md#reloco_ipc_producer--reloco_ipc_consumer--ipc_producer--ipc_consumer) --
-  a real-world, production-header usage example: two built-in fault
-  points (`reloco::ipc_fault::producer_read_idx_refresh`/
-  `consumer_write_idx_refresh`) guard the exact instant a cross-process
-  ring buffer trusts the *other* side's shared-memory index, for
-  index-spoofing and bit-flip attack-surface testing. See
-  `tests/test_ipc_ring_fault_injection.cpp` -- including its own,
-  dedicated CMake target, required to avoid an ODR violation against
-  other translation units that use the same header without fault
-  injection enabled.
+- `reloco_ipc_ring.h`/`.hpp` -- a real-world, production-header usage
+  example built on the same `fault_injection.hpp` machinery -- moved to
+  `jplcz_structo`; see that project's
+  [`docs/reloco_ipc_ring.md`](https://github.com/jplcz/structo/blob/master/docs/reloco_ipc_ring.md)
+  for the fault-point/attack-surface details.

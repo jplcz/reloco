@@ -32,9 +32,6 @@
 #include <reloco/external_vector.hpp>
 #include <reloco/fault_injection.hpp>
 #include <reloco/fault_injection_patterns.hpp>
-#include <reloco/fdt_index.hpp>
-#include <reloco/fdt_reader.hpp>
-#include <reloco/fdt_writer.hpp>
 #include <reloco/flat_hash_map.hpp>
 #include <reloco/flat_hash_set.hpp>
 #include <reloco/flat_map.hpp>
@@ -106,13 +103,5 @@
 #include <reloco/detail/sanitizer.hpp>
 
 #ifndef _MSC_VER
-#include <reloco/compat_sg.hpp>
-#include <reloco/pfn_translator.hpp>
-#include <reloco/phys_addr.hpp>
-#include <reloco/phys_page.hpp>
-#include <reloco/region_set.hpp>
-#include <reloco/reloco_ipc_ring.hpp>
-#include <reloco/sg_list.hpp>
-#include <reloco/sg_translator.hpp>
 #include <reloco/speculation_defense.hpp>
 #endif
