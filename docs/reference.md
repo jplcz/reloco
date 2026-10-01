@@ -200,6 +200,7 @@ so this is enforced rather than just a convention.
 | `io_error` | A lower-level I/O operation (e.g. one performed by an allocator backend) failed for a reason not otherwise covered by a more specific member. |
 | `operation_canceled` | The operation was explicitly canceled before it could complete. |
 | `security_violation` | A trust/security boundary check on data from another, untrusted or compromised execution context failed (e.g. `reloco_ipc_ring.h`/`.hpp`'s spoofed-index detection). Unlike every other member above, this is not transient or locally recoverable: the caller must treat the shared resource as compromised and stop using it rather than retry. |
+| `page_fault` | Accessing memory across a trust boundary (e.g. a user-space pointer handed to a syscall handler) would require resolving a page fault -- possibly blocking on demand-paging/swap-in -- and the calling context forbade that (a `_nofault` accessor, used e.g. with page faults disabled, in interrupt/atomic context, or while holding a spinlock). Distinct from `security_violation`: the address may be perfectly valid, just not resident/mapped right now. |
 
 Several members (`no_owner`/`invalid_owner`, `deadlock`/`still_locked`/
 `not_locked`/`timed_out`, `not_initialized`, `busy`/`interrupted`/

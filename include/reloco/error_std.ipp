@@ -81,6 +81,8 @@ RELOCO_API std::string error_category_impl::message(int ev) const {
     return "the operation was explicitly canceled before it could complete";
   case error::security_violation:
     return "a trust/security boundary check on untrusted data failed";
+  case error::page_fault:
+    return "the access would require resolving a page fault, which the caller forbade";
   }
   return "unknown reloco::error";
 }
@@ -134,6 +136,7 @@ RELOCO_API std::error_condition error_category_impl::default_error_condition(int
   case error::not_found:
   case error::invalid_state:
   case error::resource_exhausted:
+  case error::page_fault:
     break;
   }
   return std::error_category::default_error_condition(ev);
