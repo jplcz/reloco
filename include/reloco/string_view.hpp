@@ -58,12 +58,15 @@ public:
   constexpr basic_string_view(base rhs RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
       : data_(rhs.data()), size_(rhs.size()) {}
 
+  // std-interop-begin: opt-in implicit conversion from std::basic_string
+  // for interop with APIs that already speak std::string.
   template <typename Allocator>
   constexpr basic_string_view(const std::basic_string<CharT, TraitsT, Allocator> &rhs RELOCO_LIFETIMEBOUND
                                   RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
       : data_(rhs.data()), size_(rhs.size()) {}
 
   template <typename Allocator> basic_string_view(std::basic_string<CharT, TraitsT, Allocator> &&) = delete;
+  // std-interop-end
 
   constexpr basic_string_view(std::nullptr_t) noexcept {}
 

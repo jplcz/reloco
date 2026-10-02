@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: BSD-2-Clause
 
+// std-interop-file: out-of-line bodies for the RELOCO_MUTEX_BACKEND_STD
+// classes, an opt-in backend wrapping <mutex>/<shared_mutex> directly.
 /** @file mutex_std.ipp @brief Out-of-line bodies for the
  * RELOCO_MUTEX_BACKEND_STD classes (mutex, recursive_mutex, shared_mutex,
  * condition_variable -- see mutex.hpp). Included from mutex.hpp itself,

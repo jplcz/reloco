@@ -261,6 +261,8 @@ inline void yield() noexcept { sched_yield(); }
 
 #elif defined(RELOCO_THREAD_BACKEND_STD)
 
+// std-interop-begin: opt-in backend wrapping <thread> directly, selected
+// only when pthreads is unavailable.
 #include <system_error>
 #include <thread>
 
@@ -381,6 +383,8 @@ inline void yield() noexcept { std::this_thread::yield(); }
 #if RELOCO_SHARED_PROVIDE_DEFINITIONS
 #include "thread_std.ipp"
 #endif
+
+// std-interop-end
 
 #endif // RELOCO_THREAD_BACKEND_*
 

@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: BSD-2-Clause
 
+// std-interop-file: out-of-line body for the RELOCO_THREAD_BACKEND_STD
+// backend, an opt-in wrapper directly around <thread>.
 /** @file thread_std.ipp @brief Out-of-line body for the
  * RELOCO_THREAD_BACKEND_STD `thread::try_spawn` (see thread.hpp). Included
  * from thread.hpp itself, guarded on RELOCO_SHARED_PROVIDE_DEFINITIONS

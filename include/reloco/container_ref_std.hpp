@@ -4,6 +4,8 @@
 
 #pragma once
 
+// std-interop-file: opt-in container_ref_traits adapters for
+// std::vector/std::map (see file docs below for why these are isolated).
 /** @file container_ref_std.hpp
  * @brief `container_ref_traits` adapters for `std::vector`/`std::map`.
  *

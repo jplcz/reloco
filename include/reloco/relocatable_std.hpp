@@ -4,6 +4,8 @@
 
 #pragma once
 
+// std-interop-file: opt-in is_trivially_relocatable specializations for
+// std::pair/std::tuple/std::optional/std::variant (see file docs below).
 /** @file relocatable_std.hpp
  * @brief `is_trivially_relocatable` specializations for `std::pair`,
  * `std::tuple`, `std::optional`, and `std::variant`.

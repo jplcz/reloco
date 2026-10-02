@@ -4,6 +4,8 @@
 
 #pragma once
 
+// std-interop-file: embeds reloco_printers.py as asm string-literal data, not C++ code
+
 /** @file gdb_printers.hpp
  * @brief Embeds GDB pretty printers for reloco types into the binary.
  *

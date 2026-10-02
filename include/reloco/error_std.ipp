@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: BSD-2-Clause
 
+// std-interop-file: out-of-line bodies for error_std.hpp's opt-in
+// <system_error>/std::string bridge; never pulled in otherwise.
 /** @file error_std.ipp @brief Out-of-line bodies for detail::error_category_impl
  * and the reloco::error_category()/make_error_code()/make_error_condition()
  * free functions (see error_std.hpp). Included from error_std.hpp itself,

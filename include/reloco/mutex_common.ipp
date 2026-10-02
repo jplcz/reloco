@@ -2,6 +2,9 @@
 //
 // SPDX-License-Identifier: BSD-2-Clause
 
+// std-interop-file: std::thread::id/std::this_thread::get_id() are used
+// deliberately here as the only portable, allocation-free thread identity
+// available regardless of the active RELOCO_MUTEX_BACKEND_* backend.
 /** @file mutex_common.ipp @brief Out-of-line bodies for
  * error_checking_mutex (see mutex.hpp), which is defined once regardless
  * of the active RELOCO_MUTEX_BACKEND_* backend. Included from mutex.hpp

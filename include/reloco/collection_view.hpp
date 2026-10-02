@@ -567,6 +567,8 @@ template <typename T> struct collection_view_traits<span<T>> {
 /**
  * @brief Adapts `std::array<T, N>` for the collection views.
  */
+// std-interop-begin: opt-in adapter so users can pass std::array into
+// collection_view-based APIs; reloco::array itself needs no such adapter.
 template <typename T, std::size_t N> struct collection_view_traits<std::array<T, N>> {
   using element_type = T;
   static constexpr bool is_random_access = true;
@@ -581,8 +583,12 @@ template <typename T, std::size_t N> struct collection_view_traits<std::array<T,
   static const T *data(const std::array<T, N> &c) noexcept { return c.data(); }
 };
 
+// std-interop-end
+
 #if RELOCO_HAS_STD_SPAN
 
+// std-interop-begin: opt-in adapter so users can pass std::span into
+// collection_view-based APIs; reloco::span itself needs no such adapter.
 /**
  * @brief Adapts `std::span<T>` for the collection views.
  *
@@ -601,6 +607,8 @@ template <typename T> struct collection_view_traits<std::span<T>> {
   static T &at(const std::span<T> &c, std::size_t index) noexcept { return c[index]; }
   static T *data(const std::span<T> &c) noexcept { return c.data(); }
 };
+
+// std-interop-end
 
 #endif // RELOCO_HAS_STD_SPAN
 

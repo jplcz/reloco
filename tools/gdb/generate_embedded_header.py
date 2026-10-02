@@ -67,6 +67,11 @@ def generate(printers_source):
     lines.append("\n")
     lines.append("#pragma once\n")
     lines.append("\n")
+    # scripts/check-no-std-types.py would otherwise flag the embedded Python
+    # source below as banned std:: usage: it is opaque string-literal data
+    # (GDB script text), never real C++ code.
+    lines.append("// std-interop-file: embeds reloco_printers.py as asm string-literal data, not C++ code\n")
+    lines.append("\n")
     lines.append("/** @file gdb_printers.hpp\n")
     lines.append(" * @brief Embeds GDB pretty printers for reloco types into the binary.\n")
     lines.append(" *\n")

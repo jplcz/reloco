@@ -298,6 +298,8 @@ public:
   constexpr span(Container &&) = delete;
 
 #if RELOCO_HAS_STD_SPAN
+  // std-interop-begin: opt-in conversions to/from std::span for interop
+  // with APIs that already speak <span>; reloco::span needs neither.
   /**
    * @brief Constructs a `reloco::span` from any `std::span` (dynamic or
    * static extent).
@@ -317,6 +319,7 @@ public:
   [[nodiscard]] constexpr operator std::span<T>() const & noexcept { return std::span<T>(m_ptr, m_size); }
 
   operator std::span<T>() const && = delete;
+  // std-interop-end
 #endif
 
   /**

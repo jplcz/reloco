@@ -166,9 +166,9 @@ construction_helpers::try_construct(allocator_ref alloc, T *storage, Args &&...a
     try {
       new (storage) T(std::forward<Args>(args)...);
       return {};
-    } catch (std::bad_alloc &) {
+    } catch (std::bad_alloc &) { // std-interop-ok: translate libstdc++'s thrown bad_alloc at the one exception boundary into result<>
       return unexpected(error::allocation_failed);
-    } catch (...) {
+    } catch (...) { // std-interop-ok: swallow any other constructor exception at the exception boundary into result<>
       return unexpected(error::unsupported_operation);
     }
 #else
@@ -213,9 +213,9 @@ construction_helpers::try_allocate(allocator_ref alloc, Args &&...args) noexcept
 #if RELOCO_HAS_EXCEPTIONS
     try {
       return result<T>(T(std::forward<Args>(args)...));
-    } catch (std::bad_alloc &) {
+    } catch (std::bad_alloc &) { // std-interop-ok: translate libstdc++'s thrown bad_alloc at the one exception boundary into result<>
       return unexpected(error::allocation_failed);
-    } catch (...) {
+    } catch (...) { // std-interop-ok: swallow any other constructor exception at the exception boundary into result<>
       return unexpected(error::unsupported_operation);
     }
 #else
@@ -252,9 +252,9 @@ result<T> construction_helpers::try_clone(allocator_ref alloc, const T &source) 
 #if RELOCO_HAS_EXCEPTIONS
     try {
       return result<T>(T(source));
-    } catch (std::bad_alloc &) {
+    } catch (std::bad_alloc &) { // std-interop-ok: translate libstdc++'s thrown bad_alloc at the one exception boundary into result<>
       return unexpected(error::allocation_failed);
-    } catch (...) {
+    } catch (...) { // std-interop-ok: swallow any other constructor exception at the exception boundary into result<>
       return unexpected(error::unsupported_operation);
     }
 #else
@@ -288,9 +288,9 @@ result<void> construction_helpers::try_clone_at(allocator_ref alloc, T *storage,
     try {
       new (storage) T(std::move(*res));
       return {};
-    } catch (std::bad_alloc &) {
+    } catch (std::bad_alloc &) { // std-interop-ok: translate libstdc++'s thrown bad_alloc at the one exception boundary into result<>
       return unexpected(error::allocation_failed);
-    } catch (...) {
+    } catch (...) { // std-interop-ok: swallow any other constructor exception at the exception boundary into result<>
       return unexpected(error::unsupported_operation);
     }
 #else

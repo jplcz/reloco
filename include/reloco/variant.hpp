@@ -4,6 +4,8 @@
 
 #pragma once
 
+// std-interop-file: a deliberate, thin public-inheritance wrapper around
+// std::variant (see the file docs immediately below for the rationale).
 /** @file variant.hpp
  * @brief `reloco::variant<Ts...>`: a thin, public-inheritance wrapper
  * around `std::variant<Ts...>` adding a handful of Rust-inspired

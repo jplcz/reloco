@@ -337,9 +337,12 @@ public:
     return std::basic_string_view<CharT, TraitsT>(data_, size_);
   }
 
+  // std-interop-begin: opt-in conversion to std::basic_string for interop
+  // with APIs that already speak std::string; never used internally.
   explicit operator std::basic_string<CharT, TraitsT>() const {
     return std::basic_string<CharT, TraitsT>(data_, size_);
   }
+  // std-interop-end
 
   // ---- iteration ----
 

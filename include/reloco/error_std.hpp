@@ -4,6 +4,8 @@
 
 #pragma once
 
+// std-interop-file: opt-in bridge to <system_error>/std::string, only
+// pulled in by users who explicitly #include this header (see below).
 /** @file error_std.hpp
  * @brief Binds `reloco::error` to the standard `<system_error>` framework.
  *

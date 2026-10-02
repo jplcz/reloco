@@ -38,6 +38,7 @@
 #include "error.hpp"
 #include "expected.hpp"
 #include "iterator.hpp"
+#include "optional.hpp"
 #include "rvalue_safety.hpp"
 #include "span.hpp"
 #include <algorithm>
@@ -718,9 +719,9 @@ public:
    * @param offset Logical index to start searching from (defaults to 0).
    * @return The logical index of the value if found, or empty if not found.
    */
-  [[nodiscard]] std::optional<size_type> find(const T &value, size_type offset = 0) const & noexcept {
+  [[nodiscard]] reloco::optional<size_type> find(const T &value, size_type offset = 0) const & noexcept {
     if (offset >= this->len_)
-      return std::nullopt;
+      return reloco::nullopt;
 
     const T *typed_data = static_cast<const T *>(this->data_);
     std::size_t physical_start = (this->head_ + offset) % this->cap_;
@@ -740,7 +741,7 @@ public:
       }
     }
 
-    return std::nullopt;
+    return reloco::nullopt;
   }
 
   // ---- Bulk Peeking ----
@@ -857,7 +858,7 @@ public:
    *
    * @tparam U The struct type to read (must be trivially copyable).
    * @param offset Logical byte offset to read from (default 0).
-   * @return The struct by value, or std::nullopt if not enough bytes exist.
+   * @return The struct by value, or reloco::nullopt if not enough bytes exist.
    */
   template <typename U> [[nodiscard]] optional<U> peek_struct(size_type offset = 0) const noexcept {
     static_assert(sizeof(T) == 1, "peek_struct requires a byte-oriented buffer (char, uint8_t, std::byte)");
@@ -878,21 +879,21 @@ public:
    *
    * @tparam Header The struct type representing the packet header.
    * @tparam LengthFunc A callable `std::size_t(const Header&)` that returns the total frame size.
-   * @return A contiguous span of the entire frame, or std::nullopt if incomplete.
+   * @return A contiguous span of the entire frame, or reloco::nullopt if incomplete.
    */
   template <typename Header, typename LengthFunc>
-  [[nodiscard]] std::optional<span<const T>> try_read_frame(LengthFunc get_total_size) & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] reloco::optional<span<const T>> try_read_frame(LengthFunc get_total_size) & noexcept RELOCO_LIFETIMEBOUND {
     // Do we have enough data to even read the header?
     auto hdr = this->peek_struct<Header>();
     if (!hdr)
-      return std::nullopt;
+      return reloco::nullopt;
 
     // Ask the user's lambda how big this entire packet is supposed to be
     std::size_t total_size = get_total_size(*hdr);
 
     // Has the whole packet arrived from the network yet?
     if (this->len_ < total_size)
-      return std::nullopt;
+      return reloco::nullopt;
 
     // We have the full packet! Make sure it sits contiguously in memory.
     // (If the buffer is fragmented, this slides it to index 0 using memmove)
@@ -1025,11 +1026,11 @@ public:
    *
    * @param seq The sequence to search for.
    * @param offset Logical index to start searching from.
-   * @return Logical index of the start of the sequence, or std::nullopt.
+   * @return Logical index of the start of the sequence, or reloco::nullopt.
    */
-  [[nodiscard]] std::optional<size_type> find_sequence(span<const T> seq, size_type offset = 0) const & noexcept {
+  [[nodiscard]] reloco::optional<size_type> find_sequence(span<const T> seq, size_type offset = 0) const & noexcept {
     if (seq.empty() || this->len_ - offset < seq.size())
-      return std::nullopt;
+      return reloco::nullopt;
 
     // Cast the unsigned offset to a signed difference type for safe iterator arithmetic
     auto it_begin = this->begin() + static_cast<std::ptrdiff_t>(offset);
@@ -1040,7 +1041,7 @@ public:
     if (match != it_end) {
       return static_cast<size_type>(match - this->begin());
     }
-    return std::nullopt;
+    return reloco::nullopt;
   }
 
   /**

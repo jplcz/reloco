@@ -348,6 +348,8 @@ private:
 
 #elif defined(RELOCO_MUTEX_BACKEND_STD)
 
+// std-interop-begin: opt-in backend wrapping <mutex>/<shared_mutex>/
+// <condition_variable> directly, selected only when pthreads is unavailable.
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
@@ -528,6 +530,8 @@ private:
 
 } // namespace reloco
 
+// std-interop-end
+
 #endif // RELOCO_MUTEX_BACKEND_*
 
 namespace reloco {
@@ -563,7 +567,7 @@ public:
 
 private:
   mutex mutex_;
-  std::atomic<std::thread::id> owner_{};
+  std::atomic<std::thread::id> owner_{}; // std-interop-ok: portable, allocation-free thread identity (see mutex_common.ipp)
 };
 
 #if RELOCO_SHARED_PROVIDE_DEFINITIONS
