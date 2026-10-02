@@ -145,7 +145,7 @@ template <typename T> struct rc_control_block_combined final : rc_control_block 
   }
 };
 
-struct RELOCO_EXPORT enable_rc_from_this_base{};
+struct RELOCO_EXPORT enable_rc_from_this_base {};
 
 } // namespace detail
 

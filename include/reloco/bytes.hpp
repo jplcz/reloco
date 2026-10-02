@@ -55,13 +55,13 @@
 #include "detail/assert.hpp"
 #include "error.hpp"
 #include "expected.hpp"
+#include "iterator.hpp"
 #include "lifetime.hpp"
 #include "rc.hpp"
 #include "relocatable.hpp"
 #include "rvalue_safety.hpp"
 #include "send_sync.hpp"
 #include "span.hpp"
-#include "iterator.hpp"
 
 #include <cstddef>
 #include <cstdint>

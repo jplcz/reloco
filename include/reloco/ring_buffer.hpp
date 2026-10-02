@@ -882,7 +882,8 @@ public:
    * @return A contiguous span of the entire frame, or reloco::nullopt if incomplete.
    */
   template <typename Header, typename LengthFunc>
-  [[nodiscard]] reloco::optional<span<const T>> try_read_frame(LengthFunc get_total_size) & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] reloco::optional<span<const T>>
+  try_read_frame(LengthFunc get_total_size) & noexcept RELOCO_LIFETIMEBOUND {
     // Do we have enough data to even read the header?
     auto hdr = this->peek_struct<Header>();
     if (!hdr)

@@ -98,12 +98,12 @@
  * @endcode
  */
 
-#include "reloco_config.hpp"
 #include "detail/compat.hpp"
 #include "duration.hpp"
 #include "error.hpp"
 #include "expected.hpp"
 #include "int_ops.hpp"
+#include "reloco_config.hpp"
 
 #include <cstdint>
 
