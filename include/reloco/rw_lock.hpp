@@ -72,7 +72,16 @@ public:
     read_guard &operator=(read_guard &&) = delete;
     read_guard &operator=(const read_guard &) = delete;
 
-    ~read_guard() noexcept RELOCO_RELEASE_SHARED() {
+    /** @brief Annotated with the generic `RELOCO_RELEASE()` rather than
+     * `RELOCO_RELEASE_SHARED()` -- Clang's Thread Safety Analysis models
+     * a `RELOCO_SCOPED_CAPABILITY`'s own destructor as releasing whatever
+     * single capability its constructor acquired, regardless of
+     * shared/exclusive kind, exactly like Abseil's
+     * `ReaderMutexLock::~ReaderMutexLock()`; annotating it
+     * `RELEASE_SHARED()` instead causes a spurious "releasing mutex using
+     * shared access, expected exclusive access" diagnostic at every call
+     * site (see `shared_lock.hpp` for the same fix and rationale). */
+    ~read_guard() noexcept RELOCO_RELEASE() {
       if (cell_ != nullptr)
         cell_->mutex_.unlock_shared();
     }

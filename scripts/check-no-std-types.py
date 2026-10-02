@@ -67,6 +67,8 @@ BANNED_CATEGORIES = [
                  r"stringstream|ostringstream|istringstream"),
     ("OS-backed threading primitive", r"mutex|thread|condition_variable|shared_mutex|recursive_mutex|"
                                        r"timed_mutex|this_thread"),
+    ("lock wrapper (use reloco::unique_lock/reloco::shared_lock instead)", r"unique_lock|shared_lock|lock_guard|"
+                                                                            r"scoped_lock"),
 ]
 
 BANNED_PATTERN = re.compile(

@@ -103,7 +103,6 @@
 
 #include <cstddef>
 #include <iterator>
-#include <mutex>
 #include <type_traits>
 #include <utility>
 
@@ -190,7 +189,7 @@ template <typename T> class RELOCO_OWNER sender : private detail::requires_expli
 public:
   sender(const sender &other) noexcept : shared_(other.shared_) {
     if (shared_) {
-      std::lock_guard<mutex> lock(shared_->guard);
+      unique_lock<mutex> lock(shared_->guard);
       ++shared_->sender_count;
     }
   }
@@ -200,7 +199,7 @@ public:
       drop_ref();
       shared_ = other.shared_;
       if (shared_) {
-        std::lock_guard<mutex> lock(shared_->guard);
+        unique_lock<mutex> lock(shared_->guard);
         ++shared_->sender_count;
       }
     }
@@ -231,7 +230,7 @@ public:
     unique_ptr<detail::channel_node<T>> node = std::move(*node_result);
 
     {
-      std::lock_guard<mutex> lock(shared_->guard);
+      unique_lock<mutex> lock(shared_->guard);
       if (!shared_->receiver_alive)
         return unexpected(error::invalid_state);
       detail::push_node(*shared_, std::move(node));
@@ -250,7 +249,7 @@ private:
       return;
     bool last;
     {
-      std::lock_guard<mutex> lock(shared_->guard);
+      unique_lock<mutex> lock(shared_->guard);
       last = (--shared_->sender_count == 0);
     }
     if (last)
@@ -279,7 +278,7 @@ public:
     if (!shared_)
       return;
     {
-      std::lock_guard<mutex> lock(shared_->guard);
+      unique_lock<mutex> lock(shared_->guard);
       shared_->receiver_alive = false;
     }
     // Wakes any sync_sender<T>::send() blocked waiting for queue room or
@@ -296,7 +295,7 @@ public:
   [[nodiscard]] result<T> recv() noexcept {
     optional<T> popped;
     {
-      std::unique_lock<mutex> lock(shared_->guard);
+      unique_lock<mutex> lock(shared_->guard);
       ++shared_->waiting_receivers;
       auto wait_result = shared_->not_empty.wait(
           lock, [this] { return static_cast<bool>(shared_->head) || shared_->sender_count == 0; });
@@ -322,7 +321,7 @@ public:
   [[nodiscard]] result<T> recv_timeout(duration timeout) noexcept {
     optional<T> popped;
     {
-      std::unique_lock<mutex> lock(shared_->guard);
+      unique_lock<mutex> lock(shared_->guard);
       ++shared_->waiting_receivers;
       auto wait_result = shared_->not_empty.wait_for(
           lock, timeout, [this] { return static_cast<bool>(shared_->head) || shared_->sender_count == 0; });
@@ -348,7 +347,7 @@ public:
   [[nodiscard]] result<T> try_recv() noexcept {
     optional<T> popped;
     {
-      std::lock_guard<mutex> lock(shared_->guard);
+      unique_lock<mutex> lock(shared_->guard);
       if (!shared_->head)
         return unexpected(shared_->sender_count == 0 ? error::container_empty : error::try_again);
       popped.emplace(pop_front());
@@ -465,7 +464,7 @@ template <typename T> class RELOCO_OWNER sync_sender : private detail::requires_
 public:
   sync_sender(const sync_sender &other) noexcept : shared_(other.shared_) {
     if (shared_) {
-      std::lock_guard<mutex> lock(shared_->guard);
+      unique_lock<mutex> lock(shared_->guard);
       ++shared_->sender_count;
     }
   }
@@ -475,7 +474,7 @@ public:
       drop_ref();
       shared_ = other.shared_;
       if (shared_) {
-        std::lock_guard<mutex> lock(shared_->guard);
+        unique_lock<mutex> lock(shared_->guard);
         ++shared_->sender_count;
       }
     }
@@ -509,7 +508,7 @@ public:
       return unexpected(node_result.error());
     unique_ptr<detail::channel_node<T>> node = std::move(*node_result);
 
-    std::unique_lock<mutex> lock(shared_->guard);
+    unique_lock<mutex> lock(shared_->guard);
     // A rendezvous (capacity == 0) channel still allows exactly one value
     // to be enqueued transiently while the handoff is in progress -- see
     // the rendezvous wait below, which is what actually enforces "not
@@ -554,7 +553,7 @@ public:
     unique_ptr<detail::channel_node<T>> node = std::move(*node_result);
 
     {
-      std::lock_guard<mutex> lock(shared_->guard);
+      unique_lock<mutex> lock(shared_->guard);
       if (!shared_->receiver_alive)
         return unexpected(error::invalid_state);
 
@@ -579,7 +578,7 @@ private:
       return;
     bool last;
     {
-      std::lock_guard<mutex> lock(shared_->guard);
+      unique_lock<mutex> lock(shared_->guard);
       last = (--shared_->sender_count == 0);
     }
     if (last)

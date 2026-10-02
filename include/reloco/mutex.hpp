@@ -115,6 +115,7 @@
 #include "detail/compat.hpp"
 #include "duration.hpp"
 #include "error.hpp"
+#include "unique_lock.hpp"
 
 #if !defined(RELOCO_MUTEX_BACKEND_CUSTOM)
 
@@ -275,8 +276,9 @@ private:
 
 /**
  * @brief Condition variable backed by `pthread_cond_t`, usable only with
- * `std::unique_lock<mutex>` (not `recursive_mutex`/`shared_mutex`),
- * matching `std::condition_variable`'s own restriction to `std::mutex`.
+ * `reloco::unique_lock<mutex>` (`unique_lock.hpp`; not `recursive_mutex`/
+ * `shared_mutex`), matching `std::condition_variable`'s own restriction to
+ * `std::unique_lock<std::mutex>`.
  *
  * @note `wait` assumes `locker` already owns the lock (checked via
  * `owns_lock()`); the internal reacquire after waking goes straight
@@ -294,9 +296,9 @@ public:
   condition_variable(const condition_variable &) = delete;
   condition_variable &operator=(const condition_variable &) = delete;
 
-  [[nodiscard]] RELOCO_API result<void> wait(std::unique_lock<mutex> &locker) & noexcept;
+  [[nodiscard]] RELOCO_API result<void> wait(unique_lock<mutex> &locker) & noexcept;
 
-  template <typename Predicate> result<void> wait(std::unique_lock<mutex> &locker, Predicate pred) & {
+  template <typename Predicate> result<void> wait(unique_lock<mutex> &locker, Predicate pred) & {
     if (!locker.owns_lock())
       return unexpected(error::not_locked);
     while (!pred())
@@ -313,7 +315,7 @@ public:
    * which clock the underlying deadline is measured against.
    */
   template <typename Predicate>
-  [[nodiscard]] result<bool> wait_for(std::unique_lock<mutex> &locker, duration timeout, Predicate pred) & {
+  [[nodiscard]] result<bool> wait_for(unique_lock<mutex> &locker, duration timeout, Predicate pred) & {
     if (!locker.owns_lock())
       return unexpected(error::not_locked);
 
@@ -458,14 +460,16 @@ private:
 
 /**
  * @brief Condition variable wrapping `std::condition_variable`, usable
- * only with `std::unique_lock<mutex>` (not `recursive_mutex`/
- * `shared_mutex`), matching `std::condition_variable`'s own restriction to
- * `std::mutex`.
+ * only with `reloco::unique_lock<mutex>` (`unique_lock.hpp`; not
+ * `recursive_mutex`/`shared_mutex`), matching `std::condition_variable`'s
+ * own restriction to `std::unique_lock<std::mutex>`.
  *
  * @note Internally adopts `locker`'s underlying `std::mutex` into a
- * temporary `std::unique_lock<std::mutex>` so `std::condition_variable`
- * itself (not the heavier, type-erased `std::condition_variable_any`) can
- * be used -- the internal reacquire after waking goes straight through
+ * temporary `std::unique_lock<std::mutex>` (unavoidable interop --
+ * `std::condition_variable::wait` itself requires exactly that type, see
+ * the two marked lines below) so `std::condition_variable` itself (not
+ * the heavier, type-erased `std::condition_variable_any`) can be used --
+ * the internal reacquire after waking goes straight through
  * `std::condition_variable`'s own native re-lock, not through `mutex`'s
  * checked `lock()`, exactly like the PTHREAD backend.
  */
@@ -478,11 +482,15 @@ public:
   condition_variable(const condition_variable &) = delete;
   condition_variable &operator=(const condition_variable &) = delete;
 
-  [[nodiscard]] RELOCO_API result<void> wait(std::unique_lock<mutex> &locker) & noexcept;
+  [[nodiscard]] RELOCO_API result<void> wait(unique_lock<mutex> &locker) & noexcept;
 
-  template <typename Predicate> result<void> wait(std::unique_lock<mutex> &locker, Predicate pred) & {
+  template <typename Predicate> result<void> wait(unique_lock<mutex> &locker, Predicate pred) & {
     if (!locker.owns_lock())
       return unexpected(error::not_locked);
+    // Adopts the reloco mutex's native std::mutex handle so
+    // std::condition_variable (which requires exactly this type) can be
+    // used directly -- already covered by this whole backend's
+    // std-interop-begin/-end block above.
     std::unique_lock<std::mutex> native_lock(*locker.mutex()->native_handle(), std::adopt_lock);
     cv_.wait(native_lock, std::move(pred));
     native_lock.release();
@@ -497,9 +505,13 @@ public:
    * @p pred() still `false`.
    */
   template <typename Predicate>
-  [[nodiscard]] result<bool> wait_for(std::unique_lock<mutex> &locker, duration timeout, Predicate pred) & {
+  [[nodiscard]] result<bool> wait_for(unique_lock<mutex> &locker, duration timeout, Predicate pred) & {
     if (!locker.owns_lock())
       return unexpected(error::not_locked);
+    // Adopts the reloco mutex's native std::mutex handle so
+    // std::condition_variable (which requires exactly this type) can be
+    // used directly -- already covered by this whole backend's
+    // std-interop-begin/-end block above.
     std::unique_lock<std::mutex> native_lock(*locker.mutex()->native_handle(), std::adopt_lock);
     // Plain integer arithmetic (never floating point): the STD backend
     // already fully depends on <chrono>/<thread>, so building an

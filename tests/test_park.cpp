@@ -26,7 +26,7 @@ TEST(ParkTest, ThreadHandleUnparkWakesTheOwningThread) {
 
   auto worker = reloco::spawn([&]() noexcept {
     {
-      std::lock_guard<reloco::mutex> lock(handle_mutex);
+      reloco::unique_lock<reloco::mutex> lock(handle_mutex);
       worker_handle.emplace(reloco::this_thread::current());
     }
     got_handle.store(true, std::memory_order_release);
@@ -41,7 +41,7 @@ TEST(ParkTest, ThreadHandleUnparkWakesTheOwningThread) {
   reloco::this_thread::sleep_for(reloco::duration::from_millis(20));
 
   {
-    std::lock_guard<reloco::mutex> lock(handle_mutex);
+    reloco::unique_lock<reloco::mutex> lock(handle_mutex);
     ASSERT_TRUE(worker_handle.has_value());
     worker_handle->unpark();
   }

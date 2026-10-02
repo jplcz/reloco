@@ -81,7 +81,7 @@ RELOCO_API condition_variable::condition_variable() noexcept {
 
 RELOCO_API condition_variable::~condition_variable() noexcept { pthread_cond_destroy(&cond_); }
 
-RELOCO_API result<void> condition_variable::wait(std::unique_lock<mutex> &locker) & noexcept {
+RELOCO_API result<void> condition_variable::wait(unique_lock<mutex> &locker) & noexcept {
   if (!locker.owns_lock())
     return unexpected(error::not_locked);
   pthread_cond_wait(&cond_, locker.mutex()->native_handle());
