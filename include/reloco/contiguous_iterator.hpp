@@ -114,17 +114,30 @@ public:
   constexpr contiguous_iterator(const contiguous_iterator<U, UPolicy> &other) noexcept
       : current_(other.unsafe_current()), policy_(other.policy()) {}
 
-  [[nodiscard]] constexpr reference operator*() const noexcept RELOCO_LIFETIMEBOUND {
+  // Deliberately *not* RELOCO_LIFETIMEBOUND: with no explicit parameter,
+  // RELOCO_LIFETIMEBOUND binds the returned reference/pointer's lifetime to
+  // the implicit object parameter (`*this`, i.e. the iterator itself), but
+  // dereferencing a contiguous_iterator yields a reference into the
+  // *external* storage it points into, which the iterator never owns and
+  // routinely outlives. Marking these lifetimebound-to-the-iterator made
+  // Clang statically (and incorrectly) treat the dereferenced element as
+  // tied to the hidden range-for loop variable's scope -- e.g. `for (const
+  // auto &e : container) return &e;` was flagged as
+  // -Wreturn-stack-address, even though `e` genuinely outlives the loop.
+  // Contrast with begin()/end() below, which correctly remain
+  // RELOCO_LIFETIMEBOUND: the *iterator itself* must not outlive the
+  // container it was created from.
+  [[nodiscard]] constexpr reference operator*() const noexcept {
     policy_.assert_deref(current_);
     return *current_;
   }
 
-  [[nodiscard]] constexpr pointer operator->() const noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] constexpr pointer operator->() const noexcept {
     policy_.assert_deref(current_);
     return current_;
   }
 
-  [[nodiscard]] constexpr reference operator[](difference_type n) const noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] constexpr reference operator[](difference_type n) const noexcept {
     policy_.assert_deref(current_ + n);
     return current_[n];
   }
