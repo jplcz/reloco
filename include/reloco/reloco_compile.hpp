@@ -93,9 +93,19 @@
 // (see RELOCO_TYPE_INSTANCE) is only valid for a genuine class template
 // specialization, not a typedef-name -- see reloco/reloco_extern.hpp's
 // doc comment for the same caveat applied to your own instance lists.
+//
+// Order matters here: basic_string_view<char> must be instantiated
+// first. basic_string<char>/basic_sso_string<char> both convert to/compare
+// against basic_string_view<char> internally, so explicitly instantiating
+// either of them first implicitly instantiates basic_string_view<char> as
+// a side effect -- and GCC/Clang then ignore the `visibility`/`dllexport`
+// attribute on this macro's own later explicit instantiation of it,
+// because the type was already (implicitly) instantiated/defined earlier
+// in this translation unit ([-Wattributes] "type attributes ignored after
+// type is already defined").
+RELOCO_TYPE_INSTANCE(reloco::basic_string_view<char>);
 RELOCO_TYPE_INSTANCE(reloco::basic_string<char>);
 RELOCO_TYPE_INSTANCE(reloco::basic_sso_string<char>);
-RELOCO_TYPE_INSTANCE(reloco::basic_string_view<char>);
 
 // Non-template, RELOCO_API-guarded concrete backends -- merely including
 // each header here (with RELOCO_SHARED_BUILD defined) causes its
