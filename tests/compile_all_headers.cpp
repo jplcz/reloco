@@ -61,6 +61,7 @@
 #include <reloco/lazy_lock.hpp>
 #include <reloco/lifetime.hpp>
 #include <reloco/lru_cache.hpp>
+#include <reloco/malloc_allocator.hpp>
 #include <reloco/masked_byte_region.hpp>
 #include <reloco/masked_pointer.hpp>
 #include <reloco/mutex.hpp>

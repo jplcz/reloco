@@ -38,6 +38,7 @@ where, not a tutorial.
 | `stack_allocator.hpp` | `stack_allocator`, `stack_allocator_tag`, `stack_allocator_context` | Bump-pointer `allocator_traits` backend over a caller-owned buffer |
 | `pool_allocator.hpp` | `pool_allocator<Lock>`, `pool_allocator_tag<Lock>`, `pool_allocator_context<Lock>`, `null_mutex` | Fixed-block-size `allocator_traits` backend carving blocks out of slabs obtained from an upstream allocator, with kernel-style "unlock, allocate, relock" refill |
 | `bucket_allocator.hpp` | `bucket_allocator<Lock, BucketSizes...>`, `bucket_allocator_tag<Lock, BucketSizes...>`, `bucket_allocator_context<Lock, BucketSizes...>` | General-purpose `allocator_traits` backend combining a compile-time list of `pool_allocator`s, one per size bucket, routing each request to the smallest bucket that fits |
+| `malloc_allocator.hpp` | `malloc_allocator<Lock>`, `malloc_allocator_tag<Lock>`, `malloc_allocator_context<Lock>` | Variable-size, boundary-tag `malloc`/`free`/`memalign`/`realloc`-style `allocator_traits` backend carving blocks out of arenas obtained on demand from an upstream allocator, releasing a whole arena back to upstream as soon as it's fully idle again |
 | `bucket_growth.hpp` | `bucket_growth::linear`, `bucket_growth::doubling_then_ratio`, `bucket_growth::fixed_ratio`, `bucket_growth::power_of_two`, `bucket_growth::prime_growth`, `bucket_growth::chunked`, `bucket_growth::sqrt_curve` | Optional, integer-only bucket-count growth curves for hash containers whose bucket array is caller-sized (e.g. `intrusive_hash_table`); each exposes the same `next_bucket_count(current_buckets, projected_elements, elements_per_bucket, min_buckets, max_buckets)` interface |
 | `keyed_intrusive_registry.hpp` | `keyed_intrusive_registry<T, OwnerKey, Tag, Lock, Hash, KeyEqual>` | Locked, self-allocating "one `T` per `OwnerKey`" registry built on `intrusive_hash_table`; the hash-table-per-owner-key building block for a `RELOCO_TLS_MODEL_OS` kernel/RTOS port (see `tls_provider.hpp`) |
 | `tls_slot_vector.hpp` | `tls_slot_vector<Lock, Growth>`, `tls_slot_index<T, Tag>`, `tls_local_slots<Lock, Growth, Tag>`, `tls_local_state_traits<Tag>` | The classic pthread-key design (global slot table + atomic generation counter, per-context growable pointer vector) as an alternative to `keyed_intrusive_registry.hpp` for the same `RELOCO_TLS_MODEL_OS` use case; `O(1)` slot indexing instead of a hash lookup per `get()`/`set()` |
@@ -3009,6 +3010,88 @@ template parameter pack must be the last template parameter, so `Lock`,
 preceding `BucketSizes...`, cannot itself default while still letting a
 caller supply the (mandatory) bucket list after it. Neither copyable nor
 movable, for the same reasons as `pool_allocator<Lock>`.
+
+## `malloc_allocator<Lock>` / `malloc_allocator_tag<Lock>` / `malloc_allocator_context<Lock>`
+
+`include/reloco/malloc_allocator.hpp`
+
+General-purpose, variable-size `allocator_traits` backend providing
+classic `malloc`/`free`/`memalign`/`realloc` semantics -- notably,
+`free()` takes only a pointer, no explicit size -- by carving memory out
+of "arenas" requested on demand from an upstream `allocator_ref`:
+
+```cpp
+reloco::malloc_allocator<> heap(reloco::default_allocator(), 65536);
+
+// Direct malloc-style surface (free() needs no size):
+auto blk = heap.malloc(128);
+heap.free(blk->ptr);
+
+// Or as a type-erased allocator_ref, like any other backend:
+auto vec = reloco::vector<int>::try_allocate(heap.ref());
+```
+
+Unlike `pool_allocator`/`bucket_allocator` (one, or a fixed compile-time
+list of, fixed block sizes), `malloc_allocator<Lock>` hands out blocks of
+any runtime size/alignment from a single boundary-tag free list -- every
+block, free or in-use, carries a size+in-use header at its front and a
+matching footer at its end, so a neighbor in either direction can always
+recover a block's extent without a side table, which is what lets
+`free()` do without an explicit size. Every allocation also reserves one
+hidden `size_t` immediately before the returned pointer, recording the
+byte offset back to the block's header; this makes recovering a block's
+header from nothing but a user pointer uniform for both naturally-aligned
+and `memalign()`-style over-aligned requests, at the cost of that one
+extra `size_t` of overhead per allocation.
+
+This backend is meant for exactly the case `pool_allocator`/
+`bucket_allocator` don't fit well: a short-lived, variable-size heap
+needed only for early boot/bring-up or a bootloader stage, over whatever
+backing store happens to be available this early (a fixed static pool via
+`stack_allocator`, a bootloader-reserved region, or simply
+`default_allocator()`) -- the upstream `allocator_ref` is used generically
+and is not assumed to be fixed-size itself. Two behaviors follow from that
+transient-heap framing:
+
+- Arenas are requested from upstream lazily, each sized (via
+  `default_arena_bytes`, a constructor parameter) to comfortably fit
+  whatever request triggered the refill -- a single request too big for a
+  `default_arena_bytes`-sized arena simply gets a bigger arena sized to
+  fit it exactly, rather than being forwarded straight to upstream the way
+  `bucket_allocator` forwards oversized requests.
+- `free()` eagerly coalesces a freed block with any free neighbor in
+  either direction, and if the result spans an *entire* arena's interior
+  (the whole arena is idle again), that arena is returned to upstream
+  immediately, rather than waiting for `malloc_allocator`'s own
+  destructor the way `pool_allocator`'s slabs are. A transient heap that
+  empties out partway through its lifetime gives that memory back
+  promptly instead of holding it until teardown.
+
+Each arena begins and ends with a tiny, permanently in-use "sentinel"
+block (header+footer only, no payload) -- an ordinary minimum-size
+in-use block, not a special case in the coalescing logic -- so a real
+block at either end of an arena naturally fails to coalesce past it,
+without ever needing an explicit arena-bounds check.
+
+`expand_in_place`/`reallocate` are both supported (unlike `pool_allocator`,
+whose fixed block size leaves no headroom to grow into): `expand_in_place`
+absorbs an immediately-following free neighbor in place when there's
+enough room; `reallocate` tries that first (only when the existing
+pointer already satisfies the requested alignment, since in-place growth
+never moves the block), then falls back to allocate-new/copy/free-old.
+`advise` is intentionally unimplemented.
+
+Like `pool_allocator`, every call into the upstream allocator happens
+with this allocator's own `Lock` released first (the same "unlock,
+allocate, relock" discipline, for the same reason: never call into a
+potentially-blocking upstream allocator while holding the internal lock).
+`Lock` defaults to `null_mutex`; pass `reloco::mutex`/`reloco::spin_lock`
+for a genuinely multi-threaded heap.
+
+`malloc_allocator<Lock>` is neither copyable nor movable, for the same
+reasons as `pool_allocator<Lock>`/`bucket_allocator<Lock, BucketSizes...>`:
+it only ever exposes a type-erased `allocator_ref` (via `.ref()`) plus its
+own direct `malloc`/`memalign`/`free`/`realloc` surface.
 
 ## `masked_byte_region<Size, NoncePolicy>`
 
