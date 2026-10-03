@@ -123,7 +123,7 @@
 #include <new>
 
 #if !defined(RELOCO_MALLOC_ALLOCATOR)
-#error                                                                                                                \
+#error                                                                                                                 \
     "malloc_allocator_libc.cpp requires RELOCO_MALLOC_ALLOCATOR to be #define'd (before this file is compiled) to an expression naming a reloco::malloc_allocator<Mutex> lvalue -- see this file's header comment."
 #endif
 
