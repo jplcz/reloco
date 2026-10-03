@@ -511,6 +511,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_fault_injection_patterns.cpp
         tests/test_masked_byte_region.cpp
         tests/test_masked_pointer.cpp
+        tests/test_obfuscated_string.cpp
         tests/test_intrusive_c_slist.cpp
         tests/test_intrusive_c_list.cpp
         tests/test_intrusive_c_stailq.cpp

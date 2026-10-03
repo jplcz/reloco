@@ -579,8 +579,11 @@ public:
 
 private:
   mutex mutex_;
-  std::atomic<std::thread::id>
-      owner_{}; // std-interop-ok: portable, allocation-free thread identity (see mutex_common.ipp)
+  // Portable, allocation-free thread identity (see mutex_common.ipp for how
+  // it's set/compared). Marker kept short so clang-format never wraps the
+  // declaration onto its own line and silently separates it from the
+  // marker comment below.
+  std::atomic<std::thread::id> owner_{}; // std-interop-ok
 };
 
 #if RELOCO_SHARED_PROVIDE_DEFINITIONS

@@ -64,6 +64,7 @@
 #include <reloco/masked_byte_region.hpp>
 #include <reloco/masked_pointer.hpp>
 #include <reloco/mutex.hpp>
+#include <reloco/obfuscated_string.hpp>
 #include <reloco/once.hpp>
 #include <reloco/once_lock.hpp>
 #include <reloco/optional.hpp>
