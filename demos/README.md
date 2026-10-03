@@ -43,3 +43,12 @@ Each demo is also its own individually buildable target (`scoped_workers`,
 `boost::intrusive`) to be discoverable via `find_package(Boost CONFIG)`;
 it is only added as a build target when Boost is found, and is skipped
 (with no error) otherwise.
+
+## `malloc_interposer/`
+
+A separate, standalone CMake project (not `add_subdirectory()`-ed from
+here, and never built by the above target): an `LD_PRELOAD`-able glibc
+`malloc` family interposer backed by `reloco::malloc_allocator`, used to
+stress-test it against real, dynamically-linked programs. See
+[`malloc_interposer/README.md`](malloc_interposer/README.md).
+
