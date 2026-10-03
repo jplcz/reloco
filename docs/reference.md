@@ -47,7 +47,7 @@ where, not a tutorial.
 | `bytes.hpp` | `bytes`, `bytes_mut` | Immutable, reference-counted, cheaply-cloneable byte buffer and its growable, exclusively-owned mutable counterpart, matching Rust's `bytes::Bytes`/`bytes::BytesMut` |
 | `masked_byte_region.hpp` | `masked_byte_region<Size, NoncePolicy>`, `security::inline_nonce_storage` | Fixed-size byte region stored behind a nonce-based masking policy |
 | `tamper.hpp` | `masked_integral<T>`, `tamper_proof_state<EnumT>`, `tamper_bool_impl` | Tamper-detecting integral, enum-state, and boolean storage wrappers |
-| `obfuscated_string.hpp` | `obfuscated_string<N>`, `RELOCO_OBFUSCATED_STR(str)` | Compile-time XOR-masked string literals, decoded into an RAII-wiped stack buffer only at the point of use |
+| `obfuscated_string.hpp` | `obfuscated_string<N>`, `obfuscated_string_ref`, `RELOCO_OBFUSCATED_STR(str)`, `RELOCO_DECLARE_OBFUSCATED_STR`/`RELOCO_DEFINE_OBFUSCATED_STR` | Compile-time XOR-masked string literals; a type-erased, forward-declarable handle; and a byte-at-a-time, no-storage decode path |
 | `binary_heap.hpp` | `binary_heap<T, Compare>` | Allocator-backed priority queue matching Rust's `BinaryHeap<T>`, built on `vector<T>` |
 | `digraph.hpp` | `digraph` | Allocator-backed directed graph over dense node indices, rejecting any edge that would close a cycle -- for lock-order/witness-style (`witness(4)`/lockdep) dependency tracking |
 | `intrusive_hash_table.hpp` | `intrusive_hash_hook<T>`, `intrusive_hash_table<T, Hook, KeyOf, Hash, KeyEqual>` | Non-owning, unique-key hash table over caller-owned intrusive nodes |
@@ -3028,14 +3028,14 @@ representation.
 representations. `tamper_bool_impl` provides the internal boolean
 implementation.
 
-## `obfuscated_string<N>` / `RELOCO_OBFUSCATED_STR(str)`
+## `obfuscated_string<N>` / `obfuscated_string_ref` / `RELOCO_OBFUSCATED_STR(str)`
 
 `include/reloco/obfuscated_string.hpp`
 
 `RELOCO_OBFUSCATED_STR("literal")` XOR-masks a string literal entirely at
 compile time (`obfuscated_string<N>`'s `constexpr` constructor, keyed from
-`__FILE__`/`__LINE__`/`__COUNTER__`/`__TIME__`), so only ciphertext is ever
-emitted into `.rodata`/`.data` -- never the plaintext. It expands to an
+`__FILE__`/`__LINE__`/`__TIME__`), so only ciphertext is ever emitted into
+`.rodata`/`.data` -- never the plaintext. It expands to an
 immediately-invoked lambda returning `obfuscated_string<N>::decrypted_view`,
 a neither-copyable-nor-movable RAII handle that decodes the plaintext into
 an inline stack buffer and volatile-wipes it on destruction, matching
@@ -3044,6 +3044,20 @@ so `-Wdangling-gsl` flags storing the pointer/view past the end of the
 decoding temporary's full expression. Obfuscation against static analysis
 (`strings(1)`, disassembler string-xrefs), not cryptographic secrecy -- see
 the file-level "Threat model" documentation.
+
+`obfuscated_string_ref` is a non-template, type-erased handle (ciphertext
+pointer + encoded size + key) for cases the template parameter `N` can't
+reach: `RELOCO_DECLARE_OBFUSCATED_STR(name)`/`RELOCO_DEFINE_OBFUSCATED_STR(
+name, "literal")` forward-declare and define such a global, still backed
+by an internal-linkage `obfuscated_string<N>` constant in `.rodata`, now
+addressable from any translation unit without naming `N`.
+`obfuscated_string<N>::as_ref()` converts explicitly; the templated
+converting constructor does so implicitly. `for_each_byte(visitor)`
+(available on both `obfuscated_string<N>` and `obfuscated_string_ref`)
+decodes and visits one plaintext byte at a time via the same volatile-read
+technique, without ever materializing the plaintext as a contiguous
+buffer -- the decode path `microfmt`'s `formatter<reloco::obfuscated_string<N>>`
+uses to stream straight to a format sink.
 
 ## Fallible construction: `concepts.hpp` / `construction_helpers.hpp`
 
