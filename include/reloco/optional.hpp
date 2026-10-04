@@ -90,7 +90,7 @@ public:
     construct(std::forward<Args>(args)...);
   }
 
-  ~optional() { destroy(); }
+  RELOCO_CONSTEXPR20 ~optional() { destroy(); }
 
   optional &operator=(nullopt_t) noexcept {
     reset();
@@ -522,7 +522,7 @@ public:
   }
 
 private:
-  void destroy() noexcept {
+  RELOCO_CONSTEXPR20 void destroy() noexcept {
     if (has_value_) {
       if constexpr (!std::is_trivially_destructible_v<T>) {
         value_.~T();
