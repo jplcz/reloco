@@ -344,6 +344,54 @@ TEST(IntrusiveRbtreeTest, BoundedRange) {
   }
 }
 
+TEST(IntrusiveRbtreeTest, RangeErase) {
+  tree_type tree;
+  node nodes[] = {{10, "a", {}}, {20, "b", {}}, {30, "c", {}}, {40, "d", {}}, {50, "e", {}}};
+  for (auto &n : nodes)
+    ASSERT_TRUE(tree.try_insert(n).has_value());
+
+  auto first = tree.lower_bound(20);
+  auto last = tree.lower_bound(40);
+  auto next = tree.erase(first, last);
+  ASSERT_TRUE(next != tree.end());
+  EXPECT_EQ(next->key, 40);
+  EXPECT_EQ(tree.size(), 3);
+  EXPECT_TRUE(tree.contains(10));
+  EXPECT_FALSE(tree.contains(20));
+  EXPECT_FALSE(tree.contains(30));
+  EXPECT_TRUE(tree.contains(40));
+  EXPECT_TRUE(tree.contains(50));
+
+  // An empty range (first == last) erases nothing.
+  auto same = tree.lower_bound(40);
+  auto unchanged = tree.erase(same, same);
+  EXPECT_EQ(unchanged->key, 40);
+  EXPECT_EQ(tree.size(), 3);
+
+  // The full range erases everything.
+  EXPECT_TRUE(tree.erase(tree.begin(), tree.end()) == tree.end());
+  EXPECT_TRUE(tree.empty());
+}
+
+TEST(IntrusiveRbtreeTest, RangeEraseAndDispose) {
+  tree_type tree;
+  node nodes[] = {{10, "a", {}}, {20, "b", {}}, {30, "c", {}}, {40, "d", {}}};
+  for (auto &n : nodes)
+    ASSERT_TRUE(tree.try_insert(n).has_value());
+
+  std::vector<int> disposed;
+  auto first = tree.lower_bound(20);
+  auto last = tree.lower_bound(40);
+  auto next = tree.erase_and_dispose(first, last, [&](node &n) { disposed.push_back(n.key); });
+  std::sort(disposed.begin(), disposed.end());
+  EXPECT_EQ(disposed, (std::vector<int>{20, 30}));
+  ASSERT_TRUE(next != tree.end());
+  EXPECT_EQ(next->key, 40);
+  EXPECT_EQ(tree.size(), 2);
+  EXPECT_FALSE(nodes[1].hook.is_linked());
+  EXPECT_FALSE(nodes[2].hook.is_linked());
+}
+
 TEST(IntrusiveRbtreeTest, EraseAndDispose) {
   tree_type tree;
   node a{1, "one", {}};
@@ -397,4 +445,100 @@ TEST(IntrusiveRbtreeTest, ClearAndDispose) {
   EXPECT_TRUE(tree.empty());
   for (auto &n : nodes)
     EXPECT_FALSE(n.hook.is_linked());
+}
+
+TEST(IntrusiveRbtreeTest, SpliceRetainsConflictsInSource) {
+  tree_type source;
+  tree_type target;
+  node src_nodes[] = {{10, "s10", {}}, {20, "s20", {}}, {30, "s30", {}}};
+  node tgt_nodes[] = {{20, "t20", {}}, {40, "t40", {}}};
+  for (auto &n : src_nodes)
+    ASSERT_TRUE(source.try_insert(n).has_value());
+  for (auto &n : tgt_nodes)
+    ASSERT_TRUE(target.try_insert(n).has_value());
+
+  auto moved = target.splice(source, source.begin(), source.end());
+  EXPECT_EQ(moved, 2); // 10 and 30 move; 20 conflicts and stays in source
+
+  EXPECT_EQ(source.size(), 1);
+  ASSERT_TRUE(source.contains(20));
+  auto found_20 = source.try_find(20);
+  ASSERT_TRUE(found_20.has_value());
+  EXPECT_EQ(found_20->get().value, "s20");
+
+  EXPECT_EQ(target.size(), 4);
+  EXPECT_TRUE(target.contains(10));
+  EXPECT_TRUE(target.contains(30));
+  EXPECT_TRUE(target.contains(40));
+  ASSERT_TRUE(target.contains(20));
+  auto found_20_target = target.try_find(20);
+  ASSERT_TRUE(found_20_target.has_value());
+  EXPECT_EQ(found_20_target->get().value, "t20"); // target's own node wins, untouched
+}
+
+TEST(IntrusiveRbtreeTest, SpliceWholeTreeConvenienceOverload) {
+  tree_type source;
+  tree_type target;
+  node src_nodes[] = {{1, "a", {}}, {2, "b", {}}};
+  for (auto &n : src_nodes)
+    ASSERT_TRUE(source.try_insert(n).has_value());
+
+  auto moved = target.splice(source);
+  EXPECT_EQ(moved, 2);
+  EXPECT_TRUE(source.empty());
+  EXPECT_EQ(target.size(), 2);
+}
+
+TEST(IntrusiveRbtreeTest, SpliceReplaceEvictsConflictingTargetNode) {
+  tree_type source;
+  tree_type target;
+  node src_nodes[] = {{10, "s10", {}}, {20, "s20", {}}};
+  node tgt_nodes[] = {{20, "t20", {}}, {40, "t40", {}}};
+  for (auto &n : src_nodes)
+    ASSERT_TRUE(source.try_insert(n).has_value());
+  for (auto &n : tgt_nodes)
+    ASSERT_TRUE(target.try_insert(n).has_value());
+
+  std::vector<std::string> disposed;
+  auto moved = target.splice_replace(source, source.begin(), source.end(),
+                                      [&](node &n) { disposed.push_back(n.value); });
+  EXPECT_EQ(moved, 2); // every source node moves, none left behind
+  EXPECT_TRUE(source.empty());
+  EXPECT_EQ(disposed, (std::vector<std::string>{"t20"})); // the evicted target node
+
+  EXPECT_EQ(target.size(), 3);
+  ASSERT_TRUE(target.contains(20));
+  auto found_20 = target.try_find(20);
+  ASSERT_TRUE(found_20.has_value());
+  EXPECT_EQ(found_20->get().value, "s20"); // source's node won
+  EXPECT_TRUE(target.contains(10));
+  EXPECT_TRUE(target.contains(40));
+  EXPECT_FALSE(tgt_nodes[0].hook.is_linked()); // the evicted node is unlinked
+}
+
+TEST(IntrusiveRbtreeTest, SpliceDiscardKeepsExistingTargetNode) {
+  tree_type source;
+  tree_type target;
+  node src_nodes[] = {{10, "s10", {}}, {20, "s20", {}}};
+  node tgt_nodes[] = {{20, "t20", {}}, {40, "t40", {}}};
+  for (auto &n : src_nodes)
+    ASSERT_TRUE(source.try_insert(n).has_value());
+  for (auto &n : tgt_nodes)
+    ASSERT_TRUE(target.try_insert(n).has_value());
+
+  std::vector<std::string> disposed;
+  auto moved = target.splice_discard(source, source.begin(), source.end(),
+                                      [&](node &n) { disposed.push_back(n.value); });
+  EXPECT_EQ(moved, 1); // only 10 moves; 20 is discarded
+  EXPECT_TRUE(source.empty());
+  EXPECT_EQ(disposed, (std::vector<std::string>{"s20"})); // the discarded source node
+
+  EXPECT_EQ(target.size(), 3);
+  ASSERT_TRUE(target.contains(20));
+  auto found_20 = target.try_find(20);
+  ASSERT_TRUE(found_20.has_value());
+  EXPECT_EQ(found_20->get().value, "t20"); // target's own node is retained
+  EXPECT_TRUE(target.contains(10));
+  EXPECT_TRUE(target.contains(40));
+  EXPECT_FALSE(src_nodes[1].hook.is_linked()); // the discarded node is unlinked
 }

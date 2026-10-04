@@ -1562,24 +1562,45 @@ tree.remove(a); // no re-walk needed, node already in hand
 - `try_first()`/`try_last()`/`try_pop_first()`/`try_pop_last()` — Rust
   `BTreeSet`-flavored smallest/greatest accessors, matching
   `detail::tree_base`'s own.
-- `begin()`/`end()`/`iterator_to(node)`/`erase(iterator)` — ascending
-  `Compare`-order iteration; exactly the surface
+- `begin()`/`end()`/`iterator_to(node)`/`erase(iterator)`/`erase(first,
+  last)` — ascending `Compare`-order iteration; exactly the surface
   `extract_if_iterator`/`isolated_node_tx` (`intrusive_iteration.hpp`)
   needs from a `Container`, so `intrusive_rbtree` is usable with
-  `extract_if()` the same way `intrusive_hash_table` is.
+  `extract_if()` the same way `intrusive_hash_table` is. The range form
+  matches `std::set::erase(first, last)`, unlinking every node in
+  `[first, last)` one at a time and returning @p last.
 - `lower_bound(key)`/`upper_bound(key)`/`bounded_range(lo, hi,
   left_closed = true, right_closed = false)` — `std::set`/
   `boost::intrusive::set`-flavored ordered range queries, plain
   `O(log n)` walks that never restructure the tree. `bounded_range`
   defaults to the half-open `[lo, hi)` convention.
-- `erase_and_dispose(iterator, disposer)` / `remove_and_dispose(node,
-  disposer)` / `try_remove_and_dispose(key, disposer)` /
-  `clear_and_dispose(disposer)` — `boost::intrusive::set`-flavored
-  removal that also invokes a caller-supplied `void(T &)` `disposer` on
-  each removed node (e.g. to return its storage to a pool); `clear()` is
-  `clear_and_dispose` with a no-op disposer.
+- `erase_and_dispose(iterator, disposer)` / `erase_and_dispose(first,
+  last, disposer)` / `remove_and_dispose(node, disposer)` /
+  `try_remove_and_dispose(key, disposer)` / `clear_and_dispose(disposer)`
+  — `boost::intrusive::set`-flavored removal that also invokes a
+  caller-supplied `void(T &)` `disposer` on each removed node (e.g. to
+  return its storage to a pool); `clear()` is `clear_and_dispose` with a
+  no-op disposer.
 - `clear()` — unlinks every node, `O(n)` iterative (no recursion, so a
   degenerate/huge tree cannot blow the call stack).
+- `splice(source, first, last)` / `splice(source)` — moves every node in
+  `[first, last)` (or the whole `source` tree, for the no-range overload)
+  out of another tree of the *same* concrete type and into `*this`, one
+  `try_insert` at a time; a source node whose key already exists in
+  `*this` is left untouched in `source` (`std::map::merge` semantics).
+  Returns the count of nodes actually moved.
+- `splice_replace(source, first, last, disposer)` /
+  `splice_replace(source, disposer)` — same move, but on a key conflict
+  the *existing node already in `*this`* is unlinked and passed to
+  `disposer` so the incoming `source` node can always take its place;
+  every node in the range always leaves `source`.
+- `splice_discard(source, first, last, disposer)` /
+  `splice_discard(source, disposer)` — same move, but on a key conflict
+  the *source* node is unlinked and passed to `disposer` instead,
+  leaving `*this`'s existing node untouched.
+  All three require `&source != this` (`RELOCO_ASSERT`-checked) and walk
+  the range node-by-node rather than relinking whole subtrees, since
+  every moved node needs a real `try_insert` to stay correctly balanced.
 
 Like `intrusive_hash_table`, every accessor is blocked on rvalue `*this`
 (a dangling-reference footgun, since the tree is a non-owning
@@ -1629,13 +1650,14 @@ using my_tree = reloco::intrusive_splay_tree<my_node, &my_node::hook, my_node_ke
 - `try_remove(key)`/`remove(node)` splay the target to the root, then
   join its left/right subtrees (splaying the left subtree's maximum to
   its own root first) -- the standard splay-tree deletion-by-join.
-- `begin()`/`end()`/`iterator_to(node)`/`erase(iterator)` — plain `++`/`--`
-  never splays (it only follows existing links), so iterating the whole
-  tree does not itself restructure it; only `try_find`/`try_insert`/
-  `remove`/`erase` do. **Caveat**: an `end()` iterator obtained before an
-  intervening splay caches a now-stale root pointer (only used by
-  `operator--`) -- don't mix mutation with a previously held `end()`
-  iterator.
+- `begin()`/`end()`/`iterator_to(node)`/`erase(iterator)`/`erase(first,
+  last)` — plain `++`/`--` never splays (it only follows existing links),
+  so iterating the whole tree does not itself restructure it; only
+  `try_find`/`try_insert`/`remove`/`erase` do (each erased node is still
+  splayed-then-joined, as in single-element `erase`). **Caveat**: an
+  `end()` iterator obtained before an intervening splay caches a
+  now-stale root pointer (only used by `operator--`) -- don't mix
+  mutation with a previously held `end()` iterator.
 - `try_first()`/`try_last()`/`try_pop_first()`/`try_pop_last()`: the
   non-`const` `try_first`/`try_last` also splay the found node to the
   root, same as `try_find`; their `const &` overloads are a
@@ -1644,12 +1666,17 @@ using my_tree = reloco::intrusive_splay_tree<my_node, &my_node::hook, my_node_ke
   left_closed = true, right_closed = false)` — same shape as
   `intrusive_rbtree`'s own (inherited, unchanged, from the shared
   `detail::intrusive_bst_base`): plain `O(log n)` walks, never splaying.
-- `erase_and_dispose`/`remove_and_dispose`/`try_remove_and_dispose`/
+- `erase_and_dispose(iterator, disposer)` / `erase_and_dispose(first,
+  last, disposer)` / `remove_and_dispose`/`try_remove_and_dispose`/
   `clear_and_dispose` — same `boost::intrusive::set`-flavored
   disposer-invoking removal as `intrusive_rbtree`'s own (also inherited
   unchanged); splaying still happens as part of the underlying unlink.
 - `clear()` — same `O(n)` iterative, no-recursion teardown shape as
   `intrusive_rbtree::clear`.
+- `splice`/`splice_replace`/`splice_discard` — same shape as
+  `intrusive_rbtree`'s own (inherited, unchanged, from the shared
+  `detail::intrusive_bst_base`); each moved node is still `try_insert`ed
+  into `*this`, so it is splayed to the root as usual.
 
 Same rvalue-blocking and no-`try_clone` conventions as
 `intrusive_rbtree`/`intrusive_hash_table`, for the same reasons.
