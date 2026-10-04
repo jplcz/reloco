@@ -15,11 +15,13 @@
  * fixups vs. splaying); this file factors out everything that doesn't care
  * about that distinction: the bidirectional in-order iterator, left/right
  * rotation (a pure pointer-rewiring operation, identical either way),
- * plain (non-restructuring) key lookup/bound queries, and the
- * iteration/dispose surface (`begin`/`end`/`erase`/`*_and_dispose`/
- * `clear`) `intrusive_iteration.hpp` and Boost.Intrusive-flavored callers
- * both need. @p Derived (the concrete `intrusive_rbtree`/
- * `intrusive_splay_tree`) supplies only the balancing-specific `unlink`
+ * plain (non-restructuring) key lookup/bound queries, `iter()` (a
+ * Rust-style adaptor-chainable pull/range iterator, see `iterator.hpp`),
+ * and the iteration/dispose surface (`begin`/`end`/`erase`/
+ * `*_and_dispose`/`clear`) `intrusive_iteration.hpp` and
+ * Boost.Intrusive-flavored callers both need. @p Derived (the concrete
+ * `intrusive_rbtree`/`intrusive_splay_tree`) supplies only the
+ * balancing-specific `unlink`
  * (CLRS delete-fixup vs. splay-then-join) and `reset_hook` (per-node hook
  * fields to clear during `clear_and_dispose`'s teardown, e.g. the
  * red-black hook's `red` bit) via a CRTP `static_cast`, and must `friend`
@@ -51,10 +53,25 @@
  * one-by-one (via @p Derived's own `try_insert`, so red-black rebalancing
  * or splaying still happens exactly as if the caller had called
  * `try_insert` directly) rather than spliced in as an intact subtree.
+ *
+ * **Address-space/VM helpers**: `find_containing`/`find_overlap`/
+ * `find_gap` are read-only queries aimed at the "interval tree" shape a
+ * VM subsystem's address-space tree needs (Linux's `find_vma()`/FreeBSD's
+ * `vm_map_lookup_entry()`/`vm_map_findspace()`) -- each node's `KeyOf{}`
+ * key is treated as the start of a `[start, end)` range (an `EndOf`
+ * callable supplies the end, since the hook only stores one key per
+ * node). All three *require* those ranges to be non-overlapping and
+ * sorted by start -- true by construction for any address-space tree,
+ * since two live mappings can never overlap -- which is precisely what
+ * lets them stay plain `O(log n)` (`find_containing`/`find_overlap`) or
+ * `O(k)` (`find_gap`, a linear first-fit scan) walks with no extra
+ * per-subtree augmentation to maintain on every insert/remove/rotate;
+ * they do not implement a general overlapping-interval tree.
  */
 
 #include "../error.hpp"
 #include "../expected.hpp"
+#include "../iterator.hpp"
 #include "../lifetime.hpp"
 #include "assert.hpp"
 
@@ -217,6 +234,17 @@ public:
   const_iterator end() const && = delete;
   const_iterator cbegin() const && = delete;
   const_iterator cend() const && = delete;
+
+  /**
+   * @brief `reloco::iter(*this)` under a shorter, Rust-flavored name --
+   * yields a lazy, zero-allocation pull/range iterator over `T &`
+   * (`const T &` for a `const` tree) in ascending `Compare` order,
+   * chainable with every adaptor in `iterator.hpp` (`.filter()`/`.map()`/
+   * `.take()`/...): `for (auto &n : tree.iter().filter(pred)) ...`. See
+   * `iterator.hpp`'s file-level doc comment for the adaptor chain itself;
+   * this only wires the tree's own `begin()`/`end()` into it.
+   */
+  RELOCO_GENERATE_ITER()
 
   /** @brief Builds an iterator pointing at @p node, currently linked into *this* tree. */
   [[nodiscard]] iterator iterator_to(T &node) & noexcept RELOCO_LIFETIMEBOUND {
@@ -654,6 +682,113 @@ public:
   }
   template <typename Disposer> size_type splice_discard(Derived &source, Disposer disposer) && = delete;
 
+  /**
+   * @brief Finds the node whose `[KeyOf{}(node), end_of(node))` range
+   * contains @p addr, or `end()` if none does -- the address-space-tree
+   * query Linux calls `find_vma()`/FreeBSD calls `vm_map_lookup_entry()`.
+   * @p end_of is any `key_type(const T &)`-callable returning the
+   * exclusive end of @p node's range (the hook itself only stores one key
+   * per node -- `KeyOf{}(node)`, the range's start -- so the end has to
+   * come from the caller, typically another data member of @p T).
+   *
+   * **Requires every node's range to be non-overlapping with every other
+   * node's and sorted by `KeyOf{}` (its start)** -- true by construction
+   * for any address-space/VMA tree, where two live mappings can never
+   * overlap. Under that assumption this is a plain `O(log n)` walk (the
+   * containing range, if any, is necessarily the one with the greatest
+   * start `<= addr`); it does *not* implement a general overlapping-
+   * interval tree (that needs a per-subtree max-end augmentation this
+   * class does not maintain) and will silently return the wrong answer if
+   * ranges do overlap.
+   */
+  template <typename K, typename EndOf>
+  [[nodiscard]] iterator find_containing(const K &addr, EndOf end_of) & noexcept RELOCO_LIFETIMEBOUND {
+    return iterator(find_containing_ptr(addr, end_of), root_);
+  }
+  template <typename K, typename EndOf>
+  [[nodiscard]] const_iterator find_containing(const K &addr, EndOf end_of) const & noexcept RELOCO_LIFETIMEBOUND {
+    return const_iterator(find_containing_ptr(addr, end_of), root_);
+  }
+  template <typename K, typename EndOf> iterator find_containing(const K &addr, EndOf end_of) && = delete;
+  template <typename K, typename EndOf> const_iterator find_containing(const K &addr, EndOf end_of) const && = delete;
+
+  /**
+   * @brief Finds the first (`KeyOf`-smallest) node whose `[KeyOf{}(node),
+   * end_of(node))` range intersects the query range `[lo, hi)`, or
+   * `end()` if no node does. Same non-overlapping/sorted-by-start
+   * requirement and `O(log n)` shape as `find_containing` -- see its doc
+   * comment. Because ranges can't overlap, every intersecting node forms
+   * one contiguous run in `KeyOf` order starting at the returned
+   * iterator, so a caller after more than the first match can keep
+   * walking forward (`++it`) while `KeyOf{}(*it) < hi`.
+   */
+  template <typename K, typename EndOf>
+  [[nodiscard]] iterator find_overlap(const K &lo, const K &hi, EndOf end_of) & noexcept RELOCO_LIFETIMEBOUND {
+    return iterator(find_overlap_ptr(lo, hi, end_of), root_);
+  }
+  template <typename K, typename EndOf>
+  [[nodiscard]] const_iterator find_overlap(const K &lo, const K &hi, EndOf end_of) const & noexcept
+      RELOCO_LIFETIMEBOUND {
+    return const_iterator(find_overlap_ptr(lo, hi, end_of), root_);
+  }
+  template <typename K, typename EndOf> iterator find_overlap(const K &lo, const K &hi, EndOf end_of) && = delete;
+  template <typename K, typename EndOf>
+  const_iterator find_overlap(const K &lo, const K &hi, EndOf end_of) const && = delete;
+
+  /**
+   * @brief Finds the first (lowest-addressed) gap of at least @p min_size
+   * within `[lo, hi)` that is not covered by any node's `[KeyOf{}(node),
+   * end_of(node))` range, returning the gap's starting key. Fails with
+   * `error::not_found` if no such gap exists (including an empty/invalid
+   * `[lo, hi)`). This is the free-space-search primitive behind
+   * `mmap`/`get_unmapped_area`/`vm_map_findspace`-style allocation: given
+   * an address-space tree of already-mapped ranges, find somewhere a new
+   * mapping of @p min_size bytes could go.
+   *
+   * Same non-overlapping/sorted-by-start requirement as
+   * `find_containing`. Unlike that `O(log n)` query, this one is `O(k)`
+   * in the number of nodes examined between @p lo and the gap found (no
+   * per-subtree max-gap augmentation is maintained, so it cannot prune
+   * whole subtrees the way a `find_containing`-style query can) --
+   * equivalent to a linear first-fit scan starting at @p lo, just without
+   * materializing an iterator for every node along the way.
+   *
+   * @p key_type must support `operator-` (yielding something `Compare`
+   * can order against @p min_size, itself a @p key_type) and ordinary
+   * copy/assignment -- true for the integral/pointer-sized address types
+   * (`uintptr_t`, `std::size_t`, ...) this is meant for, not for an
+   * arbitrary `Compare`-ordered key.
+   */
+  template <typename K, typename EndOf>
+  [[nodiscard]] result<key_type> find_gap(const K &min_size, const K &lo, const K &hi, EndOf end_of) const & noexcept {
+    const Compare less{};
+    if (!less(lo, hi))
+      return unexpected(error::not_found);
+    const KeyOf keyOf{};
+    key_type cursor = lo;
+
+    T *at_or_after_lo = lower_bound_ptr(lo);
+    T *before = at_or_after_lo != nullptr ? predecessor(at_or_after_lo) : rightmost(root_);
+    if (before != nullptr && less(cursor, end_of(*before)))
+      cursor = end_of(*before); // a range starting before lo still extends into it
+
+    for (T *node = at_or_after_lo; node != nullptr && less(keyOf(*node), hi); node = successor(node)) {
+      const key_type &node_start = keyOf(*node);
+      if (less(cursor, node_start) && !less(node_start - cursor, min_size))
+        return cursor;
+      key_type node_end = end_of(*node);
+      if (less(cursor, node_end))
+        cursor = node_end;
+      if (!less(cursor, hi))
+        return unexpected(error::not_found);
+    }
+    if (less(cursor, hi) && !less(hi - cursor, min_size))
+      return cursor;
+    return unexpected(error::not_found);
+  }
+  template <typename K, typename EndOf>
+  result<key_type> find_gap(const K &min_size, const K &lo, const K &hi, EndOf end_of) const && = delete;
+
 protected:
   constexpr intrusive_bst_base() noexcept = default;
 
@@ -686,6 +821,32 @@ protected:
     while (hook_of(*node).right != nullptr)
       node = hook_of(*node).right;
     return node;
+  }
+
+  // In-order predecessor/successor of a non-null, currently-linked node --
+  // same algorithm as `intrusive_bst_iterator`'s own private copies (that
+  // class can't reach this base's `hook_of`/`rightmost`/`leftmost`, so it
+  // keeps its own), needed here by the interval/gap helpers below to walk
+  // outward from a `lower_bound`/`upper_bound` anchor one node at a time.
+  [[nodiscard]] static T *predecessor(T *node) noexcept {
+    if (hook_of(*node).left != nullptr)
+      return rightmost(hook_of(*node).left);
+    T *parent = hook_of(*node).parent;
+    while (parent != nullptr && node == hook_of(*parent).left) {
+      node = parent;
+      parent = hook_of(*parent).parent;
+    }
+    return parent;
+  }
+  [[nodiscard]] static T *successor(T *node) noexcept {
+    if (hook_of(*node).right != nullptr)
+      return leftmost(hook_of(*node).right);
+    T *parent = hook_of(*node).parent;
+    while (parent != nullptr && node == hook_of(*parent).right) {
+      node = parent;
+      parent = hook_of(*parent).parent;
+    }
+    return parent;
   }
 
   void rotate_left(T *x) noexcept {
@@ -769,6 +930,47 @@ protected:
       }
     }
     return result_node;
+  }
+
+  // Node whose `[KeyOf{}(node), end_of(node))` range contains @p addr,
+  // assuming every node's range is non-overlapping with every other's and
+  // sorted by `KeyOf` (exactly what a VMA/address-space tree already
+  // guarantees) -- the interval containing @p addr, if any, is then
+  // necessarily the one with the greatest start `<= addr`, i.e. the
+  // predecessor of `upper_bound_ptr(addr)`. `O(log n)`, no augmentation
+  // needed (unlike a general overlapping-interval tree) specifically
+  // because ranges don't overlap here.
+  template <typename K, typename EndOf>
+  [[nodiscard]] T *find_containing_ptr(const K &addr, EndOf end_of) const noexcept {
+    const Compare less{};
+    T *at_or_after = upper_bound_ptr(addr); // first node with key > addr
+    T *candidate = at_or_after != nullptr ? predecessor(at_or_after) : rightmost(root_);
+    if (candidate != nullptr && less(addr, end_of(*candidate)))
+      return candidate;
+    return nullptr;
+  }
+
+  // First (leftmost, in `KeyOf` order) node whose `[KeyOf{}(node),
+  // end_of(node))` range intersects the query range `[lo, hi)`, under the
+  // same non-overlapping/sorted-by-start assumption as
+  // `find_containing_ptr`. Because ranges don't overlap, every node that
+  // intersects `[lo, hi)` forms one contiguous run starting here -- a
+  // caller after more than the first can walk forward with `successor`
+  // while its `KeyOf` stays `< hi`. Returns `nullptr` for an empty/invalid
+  // query range (`!less(lo, hi)`) or no intersection.
+  template <typename K, typename EndOf>
+  [[nodiscard]] T *find_overlap_ptr(const K &lo, const K &hi, EndOf end_of) const noexcept {
+    const Compare less{};
+    if (!less(lo, hi))
+      return nullptr;
+    const KeyOf keyOf{};
+    T *at_or_after_lo = lower_bound_ptr(lo); // first node with key >= lo
+    T *before = at_or_after_lo != nullptr ? predecessor(at_or_after_lo) : rightmost(root_);
+    if (before != nullptr && less(lo, end_of(*before)))
+      return before; // starts before lo, but still extends past it
+    if (at_or_after_lo != nullptr && less(keyOf(*at_or_after_lo), hi))
+      return at_or_after_lo; // starts within [lo, hi)
+    return nullptr;
   }
 
   T *root_ = nullptr;

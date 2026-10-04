@@ -1574,6 +1574,21 @@ tree.remove(a); // no re-walk needed, node already in hand
   `boost::intrusive::set`-flavored ordered range queries, plain
   `O(log n)` walks that never restructure the tree. `bounded_range`
   defaults to the half-open `[lo, hi)` convention.
+- `find_containing(addr, end_of)` / `find_overlap(lo, hi, end_of)` /
+  `find_gap(min_size, lo, hi, end_of)` — address-space/VM-subsystem
+  helpers that treat each node's `KeyOf{}` key as the start of a `[start,
+  end_of(node))` range (`end_of` is any `key_type(const T &)`-callable
+  supplying the end). **Require every node's range to be non-overlapping
+  and sorted by start** — true by construction for a VMA/address-space
+  tree, where live mappings can never overlap — which is what lets
+  `find_containing`/`find_overlap` stay plain `O(log n)` walks (no
+  per-subtree max-end augmentation needed, unlike a general overlapping-
+  interval tree) and lets `find_gap` do an `O(k)` first-fit linear scan
+  for the first free span of at least `min_size` within `[lo, hi)`.
+  `find_containing` is Linux's `find_vma()`/FreeBSD's
+  `vm_map_lookup_entry()`; `find_gap` is the `mmap`/
+  `get_unmapped_area`/`vm_map_findspace` free-space-search primitive.
+  None of the three restructure the tree.
 - `erase_and_dispose(iterator, disposer)` / `erase_and_dispose(first,
   last, disposer)` / `remove_and_dispose(node, disposer)` /
   `try_remove_and_dispose(key, disposer)` / `clear_and_dispose(disposer)`
@@ -1666,6 +1681,10 @@ using my_tree = reloco::intrusive_splay_tree<my_node, &my_node::hook, my_node_ke
   left_closed = true, right_closed = false)` — same shape as
   `intrusive_rbtree`'s own (inherited, unchanged, from the shared
   `detail::intrusive_bst_base`): plain `O(log n)` walks, never splaying.
+- `find_containing(addr, end_of)`/`find_overlap(lo, hi, end_of)`/
+  `find_gap(min_size, lo, hi, end_of)` — same VM-subsystem address-space
+  helpers as `intrusive_rbtree`'s own (also inherited unchanged): plain
+  walks, never splaying.
 - `erase_and_dispose(iterator, disposer)` / `erase_and_dispose(first,
   last, disposer)` / `remove_and_dispose`/`try_remove_and_dispose`/
   `clear_and_dispose` — same `boost::intrusive::set`-flavored

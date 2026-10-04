@@ -650,3 +650,129 @@ TEST(IntrusiveSplayTreeTest, SpliceDiscardKeepsExistingTargetNode) {
   EXPECT_TRUE(target.contains(40));
   EXPECT_FALSE(src_nodes[1].hook.is_linked()); // the discarded node is unlinked
 }
+
+namespace {
+
+// A VMA-style interval node: [start, start + length) -- non-overlapping,
+// sorted by `start` -- for `find_containing`/`find_overlap`/`find_gap`.
+struct interval_node {
+  int start = 0;
+  int length = 0;
+  reloco::intrusive_splay_tree_hook<interval_node> hook;
+};
+
+struct interval_key_of {
+  const int &operator()(const interval_node &n) const noexcept { return n.start; }
+};
+
+struct interval_end_of {
+  int operator()(const interval_node &n) const noexcept { return n.start + n.length; }
+};
+
+using interval_tree_type = reloco::intrusive_splay_tree<interval_node, &interval_node::hook, interval_key_of>;
+
+} // namespace
+
+TEST(IntrusiveSplayTreeTest, FindContainingLocatesEnclosingRange) {
+  interval_tree_type tree;
+  interval_node a{10, 10, {}};  // [10, 20)
+  interval_node b{30, 5, {}};   // [30, 35)
+  interval_node c{100, 50, {}}; // [100, 150)
+  ASSERT_TRUE(tree.try_insert(a).has_value());
+  ASSERT_TRUE(tree.try_insert(b).has_value());
+  ASSERT_TRUE(tree.try_insert(c).has_value());
+
+  auto it = tree.find_containing(15, interval_end_of{});
+  ASSERT_TRUE(it != tree.end());
+  EXPECT_EQ(it->start, 10);
+
+  it = tree.find_containing(34, interval_end_of{});
+  ASSERT_TRUE(it != tree.end());
+  EXPECT_EQ(it->start, 30);
+
+  it = tree.find_containing(149, interval_end_of{});
+  ASSERT_TRUE(it != tree.end());
+  EXPECT_EQ(it->start, 100);
+
+  // Gaps and out-of-range addresses find nothing.
+  EXPECT_TRUE(tree.find_containing(20, interval_end_of{}) == tree.end());  // exactly at a's end (exclusive)
+  EXPECT_TRUE(tree.find_containing(25, interval_end_of{}) == tree.end());  // between a and b
+  EXPECT_TRUE(tree.find_containing(0, interval_end_of{}) == tree.end());   // before everything
+  EXPECT_TRUE(tree.find_containing(200, interval_end_of{}) == tree.end()); // after everything
+}
+
+TEST(IntrusiveSplayTreeTest, FindContainingOnEmptyTree) {
+  interval_tree_type tree;
+  EXPECT_TRUE(tree.find_containing(5, interval_end_of{}) == tree.end());
+}
+
+TEST(IntrusiveSplayTreeTest, FindOverlapLocatesFirstIntersectingRange) {
+  interval_tree_type tree;
+  interval_node a{10, 10, {}};  // [10, 20)
+  interval_node b{30, 5, {}};   // [30, 35)
+  interval_node c{100, 50, {}}; // [100, 150)
+  ASSERT_TRUE(tree.try_insert(a).has_value());
+  ASSERT_TRUE(tree.try_insert(b).has_value());
+  ASSERT_TRUE(tree.try_insert(c).has_value());
+
+  // Query fully inside a.
+  auto it = tree.find_overlap(12, 18, interval_end_of{});
+  ASSERT_TRUE(it != tree.end());
+  EXPECT_EQ(it->start, 10);
+
+  // Query starts before a but extends into it.
+  it = tree.find_overlap(5, 15, interval_end_of{});
+  ASSERT_TRUE(it != tree.end());
+  EXPECT_EQ(it->start, 10);
+
+  // Query starting mid-a, spanning the gap into b: overlaps a first.
+  it = tree.find_overlap(15, 32, interval_end_of{});
+  ASSERT_TRUE(it != tree.end());
+  EXPECT_EQ(it->start, 10);
+
+  // Query confined to the gap-plus-b, with no overlap with a: finds b.
+  it = tree.find_overlap(25, 32, interval_end_of{});
+  ASSERT_TRUE(it != tree.end());
+  EXPECT_EQ(it->start, 30);
+
+  // Query entirely inside the gap between b and c: no overlap.
+  EXPECT_TRUE(tree.find_overlap(36, 99, interval_end_of{}) == tree.end());
+
+  // Empty/invalid query range.
+  EXPECT_TRUE(tree.find_overlap(20, 20, interval_end_of{}) == tree.end());
+  EXPECT_TRUE(tree.find_overlap(20, 10, interval_end_of{}) == tree.end());
+}
+
+TEST(IntrusiveSplayTreeTest, FindGapLocatesFirstSufficientlyLargeFreeSpace) {
+  interval_tree_type tree;
+  interval_node a{10, 10, {}};  // [10, 20)
+  interval_node b{30, 5, {}};   // [30, 35)
+  interval_node c{100, 50, {}}; // [100, 150)
+  ASSERT_TRUE(tree.try_insert(a).has_value());
+  ASSERT_TRUE(tree.try_insert(b).has_value());
+  ASSERT_TRUE(tree.try_insert(c).has_value());
+
+  // Gap before the first node: [0, 10).
+  auto gap = tree.find_gap(10, 0, 200, interval_end_of{});
+  ASSERT_TRUE(gap.has_value());
+  EXPECT_EQ(*gap, 0);
+
+  // Too big for [0, 10); next candidate is [20, 30).
+  gap = tree.find_gap(10, 5, 200, interval_end_of{});
+  ASSERT_TRUE(gap.has_value());
+  EXPECT_EQ(*gap, 20);
+
+  // Needs more than [20, 30) (10) or [35, 100) (65) offers below 20 bytes before c -- [35,100) fits.
+  gap = tree.find_gap(60, 5, 200, interval_end_of{});
+  ASSERT_TRUE(gap.has_value());
+  EXPECT_EQ(*gap, 35);
+
+  // Nothing is big enough anywhere in range.
+  EXPECT_FALSE(tree.find_gap(1000, 0, 200, interval_end_of{}).has_value());
+
+  // Gap confined to a narrow search window that excludes any sufficient space.
+  EXPECT_FALSE(tree.find_gap(10, 21, 29, interval_end_of{}).has_value());
+
+  // Empty/invalid query range.
+  EXPECT_FALSE(tree.find_gap(1, 50, 50, interval_end_of{}).has_value());
+}
