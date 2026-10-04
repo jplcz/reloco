@@ -78,6 +78,7 @@ where, not a tutorial.
 | `saturating.hpp` | `saturating<T>` | Integral newtype whose arithmetic operators always clamp on overflow, matching Rust's `std::num::Saturating<T>` |
 | `checked.hpp` | `checked<T>` | Integral newtype whose arithmetic is always explicitly fallible via `try_add/sub/mul/div/rem/neg/abs` returning `result<checked<T>>` |
 | `int_ops.hpp` | `checked_add/sub/mul/div/rem/neg/abs`, `wrapping_add/sub/mul`, `saturating_add/sub/mul`, `overflowing_add/sub/mul`, `overflowing_result<T>`, `checked_cast<To>` | Free-function Rust-style checked/wrapping/saturating/overflowing integer arithmetic and range-checked numeric casts |
+| `fixed_point.hpp` | `fixed_point<Rep, FracBits>` | Floating-point-free `Q(bits(Rep)-FracBits).FracBits` binary fixed-point number, with `pow` (exponentiation by squaring) for geometric decay/compounding |
 | `atomic_ops.hpp` | `atomic::fetch_max`, `atomic::fetch_min`, `atomic::fetch_update` | Free functions filling the gaps between C++17 `std::atomic<T>` and Rust's `std::sync::atomic::Atomic*` API |
 | `allocator.hpp` | `allocator_ref`, `allocator<Tag>`, `allocator_traits<Tag>`, `mem_block`, `usage_hint` | Type-erased allocator handle and the tag-based provider pattern backing it |
 | `heap_allocator.hpp` | `heap_allocator_tag` | Stateless `allocator_traits` backend over the process heap (`new`/`delete`) |
@@ -3038,6 +3039,53 @@ assert(sum.error() == reloco::error::integer_overflow);
 auto chained = reloco::checked<int>(10).try_div(reloco::checked<int>(2)).and_then(
     [](reloco::checked<int> half) { return half.try_mul(reloco::checked<int>(3)); });
 assert(chained.value().get() == 15);
+```
+
+## `fixed_point<Rep, FracBits>`
+
+`include/reloco/fixed_point.hpp`
+
+A `Q(bits(Rep)-FracBits).FracBits` binary fixed-point number -- for
+fractional quantities (decay factors, ratios, load averages, ...) on
+freestanding/no-FPU targets that can never touch floating point, exactly
+the same motivation `duration.hpp`'s own docs give for avoiding
+`std::chrono::duration`'s floating-point-period conversions. `Rep` is a
+plain integral storage type no wider than 32 bits (so every widening
+intermediate fits in a 64-bit accumulator); `FracBits` is how many of
+`Rep`'s low bits represent the fraction -- `fixed_point<std::uint32_t,
+11>` matches the classic Unix/Linux `calc_load()` `FIXED_1`/`FSHIFT`
+convention (`Q21.11`) almost exactly.
+
+`from_raw(Rep)`/`raw()` move a pre-scaled bit pattern in/out directly;
+`from_int(value)`/`to_int()` convert to/from a plain integer (`to_int()`
+truncates toward zero, never undefined behavior); `fractional_percent()`
+renders the fractional part as a rounded `0..=100` integer, a
+floating-point-free way to format a value the way `/proc/loadavg` does
+(`"<to_int()>.<fractional_percent()>"`). `+`/`-`/`*`/`/` and the usual
+comparisons operate on the scaled representation directly -- `*`/`/` use
+a widened 64-bit intermediate so the scale doesn't lose precision, but
+every operator is otherwise plain, unchecked arithmetic: silent
+wraparound/truncation on overflow, and dividing by a zero `fixed_point` is
+undefined behavior, exactly matching plain integer `+`/`-`/`*`/`/`'s own
+existing failure modes (see `int_ops.hpp` for explicit `checked_*`
+alternatives for *integers*; this header deliberately does not duplicate
+that machinery for the scaled fixed-point domain, matching
+`wrapping<T>`/`saturating<T>`'s own choice not to overload `/`/`%` at
+all). `fixed_point::pow(base, exponent)` raises `base` to `exponent` via
+exponentiation by squaring (`O(log exponent)` multiplications) -- the
+operation a geometric decay/compounding computation (an exponential
+moving average fast-forwarded over many elapsed sampling quanta at once,
+compound interest, ...) needs.
+
+```cpp
+using q21_11 = reloco::fixed_point<std::uint32_t, 11>;
+
+auto decay = q21_11::from_raw(1884); // ~0.92, Linux's own EXP_1 constant
+auto decayed_many_steps = q21_11::pow(decay, 1000); // O(log 1000), not 1000 multiplications
+
+auto load = q21_11::from_int(2) + q21_11::from_raw(472); // ~2.23
+assert(load.to_int() == 2);
+assert(load.fractional_percent() == 23);
 ```
 
 ## `allocator_ref` / `allocator<Tag>` / `allocator_traits<Tag>`

@@ -498,6 +498,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_wrapping.cpp
         tests/test_saturating.cpp
         tests/test_checked.cpp
+        tests/test_fixed_point.cpp
         tests/test_int_ops.cpp
         tests/test_vec_deque.cpp
         tests/test_inline_vec_deque.cpp
