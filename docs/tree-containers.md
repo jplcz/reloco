@@ -246,3 +246,15 @@ as-is, and only replace `try_insert`'s post-insertion fixup and
 write `aux`. `tree_set`/`tree_map` would not need to change at all -- they
 only depend on `tree_base`'s public surface, not its internal balance (or
 lack thereof).
+
+This extension point is specifically for *allocator-owned* balanced
+variants built on `node_base`/`tree_base`. For code that cannot allocate
+at all (early kernel boot, an interrupt handler, a porting layer's own
+internals), reloco instead provides balanced trees over *caller-owned*
+nodes via a hook member, mirroring `intrusive_hash_table.hpp`'s
+non-allocating design rather than extending `tree_base`:
+`intrusive_rbtree.hpp` (classic CLRS red-black, worst-case `O(log n)`) and
+`intrusive_splay_tree.hpp` (Sleator-Tarjan splay tree, amortized
+`O(log n)`, no balance metadata at all). See `docs/reference.md` for
+their full API.
+

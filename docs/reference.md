@@ -52,6 +52,8 @@ where, not a tutorial.
 | `binary_heap.hpp` | `binary_heap<T, Compare>` | Allocator-backed priority queue matching Rust's `BinaryHeap<T>`, built on `vector<T>` |
 | `digraph.hpp` | `digraph` | Allocator-backed directed graph over dense node indices, rejecting any edge that would close a cycle -- for lock-order/witness-style (`witness(4)`/lockdep) dependency tracking |
 | `intrusive_hash_table.hpp` | `intrusive_hash_hook<T>`, `intrusive_hash_table<T, Hook, KeyOf, Hash, KeyEqual>` | Non-owning, unique-key hash table over caller-owned intrusive nodes |
+| `intrusive_rbtree.hpp` | `intrusive_rbtree_hook<T>`, `intrusive_rbtree<T, Hook, KeyOf, Compare>` | Non-owning, unique-key, worst-case `O(log n)` red-black tree over caller-owned intrusive nodes |
+| `intrusive_splay_tree.hpp` | `intrusive_splay_tree_hook<T>`, `intrusive_splay_tree<T, Hook, KeyOf, Compare>` | Non-owning, unique-key, self-adjusting (amortized `O(log n)`) splay tree over caller-owned intrusive nodes |
 | `intrusive_c_list.hpp` | `c_list_hook_layout<T>`, `c_list_hook_access<T, Hook>`, `c_list_iterator<T, Hook, IsConst>`, `c_list<T, Hook>` | Intrusive adapter for a BSD-style doubly linked C list |
 | `intrusive_c_list_head.hpp` | `c_list_head_node`, `c_linux_hook_access<T, Hook>`, `c_list_head_iterator<T, Hook, IsConst>`, `c_list_head<T, Hook>` | Intrusive adapter for a Linux-style list-head doubly linked list |
 | `intrusive_c_slist.hpp` | `c_slist_hook_access<T, Hook>`, `c_slist_iterator<T, Hook, IsConst>`, `c_slist<T, Hook>` | Intrusive adapter for a singly linked C list |
@@ -1516,6 +1518,118 @@ Unlike every other reloco container, `intrusive_hash_table` has no
 `try_clone`: cloning would require deciding where the clone's nodes live,
 which is exactly the decision this whole file exists to leave to the
 caller.
+
+## `intrusive_rbtree_hook<T>` / `intrusive_rbtree<T, Hook, KeyOf, Compare = std::less<Key>>`
+
+`include/reloco/intrusive_rbtree.hpp`
+
+The ordered counterpart to `intrusive_hash_table`: a unique-key red-black
+tree that never allocates, matching Linux's `struct rb_node`
+(`<linux/rbtree.h>`) or Boost.Intrusive's `set`. Classic CLRS red-black
+balancing (`parent`/`left`/`right` links plus one `red` bool per node, no
+sentinel "nil" node -- `nullptr` is treated as black throughout, the
+null-aware style Linux's `rbtree.c` uses instead of a shared mutable
+sentinel, which a header-only design has no good place to keep anyway).
+Worst-case height stays `O(log n)` by construction, unlike
+`detail::tree_base`'s deliberately unbalanced BST. Nodes embed an
+`intrusive_rbtree_hook<T>` as a named member (not a CRTP base):
+
+```cpp
+struct my_node {
+  int key;
+  reloco::intrusive_rbtree_hook<my_node> hook;
+};
+struct my_node_key_of {
+  const int &operator()(const my_node &n) const noexcept { return n.key; }
+};
+using my_tree = reloco::intrusive_rbtree<my_node, &my_node::hook, my_node_key_of>;
+
+my_tree tree;
+my_node a{1, {}};
+std::ignore = tree.try_insert(a);
+assert(tree.contains(1));
+tree.remove(a); // no re-walk needed, node already in hand
+```
+
+- `try_insert(node)` — fails with `error::already_exists` on a duplicate
+  key; `RELOCO_ASSERT`s @p node is not already linked into *this* or any
+  other tree.
+- `try_find(key)` / `contains(key)` — `O(log n)` walk from the root, same
+  asymptotic cost as `tree_set`/`tree_map`.
+- `try_remove(key)` — walks to find the node, then unlinks+rebalances it.
+- `remove(node)` — unlinks+rebalances a node reference already in hand (no
+  re-walk needed to *locate* it, unlike `try_remove(key)`).
+- `try_first()`/`try_last()`/`try_pop_first()`/`try_pop_last()` — Rust
+  `BTreeSet`-flavored smallest/greatest accessors, matching
+  `detail::tree_base`'s own.
+- `begin()`/`end()`/`iterator_to(node)`/`erase(iterator)` — ascending
+  `Compare`-order iteration; exactly the surface
+  `extract_if_iterator`/`isolated_node_tx` (`intrusive_iteration.hpp`)
+  needs from a `Container`, so `intrusive_rbtree` is usable with
+  `extract_if()` the same way `intrusive_hash_table` is.
+- `clear()` — unlinks every node, `O(n)` iterative (no recursion, so a
+  degenerate/huge tree cannot blow the call stack).
+
+Like `intrusive_hash_table`, every accessor is blocked on rvalue `*this`
+(a dangling-reference footgun, since the tree is a non-owning
+`RELOCO_POINTER` view), and has no `try_clone` -- cloning would require
+deciding where the clone's nodes live, exactly the decision this whole
+file exists to leave to the caller.
+
+## `intrusive_splay_tree_hook<T>` / `intrusive_splay_tree<T, Hook, KeyOf, Compare = std::less<Key>>`
+
+`include/reloco/intrusive_splay_tree.hpp`
+
+A self-adjusting, non-allocating, unique-key binary search tree -- the
+splay-tree counterpart to `intrusive_rbtree`, matching FreeBSD's `SPLAY_*`
+macros (`sys/sys/tree.h`) or Boost.Intrusive's `splaytree`/`splay_set`.
+Same hook-based, caller-owned-node shape as `intrusive_rbtree`, but
+`intrusive_splay_tree_hook<T>` carries no color/balance metadata at all
+(only `parent`/`left`/`right`) -- instead, every successful access
+(`try_find`, `try_insert`, `remove`) *splays* the node up to the root via
+Sleator-Tarjan bottom-up rotations, giving an amortized `O(log n)` bound
+across any sequence of operations (the Balance Theorem) in exchange for
+working-set locality, with a single worst-case access still possibly
+`O(n)` -- unlike `intrusive_rbtree`'s strict per-operation worst case.
+
+```cpp
+using my_tree = reloco::intrusive_splay_tree<my_node, &my_node::hook, my_node_key_of>;
+```
+
+- Because splaying restructures the tree on every successful (or
+  unsuccessful) search, the non-`const` (`&`-qualified) `try_find`/
+  `try_first`/`try_last`/`remove` splay, unlike every other reloco
+  associative container's `try_find`. `contains(key)` and the `const &`
+  -qualified overloads of `try_find`/`try_first`/`try_last` are a plain,
+  non-restructuring walk instead, for callers that only hold a `const
+  intrusive_splay_tree &` or would rather not pay a rotation cost.
+  Overload resolution picks the splaying version automatically for a
+  non-`const` tree and the read-only peek for a `const` one. These `const
+  &` overloads still return `result<std::reference_wrapper<T>>` -- a
+  mutable reference, the same as their splaying counterparts -- rather
+  than `reference_wrapper<const T>`: the tree doesn't own its nodes, so
+  `const`-qualifying the tree itself says nothing about node mutability,
+  and returning `const T &` would only force every caller into a
+  `const_cast`.
+- `try_remove(key)`/`remove(node)` splay the target to the root, then
+  join its left/right subtrees (splaying the left subtree's maximum to
+  its own root first) -- the standard splay-tree deletion-by-join.
+- `begin()`/`end()`/`iterator_to(node)`/`erase(iterator)` — plain `++`/`--`
+  never splays (it only follows existing links), so iterating the whole
+  tree does not itself restructure it; only `try_find`/`try_insert`/
+  `remove`/`erase` do. **Caveat**: an `end()` iterator obtained before an
+  intervening splay caches a now-stale root pointer (only used by
+  `operator--`) -- don't mix mutation with a previously held `end()`
+  iterator.
+- `try_first()`/`try_last()`/`try_pop_first()`/`try_pop_last()`: the
+  non-`const` `try_first`/`try_last` also splay the found node to the
+  root, same as `try_find`; their `const &` overloads are a
+  non-restructuring peek instead, like `contains`.
+- `clear()` — same `O(n)` iterative, no-recursion teardown shape as
+  `intrusive_rbtree::clear`.
+
+Same rvalue-blocking and no-`try_clone` conventions as
+`intrusive_rbtree`/`intrusive_hash_table`, for the same reasons.
 
 ## Intrusive C list and queue adapters
 

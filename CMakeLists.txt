@@ -470,6 +470,8 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_flat_hash_set.cpp
         tests/test_flat_hash_map.cpp
         tests/test_intrusive_hash_table.cpp
+        tests/test_intrusive_rbtree.cpp
+        tests/test_intrusive_splay_tree.cpp
         tests/test_bucket_growth.cpp
         tests/test_keyed_intrusive_registry.cpp
         tests/test_tls_slot_vector.cpp
