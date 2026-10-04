@@ -13,10 +13,13 @@
  * `std::chrono::duration`'s floating-point-period pitfalls.
  *
  * `Rep` is a plain integral storage type (`std::uint32_t`, `std::int32_t`,
- * ...; `sizeof(Rep) <= sizeof(std::uint32_t)` is required, so every
- * widening intermediate below fits in a 64-bit accumulator); `FracBits`
- * is how many of `Rep`'s low bits represent the fractional part. A
- * `fixed_point<std::uint32_t, 11>` matches the classic Unix/Linux
+ * ..., or -- once a native integer isn't wide enough -- a
+ * `fixed_int<N, Signed>`, see `fixed_int.hpp`); `FracBits` is how many of
+ * `Rep`'s low bits represent the fractional part. Every widening
+ * intermediate below (`operator*`/`operator/`/`sqrt()`) uses
+ * `fixed_int.hpp`'s `next_wider_t<Rep>`, so `Rep` itself has no hardcoded
+ * width ceiling: pick whatever precision an application needs, native or
+ * not. A `fixed_point<std::uint32_t, 11>` matches the classic Unix/Linux
  * `calc_load()` `SHIFT_FIXED`/`FIXED_1` convention (`Q21.11`) almost
  * exactly, and is in fact the type used for that purpose by
  * `structo::load_average` (see `structo/load_average.hpp`), the original
@@ -42,7 +45,7 @@
  *
  * `sqrt()` is exact integer square-root math (the classic binary
  * "digit-by-digit" algorithm over the widened raw bit pattern, see
- * `detail::isqrt_u64` below) -- no series, no approximation error beyond
+ * `detail::isqrt` below) -- no series, no approximation error beyond
  * `Rep`'s own fixed-point quantization.
  *
  * `exp()` (`e^x`) has no closed-form integer algorithm the way `sqrt()`
@@ -64,6 +67,7 @@
  */
 
 #include "array.hpp"
+#include "fixed_int.hpp"
 #include "span.hpp"
 
 #include <cstddef>
@@ -96,21 +100,29 @@ namespace detail {
  * @brief Exact integer square root of @p n (`floor(sqrt(n))`), via the
  * classic binary "digit-by-digit" algorithm -- `O(log n)` iterations,
  * portable (no compiler-specific intrinsics), usable in a `constexpr`
- * context.
+ * context. Generic over any `T` (native unsigned/signed integer,
+ * `__int128`/`unsigned __int128`, or `wide_int`) wide enough to hold the
+ * non-negative @p n passed in -- callers (just `fixed_point::sqrt()`
+ * below) are expected to have already guarded against a negative
+ * radicand, so `isqrt` itself never needs to special-case `T`'s
+ * signedness.
  */
-[[nodiscard]] constexpr std::uint64_t isqrt_u64(std::uint64_t n) noexcept {
-  std::uint64_t result = 0;
-  std::uint64_t bit = std::uint64_t{1} << 62; // the highest even power of 2 (so `bit` is always a power of 4) that fits in 64 bits
+template <typename T> [[nodiscard]] constexpr T isqrt(T n) noexcept {
+  T result{0};
+  // The highest even bit position (so `bit` is always a power of 4) that fits in T -- `sizeof(T) * 8` is always
+  // even for every width `fixed_int`/`wide_int` supports (8/16/32/64/128/256/...), so `bits - 2` always lands
+  // exactly on a power-of-4 boundary, as this algorithm requires.
+  T bit = T{1} << static_cast<unsigned>(sizeof(T) * 8 - 2);
   while (bit > n)
-    bit >>= 2;
-  while (bit != 0) {
+    bit = bit >> 2U;
+  while (bit != T{0}) {
     if (n >= result + bit) {
-      n -= result + bit;
-      result = (result >> 1) + bit;
+      n = n - (result + bit);
+      result = (result >> 1U) + bit;
     } else {
-      result >>= 1;
+      result = result >> 1U;
     }
-    bit >>= 2;
+    bit = bit >> 2U;
   }
   return result;
 }
@@ -122,12 +134,12 @@ namespace detail {
  * See the @file-level docs above for the full rationale.
  */
 template <typename Rep, unsigned FracBits> class fixed_point {
-  static_assert(std::is_integral_v<Rep> && !std::is_same_v<Rep, bool>, "fixed_point<Rep, FracBits> requires a non-bool integral Rep");
-  static_assert(sizeof(Rep) <= sizeof(std::uint32_t), "fixed_point<Rep, FracBits> requires Rep no wider than 32 bits, so every "
-                                                       "widening intermediate fits in a 64-bit accumulator");
+  static_assert(detail::is_fixed_point_rep_v<Rep>,
+                "fixed_point<Rep, FracBits> requires Rep to be a non-bool integral type, the __int128/unsigned "
+                "__int128 compiler extension, or a fixed_int<N, Signed> (see fixed_int.hpp)");
   static_assert(FracBits < sizeof(Rep) * 8, "fixed_point<Rep, FracBits>: FracBits must leave at least one integer bit in Rep");
 
-  using wide = std::conditional_t<std::is_signed_v<Rep>, std::int64_t, std::uint64_t>;
+  using wide = detail::next_wider_t<Rep>;
 
 public:
   using rep_type = Rep;
@@ -167,7 +179,7 @@ public:
    */
   [[nodiscard]] constexpr unsigned fractional_percent() const noexcept {
     Rep frac_raw = static_cast<Rep>(raw_ - static_cast<Rep>(to_int() * one_raw));
-    if constexpr (std::is_signed_v<Rep>) {
+    if constexpr (detail::is_signed_rep_v<Rep>) {
       if (frac_raw < 0)
         frac_raw = static_cast<Rep>(-frac_raw);
     }
@@ -252,7 +264,7 @@ public:
    * complex-number support) instead of invoking undefined behavior.
    */
   [[nodiscard]] constexpr fixed_point sqrt() const noexcept {
-    if constexpr (std::is_signed_v<Rep>) {
+    if constexpr (detail::is_signed_rep_v<Rep>) {
       if (raw_ <= 0)
         return fixed_point();
     } else {
@@ -261,8 +273,8 @@ public:
     }
     // sqrt(raw/one) == sqrt(raw*one)/one -- scaling the radicand by `one_raw` first keeps the
     // result in the same Q-format `*this` is already in.
-    auto scaled = static_cast<std::uint64_t>(static_cast<wide>(raw_) * static_cast<wide>(one_raw));
-    return from_raw(static_cast<Rep>(detail::isqrt_u64(scaled)));
+    wide scaled = static_cast<wide>(raw_) * static_cast<wide>(one_raw);
+    return from_raw(static_cast<Rep>(detail::isqrt(scaled)));
   }
 
   /**

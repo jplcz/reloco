@@ -79,6 +79,7 @@ where, not a tutorial.
 | `checked.hpp` | `checked<T>` | Integral newtype whose arithmetic is always explicitly fallible via `try_add/sub/mul/div/rem/neg/abs` returning `result<checked<T>>` |
 | `int_ops.hpp` | `checked_add/sub/mul/div/rem/neg/abs`, `wrapping_add/sub/mul`, `saturating_add/sub/mul`, `overflowing_add/sub/mul`, `overflowing_result<T>`, `checked_cast<To>` | Free-function Rust-style checked/wrapping/saturating/overflowing integer arithmetic and range-checked numeric casts |
 | `fixed_point.hpp` | `fixed_point<Rep, FracBits>`, `taylor_eval<Rep, FracBits>` | Floating-point-free `Q(bits(Rep)-FracBits).FracBits` binary fixed-point number, with `pow` (exponentiation by squaring), exact integer `sqrt`, range-reduced Taylor-series `exp`, and a generic Horner's-method `taylor_eval(coefficients, x)` for any caller-supplied polynomial/series |
+| `fixed_int.hpp` | `fixed_int<N, Signed>`, `fixed_uint<N>` | Arbitrary fixed-precision integer, `N` bits wide (power of two, >= 8) -- a plain alias for a native/compiler-extension integer type up to 128 bits, falling back to a portable software bignum (`detail::wide_int<N, Signed>`) beyond that; feedable to `fixed_point<Rep, FracBits>` as `Rep` |
 | `atomic_ops.hpp` | `atomic::fetch_max`, `atomic::fetch_min`, `atomic::fetch_update` | Free functions filling the gaps between C++17 `std::atomic<T>` and Rust's `std::sync::atomic::Atomic*` API |
 | `allocator.hpp` | `allocator_ref`, `allocator<Tag>`, `allocator_traits<Tag>`, `mem_block`, `usage_hint` | Type-erased allocator handle and the tag-based provider pattern backing it |
 | `heap_allocator.hpp` | `heap_allocator_tag` | Stateless `allocator_traits` backend over the process heap (`new`/`delete`) |
@@ -3050,9 +3051,9 @@ fractional quantities (decay factors, ratios, load averages, ...) on
 freestanding/no-FPU targets that can never touch floating point, exactly
 the same motivation `duration.hpp`'s own docs give for avoiding
 `std::chrono::duration`'s floating-point-period conversions. `Rep` is a
-plain integral storage type no wider than 32 bits (so every widening
-intermediate fits in a 64-bit accumulator); `FracBits` is how many of
-`Rep`'s low bits represent the fraction -- `fixed_point<std::uint32_t,
+plain integral storage type (or, once a native integer isn't wide enough,
+a `fixed_int<N, Signed>` -- see `fixed_int.hpp` below); `FracBits` is how
+many of `Rep`'s low bits represent the fraction -- `fixed_point<std::uint32_t,
 11>` matches the classic Unix/Linux `calc_load()` `FIXED_1`/`FSHIFT`
 convention (`Q21.11`) almost exactly.
 
@@ -3063,7 +3064,8 @@ renders the fractional part as a rounded `0..=100` integer, a
 floating-point-free way to format a value the way `/proc/loadavg` does
 (`"<to_int()>.<fractional_percent()>"`). `+`/`-`/`*`/`/` and the usual
 comparisons operate on the scaled representation directly -- `*`/`/` use
-a widened 64-bit intermediate so the scale doesn't lose precision, but
+a widened intermediate (`fixed_int.hpp`'s `next_wider_t<Rep>`, recursively
+double-width all the way up) so the scale doesn't lose precision, but
 every operator is otherwise plain, unchecked arithmetic: silent
 wraparound/truncation on overflow, and dividing by a zero `fixed_point` is
 undefined behavior, exactly matching plain integer `+`/`-`/`*`/`/`'s own
@@ -3115,6 +3117,45 @@ auto e = q21_11::from_int(1).exp();          // ~2.71828
 
 reloco::array<q21_11, 2> coefficients{q21_11::from_int(2), q21_11::from_int(3)};
 auto linear = reloco::taylor_eval(reloco::span<const q21_11>(coefficients), q21_11::from_int(4)); // 2 + 3*4 == 14
+```
+
+## `fixed_int<N, Signed>`
+
+`include/reloco/fixed_int.hpp`
+
+An arbitrary fixed-precision integer, `N` bits wide (`N` must be a power
+of two, at least 8), feedable to `fixed_point<Rep, FracBits>` as `Rep`
+once `N` outgrows whatever native integer width the target compiler
+offers. For every `N` a mainstream compiler can plausibly represent
+natively -- 8/16/32/64 bits always, 128 bits when the `__int128`/
+`unsigned __int128` compiler extension is available (`RELOCO_HAS_INT128`,
+detected via the portable `__SIZEOF_INT128__` feature-test macro) --
+`fixed_int<N, Signed>` is a plain alias for that native type, no wrapper,
+no overhead. Only once `N` exceeds what the compiler natively offers
+(`N >= 256`, or `N == 128` without the `__int128` extension) does it fall
+back to `detail::wide_int<N, Signed>`, a portable, software,
+two's-complement, 32-bit-limb bignum implementing the same
+`+`/`-`/`*`/`/`/`%`/comparisons/shifts/`&`/`|`/`^`/`~` surface a native
+integer has (schoolbook multiply, shift-subtract long division -- `O(N)`/
+`O(N^2)`, not single-instruction, but otherwise a drop-in `Rep`).
+`fixed_uint<N>` is `fixed_int<N, false>` spelled out.
+
+`fixed_point<Rep, FracBits>` itself places no upper bound on `Rep`'s
+width: its own widened `*`/`/` intermediate is `fixed_int.hpp`'s
+`next_wider_t<Rep>`, an open-ended chain (`8 -> 16 -> 32 -> 64 -> 128 ->
+256 -> 512 -> ...`) that recurses into `wide_int` only once (and exactly
+as far as) the native chain runs out -- so picking a wider `fixed_int<N>`
+as `Rep` is enough to get more precision everywhere `fixed_point` already
+works, including `sqrt()`/`exp()`/`taylor_eval`.
+
+```cpp
+using u256 = reloco::fixed_uint<256>;
+using big_q = reloco::fixed_point<u256, 64>;
+
+auto a = big_q::from_int(1'000'000'000);
+auto b = big_q::from_int(3);
+auto product = a * b; // exact, no 64-bit overflow despite the huge scale
+assert(product.to_int() == u256(3'000'000'000));
 ```
 
 ## `allocator_ref` / `allocator<Tag>` / `allocator_traits<Tag>`
