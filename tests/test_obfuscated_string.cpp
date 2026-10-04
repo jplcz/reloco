@@ -5,11 +5,14 @@
 #include <gtest/gtest.h>
 #include <reloco/obfuscated_string.hpp>
 
+#include <algorithm>
 #include <cstring>
 
-// This file compares raw byte contents with memmem/std::memcmp, which
+// This file compares raw byte contents with std::search/std::memcmp, which
 // clang flags as -Wunsafe-buffer-usage-in-libc-call; treated as a single
-// checked boundary like reloco/bytes.hpp's tests do.
+// checked boundary like reloco/bytes.hpp's tests do. std::search is used
+// instead of the non-portable (GNU/BSD-only) memmem() so this also builds
+// with MSVC.
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
 namespace {
@@ -34,7 +37,8 @@ TEST(ObfuscatedStringTest, EmptyStringRoundTrips) {
 TEST(ObfuscatedStringTest, CiphertextDoesNotContainPlaintext) {
   static constexpr auto obf = reloco::obfuscated_string("super-secret-marker", UINT64_C(0x1234567890abcdef));
   const auto *raw = reinterpret_cast<const char *>(&obf);
-  EXPECT_EQ(memmem(raw, sizeof(obf), "super-secret-marker", 20), nullptr);
+  static constexpr char needle[] = "super-secret-marker";
+  EXPECT_EQ(std::search(raw, raw + sizeof(obf), needle, needle + 20), raw + sizeof(obf));
 }
 
 TEST(ObfuscatedStringTest, SameLiteralAtDifferentCallSitesUsesIndependentKeys) {
