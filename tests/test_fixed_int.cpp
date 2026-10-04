@@ -42,8 +42,10 @@ TEST(FixedIntTest, NativeWidthsAliasNativeTypes) {
 
 #if RELOCO_HAS_INT128
 TEST(FixedIntTest, 128BitAliasesCompilerExtensionWhenAvailable) {
+  RELOCO_BEGIN_SUPPRESS_PEDANTIC_INT128
   static_assert(std::is_same_v<fixed_int<128, true>, __int128>);
   static_assert(std::is_same_v<fixed_int<128, false>, unsigned __int128>);
+  RELOCO_END_SUPPRESS_PEDANTIC_INT128
   SUCCEED();
 }
 #endif

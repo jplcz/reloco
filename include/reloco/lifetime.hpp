@@ -141,6 +141,28 @@
 #define RELOCO_END_SUPPRESS_GCC_UNINITIALIZED_FALSE_POSITIVE
 #endif
 
+/**
+ * @def RELOCO_BEGIN_SUPPRESS_PEDANTIC_INT128
+ * @brief Suppresses the `-Wpedantic` "ISO C++ does not support '__int128'"
+ * warning around deliberate, feature-tested (`__SIZEOF_INT128__`) use of the
+ * `__int128`/`unsigned __int128` GCC/Clang extension. No-op on MSVC, which
+ * doesn't support the extension (and thus never reaches this code) in the
+ * first place.
+ */
+/**
+ * @def RELOCO_END_SUPPRESS_PEDANTIC_INT128
+ * @brief Closes a block opened by RELOCO_BEGIN_SUPPRESS_PEDANTIC_INT128.
+ */
+#if defined(__GNUC__) || defined(__clang__)
+#define RELOCO_BEGIN_SUPPRESS_PEDANTIC_INT128                                                                          \
+  RELOCO_PRAGMA(GCC diagnostic push)                                                                                   \
+  RELOCO_PRAGMA(GCC diagnostic ignored "-Wpedantic")
+#define RELOCO_END_SUPPRESS_PEDANTIC_INT128 RELOCO_PRAGMA(GCC diagnostic pop)
+#else
+#define RELOCO_BEGIN_SUPPRESS_PEDANTIC_INT128
+#define RELOCO_END_SUPPRESS_PEDANTIC_INT128
+#endif
+
 // ============================================================================
 // Nullability Attributes (GCC / Clang Static Analyzer)
 // ============================================================================

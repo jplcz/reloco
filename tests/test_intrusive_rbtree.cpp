@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 #include <gtest/gtest.h>
+#include <reloco/array.hpp>
 #include <reloco/intrusive_iteration.hpp>
 #include <reloco/intrusive_rbtree.hpp>
 
@@ -375,7 +376,7 @@ TEST(IntrusiveRbtreeTest, RangeErase) {
 
 TEST(IntrusiveRbtreeTest, RangeEraseAndDispose) {
   tree_type tree;
-  node nodes[] = {{10, "a", {}}, {20, "b", {}}, {30, "c", {}}, {40, "d", {}}};
+  reloco::array nodes = {node{10, "a", {}}, node{20, "b", {}}, node{30, "c", {}}, node{40, "d", {}}};
   for (auto &n : nodes)
     ASSERT_TRUE(tree.try_insert(n).has_value());
 
@@ -519,8 +520,8 @@ TEST(IntrusiveRbtreeTest, SpliceReplaceEvictsConflictingTargetNode) {
 TEST(IntrusiveRbtreeTest, SpliceDiscardKeepsExistingTargetNode) {
   tree_type source;
   tree_type target;
-  node src_nodes[] = {{10, "s10", {}}, {20, "s20", {}}};
-  node tgt_nodes[] = {{20, "t20", {}}, {40, "t40", {}}};
+  reloco::array src_nodes = {node{10, "s10", {}}, node{20, "s20", {}}};
+  reloco::array tgt_nodes = {node{20, "t20", {}}, node{40, "t40", {}}};
   for (auto &n : src_nodes)
     ASSERT_TRUE(source.try_insert(n).has_value());
   for (auto &n : tgt_nodes)

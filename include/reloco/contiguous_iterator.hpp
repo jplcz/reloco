@@ -150,7 +150,14 @@ public:
 
   constexpr contiguous_iterator &operator+=(difference_type n) noexcept {
     policy_.assert_math(current_, n);
+    // GCC, once it inlines this into algorithms like std::sort's final
+    // insertion sort over a small stack array, can misjudge the
+    // runtime-checked `assert_math` above as not actually bounding `n` and
+    // flag this pointer arithmetic as out-of-bounds -- it never is, since
+    // assert_math already traps on an out-of-range `n`.
+    RELOCO_BEGIN_SUPPRESS_GCC_BOUNDS_FALSE_POSITIVE;
     current_ += n;
+    RELOCO_END_SUPPRESS_GCC_BOUNDS_FALSE_POSITIVE;
     return *this;
   }
 

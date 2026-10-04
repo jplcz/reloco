@@ -19,7 +19,7 @@ RELOCO_API void shared_mutex::lock() & noexcept { RELOCO_DETAIL_MUTEX_LOCKING_CA
 
 RELOCO_API void shared_mutex::lock_shared() & noexcept { RELOCO_DETAIL_MUTEX_LOCKING_CALL(lock_shared) }
 
-RELOCO_API result<void> condition_variable::wait(std::unique_lock<mutex> &locker) & noexcept {
+RELOCO_API result<void> condition_variable::wait(unique_lock<mutex> &locker) & noexcept {
   if (!locker.owns_lock())
     return unexpected(error::not_locked);
   std::unique_lock<std::mutex> native_lock(*locker.mutex()->native_handle(), std::adopt_lock);

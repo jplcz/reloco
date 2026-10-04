@@ -315,11 +315,13 @@ private:
       RELOCO_ASSERT(x_parent != nullptr, "reloco::intrusive_rbtree: delete_fixup lost track of parent");
       if (x == hook_of(*x_parent).left) {
         T *sibling = hook_of(*x_parent).right;
+        RELOCO_ASSERT(sibling != nullptr, "reloco::intrusive_rbtree: x's sibling must exist (x is double-black)");
         if (is_red(sibling)) {
           hook_of(*sibling).red = false;
           hook_of(*x_parent).red = true;
           rotate_left(x_parent);
           sibling = hook_of(*x_parent).right;
+          RELOCO_ASSERT(sibling != nullptr, "reloco::intrusive_rbtree: x's sibling must exist (x is double-black)");
         }
         if (!is_red(hook_of(*sibling).left) && !is_red(hook_of(*sibling).right)) {
           hook_of(*sibling).red = true;
@@ -332,6 +334,7 @@ private:
             hook_of(*sibling).red = true;
             rotate_right(sibling);
             sibling = hook_of(*x_parent).right;
+            RELOCO_ASSERT(sibling != nullptr, "reloco::intrusive_rbtree: x's sibling must exist (x is double-black)");
           }
           hook_of(*sibling).red = hook_of(*x_parent).red;
           hook_of(*x_parent).red = false;
@@ -343,11 +346,13 @@ private:
         }
       } else {
         T *sibling = hook_of(*x_parent).left;
+        RELOCO_ASSERT(sibling != nullptr, "reloco::intrusive_rbtree: x's sibling must exist (x is double-black)");
         if (is_red(sibling)) {
           hook_of(*sibling).red = false;
           hook_of(*x_parent).red = true;
           rotate_right(x_parent);
           sibling = hook_of(*x_parent).left;
+          RELOCO_ASSERT(sibling != nullptr, "reloco::intrusive_rbtree: x's sibling must exist (x is double-black)");
         }
         if (!is_red(hook_of(*sibling).right) && !is_red(hook_of(*sibling).left)) {
           hook_of(*sibling).red = true;
@@ -360,6 +365,7 @@ private:
             hook_of(*sibling).red = true;
             rotate_left(sibling);
             sibling = hook_of(*x_parent).left;
+            RELOCO_ASSERT(sibling != nullptr, "reloco::intrusive_rbtree: x's sibling must exist (x is double-black)");
           }
           hook_of(*sibling).red = hook_of(*x_parent).red;
           hook_of(*x_parent).red = false;

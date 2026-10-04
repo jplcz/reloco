@@ -63,8 +63,10 @@ namespace reloco {
 namespace detail {
 
 #if RELOCO_HAS_INT128
+RELOCO_BEGIN_SUPPRESS_PEDANTIC_INT128
 using int128_t = __int128;
 using uint128_t = unsigned __int128;
+RELOCO_END_SUPPRESS_PEDANTIC_INT128
 #endif
 
 template <typename T> struct is_builtin_int128 : std::false_type {};
