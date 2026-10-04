@@ -398,3 +398,111 @@ TEST(IntrusiveSplayTreeTest, MoveConstructTransfersOwnership) {
   EXPECT_TRUE(moved.contains(1));
   EXPECT_EQ(tree.size(), 0); // NOLINT(bugprone-use-after-move) -- moved-from state is well-defined here
 }
+
+TEST(IntrusiveSplayTreeTest, LowerBoundUpperBound) {
+  tree_type tree;
+  node nodes[] = {{10, "a", {}}, {20, "b", {}}, {30, "c", {}}, {40, "d", {}}};
+  for (auto &n : nodes)
+    ASSERT_TRUE(tree.try_insert(n).has_value());
+
+  EXPECT_EQ(tree.lower_bound(20)->key, 20);
+  EXPECT_EQ(tree.lower_bound(25)->key, 30);
+  EXPECT_TRUE(tree.lower_bound(41) == tree.end());
+
+  EXPECT_EQ(tree.upper_bound(20)->key, 30);
+  EXPECT_EQ(tree.upper_bound(25)->key, 30);
+  EXPECT_TRUE(tree.upper_bound(40) == tree.end());
+
+  const tree_type &const_tree = tree;
+  EXPECT_EQ(const_tree.lower_bound(20)->key, 20);
+  EXPECT_EQ(const_tree.upper_bound(20)->key, 30);
+}
+
+TEST(IntrusiveSplayTreeTest, BoundedRange) {
+  tree_type tree;
+  node nodes[] = {{10, "a", {}}, {20, "b", {}}, {30, "c", {}}, {40, "d", {}}};
+  for (auto &n : nodes)
+    ASSERT_TRUE(tree.try_insert(n).has_value());
+
+  {
+    auto [first, last] = tree.bounded_range(20, 40);
+    std::vector<int> keys;
+    for (auto it = first; it != last; ++it)
+      keys.push_back(it->key);
+    EXPECT_EQ(keys, (std::vector<int>{20, 30}));
+  }
+  {
+    auto [first, last] = tree.bounded_range(20, 40, true, true);
+    std::vector<int> keys;
+    for (auto it = first; it != last; ++it)
+      keys.push_back(it->key);
+    EXPECT_EQ(keys, (std::vector<int>{20, 30, 40}));
+  }
+  {
+    auto [first, last] = tree.bounded_range(20, 40, false, false);
+    std::vector<int> keys;
+    for (auto it = first; it != last; ++it)
+      keys.push_back(it->key);
+    EXPECT_EQ(keys, (std::vector<int>{30}));
+  }
+  {
+    auto [first, last] = tree.bounded_range(100, 1);
+    EXPECT_TRUE(first == tree.end());
+    EXPECT_TRUE(last == tree.end());
+  }
+}
+
+TEST(IntrusiveSplayTreeTest, EraseAndDispose) {
+  tree_type tree;
+  node a{1, "one", {}};
+  node b{2, "two", {}};
+  ASSERT_TRUE(tree.try_insert(a).has_value());
+  ASSERT_TRUE(tree.try_insert(b).has_value());
+
+  std::vector<int> disposed;
+  auto it = tree.iterator_to(a);
+  auto next = tree.erase_and_dispose(it, [&](node &n) { disposed.push_back(n.key); });
+  EXPECT_EQ(disposed, (std::vector<int>{1}));
+  EXPECT_FALSE(a.hook.is_linked());
+  ASSERT_TRUE(next != tree.end());
+  EXPECT_EQ(next->key, 2);
+  EXPECT_EQ(tree.size(), 1);
+}
+
+TEST(IntrusiveSplayTreeTest, RemoveAndDispose) {
+  tree_type tree;
+  node a{1, "one", {}};
+  ASSERT_TRUE(tree.try_insert(a).has_value());
+
+  std::vector<int> disposed;
+  tree.remove_and_dispose(a, [&](node &n) { disposed.push_back(n.key); });
+  EXPECT_EQ(disposed, (std::vector<int>{1}));
+  EXPECT_FALSE(a.hook.is_linked());
+  EXPECT_TRUE(tree.empty());
+}
+
+TEST(IntrusiveSplayTreeTest, TryRemoveAndDispose) {
+  tree_type tree;
+  node a{1, "one", {}};
+  ASSERT_TRUE(tree.try_insert(a).has_value());
+
+  std::vector<int> disposed;
+  EXPECT_TRUE(tree.try_remove_and_dispose(1, [&](node &n) { disposed.push_back(n.key); }).has_value());
+  EXPECT_EQ(disposed, (std::vector<int>{1}));
+  EXPECT_TRUE(tree.try_remove_and_dispose(1, [&](node &) {}).error() == reloco::error::not_found);
+}
+
+TEST(IntrusiveSplayTreeTest, ClearAndDispose) {
+  tree_type tree;
+  node nodes[] = {{1, "a", {}}, {2, "b", {}}, {3, "c", {}}};
+  for (auto &n : nodes)
+    ASSERT_TRUE(tree.try_insert(n).has_value());
+
+  std::vector<int> disposed;
+  tree.clear_and_dispose([&](node &n) { disposed.push_back(n.key); });
+  std::sort(disposed.begin(), disposed.end());
+  EXPECT_EQ(disposed, (std::vector<int>{1, 2, 3}));
+  EXPECT_TRUE(tree.empty());
+  for (auto &n : nodes)
+    EXPECT_FALSE(n.hook.is_linked());
+}

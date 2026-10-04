@@ -1567,6 +1567,17 @@ tree.remove(a); // no re-walk needed, node already in hand
   `extract_if_iterator`/`isolated_node_tx` (`intrusive_iteration.hpp`)
   needs from a `Container`, so `intrusive_rbtree` is usable with
   `extract_if()` the same way `intrusive_hash_table` is.
+- `lower_bound(key)`/`upper_bound(key)`/`bounded_range(lo, hi,
+  left_closed = true, right_closed = false)` — `std::set`/
+  `boost::intrusive::set`-flavored ordered range queries, plain
+  `O(log n)` walks that never restructure the tree. `bounded_range`
+  defaults to the half-open `[lo, hi)` convention.
+- `erase_and_dispose(iterator, disposer)` / `remove_and_dispose(node,
+  disposer)` / `try_remove_and_dispose(key, disposer)` /
+  `clear_and_dispose(disposer)` — `boost::intrusive::set`-flavored
+  removal that also invokes a caller-supplied `void(T &)` `disposer` on
+  each removed node (e.g. to return its storage to a pool); `clear()` is
+  `clear_and_dispose` with a no-op disposer.
 - `clear()` — unlinks every node, `O(n)` iterative (no recursion, so a
   degenerate/huge tree cannot blow the call stack).
 
@@ -1574,7 +1585,11 @@ Like `intrusive_hash_table`, every accessor is blocked on rvalue `*this`
 (a dangling-reference footgun, since the tree is a non-owning
 `RELOCO_POINTER` view), and has no `try_clone` -- cloning would require
 deciding where the clone's nodes live, exactly the decision this whole
-file exists to leave to the caller.
+file exists to leave to the caller. Everything above except
+`try_insert`/the red-black fixups is implemented once, in the
+balancing-agnostic CRTP base `detail::intrusive_bst_base`
+(`detail/intrusive_bst_base.hpp`) shared with `intrusive_splay_tree`
+below -- an implementation detail, not part of the public API.
 
 ## `intrusive_splay_tree_hook<T>` / `intrusive_splay_tree<T, Hook, KeyOf, Compare = std::less<Key>>`
 
@@ -1625,6 +1640,14 @@ using my_tree = reloco::intrusive_splay_tree<my_node, &my_node::hook, my_node_ke
   non-`const` `try_first`/`try_last` also splay the found node to the
   root, same as `try_find`; their `const &` overloads are a
   non-restructuring peek instead, like `contains`.
+- `lower_bound(key)`/`upper_bound(key)`/`bounded_range(lo, hi,
+  left_closed = true, right_closed = false)` — same shape as
+  `intrusive_rbtree`'s own (inherited, unchanged, from the shared
+  `detail::intrusive_bst_base`): plain `O(log n)` walks, never splaying.
+- `erase_and_dispose`/`remove_and_dispose`/`try_remove_and_dispose`/
+  `clear_and_dispose` — same `boost::intrusive::set`-flavored
+  disposer-invoking removal as `intrusive_rbtree`'s own (also inherited
+  unchanged); splaying still happens as part of the underlying unlink.
 - `clear()` — same `O(n)` iterative, no-recursion teardown shape as
   `intrusive_rbtree::clear`.
 
