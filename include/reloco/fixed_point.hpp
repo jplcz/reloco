@@ -36,12 +36,86 @@
  * does not duplicate that machinery for the scaled fixed-point domain,
  * matching `wrapping<T>`/`saturating<T>`'s own choice not to overload
  * `/`/`%` at all).
+ *
+ * ## `sqrt()`, `exp()`, and `taylor_eval`: approximate, still floating-
+ * point-free
+ *
+ * `sqrt()` is exact integer square-root math (the classic binary
+ * "digit-by-digit" algorithm over the widened raw bit pattern, see
+ * `detail::isqrt_u64` below) -- no series, no approximation error beyond
+ * `Rep`'s own fixed-point quantization.
+ *
+ * `exp()` (`e^x`) has no closed-form integer algorithm the way `sqrt()`
+ * does, so it falls back to a Taylor series (`e^x = sum x^n/n!`),
+ * evaluated by the free function template `taylor_eval(coefficients, x)`
+ * below -- a small, generically-useful Horner's-method evaluator over
+ * *any* caller-supplied `span` of `fixed_point` coefficients (not tied to
+ * `exp()`'s own `1/n!` table at all; a caller with its own precomputed
+ * series -- `sin`/`cos`/`log1p`/a curve fit, ... -- can reuse it
+ * directly). `exp()` itself additionally range-reduces its argument first
+ * (`e^x = (e^(x/2^k))^(2^k)`, choosing `k` so `|x/2^k| <= 1` keeps the
+ * series both accurate and far less likely to overflow the widened
+ * intermediate any single term needs), the same "scaling and squaring"
+ * trick real floating-point `expm1`/matrix-exponential implementations
+ * use. Both use a fixed (not adaptive/error-bounded) iteration count, and
+ * inherit every other operator's silent-overflow caveat above -- treat
+ * them as a convenient approximation for e.g. a decay-curve fit, not a
+ * numerically-rigorous `<cmath>` replacement.
  */
 
+#include "array.hpp"
+#include "span.hpp"
+
+#include <cstddef>
 #include <cstdint>
 #include <type_traits>
 
 namespace reloco {
+
+template <typename Rep, unsigned FracBits> class fixed_point;
+
+/**
+ * @brief Evaluates `coefficients[0] + coefficients[1]*x + coefficients[2]*x^2 + ...`
+ * (a truncated Taylor/Maclaurin series, or any other polynomial given as
+ * an explicit coefficient list) at @p x, via Horner's method
+ * (`coefficients.size() - 1` multiply-adds, not a separate `pow` per
+ * term). @p coefficients is caller-owned, non-owning storage (any
+ * contiguous range `span` can borrow from -- a `reloco::array`, a plain
+ * C array, ...), so the degree and the coefficients themselves are
+ * entirely up to the caller; an empty @p coefficients evaluates to `0`.
+ * See the @file-level docs above for `exp()`'s own use of this as its
+ * `1/n!` series evaluator.
+ */
+template <typename Rep, unsigned FracBits>
+[[nodiscard]] constexpr fixed_point<Rep, FracBits> taylor_eval(span<const fixed_point<Rep, FracBits>> coefficients,
+                                                                fixed_point<Rep, FracBits> x) noexcept;
+
+namespace detail {
+
+/**
+ * @brief Exact integer square root of @p n (`floor(sqrt(n))`), via the
+ * classic binary "digit-by-digit" algorithm -- `O(log n)` iterations,
+ * portable (no compiler-specific intrinsics), usable in a `constexpr`
+ * context.
+ */
+[[nodiscard]] constexpr std::uint64_t isqrt_u64(std::uint64_t n) noexcept {
+  std::uint64_t result = 0;
+  std::uint64_t bit = std::uint64_t{1} << 62; // the highest even power of 2 (so `bit` is always a power of 4) that fits in 64 bits
+  while (bit > n)
+    bit >>= 2;
+  while (bit != 0) {
+    if (n >= result + bit) {
+      n -= result + bit;
+      result = (result >> 1) + bit;
+    } else {
+      result >>= 1;
+    }
+    bit >>= 2;
+  }
+  return result;
+}
+
+} // namespace detail
 
 /**
  * @brief A `Q(bits(Rep)-FracBits).FracBits` binary fixed-point number.
@@ -171,8 +245,73 @@ public:
     return result;
   }
 
+  /**
+   * @brief `floor(sqrt(*this))`, exact aside from `Rep`'s own fixed-point
+   * quantization (not a series/approximation -- see the @file-level docs
+   * above). Defined as `0` for a negative value (signed `Rep` only; no
+   * complex-number support) instead of invoking undefined behavior.
+   */
+  [[nodiscard]] constexpr fixed_point sqrt() const noexcept {
+    if constexpr (std::is_signed_v<Rep>) {
+      if (raw_ <= 0)
+        return fixed_point();
+    } else {
+      if (raw_ == 0)
+        return fixed_point();
+    }
+    // sqrt(raw/one) == sqrt(raw*one)/one -- scaling the radicand by `one_raw` first keeps the
+    // result in the same Q-format `*this` is already in.
+    auto scaled = static_cast<std::uint64_t>(static_cast<wide>(raw_) * static_cast<wide>(one_raw));
+    return from_raw(static_cast<Rep>(detail::isqrt_u64(scaled)));
+  }
+
+  /**
+   * @brief `e` raised to `*this`, via a range-reduced Taylor series (see
+   * the @file-level docs above for the full "scaling and squaring" +
+   * `taylor_eval` algorithm, and its accuracy/overflow caveats).
+   */
+  [[nodiscard]] constexpr fixed_point exp() const noexcept {
+    wide raw_w = static_cast<wide>(raw_);
+    wide magnitude = raw_w < 0 ? static_cast<wide>(-raw_w) : raw_w;
+    unsigned reduction_steps = 0;
+    while (magnitude > static_cast<wide>(one_raw) && reduction_steps < 48) {
+      magnitude /= 2;
+      ++reduction_steps;
+    }
+    wide divisor = wide{1} << reduction_steps;
+    fixed_point reduced = from_raw(static_cast<Rep>(raw_w / divisor));
+
+    constexpr std::size_t taylor_terms = 16;
+    array<fixed_point, taylor_terms> coefficients;
+    coefficients[0] = from_int(1);
+    for (std::size_t n = 1; n < taylor_terms; ++n)
+      coefficients[n] = coefficients[n - 1] / from_int(static_cast<unsigned>(n));
+
+    fixed_point result = taylor_eval(span<const fixed_point>(coefficients.data(), taylor_terms), reduced);
+    for (unsigned i = 0; i < reduction_steps; ++i)
+      result = result * result;
+    return result;
+  }
+
 private:
   Rep raw_ = Rep{0};
 };
+
+/**
+ * @brief Out-of-line definition of the `taylor_eval` declaration above
+ * (needed before `fixed_point` itself, since `fixed_point::exp()` calls
+ * it). See that declaration's own docs for the full contract.
+ */
+template <typename Rep, unsigned FracBits>
+[[nodiscard]] constexpr fixed_point<Rep, FracBits> taylor_eval(span<const fixed_point<Rep, FracBits>> coefficients,
+                                                                fixed_point<Rep, FracBits> x) noexcept {
+  using fp = fixed_point<Rep, FracBits>;
+  if (coefficients.empty())
+    return fp();
+  fp result = coefficients[coefficients.size() - 1];
+  for (std::size_t i = coefficients.size() - 1; i > 0; --i)
+    result = result * x + coefficients[i - 1];
+  return result;
+}
 
 } // namespace reloco

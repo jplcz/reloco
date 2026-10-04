@@ -78,7 +78,7 @@ where, not a tutorial.
 | `saturating.hpp` | `saturating<T>` | Integral newtype whose arithmetic operators always clamp on overflow, matching Rust's `std::num::Saturating<T>` |
 | `checked.hpp` | `checked<T>` | Integral newtype whose arithmetic is always explicitly fallible via `try_add/sub/mul/div/rem/neg/abs` returning `result<checked<T>>` |
 | `int_ops.hpp` | `checked_add/sub/mul/div/rem/neg/abs`, `wrapping_add/sub/mul`, `saturating_add/sub/mul`, `overflowing_add/sub/mul`, `overflowing_result<T>`, `checked_cast<To>` | Free-function Rust-style checked/wrapping/saturating/overflowing integer arithmetic and range-checked numeric casts |
-| `fixed_point.hpp` | `fixed_point<Rep, FracBits>` | Floating-point-free `Q(bits(Rep)-FracBits).FracBits` binary fixed-point number, with `pow` (exponentiation by squaring) for geometric decay/compounding |
+| `fixed_point.hpp` | `fixed_point<Rep, FracBits>`, `taylor_eval<Rep, FracBits>` | Floating-point-free `Q(bits(Rep)-FracBits).FracBits` binary fixed-point number, with `pow` (exponentiation by squaring), exact integer `sqrt`, range-reduced Taylor-series `exp`, and a generic Horner's-method `taylor_eval(coefficients, x)` for any caller-supplied polynomial/series |
 | `atomic_ops.hpp` | `atomic::fetch_max`, `atomic::fetch_min`, `atomic::fetch_update` | Free functions filling the gaps between C++17 `std::atomic<T>` and Rust's `std::sync::atomic::Atomic*` API |
 | `allocator.hpp` | `allocator_ref`, `allocator<Tag>`, `allocator_traits<Tag>`, `mem_block`, `usage_hint` | Type-erased allocator handle and the tag-based provider pattern backing it |
 | `heap_allocator.hpp` | `heap_allocator_tag` | Stateless `allocator_traits` backend over the process heap (`new`/`delete`) |
@@ -3077,6 +3077,29 @@ operation a geometric decay/compounding computation (an exponential
 moving average fast-forwarded over many elapsed sampling quanta at once,
 compound interest, ...) needs.
 
+`sqrt()` is exact integer square-root math (the classic binary
+"digit-by-digit" algorithm over the widened raw bit pattern -- no series,
+no approximation error beyond `Rep`'s own fixed-point quantization);
+defined as `0` for a negative value (signed `Rep` only) instead of
+undefined behavior. `exp()` (`e^x`) has no such closed-form algorithm, so
+it range-reduces its argument (`e^x = (e^(x/2^k))^(2^k)`, choosing `k` so
+`|x/2^k| <= 1`, the same "scaling and squaring" trick real floating-point
+`expm1`/matrix-exponential implementations use) and evaluates a 16-term
+`1/n!` Taylor series over the reduced argument via `taylor_eval` (below);
+both use a fixed, not adaptive/error-bounded, iteration count -- treat
+them as a convenient approximation, not a numerically-rigorous `<cmath>`
+replacement.
+
+`taylor_eval(coefficients, x)` is the free function template `exp()`
+itself is built on, exposed because it is independently useful: it
+evaluates `coefficients[0] + coefficients[1]*x + coefficients[2]*x^2 + ...`
+at `x` via Horner's method (`coefficients.size() - 1` multiply-adds, not a
+separate `pow` per term) over *any* caller-supplied `span<const
+fixed_point<Rep, FracBits>>` -- not tied to `exp()`'s own `1/n!` table at
+all, so a caller with its own precomputed series (`sin`/`cos`/`log1p`/a
+curve fit, ...) can reuse it directly; an empty `coefficients` evaluates
+to `0`.
+
 ```cpp
 using q21_11 = reloco::fixed_point<std::uint32_t, 11>;
 
@@ -3086,6 +3109,12 @@ auto decayed_many_steps = q21_11::pow(decay, 1000); // O(log 1000), not 1000 mul
 auto load = q21_11::from_int(2) + q21_11::from_raw(472); // ~2.23
 assert(load.to_int() == 2);
 assert(load.fractional_percent() == 23);
+
+auto root = q21_11::from_int(2).sqrt();      // ~1.41421 (exact floor at this Q-format's precision)
+auto e = q21_11::from_int(1).exp();          // ~2.71828
+
+reloco::array<q21_11, 2> coefficients{q21_11::from_int(2), q21_11::from_int(3)};
+auto linear = reloco::taylor_eval(reloco::span<const q21_11>(coefficients), q21_11::from_int(4)); // 2 + 3*4 == 14
 ```
 
 ## `allocator_ref` / `allocator<Tag>` / `allocator_traits<Tag>`
