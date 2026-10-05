@@ -20,7 +20,7 @@
 
 #include <boost/intrusive/list.hpp>
 #include <iostream>
-#include <reloco/intrusive_iteration.hpp>
+#include <reloco/boost_intrusive_adapter.hpp>
 #include <reloco/scope_guard.hpp>
 
 using namespace boost::intrusive;
@@ -46,13 +46,6 @@ struct Task : public list_base_hook<link_mode<auto_unlink>> {
 // Define an O(1) size-untracked list, perfect for RTOS queues
 using TaskList = list<Task, constant_time_size<false>>;
 
-// A quick factory function to create the iterator cleanly
-namespace reloco {
-template <typename Container, typename Pred> auto extract_if(Container &c, Pred p) {
-  return extract_if_iterator<Container, Pred>(c, std::move(p));
-}
-} // namespace reloco
-
 // ========================================================================
 // The Demo Execution
 // ========================================================================
@@ -72,8 +65,10 @@ int main() {
 
   std::cout << "--- Scheduler Tick Start ---\n";
 
-  // Reusable C++ lambdas for routing topologies
-  auto list_inserter = [](TaskList &dest, Task &t) { dest.push_back(t); };
+  // Reusable routing helpers: `boost_intrusive_adapter.hpp`'s stock
+  // Inserter/Disposer factories, since this demo's own routing needs
+  // nothing beyond "push_back onto the destination" / "reclaim the node".
+  auto list_inserter = reloco::boost_intrusive::push_back_inserter();
 
   auto memory_pool_disposer = [](Task *t) {
     // In a real system, this returns the memory to the slab allocator.

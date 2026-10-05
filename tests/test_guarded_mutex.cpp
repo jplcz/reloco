@@ -28,6 +28,15 @@ TEST(GuardedMutexTest, LockGrantsMutableAccess) {
   EXPECT_EQ(*m.lock(), 2);
 }
 
+TEST(GuardedMutexTest, GuardGetAndGetMutMatchOperatorStar) {
+  reloco::guarded_mutex<int> m(5);
+  auto g = m.lock();
+  EXPECT_EQ(g.get(), 5);
+  g.get_mut() += 1;
+  EXPECT_EQ(g.get(), 6);
+  EXPECT_EQ(*g, 6);
+}
+
 TEST(GuardedMutexTest, ArrowOperatorReachesMembers) {
   reloco::guarded_mutex<std::string> m(std::string("hello"));
   {
@@ -61,9 +70,11 @@ TEST(GuardedMutexTest, GuardReleasesLockOnDestruction) {
   EXPECT_TRUE(g2.has_value());
 }
 
-TEST(GuardedMutexTest, GetMutBypassesLocking) {
+TEST(GuardedMutexTest, UnsafeGetMutBypassesLocking) {
   reloco::guarded_mutex<int> m(1);
-  m.get_mut() = 9;
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+  m.unsafe_get_mut() = 9;
+  RELOCO_END_UNSAFE_BUFFER_USAGE
   EXPECT_EQ(*m.lock(), 9);
 }
 

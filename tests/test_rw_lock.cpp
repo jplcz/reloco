@@ -29,6 +29,22 @@ TEST(RwLockTest, WriteGrantsMutableAccess) {
   EXPECT_EQ(*m.read(), 2);
 }
 
+TEST(RwLockTest, ReadGuardGetMatchesOperatorStar) {
+  reloco::rw_lock<int> m(5);
+  auto g = m.read();
+  EXPECT_EQ(g.get(), 5);
+  EXPECT_EQ(*g, 5);
+}
+
+TEST(RwLockTest, WriteGuardGetAndGetMutMatchOperatorStar) {
+  reloco::rw_lock<int> m(5);
+  auto g = m.write();
+  EXPECT_EQ(g.get(), 5);
+  g.get_mut() += 1;
+  EXPECT_EQ(g.get(), 6);
+  EXPECT_EQ(*g, 6);
+}
+
 TEST(RwLockTest, ArrowOperatorReachesMembers) {
   reloco::rw_lock<std::string> m(std::string("hello"));
   {
@@ -104,9 +120,11 @@ TEST(RwLockTest, WriteGuardReleasesLockOnDestruction) {
   EXPECT_TRUE(g2.has_value());
 }
 
-TEST(RwLockTest, GetMutBypassesLocking) {
+TEST(RwLockTest, UnsafeGetMutBypassesLocking) {
   reloco::rw_lock<int> m(1);
-  m.get_mut() = 9;
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+  m.unsafe_get_mut() = 9;
+  RELOCO_END_UNSAFE_BUFFER_USAGE
   EXPECT_EQ(*m.read(), 9);
 }
 

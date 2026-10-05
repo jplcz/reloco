@@ -35,6 +35,8 @@ where, not a tutorial.
 | `variant.hpp` | `variant<Ts...>`, `overloaded<Fs...>` | `std::variant<Ts...>` with Rust-style `match()` and tri-tier access on top |
 | `function_ref.hpp` | `function_ref<R(Args...)>` | Non-owning, zero-allocation borrow of any callable |
 | `inplace_function.hpp` | `inplace_function<Signature, Capacity>` | Zero-allocation, fixed-capacity callable wrapper |
+| `def_function_ref.hpp` | `def_function_ref<R(Arg0, Args...), GeneratorCapacity>` | Owns and substitutes a `function_ref`'s first argument |
+| `function_ptr_adapter.hpp` | `function_ptr_adapter<Fn>`, `as_function_ptr<Fn>` | Compile-time proxy producing a plain function pointer that strips trailing arguments before forwarding to a bound plain function |
 | `stack_allocator.hpp` | `stack_allocator`, `stack_allocator_tag`, `stack_allocator_context` | Bump-pointer `allocator_traits` backend over a caller-owned buffer |
 | `pool_allocator.hpp` | `pool_allocator<Lock>`, `pool_allocator_tag<Lock>`, `pool_allocator_context<Lock>`, `null_mutex` | Fixed-block-size `allocator_traits` backend carving blocks out of slabs obtained from an upstream allocator, with kernel-style "unlock, allocate, relock" refill |
 | `bucket_allocator.hpp` | `bucket_allocator<Lock, BucketSizes...>`, `bucket_allocator_tag<Lock, BucketSizes...>`, `bucket_allocator_context<Lock, BucketSizes...>` | General-purpose `allocator_traits` backend combining a compile-time list of `pool_allocator`s, one per size bucket, routing each request to the smallest bucket that fits |
@@ -111,6 +113,11 @@ where, not a tutorial.
 | `uninit.hpp` | `uninit<T>` | Typestate-tracked (`-Wconsumed`) wrapper over raw uninitialized storage, preventing reads-before-write and double-initialization at compile time; `assume_init()` is the escape hatch for externally-filled memory (e.g. DMA) |
 | `seqlock.hpp` | `guarded_seqlock<T, MutexT = mutex>` | Fuses `guarded_mutex`-style hardware exclusion for writers with a lock-free, sequence-counter-verified snapshot read path for readers, matching the Linux kernel's `seqlock(9)` |
 | `intrusive_iteration.hpp` | `isolated_node_tx<Container, T>`, `extract_if_iterator<Container, Pred>` | Typestate-enforced RAII handle for safely detaching a node from one intrusive container (e.g. `boost::intrusive::list`) and relinking/disposing it elsewhere, plus the `iterator_adaptor`-based `extract_if()` pipeline that produces one |
+| `boost_intrusive_adapter.hpp` | `reloco::extract_if(Container&, Pred)`, `boost_intrusive::push_back_inserter()`, `push_front_inserter()`, `insert_inserter()`, `default_delete_disposer<T>()` | Reloco-style overlay for `boost::intrusive` containers: promotes `extract_if_iterator` to a reusable factory function and adds stock `Inserter`/`Disposer` factories for `isolated_node_tx::relink_to()`/`release_to()`; no hard Boost dependency itself (duck-typed), also works on reloco's own `intrusive_c_*`/`intrusive_hash_table`/`intrusive_rbtree`/`intrusive_splay_tree` containers |
+| `boost_intrusive_safe_list_hook.hpp`, `boost_intrusive_safe_set_hook.hpp`, `boost_intrusive_safe_bs_set_hook.hpp`, `boost_intrusive_safe_avl_set_hook.hpp`, `boost_intrusive_safe_unordered_set_hook.hpp` | `boost_intrusive::safe_list_hook<Options...>`/`safe_list_member_hook<Options...>`, `safe_set_hook`/`safe_set_member_hook`, `safe_bs_set_hook`/`safe_bs_set_member_hook` (also backs `splay_set`/`splay_multiset`), `safe_avl_set_hook`/`safe_avl_set_member_hook`, `safe_unordered_set_hook`/`safe_unordered_set_member_hook` | One header per Boost.Intrusive hook family (base-hook and member-hook variants each), all hardcoding `link_mode<safe_link>`; each derivative's destructor checks "still linked" via `RELOCO_ASSERT` (portable to `RELOCO_KERNEL`, honors reloco's own assert configuration) instead of relying solely on Boost's own `NDEBUG`-compiled-out `BOOST_ASSERT` |
+| `boost_intrusive_safe_list.hpp` | `boost_intrusive::safe_list<T, Options...>` | Container-level complement to the node-level `safe_*_hook` family above: a `boost::intrusive::list<T, Options...>` derivative adding `extract_if()`/`iter()` as member functions (instead of the free-function forms in `boost_intrusive_adapter.hpp`); adds no data members/virtual functions, so it is exactly as cheap as `boost::intrusive::list` itself, and inherits its move-only semantics unchanged |
+| `boost_intrusive_safe_interval_list.hpp` | `boost_intrusive::safe_interval_list<T, StartOf, EndOf>`, `make_safe_interval_list<T>(start_of, end_of)`, `interval_gap<Address>` | `safe_list<T>` derivative for address-sorted interval lists (the classic "list of VM areas"/free-region-tracker shape): `find_containing(address)`, `find_overlap(start, end)`, `find_gap(space_start, space_end, min_size, alignment)` (first-fit, `result<T*>`/`result<interval_gap<Address>>`-returning, `error::not_found` on failure), `find_random_gap(space_start, space_end, min_size, alignment, rng)` (ASLR-style: uniformly picks one of the valid aligned placements across *every* fitting gap, weighted by slot count, driven by a caller-supplied templated `rng()` callable), `for_each_gap(space_start, space_end, visit)` (the public gap enumerator `find_gap()`/`find_random_gap()` are built on, for custom placement policies), `try_resize(node, new_start, new_end, resizer)` (or the `try_resize(node, new_end, resizer)` shorthand keeping the current start) to grow/shrink/move an already-tracked interval in place, failing with `error::already_exists` instead of mutating anything if the new range would collide with a neighbor, `try_rebase(node, new_start, rebaser)` to relocate an already-tracked interval to a new base address while keeping its size unchanged (built on `try_resize()`, failing with `error::invalid_argument` on address overflow), `insert_sorted(node)` to maintain the ordering invariant the searches rely on, and `merge_adjacent(validator, merger, disposer)` to coalesce chained contiguous/compatible neighbors (`disposer` matches `isolated_node_tx::release_to()`'s own convention) |
+| `boost_intrusive_safe_interval_bs_set.hpp`, `boost_intrusive_safe_interval_avl_set.hpp` | `boost_intrusive::safe_interval_bs_set<T, StartOf, EndOf, Options...>`/`make_safe_interval_bs_set<T>(start_of, end_of)`/`bs_set_interval_start_compare<T, StartOf>`, `safe_interval_avl_set<T, StartOf, EndOf, Options...>`/`make_safe_interval_avl_set<T>(start_of, end_of)`/`avl_set_interval_start_compare<T, StartOf>` | Tree-based siblings of `safe_interval_list` above, built on `boost::intrusive::bs_set`/`avl_set` instead of `boost::intrusive::list`, offering the exact same API surface (`find_containing`, `find_overlap`, `find_gap`, `find_random_gap`, `for_each_gap`, `try_resize` (both overloads), `try_rebase`, `merge_adjacent`) plus a runtime `*_interval_start_compare` heterogeneous comparator (one distinct type per container family, to avoid an ODR clash if a program uses both; passed via `boost::intrusive::compare<>`) that orders by `StartOf` and also accepts a raw `Address` key, so `lower_bound`/`upper_bound`/`find` work directly against an address without constructing a dummy `T`; `insert_sorted(node)` returns `result<T*>` here (not `void`) since the tree's `insert_unique()` rejects a duplicate `start_of()` with `error::already_exists`; `find_containing()` and `insert_sorted()`/`try_resize()`/`try_rebase()`'s repositioning are `O(log n)` (vs. the list version's `O(n)`), while `find_overlap()`/`try_resize()`'s own overlap check/`merge_adjacent()` remain `O(n)` linear scans in both |
 | `fault_injection.hpp` | `fault_injector<Tag, Args...>`, `fault_armed<Tag, Args...>()`, `RELOCO_FAULT_POINT(Tag)`, `RELOCO_FAULT_POINT_ARGS(Tag, ...)`, `RELOCO_FAULT_TAG(name)`, `RELOCO_FAULT_INJECTOR(var, Tag, ...)` | Header-based, opt-in (`RELOCO_ENABLE_FAULT_INJECTION`) fault injection framework for deterministically reproducing concurrency races in single-threaded tests; caller-owned, stackable scoped control blocks, backed by unowned `tls_provider<void *, ...>` pointer(s) -- one shared TLS slot for the whole program by default, or one per `Tag` under `RELOCO_FAULT_INJECTION_UNLIMITED_TLS` -- the framework itself never allocates |
 | `fault_injection_patterns.hpp` | `RELOCO_FAULT_MUTATE`, `RELOCO_FAULT_SET`, `RELOCO_FAULT_SPY`, `RELOCO_FAULT_FIRE_N`, `RELOCO_FAULT_FIRE_ONCE`, `RELOCO_FAULT_WHEN`, `RELOCO_FAULT_SKIP_N`, `RELOCO_FAULT_NTH`, `RELOCO_FAULT_EVERY_N`, `RELOCO_FAULT_TOGGLE`, `RELOCO_FAULT_INCREMENT` | Convenience macros, built entirely on `fault_injection.hpp`'s own public/`detail` API, for common and more advanced fault-arming patterns: overwrite/mutate/toggle/nudge a single exposed value, count firings, fire only the first *N* times (or once) or only after skipping the first *N*, fire on exactly one or every *N*'th hit, or fire only when a predicate over the exposed arguments holds |
 | `lifetime.hpp` | `RELOCO_LIFETIMEBOUND`, `RELOCO_OWNER`, `RELOCO_POINTER`, `RELOCO_UNSAFE_BUFFER_USAGE`, ... | Compiler-specific lifetime/ownership/safe-buffers annotation macros |
@@ -2282,6 +2289,37 @@ int call_with_five(reloco::function_ref<int(int)> f) { return f(5); }
 assert(call_with_five(bound) == 15); // `bound` substitutes its owned 10 as the first argument
 ```
 
+## `function_ptr_adapter<Fn>` / `as_function_ptr<Fn>`
+
+`include/reloco/function_ptr_adapter.hpp`
+
+Produces a plain C function pointer that forwards to a bound plain function
+`Fn`, silently discarding any trailing arguments the destination function
+pointer type requires but `Fn` doesn't need. Solves a narrower problem than
+`function_ref`: some C APIs expect an actual function pointer with no room for
+a side-channel context argument, while the callback a caller wants to install
+only cares about a leading prefix of the parameters. Because the generated
+trampoline is itself a plain, context-free function, only a compile-time-known
+plain function can be adapted this way -- `Fn` is a non-type template
+argument, never a lambda with captures or a functor (use `function_ref` /
+`def_function_ref` when a context pointer is available at the call site).
+
+`as_function_ptr<Fn>` is an empty, stateless proxy with a templated conversion
+operator to any function pointer type whose leading parameters `Fn` can be
+invoked with; the target signature is deduced from the conversion context, so
+no explicit signature needs to be spelled out at the call site:
+
+```cpp
+void foo(int a, int b) { ... }
+
+void (*f)(int, int, int, int) = reloco::as_function_ptr<foo>;
+f(1, 2, 3, 4); // calls foo(1, 2); the trailing 3, 4 are discarded
+```
+
+A `static_assert` fires at the conversion site (not inside the generated
+trampoline) if the target type has fewer parameters than `Fn` requires, or if
+`Fn` isn't invocable with the target's leading parameters.
+
 ## `stack_allocator` / `stack_allocator_tag` / `stack_allocator_context`
 
 `include/reloco/stack_allocator.hpp`
@@ -3663,9 +3701,10 @@ through a held lock). `try_lock()` is the fallible tier, returning
 -- matching Rust's own `Mutex::try_lock() -> Result<MutexGuard<T>,
 TryLockError<...>>` more closely than an `optional<guard>` would (and
 `error::busy` carries more information than a bare "empty" would).
-`get_mut()` bypasses locking entirely for callers that already hold an
-exclusive `guarded_mutex&` (Rust's `Mutex::get_mut()`, which borrows `&mut
-self` at compile time instead). `guard` is move-only and releases the
+`unsafe_get_mut()` bypasses locking entirely for callers that already hold
+an exclusive `guarded_mutex&` (Rust's `Mutex::get_mut()`, which borrows
+`&mut self` at compile time instead) -- C++ has no borrow checker to
+enforce that exclusivity, hence the `unsafe_` name/annotation. `guard` is move-only and releases the
 lock automatically on destruction, matching Rust's `MutexGuard<'a, T>`.
 
 The lock backend is a template parameter (`MutexT = mutex` by default);
@@ -3842,8 +3881,10 @@ already held in a conflicting mode -- matching Rust's own
 `RwLock::try_read()`/`RwLock::try_write() -> Result<RwLock*Guard<T>,
 TryLockError<...>>`. Any number of `read_guard`s may be held concurrently
 across any number of threads, so long as no `write_guard` is held at the
-same time; `get_mut()` bypasses locking entirely for callers that already
-hold an exclusive `rw_lock&`, matching Rust's `RwLock::get_mut()`. Both
+same time; `unsafe_get_mut()` bypasses locking entirely for callers that
+already hold an exclusive `rw_lock&`, matching Rust's `RwLock::get_mut()`
+-- C++ has no borrow checker to enforce that exclusivity, hence the
+`unsafe_` name/annotation. Both
 guards are move-only and release their half of the lock automatically on
 destruction, matching Rust's `RwLockReadGuard<'a, T>`/
 `RwLockWriteGuard<'a, T>`.

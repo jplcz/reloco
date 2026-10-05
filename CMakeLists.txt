@@ -34,6 +34,20 @@ option(JPLCZ_RELOCO_BUILD_DEMOS
 option(JPLCZ_RELOCO_INSTALL
     "Install jplcz_reloco headers and CMake package metadata"
     ${JPLCZ_RELOCO_IS_TOP_LEVEL})
+option(JPLCZ_RELOCO_INSTALL_HEADERS_ONLY
+    "When JPLCZ_RELOCO_INSTALL is enabled, install only the public headers \
+(plus any JPLCZ_RELOCO_PORTING_HEADERS) and skip everything else this \
+project would otherwise install: README/LICENSE/docs/, the CMake package \
+(install(TARGETS ... EXPORT ...), install(EXPORT ...), Config/\
+ConfigVersion files). Needed when reloco is pulled in via FetchContent/\
+add_subdirectory by a larger build (e.g. an embedded/kernel tree) that \
+defines its own targets depending on jplcz_reloco and performs its own \
+single, consolidated install(EXPORT) for all of them -- CMake forbids an \
+exported target from depending on another target that is itself exported \
+under more than one export set/namespace, so reloco must not also export \
+jplcz_reloco on its own in that situation; the caller remains responsible \
+for installing/exporting the jplcz_reloco target (and its CMake package) \
+itself." OFF)
 
 # Included unconditionally (not only under JPLCZ_RELOCO_INSTALL), and
 # harmlessly idempotent if a parent build already included it, purely to
@@ -495,6 +509,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_inplace_function.cpp
         tests/test_function_ref.cpp
         tests/test_def_function_ref.cpp
+        tests/test_function_ptr_adapter.cpp
         tests/test_cell.cpp
         tests/test_non_zero.cpp
         tests/test_wrapping.cpp
@@ -637,6 +652,69 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         jplcz_reloco_enable_warnings(jplcz_reloco_fault_injection_pthread_tests)
         gtest_discover_tests(jplcz_reloco_fault_injection_pthread_tests)
     endif()
+
+    # boost_intrusive_adapter.hpp itself has no hard Boost dependency (see
+    # its own file docs), but exercising it against a real
+    # `boost::intrusive::list`/`set` needs Boost actually present -- kept
+    # as its own optional target, exactly like demos/CMakeLists.txt's own
+    # `intrusive_iteration_demo`, rather than pulling every other test
+    # down with it on hosts without Boost installed.
+    find_package(Boost 1.77 CONFIG QUIET)
+    if(Boost_FOUND)
+        add_executable(jplcz_reloco_boost_intrusive_adapter_tests tests/test_boost_intrusive_adapter.cpp)
+        target_link_libraries(jplcz_reloco_boost_intrusive_adapter_tests PRIVATE
+            jplcz_reloco Boost::boost GTest::gtest_main)
+        jplcz_reloco_enable_warnings(jplcz_reloco_boost_intrusive_adapter_tests)
+        gtest_discover_tests(jplcz_reloco_boost_intrusive_adapter_tests)
+
+        # boost_intrusive_safe_*_hook.hpp: same optional-Boost gating,
+        # its own binary since several cases are EXPECT_DEATH tests
+        # (gtest re-execs the binary per death-test case).
+        add_executable(jplcz_reloco_boost_intrusive_safety_tests tests/test_boost_intrusive_safety.cpp)
+        target_link_libraries(jplcz_reloco_boost_intrusive_safety_tests PRIVATE
+            jplcz_reloco Boost::boost GTest::gtest_main)
+        jplcz_reloco_enable_warnings(jplcz_reloco_boost_intrusive_safety_tests)
+        gtest_discover_tests(jplcz_reloco_boost_intrusive_safety_tests)
+
+        # boost_intrusive_safe_list.hpp etc.: container-level overlay
+        # classes (as opposed to the node-level safe_*_hook family
+        # above), one binary per container family to mirror the hook
+        # headers' own per-family test split.
+        add_executable(jplcz_reloco_boost_intrusive_safe_list_tests tests/test_boost_intrusive_safe_list.cpp)
+        target_link_libraries(jplcz_reloco_boost_intrusive_safe_list_tests PRIVATE
+            jplcz_reloco Boost::boost GTest::gtest_main)
+        jplcz_reloco_enable_warnings(jplcz_reloco_boost_intrusive_safe_list_tests)
+        gtest_discover_tests(jplcz_reloco_boost_intrusive_safe_list_tests)
+
+        # boost_intrusive_safe_interval_list.hpp: address-sorted interval
+        # list overlay (find_containing/find_overlap/find_gap/
+        # insert_sorted/merge_adjacent), built on safe_list above.
+        add_executable(jplcz_reloco_boost_intrusive_safe_interval_list_tests
+            tests/test_boost_intrusive_safe_interval_list.cpp)
+        target_link_libraries(jplcz_reloco_boost_intrusive_safe_interval_list_tests PRIVATE
+            jplcz_reloco Boost::boost GTest::gtest_main)
+        jplcz_reloco_enable_warnings(jplcz_reloco_boost_intrusive_safe_interval_list_tests)
+        gtest_discover_tests(jplcz_reloco_boost_intrusive_safe_interval_list_tests)
+
+        # boost_intrusive_safe_interval_bs_set.hpp /
+        # boost_intrusive_safe_interval_avl_set.hpp: same address-sorted
+        # interval API as safe_interval_list above, but built on
+        # boost::intrusive::bs_set/avl_set for O(log n)
+        # find_containing()/insert_sorted()/try_resize() repositioning.
+        add_executable(jplcz_reloco_boost_intrusive_safe_interval_bs_set_tests
+            tests/test_boost_intrusive_safe_interval_bs_set.cpp)
+        target_link_libraries(jplcz_reloco_boost_intrusive_safe_interval_bs_set_tests PRIVATE
+            jplcz_reloco Boost::boost GTest::gtest_main)
+        jplcz_reloco_enable_warnings(jplcz_reloco_boost_intrusive_safe_interval_bs_set_tests)
+        gtest_discover_tests(jplcz_reloco_boost_intrusive_safe_interval_bs_set_tests)
+
+        add_executable(jplcz_reloco_boost_intrusive_safe_interval_avl_set_tests
+            tests/test_boost_intrusive_safe_interval_avl_set.cpp)
+        target_link_libraries(jplcz_reloco_boost_intrusive_safe_interval_avl_set_tests PRIVATE
+            jplcz_reloco Boost::boost GTest::gtest_main)
+        jplcz_reloco_enable_warnings(jplcz_reloco_boost_intrusive_safe_interval_avl_set_tests)
+        gtest_discover_tests(jplcz_reloco_boost_intrusive_safe_interval_avl_set_tests)
+    endif()
 endif()
 
 if(JPLCZ_RELOCO_BUILD_DEMOS)
@@ -657,11 +735,13 @@ if(JPLCZ_RELOCO_INSTALL)
     include(GNUInstallDirs)
     include(CMakePackageConfigHelpers)
 
-    install(
-        TARGETS jplcz_reloco jplcz_reloco_shared jplcz_reloco_shared_export
-        EXPORT jplcz_relocoTargets
-        INCLUDES DESTINATION "${JPLCZ_RELOCO_INSTALL_INCLUDEDIR}"
-    )
+    if(NOT JPLCZ_RELOCO_INSTALL_HEADERS_ONLY)
+        install(
+            TARGETS jplcz_reloco jplcz_reloco_shared jplcz_reloco_shared_export
+            EXPORT jplcz_relocoTargets
+            INCLUDES DESTINATION "${JPLCZ_RELOCO_INSTALL_INCLUDEDIR}"
+        )
+    endif()
 
     install(
         DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/"
@@ -682,53 +762,57 @@ if(JPLCZ_RELOCO_INSTALL)
         )
     endif()
 
-    install(
-        FILES
-            "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
-            "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
-        DESTINATION "${JPLCZ_RELOCO_INSTALL_DOCDIR}"
-        COMPONENT Documentation
-    )
+    if(NOT JPLCZ_RELOCO_INSTALL_HEADERS_ONLY)
+        install(
+            FILES
+                "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
+                "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
+            DESTINATION "${JPLCZ_RELOCO_INSTALL_DOCDIR}"
+            COMPONENT Documentation
+        )
 
-    install(
-        DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/docs/"
-        DESTINATION "${JPLCZ_RELOCO_INSTALL_DOCDIR}/docs"
-        COMPONENT Documentation
-    )
+        install(
+            DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/docs/"
+            DESTINATION "${JPLCZ_RELOCO_INSTALL_DOCDIR}/docs"
+            COMPONENT Documentation
+        )
+    endif()
 
-    configure_package_config_file(
-        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/jplcz_relocoConfig.cmake.in"
-        "${CMAKE_CURRENT_BINARY_DIR}/jplcz_relocoConfig.cmake"
-        INSTALL_DESTINATION "${JPLCZ_RELOCO_INSTALL_CMAKEDIR}"
-        NO_SET_AND_CHECK_MACRO
-        NO_CHECK_REQUIRED_COMPONENTS_MACRO
-    )
-
-    # Header-only INTERFACE library: the package config is architecture
-    # independent (no compiled binaries to match ABI/bitness against), so
-    # skip the platform check and install under share/, not lib/.
-    write_basic_package_version_file(
-        "${CMAKE_CURRENT_BINARY_DIR}/jplcz_relocoConfigVersion.cmake"
-        VERSION "${PROJECT_VERSION}"
-        COMPATIBILITY SameMajorVersion
-        ARCH_INDEPENDENT
-    )
-
-    install(
-        EXPORT jplcz_relocoTargets
-        FILE jplcz_relocoTargets.cmake
-        NAMESPACE jplcz_reloco::
-        DESTINATION "${JPLCZ_RELOCO_INSTALL_CMAKEDIR}"
-        COMPONENT Development
-    )
-
-    install(
-        FILES
+    if(NOT JPLCZ_RELOCO_INSTALL_HEADERS_ONLY)
+        configure_package_config_file(
+            "${CMAKE_CURRENT_SOURCE_DIR}/cmake/jplcz_relocoConfig.cmake.in"
             "${CMAKE_CURRENT_BINARY_DIR}/jplcz_relocoConfig.cmake"
+            INSTALL_DESTINATION "${JPLCZ_RELOCO_INSTALL_CMAKEDIR}"
+            NO_SET_AND_CHECK_MACRO
+            NO_CHECK_REQUIRED_COMPONENTS_MACRO
+        )
+
+        # Header-only INTERFACE library: the package config is architecture
+        # independent (no compiled binaries to match ABI/bitness against), so
+        # skip the platform check and install under share/, not lib/.
+        write_basic_package_version_file(
             "${CMAKE_CURRENT_BINARY_DIR}/jplcz_relocoConfigVersion.cmake"
-        DESTINATION "${JPLCZ_RELOCO_INSTALL_CMAKEDIR}"
-        COMPONENT Development
-    )
+            VERSION "${PROJECT_VERSION}"
+            COMPATIBILITY SameMajorVersion
+            ARCH_INDEPENDENT
+        )
+
+        install(
+            EXPORT jplcz_relocoTargets
+            FILE jplcz_relocoTargets.cmake
+            NAMESPACE jplcz_reloco::
+            DESTINATION "${JPLCZ_RELOCO_INSTALL_CMAKEDIR}"
+            COMPONENT Development
+        )
+
+        install(
+            FILES
+                "${CMAKE_CURRENT_BINARY_DIR}/jplcz_relocoConfig.cmake"
+                "${CMAKE_CURRENT_BINARY_DIR}/jplcz_relocoConfigVersion.cmake"
+            DESTINATION "${JPLCZ_RELOCO_INSTALL_CMAKEDIR}"
+            COMPONENT Development
+        )
+    endif()
 endif()
 
 if(JPLCZ_RELOCO_IS_TOP_LEVEL AND JPLCZ_RELOCO_INSTALL)

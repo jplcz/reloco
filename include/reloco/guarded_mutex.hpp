@@ -81,6 +81,18 @@ public:
       return &cell_->value_;
     }
 
+    /** @brief Read-only access to the protected value; equivalent to `*this` with `const` emphasized at the call site. */
+    [[nodiscard]] const T &get() const & noexcept RELOCO_LIFETIMEBOUND {
+      RELOCO_ASSERT(cell_ != nullptr, "guard used after being moved from");
+      return cell_->value_;
+    }
+
+    /** @brief Mutable access to the protected value; equivalent to `*this`, spelled out for parity with `get()`. */
+    [[nodiscard]] T &get_mut() const & noexcept RELOCO_LIFETIMEBOUND {
+      RELOCO_ASSERT(cell_ != nullptr, "guard used after being moved from");
+      return cell_->value_;
+    }
+
   private:
     friend class guarded_mutex;
     explicit guard(guarded_mutex *cell) noexcept : cell_(cell) {}
@@ -117,9 +129,12 @@ public:
    * @brief Direct, unguarded mutable access -- sound exactly when the
    * caller already holds an exclusive `guarded_mutex&` (matching Rust's
    * `Mutex::get_mut()`, which borrows `&mut self` at compile time instead
-   * of taking the lock at runtime).
+   * of taking the lock at runtime). Unlike Rust, C++ has no borrow
+   * checker to enforce that exclusivity, so this is named and annotated
+   * `unsafe_`: nothing stops a caller from also holding a `guard` live at
+   * the same time, racing this access against it.
    */
-  [[nodiscard]] T &get_mut() & noexcept RELOCO_LIFETIMEBOUND { return value_; }
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE T &unsafe_get_mut() & noexcept RELOCO_LIFETIMEBOUND { return value_; }
 
 private:
   T value_;
