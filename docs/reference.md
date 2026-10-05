@@ -2185,13 +2185,24 @@ members over the base.
 Non-owning, zero-allocation, type-erased borrow of any callable (lambdas,
 function pointers, functors, member-invocable objects), storing exactly two
 pointers (a context payload and a trampoline function). It has no default
-constructor and can never be null: the single converting constructor is
-`RELOCO_LIFETIMEBOUND`-annotated so Clang rejects binding it to a temporary
-callable (e.g. an inline lambda) that would immediately dangle.
+constructor and can never be null, and is built from two converting
+constructors instead of one universal-reference one:
+
+- A plain function (a function pointer, or a bare function name, which decays
+  to one) is bound *by value*. Functions have static storage duration and can
+  never dangle.
+- A stateful callable (a lambda, functor, or any other object with
+  `operator()`) is bound through a plain (non-forwarding) reference
+  parameter. Because template argument deduction against a plain reference
+  parameter can only ever succeed for an lvalue, binding a temporary callable
+  directly (e.g. an inline lambda) is a hard compile error on every
+  compiler -- not just under Clang's `RELOCO_LIFETIMEBOUND` dataflow checks.
+  Name the callable first instead.
 
 ```cpp
 void call_it(reloco::function_ref<int(int)> f) { assert(f(1) == 2); }
-call_it([](int x) { return x + 1; });
+auto add_one = [](int x) { return x + 1; };
+call_it(add_one);
 ```
 
 Prefer `function_ref` over `reloco::function<R(Args...)>` at a call boundary

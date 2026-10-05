@@ -63,20 +63,23 @@ TEST_F(FunctionRefTest, LvalueLambdas) {
   EXPECT_EQ(f(5), 25);
 }
 
-TEST_F(FunctionRefTest, InlineTemporaryLambdas) {
-  // Because of RELOCO_LIFETIMEBOUND, this would (correctly) fail to compile:
+TEST_F(FunctionRefTest, NamedLambdasRequired) {
+  // The stateful-callable constructor takes its argument through a plain
+  // lvalue reference (not a universal reference), so binding a temporary
+  // lambda directly -- even one only ever used synchronously -- fails to
+  // compile on every compiler, not just Clang:
   // function_ref<int()> f = [] { return 1; };
+  // execute_synchronously([] { return 1; });
 
-  // Instead, the primary use case is passing inline lambdas directly down the
-  // call stack. The lambda lives until the end of the statement, which is
-  // perfectly safe for synchronous execution.
-
+  // Naming the lambda first makes it an lvalue, which is all that's required.
   int captured = 50;
-  int result1 = execute_synchronously([&]() { return captured * 2; });
+  auto stateful = [&]() { return captured * 2; };
+  int result1 = execute_synchronously(stateful);
   EXPECT_EQ(result1, 100);
 
-  // Stateless temporary lambda
-  int result2 = execute_synchronously([] { return 77; });
+  // Stateless lambda, named.
+  auto stateless = [] { return 77; };
+  int result2 = execute_synchronously(stateless);
   EXPECT_EQ(result2, 77);
 }
 

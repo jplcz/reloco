@@ -808,15 +808,17 @@ public:
     if (!built)
       RELOCO_UNLIKELY { return unexpected(built.error()); }
 
+    // Named so it can bind to the lvalue-only function_ref parameter below.
+    auto construct_fn = [&built](void *dest) noexcept -> result<void> {
+      static_assert(std::is_nothrow_move_constructible_v<T>, "reloco requires noexcept move-construction.");
+      new (dest) T(std::move(*built));
+      return {};
+    };
+
     // Delegate capacity reservation, shifting, and final placement to the base engine
-    auto res = this->try_insert_at_base(
-        detail::get_operations_for<T>(), this->get_allocator(), detail::metadata_for<T>, index,
-        [&built](void *dest) noexcept -> result<void> {
-          static_assert(std::is_nothrow_move_constructible_v<T>, "reloco requires noexcept move-construction.");
-          new (dest) T(std::move(*built));
-          return {};
-        },
-        Base::get_inline_storage(), Base::inline_capacity(), Base::max_capacity(detail::metadata_for<T>));
+    auto res = this->try_insert_at_base(detail::get_operations_for<T>(), this->get_allocator(), detail::metadata_for<T>,
+                                        index, construct_fn, Base::get_inline_storage(), Base::inline_capacity(),
+                                        Base::max_capacity(detail::metadata_for<T>));
 
     if (!res)
       RELOCO_UNLIKELY { return unexpected(res.error()); }
@@ -941,13 +943,14 @@ private:
   template <typename... Args>
   [[nodiscard]] result<std::reference_wrapper<T>>
   try_emplace_back_slow(Args &&...args) & noexcept RELOCO_LIFETIMEBOUND {
-    auto res = this->try_insert_at_base(
-        detail::get_operations_for<T>(), this->get_allocator(), detail::metadata_for<T>, this->size_,
-        [&args...](void *dest) noexcept -> result<void> {
-          return construction_helpers::try_construct<T>(default_allocator(), static_cast<T *>(dest),
-                                                        std::forward<Args>(args)...);
-        },
-        Base::get_inline_storage(), Base::inline_capacity(), Base::max_capacity(detail::metadata_for<T>));
+    // Named so it can bind to the lvalue-only function_ref parameter below.
+    auto construct_fn = [&args...](void *dest) noexcept -> result<void> {
+      return construction_helpers::try_construct<T>(default_allocator(), static_cast<T *>(dest),
+                                                    std::forward<Args>(args)...);
+    };
+    auto res = this->try_insert_at_base(detail::get_operations_for<T>(), this->get_allocator(), detail::metadata_for<T>,
+                                        this->size_, construct_fn, Base::get_inline_storage(), Base::inline_capacity(),
+                                        Base::max_capacity(detail::metadata_for<T>));
 
     if (!res)
       return unexpected(res.error());

@@ -12,8 +12,23 @@
  * allocating memory.
  *
  * It stores exactly two pointers: a context payload and a trampoline function.
- * Because it is a non-owning view, its constructor enforces `RELOCO_LIFETIMEBOUND`
- * to statically prevent capturing temporaries (rvalues) that would immediately dangle.
+ * Because it is a non-owning view, it is built from two separate converting
+ * constructors rather than one universal-reference one:
+ *
+ *   - A plain function (a function pointer, or a bare function name, which
+ *     decays to one) is bound *by value*. Functions have static storage
+ *     duration and can never dangle, so no lifetime restriction applies.
+ *   - A stateful callable (a lambda, functor, or any other object with
+ *     `operator()`) is bound through a plain (non-forwarding) reference
+ *     parameter, `F &f`. Because a non-forwarding reference parameter can
+ *     only ever deduce against an lvalue -- never an rvalue -- this is a
+ *     hard, portable (not Clang-specific) compile error for exactly the
+ *     mistake that used to slip through silently on non-Clang compilers:
+ *     binding `function_ref` to a temporary callable (e.g. an inline
+ *     lambda) that is destroyed before the borrow is ever used. Naming the
+ *     callable first (`auto cb = [...] { ... }; use(cb);`) is now required
+ *     everywhere, not just a best-effort convention `RELOCO_LIFETIMEBOUND`
+ *     happened to catch only under Clang.
  *
  * Modeled as an unconditionally valid borrow (like `value_ref`), it has no default
  * constructor and cannot be null.
@@ -56,6 +71,10 @@ private:
     return std::invoke(reinterpret_cast<FuncPtr>(p.func), std::forward<Args>(args)...);
   }
 
+  template <typename Fn>
+  static constexpr bool is_plain_function_pointer_v =
+      std::is_pointer_v<Fn> && std::is_function_v<std::remove_pointer_t<Fn>>;
+
 public:
   // function_ref must borrow a valid callable; it cannot be null.
   function_ref() = delete;
@@ -64,33 +83,42 @@ public:
   constexpr function_ref &operator=(const function_ref &) noexcept = default;
 
   /**
-   * @brief Constructs a function_ref binding to a callable.
-   *
-   * RELOCO_LIFETIMEBOUND ensures that if `f` is a temporary (e.g., an inline lambda),
-   * the function_ref cannot outlive the statement it was created in, catching
-   * dangling references at compile time under Clang.
+   * @brief Binds a plain function: a function pointer, or a bare function
+   * name (which decays to one through this by-value parameter). Taken by
+   * value deliberately -- a function has static storage duration, so
+   * there is no temporary to dangle and no reference/lifetime concern at
+   * all, unlike the stateful-callable overload below.
    */
-  template <
-      typename F, typename Decayed = std::decay_t<F>,
-      typename = std::enable_if_t<!std::is_same_v<Decayed, function_ref> && std::is_invocable_r_v<R, F &&, Args...>>>
-  constexpr function_ref(F &&f RELOCO_LIFETIMEBOUND) noexcept {
-    // Case 1: Raw function pointers (passed by value)
-    if constexpr (std::is_pointer_v<Decayed> && std::is_function_v<std::remove_pointer_t<Decayed>>) {
-      data_.func = reinterpret_cast<void (*)()>(f);
-      callback_ = &func_ptr_trampoline<Decayed>;
-    }
-    // Case 2: Function references (lvalues like `void my_func()`)
-    else if constexpr (std::is_function_v<std::remove_reference_t<F>>) {
-      data_.func = reinterpret_cast<void (*)()>(std::addressof(f));
-      callback_ = &func_ptr_trampoline<std::add_pointer_t<std::remove_reference_t<F>>>;
-    }
-    // Case 3: Stateful lambdas, functors, and stateless lambdas (decayed to objects)
-    else {
-      // Cast away constness for opaque storage. The trampoline safely casts it back to `const T*`
-      // if `F` was originally a const lvalue reference.
-      data_.obj = const_cast<void *>(static_cast<const void *>(std::addressof(f)));
-      callback_ = &object_trampoline<F>;
-    }
+  template <typename Fn,
+            typename = std::enable_if_t<is_plain_function_pointer_v<Fn> && std::is_invocable_r_v<R, Fn, Args...>>>
+  constexpr function_ref(Fn f) noexcept {
+    data_.func = reinterpret_cast<void (*)()>(f);
+    callback_ = &func_ptr_trampoline<Fn>;
+  }
+
+  /**
+   * @brief Binds a stateful callable (a lambda, functor, or other object
+   * with `operator()`).
+   *
+   * Deliberately takes @p f through a plain, non-forwarding reference
+   * parameter rather than a universal reference: template argument
+   * deduction against `F &` can only ever succeed for an lvalue argument
+   * (deducing `F` as the (possibly `const`-qualified) referred-to type),
+   * never for an rvalue/temporary -- so passing a temporary callable
+   * directly (e.g. an inline lambda) fails to compile on every compiler,
+   * not just Clang (which `RELOCO_LIFETIMEBOUND` alone could catch).
+   * `RELOCO_LIFETIMEBOUND` is still applied on top for the cases it can
+   * additionally catch (e.g. a named-but-shorter-lived local escaping
+   * through a returned `function_ref`).
+   */
+  template <typename F,
+            typename = std::enable_if_t<!std::is_same_v<std::remove_cv_t<F>, function_ref> && !std::is_function_v<F> &&
+                                        !is_plain_function_pointer_v<F> && std::is_invocable_r_v<R, F &, Args...>>>
+  constexpr function_ref(F &f RELOCO_LIFETIMEBOUND) noexcept {
+    // Cast away constness for opaque storage. The trampoline safely casts it back to `const T*`
+    // if `F` was originally `const`-qualified.
+    data_.obj = const_cast<void *>(static_cast<const void *>(std::addressof(f)));
+    callback_ = &object_trampoline<F>;
   }
 
   /**
