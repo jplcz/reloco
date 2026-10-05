@@ -49,6 +49,7 @@
  */
 
 #include "detail/compat.hpp"
+#include "error.hpp"
 
 #include <cstdint>
 
@@ -153,6 +154,54 @@ public:
       ++secs;
     }
     return duration(secs, nanos);
+  }
+
+  /**
+   * @brief Subtracts @p rhs, matching Rust's `Duration::checked_sub`.
+   * `duration` cannot represent a negative span, so unlike `operator+`
+   * (which cannot itself underflow) this is fallible rather than a bare
+   * `operator-`, matching `cycles::checked_sub`'s (`clock_cycles.hpp`)
+   * own rationale for the same shape.
+   * @return The difference, or `error::integer_overflow` if `rhs > *this`.
+   */
+  [[nodiscard]] result<duration> checked_sub(const duration &rhs) const noexcept {
+    if (rhs.secs_ > secs_ || (rhs.secs_ == secs_ && rhs.nanos_ > nanos_))
+      return unexpected(error::integer_overflow);
+    std::uint64_t secs = secs_ - rhs.secs_;
+    std::uint32_t nanos = 0;
+    if (nanos_ >= rhs.nanos_) {
+      nanos = nanos_ - rhs.nanos_;
+    } else {
+      nanos = static_cast<std::uint32_t>(nanos_per_sec) - (rhs.nanos_ - nanos_);
+      --secs;
+    }
+    return duration(secs, nanos);
+  }
+
+  /**
+   * @brief Divides this duration by the integer @p rhs, matching Rust's
+   * `Duration::div_u32`/`div_f64` family's integer counterpart --
+   * computed without an intermediate floating-point or 128-bit value by
+   * folding the whole-seconds remainder into the sub-second division,
+   * so precision is not lost even when `secs() / rhs` alone would
+   * truncate it away.
+   * @return The quotient, or `error::division_by_zero` if `rhs == 0`.
+   */
+  [[nodiscard]] result<duration> checked_div(std::uint64_t rhs) const noexcept {
+    if (rhs == 0)
+      return unexpected(error::division_by_zero);
+    std::uint64_t secs_q = secs_ / rhs;
+    std::uint64_t secs_r = secs_ % rhs;
+    std::uint64_t nanos_q = static_cast<std::uint64_t>(nanos_) / rhs;
+    std::uint64_t nanos_r = static_cast<std::uint64_t>(nanos_) % rhs;
+    // Fold the leftover whole seconds (secs_r seconds, too few to divide evenly by rhs on their own) into the
+    // sub-second remainder before dividing again, so e.g. (1 sec / 2) correctly yields 0.5 sec, not 0.
+    nanos_q += (secs_r * nanos_per_sec + nanos_r) / rhs;
+    if (nanos_q >= nanos_per_sec) {
+      secs_q += nanos_q / nanos_per_sec;
+      nanos_q %= nanos_per_sec;
+    }
+    return duration(secs_q, static_cast<std::uint32_t>(nanos_q));
   }
 
 private:
