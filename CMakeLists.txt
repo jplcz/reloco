@@ -494,6 +494,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_variant.cpp
         tests/test_inplace_function.cpp
         tests/test_function_ref.cpp
+        tests/test_def_function_ref.cpp
         tests/test_cell.cpp
         tests/test_non_zero.cpp
         tests/test_wrapping.cpp

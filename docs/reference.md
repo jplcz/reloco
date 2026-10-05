@@ -2247,6 +2247,41 @@ flags invoking a default-constructed or moved-from instance. Relocation
 (move/swap) uses `is_trivially_relocatable<Functor>` to skip the
 move-constructor/destructor pair for the stored callable when possible.
 
+## `def_function_ref<R(Arg0, Args...), GeneratorCapacity = 32>`
+
+`include/reloco/def_function_ref.hpp`
+
+Partially-applies and *owns* a `function_ref<R(Arg0, Args...)>`'s first
+argument, presenting a reduced `R(Args...)` call signature. Unlike
+`function_ref` itself, the first-argument source is always stored inside the
+object -- either a fixed value or a zero-argument generator callable invoked
+fresh on every call -- held inline in a `reloco::inplace_function<Arg0(),
+GeneratorCapacity>` (never heap-allocated). Move-only, constructed
+exclusively through its two static factories (never a public constructor),
+which keeps the "fixed value" and "generator" cases unambiguous:
+
+```cpp
+int add(int base, int x) { return base + x; }
+
+auto bound = reloco::def_function_ref<int(int, int)>::from_value(add, 10);
+assert(bound(5) == 15);
+
+int next = 0;
+auto gen = [&next]() mutable noexcept { return next++; };
+auto counting = reloco::def_function_ref<int(int, int)>::from_generator(add, gen);
+assert(counting(100) == 100); // base = 0
+assert(counting(100) == 101); // base = 1
+```
+
+Because it exposes `operator()(Args...)`, a named `def_function_ref` lvalue
+binds directly to a `function_ref<R(Args...)>` parameter through that type's
+ordinary stateful-callable constructor -- no conversion operator needed:
+
+```cpp
+int call_with_five(reloco::function_ref<int(int)> f) { return f(5); }
+assert(call_with_five(bound) == 15); // `bound` substitutes its owned 10 as the first argument
+```
+
 ## `stack_allocator` / `stack_allocator_tag` / `stack_allocator_context`
 
 `include/reloco/stack_allocator.hpp`
