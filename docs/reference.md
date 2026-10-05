@@ -2198,11 +2198,25 @@ constructors instead of one universal-reference one:
   directly (e.g. an inline lambda) is a hard compile error on every
   compiler -- not just under Clang's `RELOCO_LIFETIMEBOUND` dataflow checks.
   Name the callable first instead.
+- A bound member function (`&T::method` plus a `T` instance) is bound via the
+  `nontype<&T::method>` tag (the same `nontype_t` idiom standardized for
+  `std::function_ref`): the member pointer is a compile-time, non-type
+  template argument baked into the trampoline rather than stored at runtime,
+  since its own size is implementation-defined and generally larger than a
+  single pointer. Only the bound object's address is stored, preserving the
+  two-pointer size invariant. The same tag also binds a free function
+  (`nontype<my_free_fn>`), for call sites that want one uniform spelling
+  regardless of whether the target is a free or a member function.
 
 ```cpp
 void call_it(reloco::function_ref<int(int)> f) { assert(f(1) == 2); }
 auto add_one = [](int x) { return x + 1; };
 call_it(add_one);
+
+struct counter { int value = 0; int add(int x) { return value += x; } };
+counter c;
+reloco::function_ref<int(int)> bound(reloco::nontype<&counter::add>, c);
+assert(bound(5) == 5);
 ```
 
 Prefer `function_ref` over `reloco::function<R(Args...)>` at a call boundary

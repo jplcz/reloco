@@ -22,6 +22,15 @@ struct ConstFunctor {
   int operator()(int x) const { return x + 1; }
 };
 
+// --- Member functions for Testing ---
+struct Counter {
+  int value = 0;
+  int add(int x) { return value += x; }
+  int add_const(int x) const { return value + x; }
+};
+
+int free_mul_by_three(int x) { return x * 3; }
+
 // --- Synchronous execution helper (simulates real API boundaries) ---
 int execute_synchronously(function_ref<int()> task) { return task(); }
 
@@ -126,6 +135,31 @@ TEST_F(FunctionRefTest, MutableLambda) {
 
   // Ensure the original lambda actually mutated
   EXPECT_EQ(counter_lambda(), 4);
+}
+
+TEST_F(FunctionRefTest, BoundMemberFunction) {
+  Counter c;
+
+  // Non-const member function, bound via the `nontype<&T::method>` tag.
+  function_ref<int(int)> f = function_ref<int(int)>(nontype<&Counter::add>, c);
+  EXPECT_EQ(f(5), 5);
+  EXPECT_EQ(f(5), 10);
+
+  // The borrow observes mutations made through the original object too.
+  c.value = 100;
+  EXPECT_EQ(f(1), 101);
+
+  // Const member function bound to a const object.
+  const Counter cc{7};
+  function_ref<int(int)> f_const = function_ref<int(int)>(nontype<&Counter::add_const>, cc);
+  EXPECT_EQ(f_const(3), 10);
+}
+
+TEST_F(FunctionRefTest, BoundFreeFunctionViaNontype) {
+  // Free functions can also be bound through the same `nontype<Fn>` tag,
+  // for symmetry with the bound-member-function call site.
+  function_ref<int(int)> f = function_ref<int(int)>(nontype<free_mul_by_three>);
+  EXPECT_EQ(f(4), 12);
 }
 
 } // namespace
