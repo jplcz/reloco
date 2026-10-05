@@ -1,6 +1,6 @@
 {
   "name": "jplcz-reloco",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Header-only Safety by Default alternatives to the C++ Standard Library",
   "homepage": "https://github.com/jplcz/reloco",
   "license": "BSD-2-Clause",
