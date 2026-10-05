@@ -24,11 +24,18 @@
  * wrapper like `rw_lock.hpp`'s `rw_lock<T>::read_guard` -- the same
  * reasoning applies here with "exclusive" replaced by "shared"
  * throughout, including the note on why the `defer_lock`/`try_to_lock`
- * constructors carry no Clang Thread Safety Analysis annotation.
+ * constructors carry no Clang Thread Safety Analysis annotation, and the
+ * paired `debug_call_location_ref`/`release_call_location_ref` caller-
+ * location forwarding (detected via SFINAE against `SharedMutexT::
+ * lock_shared(call_location_ref)`/`try_lock_shared(call_location_ref)`/
+ * `unlock_shared(call_location_ref)`) the acquiring constructor, the
+ * `try_to_lock_t` constructor, and `lock()`/`try_lock()`/`unlock()` each
+ * perform.
  */
 
 #include "detail/assert.hpp"
 #include "detail/compat.hpp"
+#include "detail/lock_location_traits.hpp"
 #include "lock_tags.hpp"
 
 #include <utility>
@@ -50,9 +57,24 @@ public:
    * `lock()`/`try_lock()`/swap/move-assignment brings one in. */
   constexpr shared_lock() noexcept = default;
 
-  /** @brief Blocks until @p m is acquired for shared access. */
-  explicit shared_lock(mutex_type &m) noexcept RELOCO_ACQUIRE_SHARED(m) : mutex_(&m) {
-    mutex_->lock_shared();
+  /** @brief Blocks until @p m is acquired for shared access, capturing
+   * @p where (see the file-level documentation's caller-location
+   * forwarding section). */
+  explicit shared_lock(mutex_type &m, debug_call_location_ref where RELOCO_CALL_LOCATION_DEFAULT_IF_DEBUG) noexcept
+      RELOCO_ACQUIRE_SHARED(m)
+      : mutex_(&m) {
+    do_lock_shared(where);
+    owns_ = true;
+  }
+
+  /** @brief Blocks until @p m is acquired for shared access. The
+   * `release_call_location_ref` side of the paired overload above -- see
+   * the file-level documentation's caller-location forwarding section. */
+  explicit shared_lock(mutex_type &m, release_call_location_ref where RELOCO_CALL_LOCATION_DEFAULT_IF_RELEASE) noexcept
+      RELOCO_ACQUIRE_SHARED(m)
+      : mutex_(&m) {
+    (void)where;
+    do_lock_shared(call_location_ref::none());
     owns_ = true;
   }
 
@@ -67,10 +89,26 @@ public:
    * again. */
   shared_lock(mutex_type &m, adopt_lock_t) noexcept RELOCO_ASSERT_SHARED_CAPABILITY(m) : mutex_(&m), owns_(true) {}
 
+  /** @brief Attempts `m.try_lock_shared()` non-blockingly, capturing
+   * @p where; check `owns_lock()` to see whether it succeeded. See
+   * `unique_lock.hpp` for why this constructor carries no Clang TSA
+   * annotation. */
+  shared_lock(mutex_type &m, try_to_lock_t,
+              debug_call_location_ref where RELOCO_CALL_LOCATION_DEFAULT_IF_DEBUG) noexcept
+      : mutex_(&m) {
+    owns_ = do_try_lock_shared(where);
+  }
+
   /** @brief Attempts `m.try_lock_shared()` non-blockingly; check
-   * `owns_lock()` to see whether it succeeded. See `unique_lock.hpp` for
-   * why this constructor carries no Clang TSA annotation. */
-  shared_lock(mutex_type &m, try_to_lock_t) noexcept : mutex_(&m), owns_(m.try_lock_shared()) {}
+   * `owns_lock()` to see whether it succeeded. The
+   * `release_call_location_ref` side of the paired overload above -- see
+   * the file-level documentation's caller-location forwarding section. */
+  shared_lock(mutex_type &m, try_to_lock_t,
+              release_call_location_ref where RELOCO_CALL_LOCATION_DEFAULT_IF_RELEASE) noexcept
+      : mutex_(&m) {
+    (void)where;
+    owns_ = do_try_lock_shared(call_location_ref::none());
+  }
 
   shared_lock(shared_lock &&other) noexcept : mutex_(other.mutex_), owns_(other.owns_) {
     other.mutex_ = nullptr;
@@ -106,33 +144,80 @@ public:
       mutex_->unlock_shared();
   }
 
+  /** @brief Blocks until the wrapped mutex is acquired for shared access,
+   * capturing @p where. Asserts that no lock is already owned by this
+   * `shared_lock` (matching `std::shared_lock::lock()`'s precondition,
+   * enforced here rather than reported as an error, since violating it
+   * is always a programming error -- never a runtime race), attributed
+   * to @p where's captured location (`RELOCO_ASSERT_LOC`) when it
+   * carries one. */
+  void lock(debug_call_location_ref where RELOCO_CALL_LOCATION_DEFAULT_IF_DEBUG) & noexcept RELOCO_ACQUIRE_SHARED() {
+    const call_location loc = assert_location(where);
+    RELOCO_ASSERT_LOC(mutex_ != nullptr, loc.file, loc.line, "shared_lock::lock() called without a wrapped mutex");
+    RELOCO_ASSERT_LOC(!owns_, loc.file, loc.line, "shared_lock::lock() called while already owning the lock");
+    do_lock_shared(where);
+    owns_ = true;
+  }
+
   /** @brief Blocks until the wrapped mutex is acquired for shared access.
-   * Asserts that no lock is already owned by this `shared_lock` (matching
-   * `std::shared_lock::lock()`'s precondition, enforced here rather than
-   * reported as an error, since violating it is always a programming
-   * error -- never a runtime race). */
-  void lock() & noexcept RELOCO_ACQUIRE_SHARED() {
+   * The `release_call_location_ref` side of the paired overload above --
+   * see the file-level documentation's caller-location forwarding
+   * section. Same preconditions as the `debug_call_location_ref`
+   * overload. */
+  void lock(release_call_location_ref where RELOCO_CALL_LOCATION_DEFAULT_IF_RELEASE) & noexcept
+      RELOCO_ACQUIRE_SHARED() {
+    (void)where;
     RELOCO_ASSERT(mutex_ != nullptr, "shared_lock::lock() called without a wrapped mutex");
     RELOCO_ASSERT(!owns_, "shared_lock::lock() called while already owning the lock");
-    mutex_->lock_shared();
+    do_lock_shared(call_location_ref::none());
     owns_ = true;
   }
 
   /** @brief Attempts to acquire the wrapped mutex for shared access
-   * non-blockingly. Same preconditions as `lock()`. */
-  [[nodiscard]] bool try_lock() & noexcept RELOCO_TRY_ACQUIRE_SHARED(true) {
-    RELOCO_ASSERT(mutex_ != nullptr, "shared_lock::try_lock() called without a wrapped mutex");
-    RELOCO_ASSERT(!owns_, "shared_lock::try_lock() called while already owning the lock");
-    owns_ = mutex_->try_lock_shared();
+   * non-blockingly, capturing @p where. Same preconditions as `lock()`,
+   * attributed to @p where's captured location the same way. */
+  [[nodiscard]] bool try_lock(debug_call_location_ref where RELOCO_CALL_LOCATION_DEFAULT_IF_DEBUG) & noexcept
+      RELOCO_TRY_ACQUIRE_SHARED(true) {
+    const call_location loc = assert_location(where);
+    RELOCO_ASSERT_LOC(mutex_ != nullptr, loc.file, loc.line, "shared_lock::try_lock() called without a wrapped mutex");
+    RELOCO_ASSERT_LOC(!owns_, loc.file, loc.line, "shared_lock::try_lock() called while already owning the lock");
+    owns_ = do_try_lock_shared(where);
     return owns_;
   }
 
-  /** @brief Releases the wrapped shared lock. Asserts it is currently
-   * owned. Annotated with the generic `RELOCO_RELEASE()` rather than
-   * `RELOCO_RELEASE_SHARED()` -- see the destructor above for why. */
-  void unlock() & noexcept RELOCO_RELEASE() {
+  /** @brief Attempts to acquire the wrapped mutex for shared access
+   * non-blockingly. The `release_call_location_ref` side of the paired
+   * overload above -- see the file-level documentation's caller-location
+   * forwarding section. Same preconditions as `lock()`. */
+  [[nodiscard]] bool try_lock(release_call_location_ref where RELOCO_CALL_LOCATION_DEFAULT_IF_RELEASE) & noexcept
+      RELOCO_TRY_ACQUIRE_SHARED(true) {
+    (void)where;
+    RELOCO_ASSERT(mutex_ != nullptr, "shared_lock::try_lock() called without a wrapped mutex");
+    RELOCO_ASSERT(!owns_, "shared_lock::try_lock() called while already owning the lock");
+    owns_ = do_try_lock_shared(call_location_ref::none());
+    return owns_;
+  }
+
+  /** @brief Releases the wrapped shared lock, capturing @p where.
+   * Asserts it is currently owned, attributed to @p where's captured
+   * location the same way as `lock()`. Annotated with the generic
+   * `RELOCO_RELEASE()` rather than `RELOCO_RELEASE_SHARED()` -- see the
+   * destructor above for why. */
+  void unlock(debug_call_location_ref where RELOCO_CALL_LOCATION_DEFAULT_IF_DEBUG) & noexcept RELOCO_RELEASE() {
+    const call_location loc = assert_location(where);
+    RELOCO_ASSERT_LOC(owns_, loc.file, loc.line, "shared_lock::unlock() called without owning the lock");
+    do_unlock_shared(where);
+    owns_ = false;
+  }
+
+  /** @brief Releases the wrapped shared lock. The
+   * `release_call_location_ref` side of the paired overload above -- see
+   * the file-level documentation's caller-location forwarding section.
+   * Asserts it is currently owned. */
+  void unlock(release_call_location_ref where RELOCO_CALL_LOCATION_DEFAULT_IF_RELEASE) & noexcept RELOCO_RELEASE() {
+    (void)where;
     RELOCO_ASSERT(owns_, "shared_lock::unlock() called without owning the lock");
-    mutex_->unlock_shared();
+    do_unlock_shared(call_location_ref::none());
     owns_ = false;
   }
 
@@ -161,6 +246,59 @@ public:
   }
 
 private:
+  /** @brief Forwards @p where into
+   * `mutex_->lock_shared(call_location_ref)` if `mutex_type` provides
+   * that overload, otherwise calls the plain `mutex_->lock_shared()`.
+   * Shared by both the `debug_call_location_ref` and
+   * `release_call_location_ref` overloads of the acquiring constructor
+   * and `lock()`. */
+  void do_lock_shared(call_location_ref where) noexcept {
+    if constexpr (detail::has_location_lock_shared<mutex_type>::value) {
+      mutex_->lock_shared(where);
+    } else {
+      (void)where;
+      mutex_->lock_shared();
+    }
+  }
+
+  /** @brief Same as `do_lock_shared()`, for
+   * `try_lock_shared(call_location_ref)`/`try_lock_shared()`. Shared by
+   * both the `debug_call_location_ref` and `release_call_location_ref`
+   * overloads of the `try_to_lock_t` constructor and `try_lock()`. */
+  [[nodiscard]] bool do_try_lock_shared(call_location_ref where) noexcept {
+    if constexpr (detail::has_location_try_lock_shared<mutex_type>::value) {
+      return mutex_->try_lock_shared(where);
+    } else {
+      (void)where;
+      return mutex_->try_lock_shared();
+    }
+  }
+
+  /** @brief Same as `do_lock_shared()`, for
+   * `unlock_shared(call_location_ref)`/`unlock_shared()`. Shared by both
+   * the `debug_call_location_ref` and `release_call_location_ref`
+   * overloads of `unlock()`. */
+  void do_unlock_shared(call_location_ref where) noexcept {
+    if constexpr (detail::has_location_unlock_shared<mutex_type>::value) {
+      mutex_->unlock_shared(where);
+    } else {
+      (void)where;
+      mutex_->unlock_shared();
+    }
+  }
+
+  /** @brief Converts @p where into a plain `call_location`, substituting
+   * `{nullptr, 0}` when @p where carries none -- `{nullptr, 0}` is
+   * exactly what `RELOCO_ASSERT_LOC` treats as "no location", so the
+   * resulting `file`/`line` pair can always be passed to it directly,
+   * with no separate branch needed for the no-location case. Used to
+   * attribute `lock()`/`try_lock()`/`unlock()`'s precondition assertions
+   * to @p where's real caller site instead of a line inside this
+   * wrapper, whenever one is available. */
+  static constexpr call_location assert_location(call_location_ref where) noexcept {
+    return where.has_value() ? where.value() : call_location{nullptr, 0};
+  }
+
   mutex_type *mutex_ = nullptr;
   bool owns_ = false;
 };

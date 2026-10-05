@@ -57,10 +57,37 @@
  * `owns_lock()` checks instead of static checking for that specific
  * acquisition -- exactly like `std::unique_lock`, which carries no Clang
  * TSA annotations at all upstream, for the same reason.
+ *
+ * ## Caller-location forwarding
+ *
+ * The acquiring constructor, the `try_to_lock_t` constructor, `lock()`,
+ * `try_lock()`, and `unlock()` each come in a paired
+ * `debug_call_location_ref`/`release_call_location_ref` overload (see
+ * `call_location.hpp`), exactly like that header's own `mutex::lock`
+ * worked example: `RELOCO_CALL_LOCATION_DEFAULT_IF_DEBUG`/
+ * `RELOCO_CALL_LOCATION_DEFAULT_IF_RELEASE` give exactly one of the pair
+ * a default argument (selected build-wide by `RELOCO_CALL_LOCATION_
+ * DEBUG`), so an omitted-argument call (`lk.lock()`) is never ambiguous,
+ * while an explicit caller on either side of an ABI boundary can still
+ * pick a specific overload directly (`lk.lock(release_call_location_ref
+ * ::none())`). Whether the captured location actually reaches the
+ * wrapped `MutexT` depends entirely on `MutexT` itself, detected via
+ * SFINAE (`detail/lock_location_traits.hpp`): if `MutexT` provides a
+ * `call_location_ref` overload of the method being called
+ * (`lock(call_location_ref)`, `try_lock(call_location_ref)`,
+ * `unlock(call_location_ref)`), `unique_lock` forwards the captured
+ * location into it (`call_location_ref::none()` for the
+ * `release_call_location_ref` overload, which never carries one);
+ * otherwise it silently falls back to the plain, location-less overload
+ * every `MutexT` is already required to provide. No change is needed at
+ * a `unique_lock` call site either way -- `lk.lock();` always compiles,
+ * and automatically starts carrying a real location the moment its
+ * `MutexT` opts in by adding the overload.
  */
 
 #include "detail/assert.hpp"
 #include "detail/compat.hpp"
+#include "detail/lock_location_traits.hpp"
 #include "lock_tags.hpp"
 
 #include <utility>
@@ -83,9 +110,23 @@ public:
    * `lock()`/`try_lock()`/swap/move-assignment brings one in. */
   constexpr unique_lock() noexcept = default;
 
-  /** @brief Blocks until @p m is acquired. */
-  explicit unique_lock(mutex_type &m) noexcept RELOCO_ACQUIRE(m) : mutex_(&m) {
-    mutex_->lock();
+  /** @brief Blocks until @p m is acquired, capturing @p where (see the
+   * file-level documentation's caller-location forwarding section). */
+  explicit unique_lock(mutex_type &m, debug_call_location_ref where RELOCO_CALL_LOCATION_DEFAULT_IF_DEBUG) noexcept
+      RELOCO_ACQUIRE(m)
+      : mutex_(&m) {
+    do_lock(where);
+    owns_ = true;
+  }
+
+  /** @brief Blocks until @p m is acquired. The `release_call_location_ref`
+   * side of the paired overload above -- see the file-level
+   * documentation's caller-location forwarding section. */
+  explicit unique_lock(mutex_type &m, release_call_location_ref where RELOCO_CALL_LOCATION_DEFAULT_IF_RELEASE) noexcept
+      RELOCO_ACQUIRE(m)
+      : mutex_(&m) {
+    (void)where;
+    do_lock(call_location_ref::none());
     owns_ = true;
   }
 
@@ -99,10 +140,26 @@ public:
    * records ownership without calling `lock()` again. */
   unique_lock(mutex_type &m, adopt_lock_t) noexcept RELOCO_ASSERT_CAPABILITY(m) : mutex_(&m), owns_(true) {}
 
+  /** @brief Attempts `m.try_lock()` non-blockingly, capturing @p where;
+   * check `owns_lock()` to see whether it succeeded. See the file-level
+   * documentation for why this constructor carries no Clang TSA
+   * annotation. */
+  unique_lock(mutex_type &m, try_to_lock_t,
+              debug_call_location_ref where RELOCO_CALL_LOCATION_DEFAULT_IF_DEBUG) noexcept
+      : mutex_(&m) {
+    owns_ = do_try_lock(where);
+  }
+
   /** @brief Attempts `m.try_lock()` non-blockingly; check `owns_lock()`
-   * to see whether it succeeded. See the file-level documentation for why
-   * this constructor carries no Clang TSA annotation. */
-  unique_lock(mutex_type &m, try_to_lock_t) noexcept : mutex_(&m), owns_(m.try_lock()) {}
+   * to see whether it succeeded. The `release_call_location_ref` side of
+   * the paired overload above -- see the file-level documentation's
+   * caller-location forwarding section. */
+  unique_lock(mutex_type &m, try_to_lock_t,
+              release_call_location_ref where RELOCO_CALL_LOCATION_DEFAULT_IF_RELEASE) noexcept
+      : mutex_(&m) {
+    (void)where;
+    owns_ = do_try_lock(call_location_ref::none());
+  }
 
   unique_lock(unique_lock &&other) noexcept : mutex_(other.mutex_), owns_(other.owns_) {
     other.mutex_ = nullptr;
@@ -130,31 +187,76 @@ public:
       mutex_->unlock();
   }
 
-  /** @brief Blocks until the wrapped mutex is acquired. Asserts that no
-   * mutex is already owned by this `unique_lock` (matching
-   * `std::unique_lock::lock()`'s precondition, enforced here rather than
-   * reported as an error, since violating it is always a programming
-   * error -- never a runtime race). */
-  void lock() & noexcept RELOCO_ACQUIRE() {
-    RELOCO_ASSERT(mutex_ != nullptr, "unique_lock::lock() called without a wrapped mutex");
-    RELOCO_ASSERT(!owns_, "unique_lock::lock() called while already owning the mutex");
-    mutex_->lock();
+  /** @brief Blocks until the wrapped mutex is acquired, capturing
+   * @p where. Asserts that no mutex is already owned by this
+   * `unique_lock` (matching `std::unique_lock::lock()`'s precondition,
+   * enforced here rather than reported as an error, since violating it
+   * is always a programming error -- never a runtime race), attributed
+   * to @p where's captured location (`RELOCO_ASSERT_LOC`) when it
+   * carries one. */
+  void lock(debug_call_location_ref where RELOCO_CALL_LOCATION_DEFAULT_IF_DEBUG) & noexcept RELOCO_ACQUIRE() {
+    const call_location loc = assert_location(where);
+    RELOCO_ASSERT_LOC(mutex_ != nullptr, loc.file, loc.line, "unique_lock::lock() called without a wrapped mutex");
+    RELOCO_ASSERT_LOC(!owns_, loc.file, loc.line, "unique_lock::lock() called while already owning the mutex");
+    do_lock(where);
     owns_ = true;
   }
 
-  /** @brief Attempts to acquire the wrapped mutex non-blockingly. Same
-   * preconditions as `lock()`. */
-  [[nodiscard]] bool try_lock() & noexcept RELOCO_TRY_ACQUIRE(true) {
-    RELOCO_ASSERT(mutex_ != nullptr, "unique_lock::try_lock() called without a wrapped mutex");
-    RELOCO_ASSERT(!owns_, "unique_lock::try_lock() called while already owning the mutex");
-    owns_ = mutex_->try_lock();
+  /** @brief Blocks until the wrapped mutex is acquired. The
+   * `release_call_location_ref` side of the paired overload above -- see
+   * the file-level documentation's caller-location forwarding section.
+   * Same preconditions as the `debug_call_location_ref` overload. */
+  void lock(release_call_location_ref where RELOCO_CALL_LOCATION_DEFAULT_IF_RELEASE) & noexcept RELOCO_ACQUIRE() {
+    (void)where;
+    RELOCO_ASSERT(mutex_ != nullptr, "unique_lock::lock() called without a wrapped mutex");
+    RELOCO_ASSERT(!owns_, "unique_lock::lock() called while already owning the mutex");
+    do_lock(call_location_ref::none());
+    owns_ = true;
+  }
+
+  /** @brief Attempts to acquire the wrapped mutex non-blockingly,
+   * capturing @p where. Same preconditions as `lock()`, attributed to
+   * @p where's captured location the same way. */
+  [[nodiscard]] bool try_lock(debug_call_location_ref where RELOCO_CALL_LOCATION_DEFAULT_IF_DEBUG) & noexcept
+      RELOCO_TRY_ACQUIRE(true) {
+    const call_location loc = assert_location(where);
+    RELOCO_ASSERT_LOC(mutex_ != nullptr, loc.file, loc.line, "unique_lock::try_lock() called without a wrapped mutex");
+    RELOCO_ASSERT_LOC(!owns_, loc.file, loc.line, "unique_lock::try_lock() called while already owning the mutex");
+    owns_ = do_try_lock(where);
     return owns_;
   }
 
-  /** @brief Releases the wrapped mutex. Asserts it is currently owned. */
-  void unlock() & noexcept RELOCO_RELEASE() {
+  /** @brief Attempts to acquire the wrapped mutex non-blockingly. The
+   * `release_call_location_ref` side of the paired overload above -- see
+   * the file-level documentation's caller-location forwarding section.
+   * Same preconditions as `lock()`. */
+  [[nodiscard]] bool try_lock(release_call_location_ref where RELOCO_CALL_LOCATION_DEFAULT_IF_RELEASE) & noexcept
+      RELOCO_TRY_ACQUIRE(true) {
+    (void)where;
+    RELOCO_ASSERT(mutex_ != nullptr, "unique_lock::try_lock() called without a wrapped mutex");
+    RELOCO_ASSERT(!owns_, "unique_lock::try_lock() called while already owning the mutex");
+    owns_ = do_try_lock(call_location_ref::none());
+    return owns_;
+  }
+
+  /** @brief Releases the wrapped mutex, capturing @p where. Asserts it
+   * is currently owned, attributed to @p where's captured location the
+   * same way as `lock()`. */
+  void unlock(debug_call_location_ref where RELOCO_CALL_LOCATION_DEFAULT_IF_DEBUG) & noexcept RELOCO_RELEASE() {
+    const call_location loc = assert_location(where);
+    RELOCO_ASSERT_LOC(owns_, loc.file, loc.line, "unique_lock::unlock() called without owning the mutex");
+    do_unlock(where);
+    owns_ = false;
+  }
+
+  /** @brief Releases the wrapped mutex. The `release_call_location_ref`
+   * side of the paired overload above -- see the file-level
+   * documentation's caller-location forwarding section. Asserts it is
+   * currently owned. */
+  void unlock(release_call_location_ref where RELOCO_CALL_LOCATION_DEFAULT_IF_RELEASE) & noexcept RELOCO_RELEASE() {
+    (void)where;
     RELOCO_ASSERT(owns_, "unique_lock::unlock() called without owning the mutex");
-    mutex_->unlock();
+    do_unlock(call_location_ref::none());
     owns_ = false;
   }
 
@@ -183,6 +285,57 @@ public:
   }
 
 private:
+  /** @brief Forwards @p where into `mutex_->lock(call_location_ref)` if
+   * `mutex_type` provides that overload, otherwise calls the plain
+   * `mutex_->lock()`. Shared by both the `debug_call_location_ref` and
+   * `release_call_location_ref` overloads of the acquiring constructor
+   * and `lock()`. */
+  void do_lock(call_location_ref where) noexcept {
+    if constexpr (detail::has_location_lock<mutex_type>::value) {
+      mutex_->lock(where);
+    } else {
+      (void)where;
+      mutex_->lock();
+    }
+  }
+
+  /** @brief Same as `do_lock()`, for `try_lock(call_location_ref)`/
+   * `try_lock()`. Shared by both the `debug_call_location_ref` and
+   * `release_call_location_ref` overloads of the `try_to_lock_t`
+   * constructor and `try_lock()`. */
+  [[nodiscard]] bool do_try_lock(call_location_ref where) noexcept {
+    if constexpr (detail::has_location_try_lock<mutex_type>::value) {
+      return mutex_->try_lock(where);
+    } else {
+      (void)where;
+      return mutex_->try_lock();
+    }
+  }
+
+  /** @brief Same as `do_lock()`, for `unlock(call_location_ref)`/
+   * `unlock()`. Shared by both the `debug_call_location_ref` and
+   * `release_call_location_ref` overloads of `unlock()`. */
+  void do_unlock(call_location_ref where) noexcept {
+    if constexpr (detail::has_location_unlock<mutex_type>::value) {
+      mutex_->unlock(where);
+    } else {
+      (void)where;
+      mutex_->unlock();
+    }
+  }
+
+  /** @brief Converts @p where into a plain `call_location`, substituting
+   * `{nullptr, 0}` when @p where carries none -- `{nullptr, 0}` is
+   * exactly what `RELOCO_ASSERT_LOC` treats as "no location", so the
+   * resulting `file`/`line` pair can always be passed to it directly,
+   * with no separate branch needed for the no-location case. Used to
+   * attribute `lock()`/`try_lock()`/`unlock()`'s precondition assertions
+   * to @p where's real caller site instead of a line inside this
+   * wrapper, whenever one is available. */
+  static constexpr call_location assert_location(call_location_ref where) noexcept {
+    return where.has_value() ? where.value() : call_location{nullptr, 0};
+  }
+
   mutex_type *mutex_ = nullptr;
   bool owns_ = false;
 };

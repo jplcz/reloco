@@ -59,11 +59,18 @@ inline void set_assert_handler(assert_handler_t new_handler) { detail::get_handl
 #if defined(RELOCO_KERNEL)
 #define RELOCO_DETAIL_ASSERT_FAIL(cond, ...) RELOCO_KERNEL_PANIC(#cond, __FILE__, __LINE__, "" __VA_ARGS__)
 #define RELOCO_DETAIL_ASSERT_FAIL_MSG(cond, msg_expr) RELOCO_KERNEL_PANIC(#cond, __FILE__, __LINE__, (msg_expr))
+#define RELOCO_DETAIL_ASSERT_FAIL_LOC(cond, file, line, ...) RELOCO_KERNEL_PANIC(#cond, (file), (line), "" __VA_ARGS__)
+#define RELOCO_DETAIL_ASSERT_FAIL_MSG_LOC(cond, file, line, msg_expr)                                                  \
+  RELOCO_KERNEL_PANIC(#cond, (file), (line), (msg_expr))
 #else
 #define RELOCO_DETAIL_ASSERT_FAIL(cond, ...)                                                                           \
   ::reloco::detail::get_handler_ptr()(#cond, __FILE__, __LINE__, "" __VA_ARGS__)
 #define RELOCO_DETAIL_ASSERT_FAIL_MSG(cond, msg_expr)                                                                  \
   ::reloco::detail::get_handler_ptr()(#cond, __FILE__, __LINE__, (msg_expr))
+#define RELOCO_DETAIL_ASSERT_FAIL_LOC(cond, file, line, ...)                                                           \
+  ::reloco::detail::get_handler_ptr()(#cond, (file), (line), "" __VA_ARGS__)
+#define RELOCO_DETAIL_ASSERT_FAIL_MSG_LOC(cond, file, line, msg_expr)                                                  \
+  ::reloco::detail::get_handler_ptr()(#cond, (file), (line), (msg_expr))
 #endif
 
 #if defined(RELOCO_DISABLE_ASSERT)
@@ -109,6 +116,67 @@ inline void set_assert_handler(assert_handler_t new_handler) { detail::get_handl
     if (!(cond))                                                                                                       \
       RELOCO_UNLIKELY {                                                                                                \
         RELOCO_DETAIL_ASSERT_FAIL_MSG(cond, msg_expr);                                                                 \
+        RELOCO_TRAP();                                                                                                 \
+      }                                                                                                                \
+  } while (0)
+#endif
+
+// Like `RELOCO_ASSERT`, but @p file/@p line are supplied explicitly
+// instead of being taken from `__FILE__`/`__LINE__` at the macro's own
+// expansion site -- for a caller-location-aware wrapper (e.g.
+// `unique_lock`/`shared_lock`, see `call_location.hpp`) that wants a
+// failing precondition attributed to *its own caller's* site rather
+// than a line inside the wrapper itself. Pass `nullptr` for @p file
+// when no real location is available (e.g. a release-mode
+// `release_call_location_ref` call site); the failure is then reported
+// exactly like a plain `RELOCO_ASSERT` would, since every assert
+// handler (`default_assert_handler`, `RELOCO_KERNEL_PANIC`) already
+// treats a null `file` as "no location".
+#if defined(RELOCO_DISABLE_ASSERT)
+#if RELOCO_HAS_UNREACHABLE
+#define RELOCO_ASSERT_LOC(cond, file, line, ...)                                                                       \
+  do {                                                                                                                 \
+    (void)(file);                                                                                                      \
+    (void)(line);                                                                                                      \
+    if (!(cond))                                                                                                       \
+      RELOCO_UNREACHABLE();                                                                                            \
+  } while (0)
+#else
+#define RELOCO_ASSERT_LOC(cond, file, line, ...) ((void)(file), (void)(line), (void)0)
+#endif
+#else
+#define RELOCO_ASSERT_LOC(cond, file, line, ...)                                                                       \
+  do {                                                                                                                 \
+    if (!(cond))                                                                                                       \
+      RELOCO_UNLIKELY {                                                                                                \
+        RELOCO_DETAIL_ASSERT_FAIL_LOC(cond, (file), (line), __VA_ARGS__);                                              \
+        RELOCO_TRAP();                                                                                                 \
+      }                                                                                                                \
+  } while (0)
+#endif
+
+// Like `RELOCO_ASSERT_MSG`, but with an explicit @p file/@p line pair --
+// see `RELOCO_ASSERT_LOC` above for why/when to use this instead of
+// `RELOCO_ASSERT_MSG`.
+#if defined(RELOCO_DISABLE_ASSERT)
+#if RELOCO_HAS_UNREACHABLE
+#define RELOCO_ASSERT_MSG_LOC(cond, file, line, msg_expr)                                                              \
+  do {                                                                                                                 \
+    (void)(file);                                                                                                      \
+    (void)(line);                                                                                                      \
+    (void)(msg_expr);                                                                                                  \
+    if (!(cond))                                                                                                       \
+      RELOCO_UNREACHABLE();                                                                                            \
+  } while (0)
+#else
+#define RELOCO_ASSERT_MSG_LOC(cond, file, line, msg_expr) ((void)(file), (void)(line), (void)(msg_expr))
+#endif
+#else
+#define RELOCO_ASSERT_MSG_LOC(cond, file, line, msg_expr)                                                              \
+  do {                                                                                                                 \
+    if (!(cond))                                                                                                       \
+      RELOCO_UNLIKELY {                                                                                                \
+        RELOCO_DETAIL_ASSERT_FAIL_MSG_LOC(cond, (file), (line), msg_expr);                                             \
         RELOCO_TRAP();                                                                                                 \
       }                                                                                                                \
   } while (0)

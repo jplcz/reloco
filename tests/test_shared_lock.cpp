@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 #include <gtest/gtest.h>
+#include <reloco/call_location.hpp>
 #include <reloco/mutex.hpp>
 #include <reloco/shared_lock.hpp>
 
@@ -152,4 +153,51 @@ TEST(SharedLockTest, ReadersAcrossThreadsDoNotBlockEachOther) {
     t.join();
   }
   EXPECT_GE(max_concurrent.load(std::memory_order_relaxed), 1);
+}
+
+TEST(SharedLockTest, ExplicitDebugAndReleaseLocationOverloadsBothWork) {
+  reloco::shared_mutex m;
+
+  // Explicit debug_call_location_ref overload, on both the acquiring
+  // constructor and lock()/try_lock()/unlock().
+  {
+    reloco::shared_lock<reloco::shared_mutex> lk(m, reloco::debug_call_location_ref::current());
+    EXPECT_TRUE(lk.owns_lock());
+    lk.unlock(reloco::debug_call_location_ref::current());
+    EXPECT_FALSE(lk.owns_lock());
+    EXPECT_TRUE(lk.try_lock(reloco::debug_call_location_ref::current()));
+    lk.unlock(reloco::debug_call_location_ref::current());
+    lk.lock(reloco::debug_call_location_ref::current());
+    EXPECT_TRUE(lk.owns_lock());
+  }
+  EXPECT_TRUE(m.try_lock());
+  m.unlock();
+
+  // Explicit release_call_location_ref overload, on both the acquiring
+  // constructor and lock()/try_lock()/unlock() -- carries no data, but
+  // must still compile and behave identically.
+  {
+    reloco::shared_lock<reloco::shared_mutex> lk(m, reloco::release_call_location_ref{});
+    EXPECT_TRUE(lk.owns_lock());
+    lk.unlock(reloco::release_call_location_ref{});
+    EXPECT_FALSE(lk.owns_lock());
+    EXPECT_TRUE(lk.try_lock(reloco::release_call_location_ref{}));
+    lk.unlock(reloco::release_call_location_ref{});
+    lk.lock(reloco::release_call_location_ref{});
+    EXPECT_TRUE(lk.owns_lock());
+  }
+  EXPECT_TRUE(m.try_lock());
+  m.unlock();
+}
+
+TEST(SharedLockTest, ExplicitLocationOverloadsOnTaggedConstructors) {
+  reloco::shared_mutex m;
+  {
+    reloco::shared_lock<reloco::shared_mutex> lk(m, reloco::try_to_lock, reloco::debug_call_location_ref::current());
+    EXPECT_TRUE(lk.owns_lock());
+  }
+  {
+    reloco::shared_lock<reloco::shared_mutex> lk(m, reloco::try_to_lock, reloco::release_call_location_ref{});
+    EXPECT_TRUE(lk.owns_lock());
+  }
 }

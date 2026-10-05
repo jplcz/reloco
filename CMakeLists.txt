@@ -436,6 +436,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_instant.cpp
         tests/test_futex.cpp
         tests/test_tls_provider.cpp
+        tests/test_call_location.cpp
         tests/test_mutex.cpp
         tests/test_unique_lock.cpp
         tests/test_shared_lock.cpp

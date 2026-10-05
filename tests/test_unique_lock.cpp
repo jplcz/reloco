@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 #include <gtest/gtest.h>
+#include <reloco/call_location.hpp>
 #include <reloco/mutex.hpp>
 #include <reloco/unique_lock.hpp>
 
@@ -177,4 +178,51 @@ TEST(UniqueLockTest, WorksAsConditionVariableLocker) {
   cv.notify_one();
   waiter.join();
   EXPECT_TRUE(ready);
+}
+
+TEST(UniqueLockTest, ExplicitDebugAndReleaseLocationOverloadsBothWork) {
+  reloco::mutex m;
+
+  // Explicit debug_call_location_ref overload, on both the acquiring
+  // constructor and lock()/try_lock()/unlock().
+  {
+    reloco::unique_lock<reloco::mutex> lk(m, reloco::debug_call_location_ref::current());
+    EXPECT_TRUE(lk.owns_lock());
+    lk.unlock(reloco::debug_call_location_ref::current());
+    EXPECT_FALSE(lk.owns_lock());
+    EXPECT_TRUE(lk.try_lock(reloco::debug_call_location_ref::current()));
+    lk.unlock(reloco::debug_call_location_ref::current());
+    lk.lock(reloco::debug_call_location_ref::current());
+    EXPECT_TRUE(lk.owns_lock());
+  }
+  EXPECT_TRUE(m.try_lock());
+  m.unlock();
+
+  // Explicit release_call_location_ref overload, on both the acquiring
+  // constructor and lock()/try_lock()/unlock() -- carries no data, but
+  // must still compile and behave identically.
+  {
+    reloco::unique_lock<reloco::mutex> lk(m, reloco::release_call_location_ref{});
+    EXPECT_TRUE(lk.owns_lock());
+    lk.unlock(reloco::release_call_location_ref{});
+    EXPECT_FALSE(lk.owns_lock());
+    EXPECT_TRUE(lk.try_lock(reloco::release_call_location_ref{}));
+    lk.unlock(reloco::release_call_location_ref{});
+    lk.lock(reloco::release_call_location_ref{});
+    EXPECT_TRUE(lk.owns_lock());
+  }
+  EXPECT_TRUE(m.try_lock());
+  m.unlock();
+}
+
+TEST(UniqueLockTest, ExplicitLocationOverloadsOnTaggedConstructors) {
+  reloco::mutex m;
+  {
+    reloco::unique_lock<reloco::mutex> lk(m, reloco::try_to_lock, reloco::debug_call_location_ref::current());
+    EXPECT_TRUE(lk.owns_lock());
+  }
+  {
+    reloco::unique_lock<reloco::mutex> lk(m, reloco::try_to_lock, reloco::release_call_location_ref{});
+    EXPECT_TRUE(lk.owns_lock());
+  }
 }

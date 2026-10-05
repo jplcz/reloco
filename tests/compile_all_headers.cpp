@@ -13,6 +13,7 @@
 #include <reloco/bucket_allocator.hpp>
 #include <reloco/bucket_growth.hpp>
 #include <reloco/bytes.hpp>
+#include <reloco/call_location.hpp>
 #include <reloco/channel.hpp>
 #include <reloco/checked.hpp>
 #include <reloco/checked_value.hpp>
@@ -104,6 +105,7 @@
 #include <reloco/detail/assert.hpp>
 #include <reloco/detail/compat.hpp>
 #include <reloco/detail/flat_container_base.hpp>
+#include <reloco/detail/lock_location_traits.hpp>
 #include <reloco/detail/sanitizer.hpp>
 
 #ifndef _MSC_VER

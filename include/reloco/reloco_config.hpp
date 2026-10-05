@@ -337,3 +337,30 @@
 //     internally by, e.g., the per-thread parker behind
 //     this_thread::park(), but also usable directly); see
 //     reloco/tls_provider.hpp.
+//
+// RELOCO_ENABLE_CALL_LOCATION
+//     Set to 0 to make reloco/call_location.hpp's
+//     call_location_ref::current() default to call_location_ref::none()
+//     (no location) instead of capturing __builtin_FILE()/__builtin_LINE()
+//     (or, on a compiler without them, __FILE__/__LINE__) -- strips every
+//     caller-location string this header would otherwise contribute to
+//     the binary's rodata, for size-constrained builds (early boot
+//     stages, ROM-resident firmware) that cannot justify the cost. Left
+//     undefined, defaults to 1 (full location capture). This macro only
+//     controls current()'s own default arguments; it does not disable
+//     call_location.hpp's types themselves, which remain usable (and
+//     explicitly constructible from a caller's own call_location) either
+//     way.
+//
+// RELOCO_CALL_LOCATION_DEBUG
+//     Selects which side of call_location.hpp's paired
+//     debug_call_location_ref/release_call_location_ref overload pattern
+//     gets a default argument: 1 (the default) gives it to the
+//     debug_call_location_ref overload
+//     (RELOCO_CALL_LOCATION_DEFAULT_IF_DEBUG), 0 gives it to the
+//     release_call_location_ref one
+//     (RELOCO_CALL_LOCATION_DEFAULT_IF_RELEASE) instead -- exactly one of
+//     the pair ever has a default at a time, so an omitted-argument call
+//     site is never ambiguous between the two overloads. A dedicated
+//     reloco switch, deliberately *not* NDEBUG or any other
+//     host-toolchain debug/release convention.
