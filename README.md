@@ -6,6 +6,8 @@ SPDX-License-Identifier: BSD-2-Clause
 
 # jplcz_reloco
 
+<img src="assets/logo/reloco-logo-small.png" alt="reloco logo" width="200">
+
 _"Existence, in all its form and splendor, functions solely on one principle: Move is infallible."_
 
 `reloco` ("**Rel**iable **Co**mponents") is a header-only C++17 library of
