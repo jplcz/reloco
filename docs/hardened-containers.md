@@ -216,6 +216,39 @@ annotations, see [Lifetime safety and `value_ref`](lifetime-safety.md). See
 implementing these tiers, lifetime annotations, and rvalue protection
 together when adding a new container.
 
+## `optional<T>` move semantics: Rust `Option`, not `std::optional`
+
+`reloco::optional<T>`'s move constructor and move-assignment operator
+**always leave the moved-from source empty** (`has_value() == false`),
+exactly like a plain Rust move (checked at compile time) or
+`Option::take()` (checked at run time) -- never `std::optional<T>`'s
+behavior of leaving the source "engaged," still holding a moved-from `T`.
+
+```cpp
+reloco::optional<int> a(42);
+reloco::optional<int> b(std::move(a));
+
+// b.has_value() == true, *b == 42
+// a.has_value() == false -- NOT "true, holding a moved-from int"
+```
+
+This is a deliberate safety choice, not an oversight relative to
+`std::optional`. `std::optional<T>::has_value()` is unchanged by being
+moved from, so a moved-from `std::optional<void *>` or
+`std::optional<int>` still reads as "present," silently holding
+whatever unspecified moved-from value `T`'s own move left behind --
+easy to mistake for "moving an optional doesn't touch the source" and a
+recurring source of use-after-move bugs, especially for scalar/pointer
+`T` where there is no obviously-moved-from sentinel the way there is for
+e.g. a moved-from `std::string`/`std::vector`. `reloco::optional<T>`
+closes that gap: after a move, the source is unconditionally empty, so
+any later use (`*a`, `a.value()`, ...) traps via `RELOCO_ASSERT` instead
+of silently reading stale data.
+
+`reloco::optional<T>::swap()` already followed this "always leave a
+clean, well-defined state behind" discipline; the move constructor and
+move-assignment operator now match it.
+
 ## Configure assertion reporting
 
 The default assertion handler writes the failed expression, source location,

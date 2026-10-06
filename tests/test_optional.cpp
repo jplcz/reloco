@@ -158,9 +158,13 @@ TEST_F(OptionalTest, LifecycleTracking) {
     EXPECT_EQ(LifetimeTracker::destructions, 1);
 
     opt2 = std::move(opt1); // Move assign full to empty
-    EXPECT_EQ(LifetimeTracker::instances_alive, 2);
+    // Rust `Option`-style move semantics: opt1 is left empty (not an
+    // engaged optional wrapping a moved-from value), so opt1's
+    // LifetimeTracker is destroyed as part of the move.
+    EXPECT_EQ(LifetimeTracker::instances_alive, 1);
+    EXPECT_EQ(LifetimeTracker::destructions, 2);
     EXPECT_EQ(opt2->value, 42);
-    EXPECT_EQ(opt1->value, -1); // Moved from
+    EXPECT_FALSE(opt1.has_value()); // Moved from
   }
 
   // Both out of scope

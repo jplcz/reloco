@@ -17,6 +17,7 @@ where, not a tutorial.
 | `expected.hpp` | `expected<T, E>`, `unexpected<E>` | Allocation-free value-or-error result |
 | `error.hpp` | `error`, `result<T>` | The one error enum every fallible reloco operation returns, and its `expected<T, error>` alias |
 | `error_std.hpp` | `error_category()`, `make_error_code(error)`, `make_error_condition(error)` | Opt-in `<system_error>` binding: makes `reloco::error` convert to `std::error_code`/`std::error_condition` |
+| `error_errno.hpp` | `to_errno(error)` | Opt-in, allocation-free `reloco::error` -> POSIX `errno` mapping (no `<system_error>`) |
 | `span.hpp` | `span<T>` | Non-owning, checked view over a contiguous range |
 | `array.hpp` | `array<T, N>` | Fixed-size owning array with hardened element access |
 | `string_view.hpp` | `basic_string_view<CharT, TraitsT>` (`string_view`, `wstring_view`) | Non-owning, checked view over character data |
@@ -282,6 +283,31 @@ how reloco itself reports errors -- every `try_*` operation still returns
 `reloco::result<T>` -- it is purely a bridge for code that also needs to
 hand a `reloco::error` to, or compare it against, `std::error_code`/
 `std::error_condition`-based APIs.
+
+### Plain `errno` interop (`error_errno.hpp`)
+
+`include/reloco/error_errno.hpp` (opt-in; not included by `error.hpp` or
+any other reloco header) provides `reloco::to_errno(error) -> int`, a
+single `constexpr`, allocation-free function mapping every
+`reloco::error` member onto the closest matching POSIX `errno` macro:
+
+```cpp
+#include <reloco/error_errno.hpp>
+
+int rc = reloco::to_errno(reloco::error::timed_out); // ETIMEDOUT
+```
+
+Unlike `error_std.hpp`, this header depends only on `<cerrno>` -- no
+`<system_error>`, no `<string>`, no heap allocation, and no out-of-line
+`.ipp` body -- so it is just as usable from a `RELOCO_KERNEL`/freestanding
+build (e.g. translating a `reloco::result<T>` failure into the `int` a
+syscall handler returns) as from hosted userspace code that would rather
+not pull in `<system_error>` just to get a plain `errno` value. Every
+member maps to *some* `errno` value (unlike `error_std.hpp`'s
+`default_error_condition`, which leaves some members as an unmapped
+identity condition instead); see `error_errno.hpp`'s own file docs for the
+reasoning behind each approximated mapping (e.g. `pointer_expired` ->
+`ESTALE`, `container_empty`/`not_found` -> `ENOENT`).
 
 ## `span<T>`
 

@@ -507,8 +507,10 @@ private:
           (hole <= scan) ? (hole < ideal && ideal <= scan) : (hole < ideal || ideal <= scan);
       if (reachable_without_moving)
         continue;
+      // optional's move-assignment already empties the source (Rust
+      // `Option`-style semantics), so slots_[scan] is left empty here
+      // without an explicit reset().
       slots_[hole] = std::move(slots_[scan]);
-      slots_[scan].reset();
       hole = scan;
     }
   }

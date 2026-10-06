@@ -18,6 +18,18 @@
  * 3. **Unsafe:** `unsafe_value()` and `unsafe_ptr()` are explicitly gated
  *    behind `RELOCO_UNSAFE_BUFFER_USAGE` and only checked via `RELOCO_DEBUG_ASSERT`.
  *
+ * **Move semantics deliberately diverge from `std::optional<T>`:** moving
+ * out of a `reloco::optional<T>` (move-construction or move-assignment)
+ * always empties the source (`has_value()` becomes `false` even if it was
+ * previously engaged), matching Rust `Option<T>` move/`take()` semantics
+ * rather than `std::optional<T>`, which leaves the source engaged with an
+ * unspecified moved-from `T` inside. This is a safety feature, not a bug:
+ * `std::optional<void *>`/`std::optional<int>` moved-from sources read as
+ * "still present" with no obvious moved-from sentinel, which invites
+ * accidental use-after-move; `reloco::optional<T>` instead traps on any
+ * subsequent access to a moved-from source via `RELOCO_ASSERT`, the same
+ * as any other empty optional. See docs/hardened-containers.md for more.
+ *
  * It manages memory inline without dynamic allocation and natively integrates
  * with `is_trivially_relocatable<T>` to ensure zero-overhead swaps and moves
  * where the underlying type permits.
@@ -77,9 +89,21 @@ public:
     }
   }
 
+  /**
+   * @brief Rust `Option<T>` move semantics, not `std::optional<T>`'s:
+   * moving out of @p other always empties it (`other.has_value()` becomes
+   * `false`), exactly like a plain Rust move does at compile time or
+   * `Option::take()` does at runtime -- never leaves behind an engaged
+   * optional wrapping an unspecified moved-from `T`, which is easy to
+   * mistake for "moving doesn't touch the source" (it especially
+   * invites bugs with types like `optional<void *>`/`optional<int>`
+   * where a moved-from value looks perfectly ordinary instead of
+   * obviously-moved-from).
+   */
   optional(optional &&other) noexcept(std::is_nothrow_move_constructible_v<T>) : has_value_(false) {
     if (other.has_value_) {
       construct(std::move(other.value_));
+      other.destroy();
     }
   }
 
@@ -112,6 +136,8 @@ public:
     return *this;
   }
 
+  /** @copydoc optional(optional &&) -- same Rust-`Option`-style semantics:
+   * @p other always ends up empty, whether or not it held a value. */
   optional &operator=(optional &&other) noexcept(std::is_nothrow_move_assignable_v<T> &&
                                                  std::is_nothrow_move_constructible_v<T>) {
     if (this != &other) {
@@ -120,6 +146,7 @@ public:
           value_ = std::move(other.value_);
         else
           construct(std::move(other.value_));
+        other.destroy();
       } else {
         destroy();
       }
