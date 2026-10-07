@@ -439,6 +439,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_thread.cpp
         tests/test_channel.cpp
         tests/test_once_lock.cpp
+        tests/test_deferred_allocator.cpp
         tests/test_once.cpp
         tests/test_lazy_lock.cpp
         tests/test_lru_cache.cpp
