@@ -102,7 +102,7 @@ inline void coro_free_frame(void *frame) noexcept {
   if (!frame)
     return;
   auto *base = static_cast<unsigned char *>(frame) - coro_frame_header_size;
-  auto *header = reinterpret_cast<coro_frame_header *>(base);
+  auto *header = static_cast<coro_frame_header *>(static_cast<void *>(base));
   const allocator_ref alloc = header->alloc;
   const std::size_t total = header->size;
   header->~coro_frame_header();

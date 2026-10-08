@@ -77,8 +77,13 @@ namespace reloco {
   case error::pointer_expired:
     // ESTALE ("stale file handle") is POSIX's own precedent for "the
     // handle you're holding refers to something that no longer exists",
-    // which is precisely a weak_ptr::lock() failure.
+    // which is precisely a weak_ptr::lock() failure. Not every libc defines
+    // it (e.g. MSVC's <cerrno> does not), so fall back to EINVAL there.
+#ifdef ESTALE
     return ESTALE;
+#else
+    return EINVAL;
+#endif
   case error::no_owner:
     return EPERM;
   case error::out_of_bounds:
