@@ -10,7 +10,7 @@ from conan.tools.files import copy
 
 class JplczRelocoConan(ConanFile):
     name = "jplcz_reloco"
-    version = "0.2.0"
+    version = "0.2.1"
     package_type = "header-library"
     license = "BSD-2-Clause"
     url = "https://github.com/jplcz/reloco"
