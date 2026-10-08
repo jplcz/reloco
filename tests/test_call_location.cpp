@@ -66,9 +66,13 @@ TEST_F(CallLocationTest, ConstructingFromLocationWithNullFileHasNoValue) {
 TEST_F(CallLocationTest, CurrentCapturesThisFileAndSomeLine) {
   call_location_ref ref = call_location_ref::current();
   ASSERT_TRUE(ref.has_value());
+#if RELOCO_CALL_LOCATION_HAS_BUILTINS
+  // Without the builtins current() reports call_location.hpp's own
+  // default-argument site, so the file name is only checkable here.
   RELOCO_BEGIN_UNSAFE_BUFFER_USAGE;
   EXPECT_NE(std::strstr(ref.value().file, "test_call_location.cpp"), nullptr);
   RELOCO_END_UNSAFE_BUFFER_USAGE;
+#endif
   EXPECT_GT(ref.value().line, 0);
 }
 

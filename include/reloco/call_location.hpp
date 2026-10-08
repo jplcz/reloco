@@ -146,7 +146,10 @@
 //     call_location.hpp's own declaration site (not the real caller)
 //     when relied upon as some *other* function's default argument, the
 //     same limitation a naive __FILE__/__LINE__ macro would have.
-#if defined(__has_builtin) && __has_builtin(__builtin_FILE) && __has_builtin(__builtin_LINE)
+// MSVC has no __has_builtin, but ships __builtin_FILE()/__builtin_LINE()
+// since Visual Studio 2019 16.6 (_MSC_VER 1926).
+#if (defined(__has_builtin) && __has_builtin(__builtin_FILE) && __has_builtin(__builtin_LINE)) ||                      \
+    (defined(_MSC_VER) && !defined(__clang__) && _MSC_VER >= 1926)
 #define RELOCO_CALL_LOCATION_HAS_BUILTINS 1
 #else
 #define RELOCO_CALL_LOCATION_HAS_BUILTINS 0
