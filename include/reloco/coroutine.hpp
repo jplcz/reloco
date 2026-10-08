@@ -49,6 +49,15 @@
 #include <type_traits>
 #include <utility>
 
+// Keeps the frame allocator out of the ramp function: once inlined, GCC sees
+// the underlying free() paired with the class operator new and reports
+// -Wmismatched-new-delete in user code, where it cannot be silenced.
+#if defined(__GNUC__) || defined(__clang__)
+#define RELOCO_CORO_NOINLINE __attribute__((noinline))
+#else
+#define RELOCO_CORO_NOINLINE
+#endif
+
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
 namespace reloco {
@@ -66,13 +75,13 @@ public:
   // allocator) makes GCC report a bogus -Wmismatched-new-delete against the
   // plain operator delete the compiler must call from the ramp's cleanup
   // path, and that diagnostic lands in user code where it cannot be silenced.
-  static void *operator new(std::size_t size) noexcept {
+  RELOCO_CORO_NOINLINE static void *operator new(std::size_t size) noexcept {
     auto block = default_allocator().allocate(size, alignof(std::max_align_t));
     return block ? block.value().ptr : nullptr;
   }
 
   // Sized form: the compiler passes the frame size, so no header is stored.
-  static void operator delete(void *frame, std::size_t size) noexcept {
+  RELOCO_CORO_NOINLINE static void operator delete(void *frame, std::size_t size) noexcept {
     if (frame)
       default_allocator().deallocate(frame, size);
   }
