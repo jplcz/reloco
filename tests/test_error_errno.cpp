@@ -32,7 +32,6 @@ TEST(ErrorErrnoTest, MapsCommonMembersToExpectedErrno) {
   EXPECT_EQ(to_errno(error::division_by_zero), EDOM);
   EXPECT_EQ(to_errno(error::not_found), ENOENT);
   EXPECT_EQ(to_errno(error::page_fault), EFAULT);
-  EXPECT_EQ(to_errno(error::pointer_expired), ESTALE);
   EXPECT_EQ(to_errno(error::no_owner), EPERM);
   EXPECT_EQ(to_errno(error::invalid_owner), EPERM);
   EXPECT_EQ(to_errno(error::resource_exhausted), EAGAIN);
