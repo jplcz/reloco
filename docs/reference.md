@@ -76,7 +76,7 @@ where, not a tutorial.
 | `value_ptr.hpp` | `value_ptr<T>` | Nullable, non-owning pointer that rejects binding to prvalue temporaries |
 | `value_ref.hpp` | `value_ref<T>` | Non-null, non-owning reference wrapper that rejects binding to prvalue temporaries |
 | `checked_value.hpp` | `checked_value<T>` | Move-only wrapper with Rust-like use-after-move checks |
-| `coroutine.hpp` | `task<T>`, `allocator_arg_t` | C++20 lazy coroutine returning `result<T>`; frame from an `allocator_ref`; see [coroutine.md](coroutine.md) |
+| `coroutine.hpp` | `task<T>` | C++20 lazy coroutine returning `result<T>`; frame from `default_allocator()`; see [coroutine.md](coroutine.md) |
 | `cell.hpp` | `cell<T>`, `ref_cell<T>` | Interior-mutability wrappers matching Rust's `Cell<T>`/`RefCell<T>` |
 | `non_zero.hpp` | `non_zero<T>` | Integral wrapper statically known to never be `0`, matching Rust's `NonZero*` family |
 | `wrapping.hpp` | `wrapping<T>` | Integral newtype whose arithmetic operators always wrap on overflow, matching Rust's `std::num::Wrapping<T>` |

@@ -6,8 +6,8 @@
 
 /** @file coroutine.hpp
  * @brief `reloco::task<T>`: a lazy, move-only coroutine type whose result
- * is a `reloco::result<T>` and whose frame is allocated through a
- * `reloco::allocator_ref`.
+ * is a `reloco::result<T>` and whose frame is allocated through
+ * `reloco::default_allocator()`.
  *
  * C++20 and later only, GCC/Clang only; on anything older (or without
  * `-fcoroutines`-style support) this header is empty and
@@ -19,32 +19,18 @@
  *   `throw`. A coroutine body must not let an exception escape
  *   (`unhandled_exception` traps), so build coroutine code with
  *   `-fno-exceptions` or keep it `noexcept`-clean.
- * - **No hidden heap.** The coroutine frame is allocated from the
- *   `allocator_ref` the caller supplies, or `default_allocator()` if none
- *   is. Allocation failure never throws or crashes: the returned task is
+ * - **No hidden heap.** The coroutine frame is allocated from
+ *   `default_allocator()`, so a platform chooses the frame allocator once
+ *   through the `RELOCO_DEFAULT_ALLOCATOR_CUSTOM` hook (see
+ *   `default_allocator.hpp`); there is no per-coroutine allocator, no
+ *   thread-local state and no per-frame header. Allocation failure never
+ *   throws or crashes: the returned task is
  *   already finished and yields `error::allocation_failed`.
  * - **Errors propagate with `co_await`.** Awaiting a `result<U>` inside a
  *   `task` unwraps the value or, on error, ends the coroutine with that
  *   error and resumes the awaiting parent (the coroutine analogue of
  *   `RELOCO_TRY`; locals are destroyed normally).
  * - **Lazy.** A task does nothing until it is awaited or `resume()`d.
- *
- * ## Choosing the allocator
- *
- * @code
- * // Default: frame comes from reloco::default_allocator().
- * reloco::task<int> a() { co_return 1; }
- *
- * // Explicit: put `allocator_arg, <allocator_ref>` first among the
- * // parameters (after the object for member functions). The frame is
- * // allocated from -- and later freed to -- that allocator.
- * reloco::task<int> b(reloco::allocator_arg_t, reloco::allocator_ref alloc, int x) { co_return x; }
- * @endcode
- *
- * The allocator is stored in a small header in front of the frame, so
- * the frame can be released to the same allocator even after the
- * original `allocator_ref` has gone out of scope (its backing context
- * must still be alive).
  */
 
 #include "detail/compat.hpp"
@@ -56,6 +42,7 @@
 #include "default_allocator.hpp"
 #include "error.hpp"
 #include "expected.hpp"
+
 #include <coroutine>
 #include <cstddef>
 #include <new>
@@ -66,67 +53,29 @@ RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
 namespace reloco {
 
-/** @brief Tag introducing an `allocator_ref` parameter of a coroutine (see file docs). */
-struct allocator_arg_t {
-  explicit allocator_arg_t() = default;
-};
-inline constexpr allocator_arg_t allocator_arg{};
-
 template <typename T = void> class task;
 
 namespace detail {
 
-struct coro_frame_header {
-  allocator_ref alloc;
-  std::size_t size;
-};
-
-inline constexpr std::size_t coro_frame_align = alignof(std::max_align_t);
-inline constexpr std::size_t coro_frame_header_size =
-    (sizeof(coro_frame_header) + coro_frame_align - 1) / coro_frame_align * coro_frame_align;
-
-// Returns the frame start (after the header), or nullptr on failure.
-inline void *coro_alloc_frame(const allocator_ref &alloc, std::size_t frame_size) noexcept {
-  const std::size_t total = frame_size + coro_frame_header_size;
-  if (total < frame_size)
-    return nullptr;
-  auto block = alloc.allocate(total, coro_frame_align);
-  if (!block)
-    return nullptr;
-  auto *base = static_cast<unsigned char *>(block.value().ptr);
-  new (base) coro_frame_header{alloc, total};
-  return base + coro_frame_header_size;
-}
-
-inline void coro_free_frame(void *frame) noexcept {
-  if (!frame)
-    return;
-  auto *base = static_cast<unsigned char *>(frame) - coro_frame_header_size;
-  auto *header = static_cast<coro_frame_header *>(static_cast<void *>(base));
-  const allocator_ref alloc = header->alloc;
-  const std::size_t total = header->size;
-  header->~coro_frame_header();
-  alloc.deallocate(base, total);
-}
-
 // Allocation and continuation bookkeeping shared by every task_promise<T>.
 class coro_promise_base {
 public:
-  static void *operator new(std::size_t size) noexcept { return coro_alloc_frame(default_allocator(), size); }
-
-  template <typename... Args>
-  static void *operator new(std::size_t size, allocator_arg_t, const allocator_ref &alloc, Args &&...) noexcept {
-    return coro_alloc_frame(alloc, size);
+  // Frames always come from default_allocator(). Only plain (non-template)
+  // operator new/delete are declared on purpose: a variadic placement
+  // operator new (needed to receive per-coroutine arguments such as an
+  // allocator) makes GCC report a bogus -Wmismatched-new-delete against the
+  // plain operator delete the compiler must call from the ramp's cleanup
+  // path, and that diagnostic lands in user code where it cannot be silenced.
+  static void *operator new(std::size_t size) noexcept {
+    auto block = default_allocator().allocate(size, alignof(std::max_align_t));
+    return block ? block.value().ptr : nullptr;
   }
 
-  // Member coroutines: the first argument is the object.
-  template <typename Obj, typename... Args>
-  static void *operator new(std::size_t size, Obj &&, allocator_arg_t, const allocator_ref &alloc,
-                            Args &&...) noexcept {
-    return coro_alloc_frame(alloc, size);
+  // Sized form: the compiler passes the frame size, so no header is stored.
+  static void operator delete(void *frame, std::size_t size) noexcept {
+    if (frame)
+      default_allocator().deallocate(frame, size);
   }
-
-  static void operator delete(void *frame) noexcept { coro_free_frame(frame); }
 
   void set_continuation(std::coroutine_handle<> cont) noexcept { cont_ = cont; }
 
@@ -254,7 +203,7 @@ public:
  * @brief Lazy, move-only coroutine returning `result<T>`.
  *
  * @code
- * reloco::task<int> parse(reloco::allocator_arg_t, reloco::allocator_ref alloc, int v) {
+ * reloco::task<int> parse(int v) {
  *   // A result<U> awaited here yields U, or ends this coroutine with the error.
  *   int checked = co_await validate(v);
  *   // `co_return` a plain T for success...
@@ -263,9 +212,9 @@ public:
  *   co_return checked;
  * }
  *
- * reloco::task<void> run(reloco::allocator_ref alloc) {
+ * reloco::task<void> run() {
  *   // Awaiting a task yields its result<T>; await that again to propagate errors.
- *   auto r = co_await parse(reloco::allocator_arg, alloc, 7);
+ *   auto r = co_await parse(7);
  *   int v = co_await std::move(r);
  *   (void)v;
  * }

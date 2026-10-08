@@ -16,15 +16,15 @@ C++20+ only, GCC/Clang only (on older standards the header is empty and
 // Fallible helper returning a plain result<int>.
 reloco::result<int> parse(int v);
 
-// `allocator_arg, <allocator_ref>` as the first parameters selects where the
-// coroutine frame lives; omit them to use reloco::default_allocator().
-reloco::task<int> work(reloco::allocator_arg_t, reloco::allocator_ref alloc, int v) {
+// The coroutine frame is always allocated from reloco::default_allocator();
+// there is no per-coroutine allocator parameter.
+reloco::task<int> work(int v) {
   // co_await on a result<U> yields U; on error the coroutine ends with that
   // error (like RELOCO_TRY), and its locals are destroyed normally.
   int parsed = co_await parse(v);
 
   // Awaiting another task yields its result<T>; await that again to unwrap/propagate.
-  auto inner = co_await work(reloco::allocator_arg, alloc, parsed - 1);
+  auto inner = co_await work(parsed - 1);
   int sub = co_await std::move(inner);
 
   // co_return a value, or an error via reloco::unexpected (task<void> uses
@@ -36,7 +36,7 @@ reloco::task<int> work(reloco::allocator_arg_t, reloco::allocator_ref alloc, int
 
 // Drive a top-level task: tasks are lazy, so resume() starts it. Resume again
 // whenever an awaitable it is blocked on completes, until done().
-auto t = work(reloco::allocator_arg, alloc, 5);
+auto t = work(5);
 t.resume();
 if (t.done()) {
   reloco::result<int> r = t.take(); // value or error, taken once
@@ -47,10 +47,13 @@ if (t.done()) {
 
 - **Allocation failure** is not fatal: the returned task is already `done()`
   and `take()` yields `error::allocation_failed`; awaiting it propagates it.
-- **Member coroutines** take `allocator_arg, alloc` right after the implicit
-  object, same as free functions.
-- The allocator is stored in a header before the frame and used to free it, so
-  its backing context must outlive the task.
+- **Frame allocator** is `reloco::default_allocator()`; choose it once per
+  platform with the `RELOCO_DEFAULT_ALLOCATOR_CUSTOM` hook. Per-coroutine
+  allocators are intentionally unsupported: they require a variadic placement
+  `operator new`, which GCC reports as a bogus `-Wmismatched-new-delete`
+  against the plain `operator delete` the compiler calls on its cleanup path,
+  and the only alternative (a thread-local "current allocator") is unavailable
+  on embedded targets.
 - Write coroutines as functions, not capturing lambdas: a temporary lambda dies
   before the frame that refers to it.
 - Tested with Clang 24 and GCC 15 (ASan/UBSan clean).

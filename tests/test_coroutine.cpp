@@ -4,63 +4,13 @@
 
 #include <gtest/gtest.h>
 #include <reloco/coroutine.hpp>
-#include <reloco/heap_allocator.hpp>
 
 #include <cstddef>
 
 #if RELOCO_HAS_COROUTINES
 
-#if defined(__GNUC__) && !defined(__clang__)
-// At -O0/-Og GCC inlines the test allocator into the coroutine frame
-// allocation and then sees the promise's custom operator delete freeing a
-// block that came from the heap allocator (malloc/::operator new), reporting
-// -Wmismatched-new-delete. The pairing is intentional and correct: both
-// operators are the promise's own, and the frame pointer is the heap block
-// offset by a header that coro_free_frame() undoes before deallocating.
-#pragma GCC diagnostic ignored "-Wmismatched-new-delete"
-#endif
-
 namespace {
 
-// Allocator that counts live/total allocations and can be told to fail.
-struct counting_context {
-  int allocs = 0;
-  int frees = 0;
-  bool fail = false;
-  std::size_t last_bytes = 0;
-};
-
-struct counting_tag {};
-
-} // namespace
-
-template <> struct reloco::allocator_traits<counting_tag> {
-  using context_type = counting_context;
-
-  static reloco::result<reloco::mem_block> allocate(reloco::value_ref<context_type> ctx, std::size_t bytes,
-                                                    std::size_t alignment) noexcept {
-    if (ctx->fail)
-      return reloco::unexpected(reloco::error::allocation_failed);
-    ++ctx->allocs;
-    ctx->last_bytes = bytes;
-    RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
-    return reloco::allocator<reloco::heap_allocator_tag>::ref().allocate(bytes, alignment);
-    RELOCO_END_UNSAFE_BUFFER_USAGE
-  }
-
-  static void deallocate(reloco::value_ref<context_type> ctx, void *ptr, std::size_t bytes) noexcept {
-    ++ctx->frees;
-    RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
-    reloco::allocator<reloco::heap_allocator_tag>::ref().deallocate(ptr, bytes);
-    RELOCO_END_UNSAFE_BUFFER_USAGE
-  }
-};
-
-namespace {
-
-using reloco::allocator_arg;
-using reloco::allocator_arg_t;
-using reloco::allocator_ref;
 using reloco::error;
 using reloco::result;
 using reloco::task;
@@ -108,7 +58,7 @@ task<int> chain(int v) {
   co_return x * 10;
 }
 
-task<int> sum_with_allocator(allocator_arg_t, allocator_ref, int a, int b) { co_return a + b; }
+task<int> sum(int a, int b) { co_return a + b; }
 
 task<int> direct_error() {
   co_return unexpected(error::busy);
@@ -132,13 +82,7 @@ task<int> wait_then_plus_one(manual_event &ev) {
   co_return v + 1;
 }
 
-task<int> await_sum(allocator_ref alloc) {
-  auto inner = co_await sum_with_allocator(allocator_arg, alloc, 1, 1);
-  int v = co_await std::move(inner);
-  co_return v;
-}
-
-task<void> suspend_with_probe(allocator_arg_t, allocator_ref, manual_event *e, int *c) {
+task<void> suspend_with_probe(manual_event *e, int *c) {
   destructor_probe p(c);
   co_await *e;
 }
@@ -156,7 +100,7 @@ task<int> cleanup_on_error(int *counter) {
 
 struct object {
   int base = 100;
-  task<int> add(allocator_arg_t, allocator_ref, int v) { co_return base + v; }
+  task<int> add(int v) { co_return base + v; }
 };
 
 class CoroutineTest : public ::testing::Test {};
@@ -251,69 +195,32 @@ TEST_F(CoroutineTest, SuspendsOnExternalAwaitableAndResumes) {
 }
 
 TEST_F(CoroutineTest, DroppingSuspendedTaskDestroysFrame) {
-  counting_context ctx;
-  allocator_ref alloc = allocator_ref(counting_tag{}, ctx);
   manual_event ev;
   int destroyed = 0;
   {
-    auto t = suspend_with_probe(allocator_arg, alloc, &ev, &destroyed);
+    auto t = suspend_with_probe(&ev, &destroyed);
     t.resume();
     EXPECT_FALSE(t.done());
   }
   EXPECT_EQ(destroyed, 1);
-  EXPECT_EQ(ctx.allocs, 1);
-  EXPECT_EQ(ctx.frees, 1);
 }
 
-TEST_F(CoroutineTest, FrameUsesSuppliedAllocator) {
-  counting_context ctx;
-  allocator_ref alloc = allocator_ref(counting_tag{}, ctx);
-  {
-    auto t = sum_with_allocator(allocator_arg, alloc, 2, 3);
-    EXPECT_EQ(ctx.allocs, 1);
-    EXPECT_EQ(ctx.frees, 0);
-    t.resume();
-    auto r = t.take();
-    ASSERT_TRUE(r.has_value());
-    EXPECT_EQ(r.value(), 5);
-  }
-  EXPECT_EQ(ctx.frees, 1);
-}
-
-TEST_F(CoroutineTest, MemberCoroutineUsesSuppliedAllocator) {
-  counting_context ctx;
-  allocator_ref alloc = allocator_ref(counting_tag{}, ctx);
-  object obj;
-  {
-    auto t = obj.add(allocator_arg, alloc, 5);
-    EXPECT_EQ(ctx.allocs, 1);
-    t.resume();
-    EXPECT_EQ(t.take().value_or(0), 105);
-  }
-  EXPECT_EQ(ctx.frees, 1);
-}
-
-TEST_F(CoroutineTest, AllocationFailureYieldsError) {
-  counting_context ctx;
-  ctx.fail = true;
-  allocator_ref alloc = allocator_ref(counting_tag{}, ctx);
-
-  auto t = sum_with_allocator(allocator_arg, alloc, 1, 1);
-  EXPECT_TRUE(t.done());
-  t.resume(); // no-op
+TEST_F(CoroutineTest, CompletesWithValue) {
+  auto t = sum(2, 3);
+  t.resume();
   auto r = t.take();
-  ASSERT_FALSE(r.has_value());
-  EXPECT_EQ(r.error(), error::allocation_failed);
-
-  // Awaiting a failed task propagates the failure without crashing.
-  auto parent = await_sum(alloc);
-  parent.resume();
-  auto pr = parent.take();
-  ASSERT_FALSE(pr.has_value());
-  EXPECT_EQ(pr.error(), error::allocation_failed);
+  ASSERT_TRUE(r.has_value());
+  EXPECT_EQ(r.value(), 5);
 }
 
-TEST_F(CoroutineTest, DefaultAllocatorIsUsedWithoutAllocatorArg) {
+TEST_F(CoroutineTest, MemberCoroutineWorks) {
+  object obj;
+  auto t = obj.add(5);
+  t.resume();
+  EXPECT_EQ(t.take().value_or(0), 105);
+}
+
+TEST_F(CoroutineTest, FrameComesFromDefaultAllocator) {
   auto t = answer();
   t.resume();
   EXPECT_EQ(t.take().value_or(0), 42);
