@@ -51,6 +51,7 @@ Start with the guide that matches what you are building:
 | [API reference](docs/reference.md) | Per-type quick reference for every public header |
 | [Demos](demos/README.md) | Standalone example programs showing `scope()`/`guarded_mutex`/`barrier`, `channel`, `once_lock`, and `park`/`unpark` used together |
 | [GDB pretty printers](docs/gdb-pretty-printers.md) | Formatting reloco containers/views/smart pointers in GDB: source, auto-load, or embed |
+| [LLDB pretty printers](docs/lldb-pretty-printers.md) | The same formatters for LLDB, loaded with `command script import` |
 | [Package-manager integration](docs/package-managers.md) | Conan 2, vcpkg overlays, CPM.cmake, CPack packaging, and CMake-based dependency managers |
 | [Shared-library deployments](docs/shared-library.md) | `RELOCO_SHARED`/`RELOCO_SHARED_BUILD` and `RELOCO_TYPE_INSTANCE(Type)`: deduplicating template instantiations across a multi-`.so` deployment |
 

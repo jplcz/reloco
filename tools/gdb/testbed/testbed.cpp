@@ -123,7 +123,7 @@ int main() {
   // -- expected ------------------------------------------------------------
   reloco::expected<int, reloco::error> exp_ok(7);
   // GDB_CHECK: exp_ok => value = 7
-  reloco::expected<int, reloco::error> exp_err(reloco::unexpected(reloco::error::out_of_range));
+  reloco::expected<int, reloco::error> exp_err{reloco::unexpected(reloco::error::out_of_range)};
   // GDB_CHECK: exp_err => out_of_range
 
   // -- unique_ptr ------------------------------------------------------------
