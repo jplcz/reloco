@@ -103,6 +103,24 @@
 // ============================================================================
 
 /**
+ * @def RELOCO_BEGIN_SUPPRESS_GCC_ADDRESS_FALSE_POSITIVE
+ * @brief Suppresses GCC 11/12's `-Waddress` ("the address of ... will never
+ * be NULL") on `if (ops->fn)` checks inside type-erased resolvers.
+ *
+ * Reason: the same generic code is instantiated for every `T`, and the
+ * `type_operations` slot is a captureless lambda converted to a function
+ * pointer for some `T` and `nullptr` for others (e.g. trivially
+ * destructible types). The null check is therefore required for the
+ * `nullptr` instantiations; GCC only sees the non-null instantiation and
+ * flags it. The check is correct and cheap, so it is kept rather than
+ * restructured. No-op on Clang/MSVC.
+ */
+/**
+ * @def RELOCO_END_SUPPRESS_GCC_ADDRESS_FALSE_POSITIVE
+ * @brief Closes a block opened by RELOCO_BEGIN_SUPPRESS_GCC_ADDRESS_FALSE_POSITIVE.
+ */
+
+/**
  * @def RELOCO_BEGIN_SUPPRESS_GCC_BOUNDS_FALSE_POSITIVE
  * @brief Suppresses GCC's `-Warray-bounds`/`-Wstringop-overread`/
  * `-Wstringop-overflow`/`-Waggressive-loop-optimizations` false positives
@@ -125,7 +143,13 @@
   RELOCO_PRAGMA(GCC diagnostic ignored "-Wstringop-overflow")                                                          \
   RELOCO_PRAGMA(GCC diagnostic ignored "-Waggressive-loop-optimizations")
 #define RELOCO_END_SUPPRESS_GCC_BOUNDS_FALSE_POSITIVE RELOCO_PRAGMA(GCC diagnostic pop)
+#define RELOCO_BEGIN_SUPPRESS_GCC_ADDRESS_FALSE_POSITIVE                                                               \
+  RELOCO_PRAGMA(GCC diagnostic push)                                                                                   \
+  RELOCO_PRAGMA(GCC diagnostic ignored "-Waddress")
+#define RELOCO_END_SUPPRESS_GCC_ADDRESS_FALSE_POSITIVE RELOCO_PRAGMA(GCC diagnostic pop)
 #else
+#define RELOCO_BEGIN_SUPPRESS_GCC_ADDRESS_FALSE_POSITIVE
+#define RELOCO_END_SUPPRESS_GCC_ADDRESS_FALSE_POSITIVE
 #define RELOCO_BEGIN_SUPPRESS_GCC_BOUNDS_FALSE_POSITIVE
 #define RELOCO_END_SUPPRESS_GCC_BOUNDS_FALSE_POSITIVE
 #endif

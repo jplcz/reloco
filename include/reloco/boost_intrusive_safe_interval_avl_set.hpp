@@ -132,8 +132,8 @@ public:
   static_assert(std::is_same_v<address_type, std::decay_t<std::invoke_result_t<const EndOf &, const T &>>>,
                 "safe_interval_avl_set: StartOf and EndOf must return the same Address type");
 
-  safe_interval_avl_set(StartOf start_of, EndOf end_of) noexcept
-      : base_type(compare_type{static_cast<StartOf &&>(start_of)}), end_of_(static_cast<EndOf &&>(end_of)) {}
+  safe_interval_avl_set(StartOf start_fn, EndOf end_fn) noexcept
+      : base_type(compare_type{static_cast<StartOf &&>(start_fn)}), end_of_(static_cast<EndOf &&>(end_fn)) {}
 
   /** @copydoc safe_interval_list::find_containing */
   [[nodiscard]] result<T *> find_containing(address_type address) noexcept {
@@ -213,44 +213,44 @@ public:
    * already tracked (see the file-level docs for why that should only
    * happen for malformed/overlapping input).
    */
-  result<T *> insert_sorted(T &node) noexcept {
-    if (auto [it, inserted] = this->insert_unique(node); inserted)
+  result<T *> insert_sorted(T &target) noexcept {
+    if (auto [it, inserted] = this->insert_unique(target); inserted)
       return &*it;
     return unexpected(error::already_exists);
   }
 
   /** @copydoc safe_interval_list::try_resize */
   template <typename Resizer>
-  result<T *> try_resize(T &node, address_type new_start, address_type new_end, Resizer resizer) noexcept {
+  result<T *> try_resize(T &target, address_type new_start, address_type new_end, Resizer resizer) noexcept {
     if (!(new_start < new_end))
       return unexpected(error::invalid_argument);
     for (T &item : *this) {
-      if (&item == &node)
+      if (&item == &target)
         continue;
       if (start_of_(item) >= new_end)
         break; // Ascending order: no later item can overlap `[new_start, new_end)` either.
       if (new_start < end_of_(item))
         return unexpected(error::already_exists);
     }
-    resizer(node, new_start, new_end);
-    this->erase(this->iterator_to(node));
-    if (auto [it, inserted] = this->insert_unique(node); inserted)
+    resizer(target, new_start, new_end);
+    this->erase(this->iterator_to(target));
+    if (auto [it, inserted] = this->insert_unique(target); inserted)
       return &*it;
     return unexpected(error::already_exists); // Should be unreachable: the overlap check above already excludes this.
   }
 
   /** @copydoc safe_interval_list::try_resize */
-  template <typename Resizer> result<T *> try_resize(T &node, address_type new_end, Resizer resizer) noexcept {
-    return try_resize(node, start_of_(node), new_end, static_cast<Resizer &&>(resizer));
+  template <typename Resizer> result<T *> try_resize(T &target, address_type new_end, Resizer resizer) noexcept {
+    return try_resize(target, start_of_(target), new_end, static_cast<Resizer &&>(resizer));
   }
 
   /** @copydoc safe_interval_list::try_rebase */
-  template <typename Rebaser> result<T *> try_rebase(T &node, address_type new_start, Rebaser rebaser) noexcept {
-    address_type size = static_cast<address_type>(end_of_(node) - start_of_(node));
+  template <typename Rebaser> result<T *> try_rebase(T &target, address_type new_start, Rebaser rebaser) noexcept {
+    address_type size = static_cast<address_type>(end_of_(target) - start_of_(target));
     address_type new_end = static_cast<address_type>(new_start + size);
     if (new_end < new_start) // Overflow: the relocated range would wrap around.
       return unexpected(error::invalid_argument);
-    return try_resize(node, new_start, new_end, static_cast<Rebaser &&>(rebaser));
+    return try_resize(target, new_start, new_end, static_cast<Rebaser &&>(rebaser));
   }
 
   /**

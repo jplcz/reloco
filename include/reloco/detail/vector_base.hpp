@@ -175,11 +175,16 @@ template <typename T, typename = void> struct clone_range_resolver {
         for (std::size_t i = 0; i < size; ++i) {
           auto elem_res = ops->clone_one(type, alloc, d + i, s + i);
           if (!elem_res) {
+            // destroy_one is nullptr for trivially destructible T, so this
+            // check is needed; GCC 11/12 only sees the non-null instantiation
+            // and wrongly warns (-Waddress).
+            RELOCO_BEGIN_SUPPRESS_GCC_ADDRESS_FALSE_POSITIVE;
             if (ops->destroy_one) {
               for (std::size_t j = 0; j < cloned; ++j) {
                 ops->destroy_one(type, d + j);
               }
             }
+            RELOCO_END_SUPPRESS_GCC_ADDRESS_FALSE_POSITIVE;
             return unexpected(elem_res.error());
           }
           ++cloned;
@@ -205,6 +210,9 @@ template <typename T> struct copy_construct_range_resolver {
         for (std::size_t i = from; i < to; ++i) {
           auto ctor_res = ops->copy_construct_one(type, alloc, ptr + i, value_ptr);
           if (!ctor_res) {
+            // Same -Waddress false positive as in clone_range above: the null
+            // check is required for trivially destructible T.
+            RELOCO_BEGIN_SUPPRESS_GCC_ADDRESS_FALSE_POSITIVE;
             if (ops->destroy_one) {
               // GCC (13/14/15) can misanalyze this rollback loop's trip count
               // as huge under -O3, treating an unreachable overflow of
@@ -216,6 +224,7 @@ template <typename T> struct copy_construct_range_resolver {
               }
               RELOCO_END_SUPPRESS_GCC_BOUNDS_FALSE_POSITIVE;
             }
+            RELOCO_END_SUPPRESS_GCC_ADDRESS_FALSE_POSITIVE;
             return unexpected(ctor_res.error());
           }
           ++constructed;

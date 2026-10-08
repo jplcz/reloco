@@ -272,15 +272,15 @@ public:
    * invariant every search operation above relies on. `O(n)`, same as
    * the searches themselves.
    */
-  void insert_sorted(T &node) noexcept {
-    address_type node_start = start_of_(node);
+  void insert_sorted(T &target) noexcept {
+    address_type node_start = start_of_(target);
     for (auto it = this->begin(), last = this->end(); it != last; ++it) {
       if (start_of_(*it) > node_start) {
-        this->insert(it, node);
+        this->insert(it, target);
         return;
       }
     }
-    this->push_back(node);
+    this->push_back(target);
   }
 
   /**
@@ -304,21 +304,21 @@ public:
    * `insert_sorted()`'s own `O(n)` reinsertion.
    */
   template <typename Resizer>
-  result<T *> try_resize(T &node, address_type new_start, address_type new_end, Resizer resizer) noexcept {
+  result<T *> try_resize(T &target, address_type new_start, address_type new_end, Resizer resizer) noexcept {
     if (!(new_start < new_end))
       return unexpected(error::invalid_argument);
     for (T &item : *this) {
-      if (&item == &node)
+      if (&item == &target)
         continue;
       if (start_of_(item) >= new_end)
         break; // Ascending order: no later item can overlap `[new_start, new_end)` either.
       if (new_start < end_of_(item))
         return unexpected(error::already_exists);
     }
-    resizer(node, new_start, new_end);
-    this->erase(this->iterator_to(node));
-    insert_sorted(node);
-    return &node;
+    resizer(target, new_start, new_end);
+    this->erase(this->iterator_to(target));
+    insert_sorted(target);
+    return &target;
   }
 
   /**
@@ -326,8 +326,8 @@ public:
    * current `start_of(node)` and only changes its end -- the common
    * "grow/shrink this mapping forward" case.
    */
-  template <typename Resizer> result<T *> try_resize(T &node, address_type new_end, Resizer resizer) noexcept {
-    return try_resize(node, start_of_(node), new_end, static_cast<Resizer &&>(resizer));
+  template <typename Resizer> result<T *> try_resize(T &target, address_type new_end, Resizer resizer) noexcept {
+    return try_resize(target, start_of_(target), new_end, static_cast<Resizer &&>(resizer));
   }
 
   /**
@@ -348,12 +348,12 @@ public:
    *
    * `O(n)`, same as `try_resize()` itself.
    */
-  template <typename Rebaser> result<T *> try_rebase(T &node, address_type new_start, Rebaser rebaser) noexcept {
-    address_type size = static_cast<address_type>(end_of_(node) - start_of_(node));
+  template <typename Rebaser> result<T *> try_rebase(T &target, address_type new_start, Rebaser rebaser) noexcept {
+    address_type size = static_cast<address_type>(end_of_(target) - start_of_(target));
     address_type new_end = static_cast<address_type>(new_start + size);
     if (new_end < new_start) // Overflow: the relocated range would wrap around.
       return unexpected(error::invalid_argument);
-    return try_resize(node, new_start, new_end, static_cast<Rebaser &&>(rebaser));
+    return try_resize(target, new_start, new_end, static_cast<Rebaser &&>(rebaser));
   }
 
   /**

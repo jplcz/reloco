@@ -726,6 +726,22 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         jplcz_reloco_enable_warnings(jplcz_reloco_boost_intrusive_safe_interval_avl_set_tests)
         gtest_discover_tests(jplcz_reloco_boost_intrusive_safe_interval_avl_set_tests)
     endif()
+
+    # GCC 14+ reports -Wnull-dereference false positives inside third-party
+    # GoogleTest/Boost.Intrusive headers once they are inlined into a test
+    # body. The library headers themselves keep the warning (header checks).
+    # The override interface target is linked after jplcz_reloco_warnings so
+    # its -Wno-null-dereference comes later on the command line and wins.
+    if(JPLCZ_RELOCO_ENABLE_STRICT_WARNINGS AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        add_library(jplcz_reloco_test_warning_overrides INTERFACE)
+        target_compile_options(jplcz_reloco_test_warning_overrides INTERFACE -Wno-null-dereference)
+        get_directory_property(_reloco_all_targets BUILDSYSTEM_TARGETS)
+        foreach(_reloco_target IN LISTS _reloco_all_targets)
+            if(_reloco_target MATCHES "_tests$")
+                target_link_libraries(${_reloco_target} PRIVATE jplcz_reloco_test_warning_overrides)
+            endif()
+        endforeach()
+    endif()
 endif()
 
 if(JPLCZ_RELOCO_BUILD_DEMOS)

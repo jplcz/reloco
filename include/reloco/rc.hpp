@@ -91,8 +91,13 @@ struct RELOCO_EXPORT rc_control_block {
   }
 
   void release_weak() noexcept {
+    // Same GCC false positive as release_shared(): the control block is
+    // placement-constructed into allocator memory, and GCC 16 cannot see
+    // that weak_count_ was initialized when this is inlined elsewhere.
+    RELOCO_BEGIN_SUPPRESS_GCC_UNINITIALIZED_FALSE_POSITIVE;
     if (--weak_count_ == 0)
       destroy_self();
+    RELOCO_END_SUPPRESS_GCC_UNINITIALIZED_FALSE_POSITIVE;
   }
 
   bool try_add_shared() noexcept {
@@ -266,7 +271,14 @@ public:
 
   /** @brief Number of `rc`s (including this one) sharing ownership, or `0`
    * for an empty pointer. */
-  [[nodiscard]] std::size_t use_count() const noexcept { return block_ ? block_->shared_count_ : 0; }
+  [[nodiscard]] std::size_t use_count() const noexcept {
+    // The control block is placement-constructed into allocator memory;
+    // GCC 16 loses track of that initialization after inlining into callers
+    // and wrongly reports shared_count_ as uninitialized.
+    RELOCO_BEGIN_SUPPRESS_GCC_UNINITIALIZED_FALSE_POSITIVE;
+    return block_ ? block_->shared_count_ : 0;
+    RELOCO_END_SUPPRESS_GCC_UNINITIALIZED_FALSE_POSITIVE;
+  }
 
   /** @brief Releases ownership, destroying the object if this was the last
    * owner, and resets this pointer to the null state. */

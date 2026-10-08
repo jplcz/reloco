@@ -163,6 +163,10 @@ public:
       return unexpected(reserve_res.error());
     }
 
+    // clone_range is nullptr for some T (see clone_range_resolver), so the
+    // check is required; GCC 12 only sees the non-null instantiation and
+    // wrongly warns (-Waddress).
+    RELOCO_BEGIN_SUPPRESS_GCC_ADDRESS_FALSE_POSITIVE;
     if (detail::get_operations_for<T>()->clone_range) {
       if (auto clone_res = detail::get_operations_for<T>()->clone_range(detail::metadata_for<T>, this->data_,
                                                                         clone.data_, this->size_, alloc);
@@ -170,6 +174,7 @@ public:
         return unexpected(clone_res.error());
       }
     }
+    RELOCO_END_SUPPRESS_GCC_ADDRESS_FALSE_POSITIVE;
 
     clone.size_ = this->size_;
     return clone;

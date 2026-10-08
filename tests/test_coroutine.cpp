@@ -10,6 +10,16 @@
 
 #if RELOCO_HAS_COROUTINES
 
+#if defined(__GNUC__) && !defined(__clang__)
+// At -O0/-Og GCC inlines the test allocator into the coroutine frame
+// allocation and then sees the promise's custom operator delete freeing a
+// block that came from the heap allocator (malloc/::operator new), reporting
+// -Wmismatched-new-delete. The pairing is intentional and correct: both
+// operators are the promise's own, and the frame pointer is the heap block
+// offset by a header that coro_free_frame() undoes before deallocating.
+#pragma GCC diagnostic ignored "-Wmismatched-new-delete"
+#endif
+
 namespace {
 
 // Allocator that counts live/total allocations and can be told to fail.
