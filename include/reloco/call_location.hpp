@@ -147,12 +147,19 @@
 //     when relied upon as some *other* function's default argument, the
 //     same limitation a naive __FILE__/__LINE__ macro would have.
 // MSVC has no __has_builtin, but ships __builtin_FILE()/__builtin_LINE()
-// since Visual Studio 2019 16.6 (_MSC_VER 1926).
-#if (defined(__has_builtin) && __has_builtin(__builtin_FILE) && __has_builtin(__builtin_LINE)) ||                      \
-    (defined(_MSC_VER) && !defined(__clang__) && _MSC_VER >= 1926)
-#define RELOCO_CALL_LOCATION_HAS_BUILTINS 1
-#else
+// since Visual Studio 2019 16.6 (_MSC_VER 1926). The checks are nested
+// (not joined with `&&`) because MSVC's preprocessor still parses the
+// `__has_builtin(...)` call syntax inside a short-circuited `#if` expression
+// and rejects it (C1012) when the macro does not exist.
 #define RELOCO_CALL_LOCATION_HAS_BUILTINS 0
+#if defined(__has_builtin)
+#if __has_builtin(__builtin_FILE) && __has_builtin(__builtin_LINE)
+#undef RELOCO_CALL_LOCATION_HAS_BUILTINS
+#define RELOCO_CALL_LOCATION_HAS_BUILTINS 1
+#endif
+#elif defined(_MSC_VER) && !defined(__clang__) && _MSC_VER >= 1926
+#undef RELOCO_CALL_LOCATION_HAS_BUILTINS
+#define RELOCO_CALL_LOCATION_HAS_BUILTINS 1
 #endif
 
 #if !defined(RELOCO_ENABLE_CALL_LOCATION)

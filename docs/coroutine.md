@@ -54,6 +54,10 @@ if (t.done()) {
   against the plain `operator delete` the compiler calls on its cleanup path,
   and the only alternative (a thread-local "current allocator") is unavailable
   on embedded targets.
+- **Over-aligned locals** (`alignas` above `max_align_t` alive across a
+  suspension) are unsupported: neither GCC nor Clang requests an aligned frame
+  allocation (they never call `operator new(size_t, align_val_t)` for coroutine
+  frames), so such a local would not be correctly aligned.
 - Write coroutines as functions, not capturing lambdas: a temporary lambda dies
   before the frame that refers to it.
 - Tested with Clang 24 and GCC 15 (ASan/UBSan clean).
