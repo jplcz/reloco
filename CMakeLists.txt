@@ -565,6 +565,15 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
     gtest_discover_tests(jplcz_reloco_checked_value_tests
         TEST_PREFIX "CheckedValue.")
 
+    # Coroutines need C++20; own target so the main suite stays C++17.
+    add_executable(jplcz_reloco_coroutine_tests tests/test_coroutine.cpp)
+    target_link_libraries(jplcz_reloco_coroutine_tests PRIVATE
+        jplcz_reloco GTest::gtest_main)
+    jplcz_reloco_enable_warnings(jplcz_reloco_coroutine_tests)
+    set_target_properties(jplcz_reloco_coroutine_tests PROPERTIES
+        CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+    gtest_discover_tests(jplcz_reloco_coroutine_tests TEST_PREFIX "Coroutine.")
+
     # RELOCO_IMPLICIT_TYPEID is defined only for this translation unit (see
     # that file), so it never affects type_id::name() anywhere else in the
     # suite.

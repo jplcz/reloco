@@ -21,6 +21,7 @@
 #include <reloco/commit.hpp>
 #include <reloco/concepts.hpp>
 #include <reloco/construction_helpers.hpp>
+#include <reloco/coroutine.hpp>
 #include <reloco/container_ref.hpp>
 #include <reloco/container_ref_std.hpp>
 #include <reloco/def_function_ref.hpp>
