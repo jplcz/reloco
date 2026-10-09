@@ -37,11 +37,16 @@ fi
 printf 'Generated packages:\n'
 printf '  %s\n' "${packages[@]}"
 
-archive="${build_dir}/jplcz-reloco-0.1.0-Linux.tar.gz"
-if [[ ! -f "${archive}" ]]; then
-  printf 'error: expected archive package %s was not generated\n' "${archive}" >&2
+# The version comes from project(VERSION ...), so match it instead of hardcoding it.
+shopt -s nullglob
+archives=("${build_dir}"/jplcz-reloco-*-Linux.tar.gz)
+shopt -u nullglob
+if [[ ${#archives[@]} -ne 1 ]]; then
+  printf 'error: expected exactly one archive package %s, found %d\n' \
+    "${build_dir}/jplcz-reloco-<version>-Linux.tar.gz" "${#archives[@]}" >&2
   exit 1
 fi
+archive="${archives[0]}"
 
 extract_dir="${build_dir}/extracted"
 rm -rf "${extract_dir}"
