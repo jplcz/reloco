@@ -111,7 +111,6 @@ public:
   }
 
   [[nodiscard]] task<T> get_return_object() noexcept;
-  [[nodiscard]] static task<T> get_return_object_on_allocation_failure() noexcept;
 
   std::suspend_always initial_suspend() noexcept { return {}; }
 
@@ -199,11 +198,17 @@ public:
   }
 
   void return_value(unexpected<error> &&err) noexcept { this->emplace_error(err.value()); }
+
+  // Declared on the promise itself (not the CRTP base): some front ends only
+  // accept the hook when it is a member of the exact promise type.
+  static task<T> get_return_object_on_allocation_failure() noexcept;
 };
 
 template <> class task_promise<void> : public task_promise_core<void, task_promise<void>> {
 public:
   void return_void() noexcept { emplace_result(); }
+
+  static task<void> get_return_object_on_allocation_failure() noexcept;
 };
 
 } // namespace detail
@@ -286,6 +291,7 @@ public:
 
 private:
   friend class detail::task_promise_core<T, detail::task_promise<T>>;
+  friend class detail::task_promise<T>;
 
   explicit task(std::coroutine_handle<promise_type> h) noexcept : h_(h) {}
   explicit task(error err) noexcept : err_(err) {}
@@ -305,8 +311,11 @@ namespace detail {
 template <typename T, typename D> task<T> task_promise_core<T, D>::get_return_object() noexcept {
   return task<T>(std::coroutine_handle<D>::from_promise(static_cast<D &>(*this)));
 }
-template <typename T, typename D> task<T> task_promise_core<T, D>::get_return_object_on_allocation_failure() noexcept {
+template <typename T> task<T> task_promise<T>::get_return_object_on_allocation_failure() noexcept {
   return task<T>(error::allocation_failed);
+}
+inline task<void> task_promise<void>::get_return_object_on_allocation_failure() noexcept {
+  return task<void>(error::allocation_failed);
 }
 } // namespace detail
 
