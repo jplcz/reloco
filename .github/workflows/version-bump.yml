@@ -47,7 +47,7 @@ jobs:
       # (workflow_dispatch) after merging to tag the merge commit and
       # publish a GitHub release.
       - name: Open pull request
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           commit-message: "chore: bump version to v${{ steps.bump.outputs.new_version }}"
           title: "chore: bump version to v${{ steps.bump.outputs.new_version }}"
