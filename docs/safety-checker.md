@@ -39,6 +39,118 @@ Fixture tests: `ctest` target `reloco_tidy_fixtures`, or directly
 `python3 tools/tidy/test/run_tests.py --clang-tidy <exe> --plugin <so> --include include`.
 Fixtures use `// expect: <check>` on the offending line.
 
+## Using the checker in your IDE
+
+Every IDE below ends up running the same `clang-tidy` with the same plugin, so first make
+that work from a terminal, then point the IDE at it. Two prerequisites for all of them:
+
+1. A `compile_commands.json` (`cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON`, or Meson/Bear).
+2. A project-root `.clang-tidy` that enables the checks. IDEs read it automatically, so the
+   per-IDE settings stay minimal. Plugins are not loadable from `.clang-tidy`; the `--load`
+   flag has to come from the IDE or wrapper (shown below).
+
+```yaml
+# .clang-tidy (project root)
+# Enable only reloco's checks; add your own groups after them.
+Checks: '-*,reloco-*'
+# Make findings errors in CI; leave empty to keep them warnings in the editor.
+WarningsAsErrors: ''
+# Only report diagnostics from your own headers, not system/3rd-party ones.
+HeaderFilterRegex: '^(?!.*(/_deps/|/third_party/)).*'
+CheckOptions:
+  # Opt-in mode for derived projects: check only RELOCO_BEGIN/END_SAFE_CODE regions.
+  # SafeCodeMode is a per-check option; repeat it for every reloco check you enable
+  # (or use 'all', the default, to check everything outside the exempt paths).
+  - key: reloco-no-raw-pointer.SafeCodeMode
+    value: opt-in
+  - key: reloco-borrow-check.SafeCodeMode
+    value: opt-in
+```
+
+Because the plugin cannot be loaded from `.clang-tidy`, the simplest portable approach is a
+wrapper script that every IDE can call in place of `clang-tidy`.
+This repository ships one as `tools/clang-tidy-reloco`. It loads `build-tidy/libreloco-tidy.so`;
+override with the `RELOCO_TIDY_PLUGIN` and `CLANG_TIDY` environment variables (the plugin and the
+executable must have the same LLVM major version). Copy it into your project if you build the
+plugin elsewhere. Use its path in the settings below.
+
+### VS Code
+
+Use the *clangd* extension (preferred, live as you type) or the *C/C++* extension.
+
+- **clangd**: clangd links its own clang-tidy and cannot load external plugins, so use it for
+  the editor's compiler diagnostics and run reloco-tidy as a task (below) with problem
+  matching. Set `"clangd.arguments": ["--clang-tidy=false"]` to avoid duplicate noise.
+- **C/C++ extension**: set `"C_Cpp.codeAnalysis.clangTidy.enabled": true`,
+  `"C_Cpp.codeAnalysis.clangTidy.path": "${workspaceFolder}/tools/clang-tidy-reloco"` and
+  `"C_Cpp.codeAnalysis.runAutomatically": true`. Findings appear in the Problems panel,
+  and fix-its show up as quick fixes (lightbulb).
+
+Task with problem matcher, so findings are clickable (`.vscode/tasks.json`):
+
+```jsonc
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      // Runs reloco-tidy on the file open in the editor.
+      "label": "reloco-tidy: current file",
+      "type": "shell",
+      "command": "${workspaceFolder}/tools/clang-tidy-reloco",
+      // -p: directory containing compile_commands.json.
+      "args": ["-p", "${workspaceFolder}/build", "${file}"],
+      "problemMatcher": {
+        "owner": "reloco-tidy",
+        "fileLocation": "absolute",
+        "pattern": {
+          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error|note):\\s+(.*)$",
+          "file": 1, "line": 2, "column": 3, "severity": 4, "message": 5
+        }
+      }
+    },
+    {
+      // Applies the automatic fix-its (see "Fix-its" above); review the diff afterwards.
+      "label": "reloco-tidy: fix current file",
+      "type": "shell",
+      "command": "${workspaceFolder}/tools/clang-tidy-reloco",
+      "args": ["-fix", "-p", "${workspaceFolder}/build", "${file}"]
+    }
+  ]
+}
+```
+
+### CLion
+
+CLion runs clang-tidy itself, so use its external-tool path for the plugin:
+
+1. *Settings | Editor | Inspections | C/C++ | General | Clang-Tidy*: enable it and choose
+   *Use .clang-tidy files*. CLion shows the built-in checks live.
+2. *Settings | Tools | External Tools | +*: Program `$ProjectFileDir$/tools/clang-tidy-reloco`,
+   Arguments `-p $ProjectFileDir$/build $FilePath$`, Working directory `$ProjectFileDir$`.
+   Output filters (*Advanced Options | Output Filters*):
+   `$FILE_PATH$:$LINE$:$COLUMN$: .*`. Assign a keyboard shortcut under *Keymap*.
+3. Optional: *Settings | Build, Execution, Deployment | CMake*, profile option
+   `-DCMAKE_CXX_CLANG_TIDY=/path/tools/clang-tidy-reloco` makes every build run the checker,
+   with findings shown in the Build tool window.
+
+### Other editors
+
+| Editor | How |
+|---|---|
+| Visual Studio | Use the clang-tidy wrapper through *Project | Properties | Code Analysis | Clang-Tidy* (`ClangTidyToolPath`), or the CMake `CMAKE_CXX_CLANG_TIDY` route. |
+| Qt Creator | *Analyze | Clang-Tidy and Clazy | Diagnostics Configuration*; set the executable to the wrapper. |
+| Neovim / Emacs | Use `nvim-lint` / `flycheck` with the wrapper as the command and `-p build %file`; `clang-tidy` output is already in the standard `file:line:col:` format. |
+| Any CI | `run-clang-tidy -clang-tidy-binary tools/clang-tidy-reloco -p build` (parallel across files). |
+| Any build system | `-DCMAKE_CXX_CLANG_TIDY=/path/tools/clang-tidy-reloco` runs it on every compiled file. |
+
+### Troubleshooting
+
+- *"unable to load plugin" / undefined symbols*: plugin and `clang-tidy` major versions differ.
+- *Nothing is reported*: the file lives under an exempt path (`tests/`, `build/`, ...), or
+  `SafeCodeMode: opt-in` is set and the code is outside `RELOCO_BEGIN/END_SAFE_CODE`.
+- *Missing includes in the IDE*: regenerate `compile_commands.json`; headers need `-I` flags.
+- *Slow*: use `run-clang-tidy -j$(nproc)` and restrict to changed files in CI.
+
 ## Rules
 
 | Check | Rule | Why |

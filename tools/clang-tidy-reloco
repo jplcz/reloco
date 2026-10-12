@@ -1,0 +1,6 @@
+#!/bin/sh
+# clang-tidy that always loads the reloco-tidy plugin (used by IDEs, CMake and CI).
+# Override the executable with CLANG_TIDY and the plugin with RELOCO_TIDY_PLUGIN.
+# The plugin and clang-tidy must have the same LLVM major version.
+here="$(dirname "$0")"
+exec "${CLANG_TIDY:-clang-tidy-24}" --load="${RELOCO_TIDY_PLUGIN:-$here/../build-tidy/libreloco-tidy.so}" "$@"
