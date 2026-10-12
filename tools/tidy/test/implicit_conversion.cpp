@@ -27,3 +27,7 @@ struct with_size_type {
   int at(size_type i) const noexcept;
 };
 int use_size_type(const with_size_type &w, int i) noexcept { return w.at(i); }  // expect: reloco-implicit-conversion
+
+// A non-negative constant mask bounds the result, so the nibble idiom is not a lossy conversion.
+unsigned long nibble(int b) noexcept { return static_cast<unsigned long>(0) + ((b >> 4) & 0x0F); }
+unsigned long use_nibble(const unsigned long (&t)[16], int b) noexcept { return t[(b >> 4) & 0x0F] + t[b & 0x0F]; }

@@ -98,6 +98,16 @@ void ImplicitConversionCheck::check(const MatchFinder::MatchResult &result) {
   }
   if (!lossy)
     return;
+  // `x & mask` with a non-negative constant mask that fits the destination is bounded by the mask (the nibble idiom).
+  if (const auto *bo = llvm::dyn_cast<BinaryOperator>(ce->getSubExpr()->IgnoreParenImpCasts());
+      bo && bo->getOpcode() == BO_And && dst->isIntegerType()) {
+    for (const Expr *side : {bo->getLHS(), bo->getRHS()}) {
+      Expr::EvalResult mr;
+      if (side->EvaluateAsRValue(mr, ctx) && mr.Val.isInt() && mr.Val.getInt().isNonNegative() &&
+          mr.Val.getInt().isIntN(ctx.getIntWidth(dst) - (dst->isSignedIntegerType() ? 1 : 0)))
+        return;
+    }
+  }
   // A constant that fits the destination converts losslessly.
   Expr::EvalResult er;
   if (ce->getSubExpr()->EvaluateAsRValue(er, ctx)) {
