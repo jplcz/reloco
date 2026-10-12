@@ -168,6 +168,8 @@ RELOCO_TIDY_CHECK(EnumSwitchCheck);
 RELOCO_TIDY_CHECK(BannedLowLevelCheck);
 // Mutable namespace-scope/static variables.
 RELOCO_TIDY_CHECK(MutableGlobalCheck);
+// `mutable` members (interior mutability) must be atomics, locks or reloco cells, or be RELOCO_GUARDED_BY a lock.
+RELOCO_TIDY_CHECK(MutableMemberCheck);
 // operator[], unary operator* and operator-> must be RELOCO_CHECKED, and only checked ones may be used.
 RELOCO_TIDY_CHECK(CheckedOperatorCheck);
 // Inside RELOCO_SAFE_MATH code, raw integer arithmetic is rejected.

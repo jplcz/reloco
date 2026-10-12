@@ -501,6 +501,8 @@ protected:
   ~enable_shared_from_this() = default;
 
 private:
+  // set once by shared_ptr construction (enable_shared_from_this protocol).
+  // NOLINTNEXTLINE(reloco-mutable-member)
   mutable weak_ptr<T> weak_this_;
 
   template <typename Tp, typename... Args>

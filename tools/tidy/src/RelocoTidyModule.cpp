@@ -27,6 +27,7 @@ public:
     f.registerCheck<EnumSwitchCheck>("reloco-enum-switch");
     f.registerCheck<BannedLowLevelCheck>("reloco-banned-low-level");
     f.registerCheck<MutableGlobalCheck>("reloco-mutable-global");
+    f.registerCheck<MutableMemberCheck>("reloco-mutable-member");
     f.registerCheck<CheckedOperatorCheck>("reloco-checked-operator");
     f.registerCheck<SafeMathCheck>("reloco-safe-math");
     f.registerCheck<MemberInitCheck>("reloco-member-init");

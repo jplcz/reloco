@@ -197,6 +197,7 @@ CLion runs clang-tidy itself, so use its external-tool path for the plugin:
 | `reloco-aliased-arguments` | A call may not receive overlapping places when one of them is bound as a mutable reference, mutable pointer (`&x`) or non-const `this`: `f(x, x)`, `x.m(x)`, `x.m(x.field)`. See below. | Rust's "cannot borrow as mutable more than once" across call arguments. |
 | `reloco-escaping-local` | A pointer, array decay, view or `RELOCO_LIFETIMEBOUND` result derived from a local may not be stored through a pointer or non-const reference parameter (`*out = &x;`, `out->p = buf;`). See below. | The caller is left with a dangling pointer; Clang's `-Wlifetime-safety` does not see stores through parameters. |
 | `reloco-member-order` | A member may not be initialised from a member declared after it, and a pointer/view member into a sibling member makes a copyable class unsafe. See below. | Members are constructed in declaration order and destroyed in reverse; self-pointers dangle after copy or relocation. |
+| `reloco-mutable-member` | A `mutable` member must be an atomic, lock, `once_flag` or reloco cell, or be `RELOCO_GUARDED_BY` a lock. See below. | `mutable` hides mutation behind a const interface (Rust's interior mutability needs `Cell`/`Mutex`); `const_cast` is already banned. |
 
 ### `RELOCO_OUT`
 
@@ -327,6 +328,22 @@ the target is gone). Also flagged: a pointer, reference or `RELOCO_POINTER` memb
 member of the same object (`&m`, array decay, direct reference, `RELOCO_LIFETIMEBOUND` call) when
 the class still has a generated or defaulted copy/move constructor. `RELOCO_BORROW_EXEMPT`, unsafe
 regions and `NOLINT` suppress it.
+
+### `reloco-mutable-member`
+
+```cpp
+struct cache {
+  mutable int hits_ = 0;               // flagged: a const method can silently change state
+  mutable std::atomic<int> ok_{0};     // fine: atomics, locks, once_flags and cells are sanctioned
+  mutable mutex mu_;                   // fine
+  mutable int memo_ RELOCO_GUARDED_BY(mu_) = 0;  // fine: guarded by a lock
+};
+```
+
+Flagged: any `mutable` field whose type is not an atomic, lock/mutex, `once_flag`, condition variable or
+`cell`, and that has no `RELOCO_GUARDED_BY`. Type names are matched by substring, also for dependent
+types. Use unsafe regions or `NOLINT` with a reason for the rare
+logically-const caches (lazy init, `enable_shared_from_this` back-pointers).
 
 ### `RELOCO_NS` poison pointers
 

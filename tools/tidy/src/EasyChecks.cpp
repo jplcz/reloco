@@ -414,6 +414,38 @@ void BannedLowLevelCheck::check(const MatchFinder::MatchResult &result) {
 }
 
 // ---------------------------------------------------------------------------
+// reloco-mutable-member
+// ---------------------------------------------------------------------------
+void MutableMemberCheck::registerMatchers(MatchFinder *finder) {
+  finder->addMatcher(fieldDecl(unless(isImplicit()), unless(isExpansionInSystemHeader())).bind("field"),
+                     this);
+}
+
+void MutableMemberCheck::check(const MatchFinder::MatchResult &result) {
+  const auto *fd = result.Nodes.getNodeAs<FieldDecl>("field");
+  const QualType t = fd->getType();
+  if (!fd->isMutable() || fd->isInvalidDecl() || t.isNull() ||
+      exempt(*result.SourceManager, fd->getLocation()) || inUnsafeTier(fd) || fd->hasAttr<GuardedByAttr>() || fd->hasAttr<PtGuardedByAttr>())
+    return;
+  // Atomics, locks and reloco's own cells are the sanctioned interior-mutability types (Rust's Cell/RefCell/Mutex).
+  if (const CXXRecordDecl *rd = recordOf(result.Context->getBaseElementType(t))) {
+    const std::string n = rd->getName().lower();
+    for (const char *w : {"atomic", "mutex", "once_flag", "condition", "spinlock", "lock", "cell"})
+      if (n.find(w) != std::string::npos)
+        return;
+  }
+  if (t->isDependentType()) {
+    const std::string n = llvm::StringRef(t.getAsString()).lower();
+    for (const char *w : {"atomic", "mutex", "once_flag", "condition", "lock", "cell"})
+      if (n.find(w) != std::string::npos)
+        return;
+  }
+  diag(fd->getLocation(), "mutable member %0 hides mutation behind a const interface") << fd;
+  howToFix(fd->getLocation(), "wrap it in 'reloco::cell<T>' / an atomic / a lock, mark it RELOCO_GUARDED_BY(mutex_), or "
+                              "drop 'mutable' and make the method non-const");
+}
+
+// ---------------------------------------------------------------------------
 // reloco-mutable-global
 // ---------------------------------------------------------------------------
 void MutableGlobalCheck::registerMatchers(MatchFinder *finder) {

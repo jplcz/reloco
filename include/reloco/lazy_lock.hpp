@@ -115,7 +115,11 @@ public:
   [[nodiscard]] const T *get() const && = delete;
 
 private:
+  // the initialiser runs at most once, inside the once_lock, on a logically const object.
+  // NOLINTNEXTLINE(reloco-mutable-member)
   mutable F f_;
+  // once_lock is the synchronisation primitive that makes lazy init safe through const.
+  // NOLINTNEXTLINE(reloco-mutable-member)
   mutable once_lock<T> cell_;
 };
 

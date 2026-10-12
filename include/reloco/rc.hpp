@@ -495,6 +495,8 @@ protected:
   ~enable_rc_from_this() = default;
 
 private:
+  // set once by rc construction (enable_rc_from_this protocol) on a const-qualified object.
+  // NOLINTNEXTLINE(reloco-mutable-member)
   mutable weak_rc<T> weak_this_;
 
   template <typename Tp, typename... Args>

@@ -53,6 +53,7 @@ CHECKS = [
     "reloco-aliased-arguments",
     "reloco-escaping-local",
     "reloco-member-order",
+    "reloco-mutable-member",
     "reloco-use-after-move",
     "reloco-early-static",
     "reloco-ns-pointer",
