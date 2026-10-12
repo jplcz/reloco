@@ -21,3 +21,10 @@ void asm_output() {
   asm volatile("" : "=r"(out));
   (void)out;
 }
+
+struct movable { movable(); movable(const movable &); movable(movable &&); ~movable(); };
+movable make();
+movable returned() {
+  movable m = make(); // returned by name: const would force a copy
+  return m;
+}

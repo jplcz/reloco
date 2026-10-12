@@ -285,6 +285,11 @@ void ConstLocalCheck::check(const MatchFinder::MatchResult &result) {
   const auto *dre_probe = vd;
   if (analyzer.isMutated(dre_probe))
     return;
+  // `return v;` moves (or elides) only a non-const local; const would turn it into a copy.
+  for (const auto &m : match(findAll(returnStmt(hasReturnValue(ignoringParenImpCasts(declRefExpr(to(equalsNode(vd)))))).bind("ret")),
+                             *fn->getBody(), *result.Context))
+    if (!m.getNodeAs<ReturnStmt>("ret")->getRetValue()->getType()->isReferenceType() && !vd->getType().isTriviallyCopyableType(*result.Context))
+      return;
   // The analyzer does not see inline-asm output operands as writes.
   for (const auto &m : match(findAll(asmStmt().bind("asm")), *fn->getBody(), *result.Context)) {
     const auto *as = m.getNodeAs<GCCAsmStmt>("asm");
