@@ -19,3 +19,7 @@ RELOCO_UNSAFE_BUFFER_USAGE void unsafe_copy(char *d, const void *q) noexcept {
   memcpy(d, q, 1);
   (void)reinterpret_cast<const char *>(q);
 }
+// The reloco::unsafe namespace counts as the unsafe tier.
+namespace reloco::unsafe {
+inline const char *punned(const void *q) noexcept { return reinterpret_cast<const char *>(q); }
+}  // namespace reloco::unsafe

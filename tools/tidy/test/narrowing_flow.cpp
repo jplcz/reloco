@@ -19,3 +19,5 @@ std::uint32_t bad_sign(std::int32_t x) noexcept { return static_cast<std::uint32
 std::int32_t bad_unsigned_big(std::uint64_t x) noexcept { return static_cast<std::int32_t>(x >> 8); }  // expect: reloco-narrowing-flow
 std::uint8_t bad_arith(std::uint8_t a, std::uint8_t b) noexcept { return static_cast<std::uint8_t>(a + b); }  // expect: reloco-narrowing-flow
 std::uint16_t suppressed(std::uint32_t x) noexcept { return static_cast<std::uint16_t>(x); }  // NOLINT(reloco-narrowing-flow)
+// An all-ones constant is a deliberate mask, not a narrowing.
+std::uint32_t all_ones() noexcept { return static_cast<std::uint32_t>(-1); }

@@ -19,3 +19,9 @@ struct full {
   ~full() = default;
 };
 struct none { int x = 0; };
+// Both copy operations deleted: satisfied without spelling out the moves.
+struct pinned {
+  pinned(const pinned &) = delete;
+  pinned &operator=(const pinned &) = delete;
+  ~pinned() = default;
+};
