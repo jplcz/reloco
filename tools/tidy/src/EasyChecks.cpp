@@ -345,22 +345,23 @@ void EnumSwitchCheck::check(const MatchFinder::MatchResult &result) {
     if (cs->getLHS()->EvaluateAsInt(er, *result.Context))
       covered.push_back(er.Val.getInt());
   }
-  if (hasDefault) {
-    diag(sw->getSwitchLoc(), "switch over enum %0 must list every enumerator instead of using 'default', so a new "
-                             "enumerator breaks the build")
-        << ed;
-    howToFix(sw->getSwitchLoc(), "delete 'default:' and add a case for each remaining enumerator (group them with fallthrough "
-                                 "labels if they share handling); adding an enumerator later then fails to compile");
-    return;
-  }
   for (const EnumConstantDecl *ec : ed->enumerators()) {
     bool found = false;
     for (const llvm::APSInt &v : covered)
       if (llvm::APSInt::isSameValue(v, ec->getInitVal()))
         found = true;
     if (!found) {
-      diag(sw->getSwitchLoc(), "switch over enum %0 does not handle enumerator %1") << ed << ec;
-      howToFix(sw->getSwitchLoc(), "add 'case E::name:' for every missing enumerator");
+      // A 'default' usually only silences -Wswitch / static analyzers and would swallow enumerators added later.
+      if (hasDefault)
+        diag(sw->getSwitchLoc(), "switch over enum %0 has a 'default' but does not list enumerator %1; 'default' must not "
+                                 "stand in for enumerators")
+            << ed << ec;
+      else
+        diag(sw->getSwitchLoc(), "switch over enum %0 does not handle enumerator %1") << ed << ec;
+      howToFix(sw->getSwitchLoc(), "add 'case E::name:' for every enumerator (group them with fallthrough labels if they "
+                                   "share handling); keep 'default:' only as the extra arm for out-of-range values, so "
+                                   "adding an enumerator later still fails to compile; suppress with NOLINT where a "
+                                   "catch-all is intended");
       return;
     }
   }

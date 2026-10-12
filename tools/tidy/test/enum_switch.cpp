@@ -18,6 +18,24 @@ int g(e v) noexcept {
   }
   return 0;
 }
+int with_default_all_listed(e v) noexcept {
+  switch (v) {
+  case e::a: return 1;
+  case e::b: return 2;
+  default: return 3;  // allowed: every enumerator is listed, default only guards out-of-range values
+  }
+}
+int default_only(e v) noexcept {
+  switch (v) {  // expect: reloco-enum-switch
+  default: return 3;
+  }
+}
+int default_suppressed(e v) noexcept {
+  switch (v) {  // NOLINT(reloco-enum-switch)
+  case e::a: return 1;
+  default: return 2;
+  }
+}
 int h(e v) noexcept {
   switch (v) {
   case e::a: return 1;

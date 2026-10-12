@@ -57,6 +57,36 @@ RELOCO_TIDY_CHECK(UninitLocalCheck);
 // Raw C arrays (variables, members) are banned in favour of reloco::span/array/inline_vector.
 RELOCO_TIDY_CHECK(NoCArrayCheck);
 
+// Use of a local/parameter after std::move(x) without reassigning it (Rust's "borrow of moved value").
+class UseAfterMoveCheck : public RelocoCheck {
+public:
+  using RelocoCheck::RelocoCheck;
+  void registerMatchers(MatchFinder *finder) override;
+  void check(const MatchFinder::MatchResult &result) override;
+  bool isLanguageVersionSupported(const LangOptions &lo) const override { return lo.CPlusPlus; }
+
+private:
+  llvm::DenseSet<const FunctionDecl *> seen_;
+};
+
+// Structural modification of a container inside a range-for over it (hidden iterators invalidated).
+RELOCO_TIDY_CHECK(IteratorInvalidationCheck);
+
+// RELOCO_MUST_CONSUME values (linear resources) must be consumed on every path (Rust's explicit drop / must-use values).
+RELOCO_TIDY_CHECK(LeakCheck);
+
+// Members of a class that owns a mutex must be RELOCO_GUARDED_BY it (or RELOCO_UNGUARDED / const / atomic).
+RELOCO_TIDY_CHECK(LockGuardCheck);
+
+// Explicit integer casts must be provably lossless by value-range analysis (masks, modulo, shifts, constants).
+RELOCO_TIDY_CHECK(NarrowingFlowCheck);
+
+// Arguments to RELOCO_REQUIRE_SEND / RELOCO_REQUIRE_SYNC parameters (thread/task spawn points) must be Send / Sync.
+RELOCO_TIDY_CHECK(SendSyncCheck);
+
+// Indexing ([] and at) with a signed type whose value range may be negative.
+RELOCO_TIDY_CHECK(SignedIndexCheck);
+
 // Implicit narrowing / sign-changing / lossy float conversions need an explicit cast.
 RELOCO_TIDY_CHECK(ImplicitConversionCheck);
 // Single-argument constructors and conversion operators must be explicit.

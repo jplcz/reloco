@@ -172,7 +172,7 @@ CLion runs clang-tidy itself, so use its external-tool path for the plugin:
 | `reloco-unused-result` | A discarded call result of those types is an error; cast to `void` with a reason. | Dropped errors. |
 | `reloco-const-local` | A local that is never mutated must be `const` (pointers, references and arrays excluded). | Immutable by default, like `let`. |
 | `reloco-no-shadow` | A local may not shadow another local or parameter of an enclosing scope. | |
-| `reloco-enum-switch` | A `switch` over an enum lists every enumerator and has no `default`. | A new enumerator breaks the build. Pair with `-Wimplicit-fallthrough` for fallthrough. |
+| `reloco-enum-switch` | A `switch` over an enum lists every enumerator, **even when it has a `default`**: a `default` that stands in for enumerators (usually written to silence GCC/Clang or static analyzers) is reported. `default` stays allowed as an extra arm for out-of-range values once all enumerators are listed; suppress with `NOLINT` where a catch-all is intended. | A new enumerator breaks the build. Pair with `-Wimplicit-fallthrough` for fallthrough. |
 | `reloco-banned-low-level` | `goto`, `setjmp`/`longjmp`, `union` and `volatile` (suppress MMIO with `NOLINT` and a reason). | Each bypasses a static guarantee. |
 | `reloco-mutable-global` | Mutable namespace-scope, static-member and function-static variables are banned, except atomic/mutex/lock types. | Rust's `static mut`. |
 | `reloco-unsafe-call-scope` | Calls to `unsafe_*` / `[[unsafe_buffer_usage]]` functions are only allowed from the unsafe tier or inside unsafe regions (also Clang's `unsafe_buffer_usage` blocks). | Rust's `unsafe` blocks. |
@@ -180,6 +180,12 @@ CLion runs clang-tidy itself, so use its external-tool path for the plugin:
 | `reloco-safe-math` | **Opt-in.** Inside a function or class marked `RELOCO_SAFE_MATH`, raw integer `+ - * / % << >>`, `++`, `--`, unary `-` on non-constant operands are rejected; use `checked.hpp`, `saturating.hpp` or `wrapping.hpp`. Unmarked code is never checked. | Overflow is explicit where it matters. |
 | `reloco-member-init` | Every field has a default member initializer (self-initialising class types excepted). | No indeterminate members. |
 | `reloco-rule-of-five` | Declaring any of destructor, copy/move constructor, copy/move assignment means declaring all five (`= default`/`= delete`). A lone defaulted destructor is allowed. | Explicit ownership semantics. |
+| `reloco-use-after-move` | A local or parameter passed to `std::move` may not be read again on any path (loops included) until it is reassigned or reinitialised (`x = ...`, `x.clear()`, `reset`, `assign`, `emplace`). Trivially copyable types are exempt (a move is a copy). Emits a note at the move. | Rust's "borrow of moved value". |
+| `reloco-iterator-invalidation` | Inside a range-for, the iterated container may not be modified (non-const member other than `at`/`front`/`back`/`begin`/`end`/`find`/`size`..., assignment, or passing it to a mutable-reference parameter), unless the change is immediately followed by `break`/`return`. Iterators bound to variables are covered by `reloco-borrow-check`. | Hidden iterators dangle after reallocation. |
+| `reloco-leak` | **Opt-in by type.** A local or by-value parameter of a `RELOCO_MUST_CONSUME` class must be consumed on every path that leaves the function: `std::move(x)`, `return x`, `&x` (escape) or a `RELOCO_CONSUMES` member. Reported at the exit, with a note at the declaration. | Linear resources (transactions, tokens) cannot be dropped silently. |
+| `reloco-lock-guard` | In a class that owns a mutex (a `RELOCO_CAPABILITY` member), every other mutable member must be `RELOCO_GUARDED_BY(mutex)`, `RELOCO_UNGUARDED`, const, a reference, atomic or a synchronisation primitive. Fix-it appends `RELOCO_GUARDED_BY(mu)` when there is exactly one mutex. Enable `-Wthread-safety` so access to guarded members is then enforced by Clang. | Every shared field names its lock. |
+| `reloco-narrowing-flow` | Explicit integer casts (`static_cast`, functional, C-style) must be provably lossless. A value-range analysis understands constants, `&` masks, `%`, `>>`, `/`, `+ - *` on known ranges, `?:` and small types; casts that may truncate or change sign are reported with the computed range. Same-width `char` to byte reinterpretation is allowed. Complements `reloco-implicit-conversion`, which stops at explicit casts. | Explicit casts are where truncation hides. |
+| `reloco-send-sync` | Arguments passed to a `RELOCO_REQUIRE_SEND` parameter (thread/task spawn) must be Send; arguments to a `RELOCO_REQUIRE_SYNC` parameter must be Sync. Send is structural: scalars and aggregates of Send members; owners (`RELOCO_OWNER`) iff their template arguments are; raw pointers, references, views (`RELOCO_POINTER`), `RELOCO_NOT_SEND` types and lambdas capturing by reference or `this` are not. `RELOCO_SEND` overrides after an audit. Sync: `RELOCO_SYNC`, atomics, mutexes, all-const types, or a mutex owner. | Rust's `Send`/`Sync`. |
 | `reloco-borrow-check` | Best-effort Rust-style borrow checking inside one function. See below. | Aliasing XOR mutability. |
 
 ### `RELOCO_OUT`
@@ -219,6 +225,30 @@ Limits: no inter-procedural reasoning, no aliasing through containers or heap, n
 tracking. Use Clang's `-Wlifetime-safety` for use-after-return/scope. It is a bug finder, not a proof.
 
 Slicing is deliberately not a separate rule: polymorphic bases are already a red flag.
+
+### Annotations used by the flow checks
+
+```cpp
+#include <reloco/lifetime.hpp>
+
+// reloco-leak: a transaction must be committed or handed over on every path.
+// RELOCO_MUST_CONSUME marks the class; RELOCO_CONSUMES (first in the declaration) marks the
+// member that releases it.
+struct RELOCO_MUST_CONSUME txn { RELOCO_CONSUMES void commit() noexcept; };
+
+// reloco-lock-guard: every mutable member next to a mutex names its lock (-Wthread-safety
+// then rejects unlocked access). RELOCO_UNGUARDED documents a deliberate exception.
+class counter {
+  reloco::mutex mu_;
+  int hits_ RELOCO_GUARDED_BY(mu_) = 0;
+  int generation_ RELOCO_UNGUARDED = 0;  // written once before threads start
+};
+
+// reloco-send-sync: the parameter that crosses a thread boundary says so. The checker then
+// verifies each argument at the call site; the lambda below captures by value, so it is Send.
+template <typename F> void spawn(F fn RELOCO_REQUIRE_SEND) noexcept;
+void start(int n) noexcept { spawn([n]() noexcept { (void)n; }); }
+```
 
 ## Fix-its and "how to fix" notes
 
@@ -288,6 +318,8 @@ The macros expand to `_Pragma("region ...")`, which GCC, Clang and MSVC accept s
 ## Macro reference (`reloco/lifetime.hpp`)
 
 `RELOCO_POINTER`, `RELOCO_OWNER`, `RELOCO_LIFETIMEBOUND`, `RELOCO_COPYABLE`, `RELOCO_OUT`,
-`RELOCO_BORROW_EXEMPT`, `RELOCO_CHECKED`, `RELOCO_SAFE_MATH`, `RELOCO_UNSAFE_BUFFER_USAGE`, `RELOCO_BEGIN/END_SAFE_CODE`,
+`RELOCO_BORROW_EXEMPT`, `RELOCO_CHECKED`, `RELOCO_SAFE_MATH`,
+`RELOCO_MUST_CONSUME`, `RELOCO_CONSUMES`, `RELOCO_UNGUARDED`, `RELOCO_SEND`, `RELOCO_NOT_SEND`, `RELOCO_SYNC`,
+`RELOCO_REQUIRE_SEND`, `RELOCO_REQUIRE_SYNC`, `RELOCO_UNSAFE_BUFFER_USAGE`, `RELOCO_BEGIN/END_SAFE_CODE`,
 `RELOCO_BEGIN/END_UNSAFE_CODE`, `RELOCO_BEGIN/END_UNSAFE_BUFFER_USAGE`. All compile to nothing
 where the compiler lacks the attribute. See also [lifetime safety](lifetime-safety.md).

@@ -39,6 +39,13 @@ public:
     f.registerCheck<BannedStdTypeCheck>("reloco-banned-std-type");
     f.registerCheck<BannedConstructCheck>("reloco-banned-construct");
     f.registerCheck<BorrowCheck>("reloco-borrow-check");
+    f.registerCheck<LeakCheck>("reloco-leak");
+    f.registerCheck<LockGuardCheck>("reloco-lock-guard");
+    f.registerCheck<NarrowingFlowCheck>("reloco-narrowing-flow");
+    f.registerCheck<SendSyncCheck>("reloco-send-sync");
+    f.registerCheck<SignedIndexCheck>("reloco-signed-index");
+    f.registerCheck<UseAfterMoveCheck>("reloco-use-after-move");
+    f.registerCheck<IteratorInvalidationCheck>("reloco-iterator-invalidation");
   }
 };
 

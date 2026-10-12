@@ -49,6 +49,13 @@ CHECKS = [
     "reloco-banned-std-type",
     "reloco-banned-construct",
     "reloco-borrow-check",
+    "reloco-use-after-move",
+    "reloco-signed-index",
+    "reloco-send-sync",
+    "reloco-narrowing-flow",
+    "reloco-lock-guard",
+    "reloco-leak",
+    "reloco-iterator-invalidation",
 ]
 DIAG = re.compile(r"^(?P<file>[^:\n]+):(?P<line>\d+):\d+: (?:warning|error): .*\[(?P<check>reloco-[\w-]+)\]$")
 ONLY = re.compile(r"//\s*checks:\s*(?P<names>[\w\-, ]+)")

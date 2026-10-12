@@ -146,6 +146,108 @@
 #endif
 
 /**
+ * @def RELOCO_MUST_CONSUME
+ * @brief Marks a class as a linear resource (Rust's "must be consumed" / explicit drop): a local
+ * or by-value parameter of this type must be consumed on every path that leaves the function,
+ * by `std::move(x)`, `return x;`, taking its address (escape), or a member marked
+ * `RELOCO_CONSUMES`. reloco-tidy's `reloco-leak` reports paths that drop it silently. Place it after
+ * the class key: `struct RELOCO_MUST_CONSUME txn { RELOCO_CONSUMES void commit() noexcept; };`.
+ * Compiles to nothing for GCC/MSVC.
+ */
+#if RELOCO_HAS_CPP_ATTRIBUTE(clang::annotate)
+#define RELOCO_MUST_CONSUME [[clang::annotate("reloco_must_consume")]]
+#else
+#define RELOCO_MUST_CONSUME
+#endif
+
+/**
+ * @def RELOCO_CONSUMES
+ * @brief Marks a member function of a RELOCO_MUST_CONSUME class as consuming its object: after
+ * the call the object counts as released for `reloco-leak`. Place it first in the declaration
+ * (an attribute after `noexcept` would apply to the function type): `RELOCO_CONSUMES void commit() noexcept;`. Compiles to nothing for GCC/MSVC.
+ */
+#if RELOCO_HAS_CPP_ATTRIBUTE(clang::annotate)
+#define RELOCO_CONSUMES [[clang::annotate("reloco_consumes")]]
+#else
+#define RELOCO_CONSUMES
+#endif
+
+/**
+ * @def RELOCO_UNGUARDED
+ * @brief Marks a data member that lives next to a mutex but is deliberately not protected by
+ * it (immutable after construction, only touched by one thread, protected by another
+ * mechanism). Without it, `reloco-lock-guard` requires `RELOCO_GUARDED_BY(mutex)` on every mutable
+ * member of a class that owns a mutex. Place it after the member name:
+ * `int generation_ RELOCO_UNGUARDED;`. Compiles to nothing for GCC/MSVC.
+ */
+#if RELOCO_HAS_CPP_ATTRIBUTE(clang::annotate)
+#define RELOCO_UNGUARDED [[clang::annotate("reloco_unguarded")]]
+#else
+#define RELOCO_UNGUARDED
+#endif
+
+/**
+ * @def RELOCO_SEND
+ * @brief Marks a class as safe to move to another thread (Rust's `Send`), overriding the structural
+ * rule of `reloco-send-sync` (a class is Send when all members and bases are Send, owners are Send when
+ * their template arguments are, and raw pointers, references and views are not). Place after the class key:
+ * `struct RELOCO_SEND channel_end { ... };`. Compiles to nothing for GCC/MSVC.
+ */
+#if RELOCO_HAS_CPP_ATTRIBUTE(clang::annotate)
+#define RELOCO_SEND [[clang::annotate("reloco_send")]]
+#else
+#define RELOCO_SEND
+#endif
+
+/**
+ * @def RELOCO_NOT_SEND
+ * @brief Marks a class as never movable to another thread (thread-affine handles, TLS-backed state), even if
+ * its members look Send. Place after the class key. Compiles to nothing for GCC/MSVC.
+ */
+#if RELOCO_HAS_CPP_ATTRIBUTE(clang::annotate)
+#define RELOCO_NOT_SEND [[clang::annotate("reloco_not_send")]]
+#else
+#define RELOCO_NOT_SEND
+#endif
+
+/**
+ * @def RELOCO_SYNC
+ * @brief Marks a class as safe to share by reference between threads (Rust's `Sync`): it is immutable,
+ * atomic, or guards all mutation with a mutex. Without it, `reloco-send-sync` accepts types that are atomic, a
+ * mutex, all-const, or a mutex owner whose other members are guarded. Place after the class key.
+ * Compiles to nothing for GCC/MSVC.
+ */
+#if RELOCO_HAS_CPP_ATTRIBUTE(clang::annotate)
+#define RELOCO_SYNC [[clang::annotate("reloco_sync")]]
+#else
+#define RELOCO_SYNC
+#endif
+
+/**
+ * @def RELOCO_REQUIRE_SEND
+ * @brief Marks a parameter (callable or argument handed to another thread/task, e.g. `spawn`) as requiring
+ * a Send argument; `reloco-send-sync` checks every call. Lambdas count as Send only when all captures are by
+ * value and Send. Place after the parameter name: `void spawn(F fn RELOCO_REQUIRE_SEND);`. Compiles to nothing
+ * for GCC/MSVC.
+ */
+#if RELOCO_HAS_CPP_ATTRIBUTE(clang::annotate)
+#define RELOCO_REQUIRE_SEND [[clang::annotate("reloco_require_send")]]
+#else
+#define RELOCO_REQUIRE_SEND
+#endif
+
+/**
+ * @def RELOCO_REQUIRE_SYNC
+ * @brief Marks a reference/pointer parameter whose referent is shared between threads and must be Sync
+ * (`void share(const T &v RELOCO_REQUIRE_SYNC);`). Compiles to nothing for GCC/MSVC.
+ */
+#if RELOCO_HAS_CPP_ATTRIBUTE(clang::annotate)
+#define RELOCO_REQUIRE_SYNC [[clang::annotate("reloco_require_sync")]]
+#else
+#define RELOCO_REQUIRE_SYNC
+#endif
+
+/**
  * @def RELOCO_CHECKED
  * @brief Declares that a class's `operator[]`, unary `operator*` and `operator->` perform bounds
  * or null checking (e.g. return a `result`, assert, or clamp). reloco-tidy's `reloco-checked-operator`

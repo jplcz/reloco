@@ -163,10 +163,11 @@ void OutParamCheck::check(const MatchFinder::MatchResult &result) {
         const auto cs = el.getAs<CFGStmt>();
         if (!cs)
           continue;
-        if (!w && reads(cs->getStmt(), p))
+        if (!w && reads(cs->getStmt(), p)) {
           diag(cs->getStmt()->getBeginLoc(), "out-parameter %0 is read before it has been written") << p;
           howToFix(cs->getStmt()->getBeginLoc(), "assign first ('*x = initial;'), or take the value as a separate input "
                                                  "parameter instead of an out-parameter");
+        }
         if (writes(cs->getStmt(), p))
           w = true;
       }

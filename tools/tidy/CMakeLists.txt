@@ -44,6 +44,12 @@ add_library(reloco-tidy MODULE
     src/NoCArrayCheck.cpp
     src/NoexceptCheck.cpp
     src/EasyChecks.cpp
+    src/UseAfterMoveCheck.cpp
+    src/SendSyncCheck.cpp
+    src/NarrowingFlowCheck.cpp
+    src/LockGuardCheck.cpp
+    src/LeakCheck.cpp
+    src/IteratorInvalidationCheck.cpp
     src/OutParamCheck.cpp
     src/UninitLocalCheck.cpp
     src/ImplicitCopyCheck.cpp
