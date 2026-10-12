@@ -26,3 +26,11 @@ template <typename T> int generic(T t) noexcept {
   auto f = [&]() noexcept { return t; };  // expect: reloco-lambda-default-capture
   return f();
 }
+
+template <typename T> struct holder {
+  T value{};
+  int run(int k) noexcept {
+    auto f = [&]() noexcept { return value + k; };  // expect: reloco-lambda-default-capture
+    return f();
+  }
+};
