@@ -155,7 +155,7 @@ CLion runs clang-tidy itself, so use its external-tool path for the plugin:
 
 | Check | Rule | Why |
 |---|---|---|
-| `reloco-ref-qualified-member` | Non-static members that return an alias of the object must be `&`/`const &` qualified, or have an explicit `&&` overload. Option `StrictNonConst: true` also requires `&` on non-const members that return no alias. | Calling them on temporaries is blocked, so views and references to a dying object cannot be created. |
+| `reloco-ref-qualified-member` | Non-static members that return an alias of the object must be `&`/`const &` qualified, or have an explicit `&&` overload. Option `StrictNonConst: true` also requires `&` on non-const members that return no alias. Exempt: by-value handles/proxies (`RELOCO_POINTER`), `operator()`, unary `*` and `->`, and members with any `&&` overload. | Calling them on temporaries is blocked, so views and references to a dying object cannot be created. |
 | `reloco-no-raw-pointer` | Raw pointers only inside `RELOCO_POINTER`/`RELOCO_OWNER` types, the unsafe tier, vtables, function pointers and `extern "C"`. Use `value_ptr`, `value_ref` or `span` elsewhere. | Raw pointers carry no size, lifetime or ownership. |
 | `reloco-no-c-array` | No raw C array variables or members; use `reloco::array`, `inline_vector` or a span. | Arrays decay to pointers and lose their bounds. |
 | `reloco-noexcept` | Every function and lambda is `noexcept` (a conditional `noexcept(expr)` counts as explicit). | Failure is a `result<T>`, never an exception. |
@@ -331,13 +331,14 @@ clang-tidy-24 --load=build-tidy/libreloco-tidy.so --checks='-*,reloco-*' \
     --header-filter='include/reloco/.*' tests/compile_all_headers.cpp -- -std=c++20 -Iinclude
 ```
 
-Results of the first pass (about 2300 findings, now about 935) and what they led to:
+Results of the first pass (about 2300 findings, now about 755) and what they led to:
 
 | Finding | Resolution |
 |---|---|
 | `reloco-member-init` fired on fields of instantiated class templates whose in-class initializer is instantiated lazily | The check skips template instantiations; the template pattern is checked instead. |
 | `reloco-ref-qualified-member` fired on every non-const member (418 of 517) | Default narrowed to members that return an alias; `StrictNonConst: true` restores the strict rule. |
 | `reloco-no-raw-pointer` fired on parameters of function pointer types and of captureless lambdas (vtable slots) | Those parameters are exempt; the function implementing the slot is still checked. |
+| `reloco-ref-qualified-member`: 180 findings, mostly missing `&` and missing deleted `const &&` overloads | Applied the check's own fix-its (`&` on members; a deleted `const &&` twin for `const &` accessors). The check now exempts by-value handles and proxies (`RELOCO_POINTER`, e.g. `masked_byte_region::reference`), call operators, unary `*`/`->` and accessors with any `&&` overload. 180 findings down to 0. |
 | `reloco-checked-operator`: 80 library operators lacked `RELOCO_CHECKED` | They assert, delegate to an asserting accessor, or are non-null by construction, so they are now annotated; the iterator operators without a check gained an assertion. 207 findings down to 0. |
 | `detail/` type-erased bases and the allocator and OS shims address raw memory by design | Wrapped in `RELOCO_BEGIN_UNSAFE_CODE` / `RELOCO_END_UNSAFE_CODE` with a comment saying why. |
 
