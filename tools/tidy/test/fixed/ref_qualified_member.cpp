@@ -21,7 +21,7 @@ struct widget {
   const int &cref_lv() const & noexcept { return v; } // expect: reloco-ref-qualified-member
   const int &cref_ok() const & noexcept { return v; }
   const int &cref_ok() const && = delete;
-  void set(int x) & noexcept { v = x; }               // expect: reloco-ref-qualified-member
+  void set(int x) noexcept { v = x; }               // non-aliasing: only flagged with StrictNonConst
   void set_ok(int x) & noexcept { v = x; }
   static int make() noexcept { return 1; }
   widget &operator=(const widget &) noexcept = default;

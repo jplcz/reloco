@@ -155,7 +155,7 @@ CLion runs clang-tidy itself, so use its external-tool path for the plugin:
 
 | Check | Rule | Why |
 |---|---|---|
-| `reloco-ref-qualified-member` | Non-static members must be `&`/`const &` qualified, or have an explicit `&&` overload. | Calling them on temporaries is blocked, so views and references to a dying object cannot be created. |
+| `reloco-ref-qualified-member` | Non-static members that return an alias of the object must be `&`/`const &` qualified, or have an explicit `&&` overload. Option `StrictNonConst: true` also requires `&` on non-const members that return no alias. | Calling them on temporaries is blocked, so views and references to a dying object cannot be created. |
 | `reloco-no-raw-pointer` | Raw pointers only inside `RELOCO_POINTER`/`RELOCO_OWNER` types, the unsafe tier, vtables, function pointers and `extern "C"`. Use `value_ptr`, `value_ref` or `span` elsewhere. | Raw pointers carry no size, lifetime or ownership. |
 | `reloco-no-c-array` | No raw C array variables or members; use `reloco::array`, `inline_vector` or a span. | Arrays decay to pointers and lose their bounds. |
 | `reloco-noexcept` | Every function and lambda is `noexcept` (a conditional `noexcept(expr)` counts as explicit). | Failure is a `result<T>`, never an exception. |

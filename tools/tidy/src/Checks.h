@@ -19,7 +19,22 @@ namespace reloco::tidy {
 
 // Non-static members must be &/const&-qualified (or have an explicit &&
 // overload) so they cannot be called on temporaries.
-RELOCO_TIDY_CHECK(RefQualifiedMemberCheck);
+class RefQualifiedMemberCheck : public RelocoCheck {
+public:
+  RefQualifiedMemberCheck(llvm::StringRef name, clang::tidy::ClangTidyContext *ctx)
+      : RelocoCheck(name, ctx), strict_(Options.get("StrictNonConst", false)) {}
+  void storeOptions(clang::tidy::ClangTidyOptions::OptionMap &opts) override {
+    RelocoCheck::storeOptions(opts);
+    Options.store(opts, "StrictNonConst", strict_);
+  }
+  void registerMatchers(MatchFinder *finder) override;
+  void check(const MatchFinder::MatchResult &result) override;
+  bool isLanguageVersionSupported(const LangOptions &lo) const override { return lo.CPlusPlus; }
+
+private:
+  // Also require '&' on non-const members that return no alias (default: only aliasing ones are a hazard).
+  bool strict_;
+};
 // Raw pointers only inside gsl::pointer/gsl::owner types, the unsafe tier,
 // vtables, function pointers and extern "C"; everything else uses value_ptr/value_ref/span.
 RELOCO_TIDY_CHECK(NoRawPointerCheck);

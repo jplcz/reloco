@@ -564,6 +564,9 @@ void MemberInitCheck::check(const MatchFinder::MatchResult &result) {
   const auto *fd = result.Nodes.getNodeAs<FieldDecl>("field");
   const RecordDecl *parent = fd->getParent();
   const QualType t = fd->getType();
+  if (const auto *crd = dyn_cast<CXXRecordDecl>(parent);
+      crd && (crd->getTemplateSpecializationKind() != TSK_Undeclared || crd->getInstantiatedFromMemberClass()))
+    return;
   if (fd->isInvalidDecl() || t.isNull() || t->isDependentType() || parent->isUnion() || parent->isLambda() ||
       t->isReferenceType() || fd->isTemplated() || fd->isUnnamedBitField() ||
       exempt(*result.SourceManager, fd->getLocation()) || inUnsafeTier(fd))

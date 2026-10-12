@@ -61,6 +61,9 @@ void RefQualifiedMemberCheck::check(const MatchFinder::MatchResult &result) {
     return;
   }
 
+  // A non-const member that returns no alias cannot leave a reference into a dying temporary behind.
+  if (!aliasing && !strict_)
+    return;
   if (md->getRefQualifier() == RQ_None) {
     auto d = diag(md->getLocation(), "non-const member %0 is callable on temporaries; qualify it with '&'") << md;
     if (const SourceLocation at = functionQualifierEnd(md, *result.SourceManager, result.Context->getLangOpts(), false); at.isValid())
