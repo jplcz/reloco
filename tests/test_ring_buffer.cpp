@@ -1,3 +1,5 @@
+#include <string>
+#include <vector>
 #include <array>
 #include <gtest/gtest.h>
 #include <reloco/array.hpp>
@@ -837,4 +839,132 @@ TEST(RingBufferSmokeTest, RingBufferRefTypeErasure) {
 
   EXPECT_EQ(remaining_in_cursor, 5); // 7 - 2 = 5 inside the cursor
   EXPECT_EQ(fast_buf.size(), 7);     // Original is UNTOUCHED!
+}
+
+// ---- Packed (varint) frame headers ----
+
+namespace {
+
+struct PackedHeader {
+  std::uint64_t id{0};
+  std::uint64_t payload_len{0};
+};
+
+struct PackedCodec {
+  using header_type = PackedHeader;
+  static constexpr std::size_t max_header_size = 21;
+
+  static void encode(const PackedHeader &h, reloco::packed_writer &w) noexcept {
+    w.put_u8(0xA5);
+    w.put_varint(h.id);
+    w.put_varint(h.payload_len);
+  }
+  static bool decode(reloco::packed_reader &r, PackedHeader &h) noexcept {
+    if (r.get_u8() != 0xA5)
+      r.set_invalid();
+    h.id = r.get_varint();
+    h.payload_len = r.get_varint();
+    return r.ok();
+  }
+  static std::size_t frame_size(const PackedHeader &h, std::size_t header_bytes) noexcept {
+    return header_bytes + static_cast<std::size_t>(h.payload_len);
+  }
+};
+
+reloco::result<void> write_packed(reloco::detail::unowned_ring_base<char> &ring, std::uint64_t id,
+                                  reloco::string_view text) {
+  const reloco::array<reloco::span<const char>, 1> parts{{reloco::span<const char>(text.data(), text.size())}};
+  return ring.try_write_packed_frame_evicting<PackedCodec>(PackedHeader{id, text.size()}, parts);
+}
+
+} // namespace
+
+TEST(PackedFrame, VarintRoundTripsExtremes) {
+  char buf[16];
+  reloco::packed_writer w{reloco::span<char>(buf)};
+  w.put_varint(0);
+  w.put_varint(127);
+  w.put_varint(128);
+  w.put_varint(~0ULL);
+  w.put_svarint(-3);
+  ASSERT_TRUE(w.ok());
+  reloco::packed_reader r{reloco::span<const char>(buf, w.size())};
+  EXPECT_EQ(r.get_varint(), 0u);
+  EXPECT_EQ(r.get_varint(), 127u);
+  EXPECT_EQ(r.get_varint(), 128u);
+  EXPECT_EQ(r.get_varint(), ~0ULL);
+  EXPECT_EQ(r.get_svarint(), -3);
+  EXPECT_TRUE(r.ok());
+  (void)r.get_u8();
+  EXPECT_TRUE(r.underflow());
+}
+
+TEST(PackedFrame, HeaderIsSmallerThanFixedStruct) {
+  inline_ring_buffer<char, 64> ring;
+  ASSERT_TRUE(write_packed(ring, 5, "abc").has_value());
+  EXPECT_EQ(ring.size(), 1u + 1u + 1u + 3u); // sync + id + len + payload
+  EXPECT_LT(ring.size(), sizeof(PackedHeader) + 3u);
+}
+
+TEST(PackedFrame, ConsumeDeliversWrappedPayload) {
+  inline_ring_buffer<char, 32> ring;
+  for (int i = 0; i < 12; ++i) {
+    const std::string text = "payload-" + std::to_string(i);
+    ASSERT_TRUE(write_packed(ring, static_cast<std::uint64_t>(i), text).has_value());
+    std::string got;
+    std::uint64_t id = ~0ULL;
+    auto r = ring.try_consume_packed_frame<PackedCodec>(
+        [&](const PackedHeader &h, reloco::span<const char> a, reloco::span<const char> b) {
+          id = h.id;
+          got.assign(a.data(), a.size());
+          got.append(b.data(), b.size());
+        });
+    ASSERT_TRUE(r.has_value() && *r);
+    EXPECT_EQ(id, static_cast<std::uint64_t>(i));
+    EXPECT_EQ(got, text);
+    EXPECT_TRUE(ring.empty());
+  }
+}
+
+TEST(PackedFrame, EvictsWholeOldestFrames) {
+  inline_ring_buffer<char, 40> ring; // frame = 3 + 10 = 13 bytes -> 3 fit
+  for (std::uint64_t i = 0; i < 5; ++i)
+    ASSERT_TRUE(write_packed(ring, i, "0123456789").has_value());
+  std::vector<std::uint64_t> ids;
+  while (true) {
+    auto r = ring.try_consume_packed_frame<PackedCodec>(
+        [&](const PackedHeader &h, reloco::span<const char>, reloco::span<const char>) { ids.push_back(h.id); });
+    ASSERT_TRUE(r.has_value());
+    if (!*r)
+      break;
+  }
+  EXPECT_EQ(ids, (std::vector<std::uint64_t>{2, 3, 4}));
+}
+
+TEST(PackedFrame, IncompleteFrameWaitsAndCorruptFrontClears) {
+  inline_ring_buffer<char, 64> ring;
+  ASSERT_TRUE(write_packed(ring, 1, "hello").has_value());
+  ring.truncate(ring.size() - 2); // payload partially "arrived"
+  auto noop = [](const PackedHeader &, reloco::span<const char>, reloco::span<const char>) {};
+  auto r = ring.try_consume_packed_frame<PackedCodec>(noop);
+  ASSERT_TRUE(r.has_value());
+  EXPECT_FALSE(*r);
+
+  ring.clear();
+  ring.push_back(0x11); // wrong sync byte
+  auto bad = ring.try_consume_packed_frame<PackedCodec>(noop);
+  EXPECT_FALSE(bad.has_value());
+  EXPECT_TRUE(ring.empty());
+}
+
+TEST(PackedFrame, RejectsHeaderThatDisagreesWithPayload) {
+  inline_ring_buffer<char, 64> ring;
+  const reloco::array<reloco::span<const char>, 1> parts{{reloco::span<const char>("abc", 3)}};
+  EXPECT_FALSE(ring.try_write_packed_frame_evicting<PackedCodec>(PackedHeader{1, 9}, parts).has_value());
+  EXPECT_TRUE(ring.empty());
+}
+
+TEST(PackedFrame, FrameLargerThanBufferIsRejected) {
+  inline_ring_buffer<char, 8> ring;
+  EXPECT_FALSE(write_packed(ring, 1, "way too long for this ring").has_value());
 }

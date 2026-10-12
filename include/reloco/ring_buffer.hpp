@@ -39,6 +39,7 @@
 #include "expected.hpp"
 #include "iterator.hpp"
 #include "optional.hpp"
+#include "packed_header.hpp"
 #include "rvalue_safety.hpp"
 #include "span.hpp"
 #include <algorithm>
@@ -709,6 +710,176 @@ public:
 
     auto single_payload = array{payload};
     return try_write_frame_evicting(header, single_payload, std::forward<Validator>(validator));
+  }
+
+  // ---- Packed (variable-length) frame headers ----
+  //
+  // Same idea as the trivially-copyable frame API above, but the header is encoded by a *codec* (see
+  // packed_header.hpp) so it can use varints and omit redundant fields. Byte-oriented buffers only.
+
+  /** @brief Outcome of probing the front of the buffer for a packed frame header. */
+  enum class packed_probe {
+    incomplete, ///< not enough bytes yet to decode a header
+    ok,         ///< a header decoded; its frame may still be incomplete
+    corrupt     ///< the front is not a valid header (or announces a frame that can never fit)
+  };
+
+  /**
+   * @brief Decodes the packed header at the front without consuming anything.
+   *
+   * @tparam Codec See `packed_header.hpp`: `header_type`, `max_header_size`, `encode`, `decode`, `frame_size`.
+   * @param[out] header Decoded header (valid only when the result is `packed_probe::ok`).
+   * @param[out] header_bytes Encoded size of the header.
+   * @param[out] frame_size Total size of the frame (header included) as reported by the codec.
+   */
+  template <typename Codec>
+  [[nodiscard]] packed_probe peek_packed_header(typename Codec::header_type &header, size_type &header_bytes,
+                                                size_type &frame_size) const noexcept {
+    static_assert(sizeof(T) == 1, "packed frames require a byte-oriented buffer (char, uint8_t, std::byte)");
+    static_assert(Codec::max_header_size > 0, "a packed header codec must declare max_header_size");
+
+    T scratch[Codec::max_header_size];
+    const size_type got = this->peek(span<T>(scratch, Codec::max_header_size));
+    if (got == 0)
+      return packed_probe::incomplete;
+
+    packed_reader reader(span<const char>(reinterpret_cast<const char *>(scratch), got));
+    const bool good = Codec::decode(reader, header) && reader.ok();
+    if (!good) {
+      // Running out of input with a short buffer means "wait for more"; anything else is garbage.
+      return (reader.underflow() && !reader.invalid() && got < Codec::max_header_size) ? packed_probe::incomplete
+                                                                                         : packed_probe::corrupt;
+    }
+
+    header_bytes = reader.size();
+    frame_size = Codec::frame_size(header, header_bytes);
+    if (frame_size < header_bytes || frame_size > this->cap_)
+      return packed_probe::corrupt;
+    return packed_probe::ok;
+  }
+
+  /**
+   * @brief Packed-header counterpart of `try_peek_frame`: hands the payload of the oldest complete frame to
+   * @p processor WITHOUT consuming it.
+   *
+   * @param processor `void (const Codec::header_type&, span<const T> chunk1, span<const T> chunk2)`; the two
+   *        spans are the payload after the encoded header (the second is empty unless the frame wraps).
+   * @return `true` if a frame was peeked, `false` if waiting for more data,
+   *         `error::invalid_argument` if the front is corrupt (the buffer is NOT cleared: it is `const`).
+   */
+  template <typename Codec, typename Processor>
+  [[nodiscard]] result<bool> try_peek_packed_frame(Processor &&processor) const & noexcept {
+    typename Codec::header_type header{};
+    size_type header_bytes = 0;
+    size_type frame_size = 0;
+    switch (this->template peek_packed_header<Codec>(header, header_bytes, frame_size)) {
+    case packed_probe::incomplete:
+      return false;
+    case packed_probe::corrupt:
+      return reloco::unexpected(error::invalid_argument);
+    case packed_probe::ok:
+      break;
+    }
+    if (this->len_ < frame_size)
+      return false;
+
+    const std::size_t payload_elems = frame_size - header_bytes;
+    span<const T> chunk1, chunk2;
+    if (payload_elems > 0) {
+      const std::size_t payload_head = (this->head_ + header_bytes) % this->cap_;
+      const T *typed_data = static_cast<const T *>(this->data_);
+      const std::size_t first_chunk = std::min(payload_elems, this->cap_ - payload_head);
+      chunk1 = span<const T>(typed_data + payload_head, first_chunk);
+      if (first_chunk < payload_elems)
+        chunk2 = span<const T>(typed_data, payload_elems - first_chunk);
+    }
+    processor(header, chunk1, chunk2);
+    return true;
+  }
+
+  /**
+   * @brief Packed-header counterpart of `try_consume_frame`: processes and consumes the oldest complete frame.
+   *
+   * @return `true` if a frame was processed and consumed, `false` if waiting for more data,
+   *         `error::invalid_argument` if the front was corrupt (the buffer is cleared to resynchronise).
+   */
+  template <typename Codec, typename Processor>
+  [[nodiscard]] result<bool> try_consume_packed_frame(Processor &&processor) & noexcept {
+    typename Codec::header_type header{};
+    size_type header_bytes = 0;
+    size_type frame_size = 0;
+    switch (this->template peek_packed_header<Codec>(header, header_bytes, frame_size)) {
+    case packed_probe::incomplete:
+      return false;
+    case packed_probe::corrupt:
+      this->clear();
+      return reloco::unexpected(error::invalid_argument);
+    case packed_probe::ok:
+      break;
+    }
+    auto res = this->template try_peek_packed_frame<Codec>(std::forward<Processor>(processor));
+    if (res && *res)
+      this->consume(frame_size);
+    return res;
+  }
+
+  /**
+   * @brief Packed-header counterpart of `try_write_frame_evicting`: writes the encoded header and the payload
+   * chunks atomically, evicting COMPLETE older frames (sized by the codec) when space is short.
+   *
+   * The codec's `frame_size(header, encoded_size)` must equal the encoded header plus the payload bytes; if it
+   * does not (the header describes a different payload), nothing is written.
+   *
+   * @param payloads A range of spans (e.g. `array<span<const char>, N>`) written back to back after the header.
+   * @return `error::capacity_exceeded` if the frame is larger than the whole buffer,
+   *         `error::invalid_argument` if the header does not encode or disagrees with the payload size.
+   */
+  template <typename Codec, typename PayloadRange>
+  [[nodiscard]] result<void> try_write_packed_frame_evicting(const typename Codec::header_type &header,
+                                                             const PayloadRange &payloads) & noexcept {
+    static_assert(sizeof(T) == 1, "packed frames require a byte-oriented buffer (char, uint8_t, std::byte)");
+
+    char encoded[Codec::max_header_size];
+    packed_writer writer(span<char>(encoded, Codec::max_header_size));
+    Codec::encode(header, writer);
+    if (!writer.ok())
+      return unexpected(error::invalid_argument);
+    const std::size_t header_bytes = writer.size();
+
+    const std::size_t payload_elems = reloco::iter(payloads)
+                                          .map([](const auto &chunk) -> std::size_t {
+                                            using element_t = std::remove_reference_t<decltype(*chunk.data())>;
+                                            return (chunk.size() * sizeof(element_t)) / sizeof(T);
+                                          })
+                                          .sum();
+    const std::size_t total_elems = header_bytes + payload_elems;
+
+    if (Codec::frame_size(header, header_bytes) != total_elems)
+      return unexpected(error::invalid_argument);
+    if (total_elems > this->cap_)
+      return unexpected(error::capacity_exceeded);
+
+    while (this->free_space() < total_elems) {
+      typename Codec::header_type oldest{};
+      size_type oldest_header_bytes = 0;
+      size_type oldest_size = 0;
+      if (this->template peek_packed_header<Codec>(oldest, oldest_header_bytes, oldest_size) != packed_probe::ok) {
+        // Garbage at the front: wipe so the new frame starts on a clean slate.
+        this->clear();
+        break;
+      }
+      this->consume(std::min<std::size_t>(this->len_, oldest_size));
+    }
+
+    std::ignore = this->try_write_base(encoded, header_bytes, sizeof(T));
+    reloco::iter(payloads).for_each([this](const auto &chunk) {
+      if (!chunk.empty()) {
+        using chunk_element_t = std::remove_reference_t<decltype(*chunk.data())>;
+        std::ignore =
+            this->try_write_base(chunk.data(), (chunk.size() * sizeof(chunk_element_t)) / sizeof(T), sizeof(T));
+      }
+    });
+    return {};
   }
 
   // ---- Delimiter Searching ----

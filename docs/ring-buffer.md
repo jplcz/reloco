@@ -163,6 +163,53 @@ buffer without ever copying the payload out first.
   reading a POD struct across the wrap boundary without consuming;
   `try_read_frame` builds on this to peek the header.
 
+### Packed (variable-length) frame headers
+
+The functions above use a trivially-copyable `Header` struct, so every frame
+pays `sizeof(Header)` bytes. For dense streams (logs, traces) use the *packed*
+variants, which delegate the header encoding to a stateless **codec**
+(`packed_header.hpp`, which also provides the bounds-checked `packed_writer`
+/ `packed_reader` with LEB128 varints): `peek_packed_header<Codec>`,
+`try_peek_packed_frame<Codec>(processor)`,
+`try_consume_packed_frame<Codec>(processor)` and
+`try_write_packed_frame_evicting<Codec>(header, payloads)`. They behave like
+their fixed-header counterparts (atomic write, whole-frame eviction,
+`false` = wait for more data, `invalid_argument` + clear on corruption) and
+require a byte-oriented buffer.
+
+```cpp
+struct id_codec {
+  using header_type = my_header;                      // decoded, in-memory header
+  static constexpr std::size_t max_header_size = 21;  // worst-case encoded size; sizes a stack scratch buffer
+  // Fixed field order; small values cost one byte each.
+  static void encode(const my_header &h, reloco::packed_writer &w) noexcept {
+    w.put_u8(0xA5);                // sync byte so decode() can reject garbage
+    w.put_varint(h.id);
+    w.put_varint(h.payload_len);
+  }
+  // Return false for malformed data; running out of input is tracked by r.underflow(), which the ring
+  // uses to tell "wait for more bytes" from "corrupt".
+  static bool decode(reloco::packed_reader &r, my_header &h) noexcept {
+    if (r.get_u8() != 0xA5) r.set_invalid();
+    h.id = r.get_varint();
+    h.payload_len = r.get_varint();
+    return r.ok();
+  }
+  // Whole frame size = encoded header + the bytes that follow it; used to skip frames when evicting.
+  static std::size_t frame_size(const my_header &h, std::size_t header_bytes) noexcept {
+    return header_bytes + h.payload_len;
+  }
+};
+
+// Write: payloads are spans written back to back after the encoded header.
+reloco::array<reloco::span<const char>, 1> parts{{reloco::span<const char>(text.data(), text.size())}};
+auto w = ring.try_write_packed_frame_evicting<id_codec>(my_header{7, text.size()}, parts);
+
+// Read: the payload arrives as two spans because the frame may wrap the ring.
+auto r = ring.try_consume_packed_frame<id_codec>(
+    [&](const my_header &h, reloco::span<const char> a, reloco::span<const char> b) { /* use h, a, b */ });
+```
+
 ### Delimiter and sequence search
 
 `find(value, offset)` and `find_sequence(span<const T> seq, offset)` walk
