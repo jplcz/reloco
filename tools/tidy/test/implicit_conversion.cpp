@@ -20,3 +20,10 @@ void f(int i, unsigned u, long l, double d, float fl, unsigned char c) noexcept 
   short ok7 = static_cast<short>(i);
   (void)a; (void)b; (void)e; (void)g; (void)h; (void)ok1; (void)ok2; (void)ok3; (void)ok4; (void)ok5; (void)ok6; (void)ok7; (void)l;
 }
+
+// A member typedef is not nameable at the use site, so the fix-it spells the canonical type.
+struct with_size_type {
+  using size_type = unsigned long;
+  int at(size_type i) const noexcept;
+};
+int use_size_type(const with_size_type &w, int i) noexcept { return w.at(i); }  // expect: reloco-implicit-conversion

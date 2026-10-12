@@ -14,3 +14,10 @@ struct s {
 };
 struct n { int x = 0; };
 struct t { n inner; };
+
+// Nested records get no fix-it: the enclosing class cannot use their default member initializers before it is complete.
+struct outer_with_nested {
+  struct nested {
+    int x;  // expect: reloco-member-init
+  };
+};

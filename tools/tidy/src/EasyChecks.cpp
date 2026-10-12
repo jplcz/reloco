@@ -117,8 +117,14 @@ void ImplicitConversionCheck::check(const MatchFinder::MatchResult &result) {
   if (sr.isValid() && !sr.getBegin().isMacroID() && !sr.getEnd().isMacroID()) {
     const SourceLocation end = Lexer::getLocForEndOfToken(sr.getEnd(), 0, *result.SourceManager, ctx.getLangOpts());
     if (end.isValid())
-      d << FixItHint::CreateInsertion(sr.getBegin(), "static_cast<" + dst.getUnqualifiedType().getAsString(ctx.getPrintingPolicy()) + ">(")
+    {
+      // A member typedef (e.g. `size_type`) is not nameable at the use site: spell the canonical type instead.
+      QualType spelled = dst.getUnqualifiedType();
+      if (const auto *tt = spelled->getAs<TypedefType>(); tt && tt->getDecl()->getDeclContext()->isRecord())
+        spelled = spelled.getCanonicalType();
+      d << FixItHint::CreateInsertion(sr.getBegin(), "static_cast<" + spelled.getAsString(ctx.getPrintingPolicy()) + ">(")
         << FixItHint::CreateInsertion(end, ")");
+    }
   }
 }
 
@@ -671,7 +677,10 @@ void MemberInitCheck::check(const MatchFinder::MatchResult &result) {
       return; // initialises itself
   }
   auto d = diag(fd->getLocation(), "field %0 has no default member initializer; add '= {}' or a value") << fd;
-  if (fd->getEndLoc().isValid() && !fd->getEndLoc().isMacroID() && !fd->isBitField())
+  // A default member initializer in a nested class cannot be used by the enclosing class before it is complete
+  // (e.g. in its static constexpr members), so only offer the fix-it for non-nested records.
+  if (fd->getEndLoc().isValid() && !fd->getEndLoc().isMacroID() && !fd->isBitField() &&
+      !parent->getDeclContext()->isRecord())
     d << FixItHint::CreateInsertion(Lexer::getLocForEndOfToken(fd->getEndLoc(), 0, *result.SourceManager,
                                                               result.Context->getLangOpts()),
                                     "{}");
