@@ -18,6 +18,9 @@ void PointerAnnotationCheck::check(const MatchFinder::MatchResult &result) {
       rd->getTemplateSpecializationKind() == TSK_ImplicitInstantiation || recordIsPointer(rd) || recordIsOwner(rd) ||
       exempt(*result.SourceManager, rd->getLocation()))
     return;
+  // `formatter<T>` specializations only hold the parsed format spec for the duration of one format call.
+  if (rd->getName() == "formatter")
+    return;
 
   for (const FieldDecl *fd : rd->fields()) {
     const QualType t = fd->getType();

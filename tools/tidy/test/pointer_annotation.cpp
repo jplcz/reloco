@@ -11,3 +11,9 @@ struct missing { int *p; };  // expect: reloco-pointer-annotation
 struct refs { int &r; };  // expect: reloco-pointer-annotation
 struct plain { int v; void (*fn)() noexcept; };
 struct holds_view { view_ok v; };  // expect: reloco-pointer-annotation
+
+// `formatter<T>` specializations hold per-call parse state and are not borrowing handles.
+template <typename T> struct formatter;
+template <> struct formatter<int> {
+  const int *spec_ = nullptr;  // NOLINT(reloco-no-raw-pointer)
+};
