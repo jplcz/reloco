@@ -98,3 +98,13 @@ RELOCO_UNSAFE_BUFFER_USAGE void unsafe_tier() noexcept {
   int x = 0;
   two_mut(x, x);
 }
+
+// --- views reassigned from themselves --------------------------------------
+struct RELOCO_POINTER sv_t {
+  const char *p = nullptr;
+  int n = 0;
+  sv_t sub(int k) const & noexcept RELOCO_LIFETIMEBOUND { return sv_t{p + k, n - k}; }
+};
+void view_self_assign(sv_t v) noexcept {
+  v = v.sub(1); // no diagnostic: the view is copied by value
+}

@@ -450,6 +450,10 @@ void addBinding(std::vector<ArgBinding> &out, const Expr *arg, QualType paramTyp
   const Expr *source = arg;
   if (paramType->isLValueReferenceType()) {
     mut = !paramType.getNonReferenceType().isConstQualified();
+    // A const reference bound to a temporary names a fresh object: 'v = v.substr(1)' copies the view's value
+    // (pointer and size), so the temporary's storage never overlaps the receiver.
+    if (!mut && llvm::isa<MaterializeTemporaryExpr>(arg->IgnoreImplicit()) && isAliasingType(arg->getType()))
+      return;
   } else if (paramType->isPointerType()) {
     const Expr *s = strip(arg);
     const auto *uo = llvm::dyn_cast<UnaryOperator>(s);
