@@ -201,8 +201,8 @@ public:
       secs_q += nanos_q / nanos_per_sec;
       nanos_q %= nanos_per_sec;
     }
-    // NOLINTNEXTLINE(reloco-narrowing-flow): time conversion: the value range is bounded by the surrounding
-    // normalisation (nanoseconds < 1e9, saturating seconds).
+    // time conversion: the value range is bounded by the surrounding normalisation (nanoseconds < 1e9, saturating
+    // seconds). NOLINTNEXTLINE(reloco-narrowing-flow)
     return duration(secs_q, static_cast<std::uint32_t>(nanos_q));
   }
 
@@ -236,8 +236,8 @@ template <typename T> [[nodiscard]] constexpr T duration_cast(duration d) noexce
 template <> struct duration_converter<struct timespec> {
   [[nodiscard]] static constexpr struct timespec convert(duration d) noexcept {
     struct timespec ts{};
-    // NOLINTNEXTLINE(reloco-narrowing-flow): time conversion: the value range is bounded by the surrounding
-    // normalisation (nanoseconds < 1e9, saturating seconds).
+    // time conversion: the value range is bounded by the surrounding normalisation (nanoseconds < 1e9, saturating
+    // seconds). NOLINTNEXTLINE(reloco-narrowing-flow)
     ts.tv_sec = static_cast<decltype(ts.tv_sec)>(d.as_secs());
     ts.tv_nsec = static_cast<decltype(ts.tv_nsec)>(d.subsec_nanos());
     return ts;
@@ -254,8 +254,8 @@ template <> struct duration_converter<struct timespec> {
 template <> struct duration_converter<struct timeval> {
   [[nodiscard]] static constexpr struct timeval convert(duration d) noexcept {
     struct timeval tv{};
-    // NOLINTNEXTLINE(reloco-narrowing-flow): time conversion: the value range is bounded by the surrounding
-    // normalisation (nanoseconds < 1e9, saturating seconds).
+    // time conversion: the value range is bounded by the surrounding normalisation (nanoseconds < 1e9, saturating
+    // seconds). NOLINTNEXTLINE(reloco-narrowing-flow)
     tv.tv_sec = static_cast<decltype(tv.tv_sec)>(d.as_secs());
     tv.tv_usec = static_cast<decltype(tv.tv_usec)>(d.subsec_micros());
     return tv;

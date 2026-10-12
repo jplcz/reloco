@@ -209,8 +209,8 @@ public:
 
   /** @brief Wraps the given `location`'s `file`/`line` by value. @p location.file may be null, in which case this
      behaves exactly like `none()` regardless of @p location.line. */
-  // NOLINTNEXTLINE(reloco-explicit-conversion): iterator/handle constructed from its position by the owning container
-  // or macro.
+  // iterator/handle constructed from its position by the owning container or macro.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   constexpr call_location_ref(const call_location &location) noexcept : file_(location.file), line_(location.line) {}
 
   /** @brief Explicit "no location is available", for call sites that prefer a named factory over the default

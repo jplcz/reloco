@@ -178,8 +178,8 @@ public:
   RELOCO_BLOCK_RVALUE_ACCESS(T);
 
   constexpr shared_ptr() noexcept = default;
-  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors the std smart pointers: implicit from nullptr_t and from
-  // convertible pointer types.
+  // mirrors the std smart pointers: implicit from nullptr_t and from convertible pointer types.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   constexpr shared_ptr(std::nullptr_t) noexcept {}
 
   shared_ptr(const shared_ptr &other) noexcept : ptr_(other.ptr_), block_(other.block_) {
@@ -189,8 +189,8 @@ public:
 
   /** @brief Converting copy from a compatible `shared_ptr<U>`. */
   template <typename U, typename = std::enable_if_t<std::is_convertible_v<U *, T *>>>
-  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors the std smart pointers: implicit from nullptr_t and from
-  // convertible pointer types.
+  // mirrors the std smart pointers: implicit from nullptr_t and from convertible pointer types.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   shared_ptr(const shared_ptr<U> &other) noexcept : ptr_(other.ptr_), block_(other.block_) {
     if (block_)
       block_->shared_count_.fetch_add(1, std::memory_order_relaxed);
@@ -209,8 +209,8 @@ public:
   }
 
   template <typename U, typename = std::enable_if_t<std::is_convertible_v<U *, T *>>>
-  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors the std smart pointers: implicit from nullptr_t and from
-  // convertible pointer types.
+  // mirrors the std smart pointers: implicit from nullptr_t and from convertible pointer types.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   constexpr shared_ptr(shared_ptr<U> &&other) noexcept : ptr_(other.ptr_), block_(other.block_) {
     other.ptr_ = nullptr;
     other.block_ = nullptr;
@@ -365,8 +365,8 @@ template <typename T> class RELOCO_POINTER weak_ptr : private detail::requires_e
 public:
   constexpr weak_ptr() noexcept = default;
 
-  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors the std smart pointers: implicit from nullptr_t and from
-  // convertible pointer types.
+  // mirrors the std smart pointers: implicit from nullptr_t and from convertible pointer types.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   weak_ptr(const shared_ptr<T> &other) noexcept : ptr_(other.ptr_), block_(other.block_) {
     if (block_)
       block_->weak_count_.fetch_add(1, std::memory_order_relaxed);
@@ -378,8 +378,8 @@ public:
   }
 
   template <typename U, typename = std::enable_if_t<std::is_convertible_v<U *, T *>>>
-  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors the std smart pointers: implicit from nullptr_t and from
-  // convertible pointer types.
+  // mirrors the std smart pointers: implicit from nullptr_t and from convertible pointer types.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   weak_ptr(const weak_ptr<U> &other) noexcept : ptr_(other.ptr_), block_(other.block_) {
     if (block_)
       block_->weak_count_.fetch_add(1, std::memory_order_relaxed);

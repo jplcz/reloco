@@ -204,11 +204,11 @@ template <> struct instant_clock_traits<posix_clock_tag> {
   [[nodiscard]] static duration now() noexcept {
     struct timespec ts{};
     clock_gettime(RELOCO_DETAIL_INSTANT_CLOCKID, &ts);
-    // NOLINTNEXTLINE(reloco-narrowing-flow): time conversion: the value range is bounded by the surrounding
-    // normalisation (nanoseconds < 1e9, saturating seconds).
+    // time conversion: the value range is bounded by the surrounding normalisation (nanoseconds < 1e9, saturating
+    // seconds). NOLINTNEXTLINE(reloco-narrowing-flow)
     return duration::from_secs(static_cast<std::uint64_t>(ts.tv_sec)) +
-           // NOLINTNEXTLINE(reloco-narrowing-flow): time conversion: the value range is bounded by the surrounding
-           // normalisation (nanoseconds < 1e9, saturating seconds).
+           // time conversion: the value range is bounded by the surrounding normalisation (nanoseconds < 1e9,
+           // saturating seconds). NOLINTNEXTLINE(reloco-narrowing-flow)
            duration::from_nanos(static_cast<std::uint64_t>(ts.tv_nsec));
   }
 };

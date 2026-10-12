@@ -337,11 +337,12 @@ public:
   // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::string: implicit conversion to a string view.
   [[nodiscard]] operator view_type() const & noexcept RELOCO_LIFETIMEBOUND { return view(); }
 
+  // std-interop-begin: bridge to std::string_view
   // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::string: implicit conversion to a string view.
-  [[nodiscard]] operator std::basic_string_view<CharT, TraitsT>() const & noexcept
-      RELOCO_LIFETIMEBOUND {                                     // std-interop-ok: bridge to std::string_view
-    return std::basic_string_view<CharT, TraitsT>(data_, size_); // std-interop-ok: bridge to std::string_view
+  [[nodiscard]] operator std::basic_string_view<CharT, TraitsT>() const & noexcept RELOCO_LIFETIMEBOUND {
+    return std::basic_string_view<CharT, TraitsT>(data_, size_);
   }
+  // std-interop-end
 
   // std-interop-begin: opt-in conversion to std::basic_string for interop
   // with APIs that already speak std::string; never used internally.

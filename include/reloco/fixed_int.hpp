@@ -193,8 +193,8 @@ public:
    * `__int128`/`unsigned __int128` value into this `wide_int`'s width. */
   template <typename T,
             typename = std::enable_if_t<(std::is_integral_v<T> && !std::is_same_v<T, bool>) || is_builtin_int128_v<T>>>
-  // NOLINTNEXTLINE(reloco-explicit-conversion): arithmetic type: implicit conversion from integers, like the built-in
-  // types.
+  // arithmetic type: implicit conversion from integers, like the built-in types.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   constexpr wide_int(
       T value) noexcept { // NOLINT(*-explicit-constructor) -- deliberately implicit, matching native integer promotion
     if constexpr (sizeof(T) < sizeof(std::int32_t)) {
@@ -209,8 +209,8 @@ public:
 
   /** @brief Sign/zero-extends (per @p S) a narrower-or-equal-width `wide_int<M, S>` into this `wide_int`'s width. */
   template <std::size_t M, bool S, typename = std::enable_if_t<(M <= N)>>
-  // NOLINTNEXTLINE(reloco-explicit-conversion): arithmetic type: implicit conversion from integers, like the built-in
-  // types.
+  // arithmetic type: implicit conversion from integers, like the built-in types.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   constexpr wide_int(const wide_int<M, S> &other) noexcept { // NOLINT(*-explicit-constructor)
     constexpr std::size_t other_limbs = M / 32;
     const std::uint32_t fill = (S && other.is_negative()) ? 0xFFFFFFFFU : 0U;
@@ -363,8 +363,8 @@ public:
       std::uint32_t prev = (src_idx - 1 >= 0) ? v.limbs_[static_cast<std::size_t>(src_idx - 1)] : 0U;
       result.limbs_[i] = (bit_shift == 0)
                              ? cur
-                             // NOLINTNEXTLINE(reloco-narrowing-flow): intentional low-limb/bit extraction: wrap-around
-                             // is the operation.
+                             // intentional low-limb/bit extraction: wrap-around is the operation.
+                             // NOLINTNEXTLINE(reloco-narrowing-flow)
                              : static_cast<std::uint32_t>((static_cast<std::uint64_t>(cur) << bit_shift) |
                                                           (static_cast<std::uint64_t>(prev) >> (32 - bit_shift)));
     }
@@ -388,8 +388,8 @@ public:
       result.limbs_[i] =
           (bit_shift == 0)
               ? cur
-              // NOLINTNEXTLINE(reloco-narrowing-flow): intentional low-limb/bit extraction: wrap-around is the
-              // operation.
+              // intentional low-limb/bit extraction: wrap-around is the operation.
+              // NOLINTNEXTLINE(reloco-narrowing-flow)
               : static_cast<std::uint32_t>((cur >> bit_shift) | (static_cast<std::uint64_t>(next) << (32 - bit_shift)));
     }
     return result;

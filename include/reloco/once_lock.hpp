@@ -262,8 +262,8 @@ private:
   // *some* user-provided destructor to remain usable as a data member at
   // all. `once_lock<T>`'s own destructor destroys `value_` explicitly
   // when `state_` is `ready`, so this destructor stays a deliberate no-op.
-  // NOLINTNEXTLINE(reloco-banned-low-level): discriminated by state_; storage for in-place construction only, never
-  // type-punned.
+  // discriminated by state_; storage for in-place construction only, never type-punned.
+  // NOLINTNEXTLINE(reloco-banned-low-level)
   union storage_type {
     constexpr storage_type() noexcept : dummy_('\0') {}
     ~storage_type() noexcept {}

@@ -63,8 +63,8 @@ private:
                                           // If the underlying type supports trivial relocation, we can skip the
                                           // move-constructor and destructor overhead entirely.
                                           if constexpr (is_trivially_relocatable<Functor>::value) {
-                                            // NOLINTNEXTLINE(reloco-banned-construct): trivially-copyable payload
-                                            // copied as raw bytes by design.
+                                            // trivially-copyable payload copied as raw bytes by design.
+                                            // NOLINTNEXTLINE(reloco-banned-construct)
                                             memcpy(dest, src, sizeof(Functor));
                                           } else {
                                             new (dest) Functor(std::move(*src_ptr));

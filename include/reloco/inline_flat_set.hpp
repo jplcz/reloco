@@ -125,8 +125,8 @@ public:
     base::for_each([&](const T &elem) noexcept {
       if (failed)
         return;
-      // NOLINTNEXTLINE(reloco-banned-construct): elements are stored const to protect the key; the mapped value is
-      // mutable by the API contract.
+      // elements are stored const to protect the key; the mapped value is mutable by the API contract.
+      // NOLINTNEXTLINE(reloco-banned-construct)
       auto ins_res = set.try_insert(std::move(const_cast<T &>(elem)));
       if (!ins_res) {
         failed = true;
@@ -188,16 +188,16 @@ struct container_ref_traits<inline_flat_set<T, Capacity, Compare>> {
     if (!found_res) {
       return nullptr;
     }
-    // NOLINTNEXTLINE(reloco-banned-construct): elements are stored const to protect the key; the mapped value is
-    // mutable by the API contract.
+    // elements are stored const to protect the key; the mapped value is mutable by the API contract.
+    // NOLINTNEXTLINE(reloco-banned-construct)
     return const_cast<element_type *>(&found_res->get());
   }
 
   // NOLINTNEXTLINE(reloco-no-raw-pointer): type-erased visitor context handed back to the visitor unchanged.
   static void for_each(container_type &c, void *visitor_ctx,
                        void (*visit)(void *, const key_type &, element_type &) noexcept) noexcept {
-    // NOLINTNEXTLINE(reloco-banned-construct): elements are stored const to protect the key; the mapped value is
-    // mutable by the API contract.
+    // elements are stored const to protect the key; the mapped value is mutable by the API contract.
+    // NOLINTNEXTLINE(reloco-banned-construct)
     c.for_each([visitor_ctx, visit](const T &val) noexcept { visit(visitor_ctx, val, const_cast<T &>(val)); });
   }
 };

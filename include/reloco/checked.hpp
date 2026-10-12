@@ -57,8 +57,8 @@ public:
    * @brief Implicitly converts to the wrapped value, so a `checked<T>`
    * can be used anywhere a `T` is expected (e.g. comparisons, formatting).
    */
-  // NOLINTNEXTLINE(reloco-explicit-conversion): checked arithmetic wrapper: yields the underlying value when used as
-  // one.
+  // checked arithmetic wrapper: yields the underlying value when used as one.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   [[nodiscard]] constexpr operator T() const noexcept { return value_; }
 
   /** @brief Adds @p other, failing with `error::integer_overflow` on overflow. */

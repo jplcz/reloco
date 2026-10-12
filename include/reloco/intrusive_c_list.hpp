@@ -28,24 +28,24 @@ template <typename T> struct c_list_hook_layout {
 template <typename T, auto Hook> struct c_list_hook_access {
   [[nodiscard]] static T *&next(T *node) noexcept {
     RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
-    // NOLINTNEXTLINE(reloco-banned-construct): C list/queue hook layout is ABI-compatible with the sys/queue.h macros
-    // by design.
+    // C list/queue hook layout is ABI-compatible with the sys/queue.h macros by design.
+    // NOLINTNEXTLINE(reloco-banned-construct)
     return reinterpret_cast<c_list_hook_layout<T> *>(&(node->*Hook))->next;
     RELOCO_END_UNSAFE_BUFFER_USAGE
   }
 
   [[nodiscard]] static T *const &next(const T *node) noexcept {
     RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
-    // NOLINTNEXTLINE(reloco-banned-construct): C list/queue hook layout is ABI-compatible with the sys/queue.h macros
-    // by design.
+    // C list/queue hook layout is ABI-compatible with the sys/queue.h macros by design.
+    // NOLINTNEXTLINE(reloco-banned-construct)
     return reinterpret_cast<const c_list_hook_layout<T> *>(&(node->*Hook))->next;
     RELOCO_END_UNSAFE_BUFFER_USAGE
   }
 
   [[nodiscard]] static T **&prev(T *node) noexcept {
     RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
-    // NOLINTNEXTLINE(reloco-banned-construct): C list/queue hook layout is ABI-compatible with the sys/queue.h macros
-    // by design.
+    // C list/queue hook layout is ABI-compatible with the sys/queue.h macros by design.
+    // NOLINTNEXTLINE(reloco-banned-construct)
     return reinterpret_cast<c_list_hook_layout<T> *>(&(node->*Hook))->prev;
     RELOCO_END_UNSAFE_BUFFER_USAGE
   }
@@ -70,8 +70,8 @@ public:
   explicit constexpr c_list_iterator(T *node) noexcept : current_(node) {}
 
   template <bool WasConst, typename = std::enable_if_t<IsConst && !WasConst>>
-  // NOLINTNEXTLINE(reloco-explicit-conversion): iterator/handle constructed from its position by the owning container
-  // or macro.
+  // iterator/handle constructed from its position by the owning container or macro.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   constexpr c_list_iterator(const c_list_iterator<T, Hook, WasConst> &other) noexcept : current_(other.node()) {}
 
   RELOCO_CHECKED [[nodiscard]] reference operator*() const noexcept {

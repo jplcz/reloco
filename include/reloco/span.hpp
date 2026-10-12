@@ -261,8 +261,8 @@ public:
    * @param arr Reference to the array.
    */
   template <std::size_t N>
-  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::span: implicit from arrays, containers and std::span, and
-  // to std::span.
+  // mirrors std::span: implicit from arrays, containers and std::span, and to std::span.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   constexpr span(T (&arr RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS)[N]) noexcept : m_ptr(arr), m_size(N) {}
 
   /**
@@ -272,8 +272,8 @@ public:
    *              so converting a temporary span (e.g. `span<const T>(s.subspan(a, n))`) is safe.
    */
   template <typename U, std::enable_if_t<std::is_convertible_v<U (*)[], T (*)[]>, int> = 0>
-  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::span: implicit from arrays, containers and std::span, and
-  // to std::span.
+  // mirrors std::span: implicit from arrays, containers and std::span, and to std::span.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   constexpr span(const span<U> &other) noexcept : m_ptr(other.data()), m_size(other.size()) {}
 
   template <typename Container, typename = std::enable_if_t<
@@ -285,8 +285,8 @@ public:
                                     std::is_convertible_v<decltype(std::declval<Container &>().data()), T *> &&
                                     // Ensure the container has a .size() that returns an integer
                                     std::is_integral_v<decltype(std::declval<Container &>().size())>>>
-  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::span: implicit from arrays, containers and std::span, and
-  // to std::span.
+  // mirrors std::span: implicit from arrays, containers and std::span, and to std::span.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   constexpr span(Container &cont RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
       : m_ptr(cont.data()), m_size(cont.size()) {}
 
@@ -294,8 +294,8 @@ public:
                                     !std::is_same_v<std::decay_t<Container>, span> && !detail::is_span_v<Container> &&
                                     std::is_convertible_v<decltype(std::declval<const Container &>().data()), T *> &&
                                     std::is_integral_v<decltype(std::declval<const Container &>().size())>>>
-  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::span: implicit from arrays, containers and std::span, and
-  // to std::span.
+  // mirrors std::span: implicit from arrays, containers and std::span, and to std::span.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   constexpr span(const Container &cont RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
       : m_ptr(cont.data()), m_size(cont.size()) {}
 
@@ -317,8 +317,8 @@ public:
    */
   template <typename U, std::size_t Extent>
     requires(std::is_convertible_v<U (*)[], T (*)[]>)
-  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::span: implicit from arrays, containers and std::span, and
-  // to std::span.
+  // mirrors std::span: implicit from arrays, containers and std::span, and to std::span.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   constexpr span(std::span<U, Extent> s) noexcept : m_ptr(s.data()), m_size(s.size()) {}
 
   /**
@@ -326,8 +326,8 @@ public:
    * @return An equivalent dynamic-extent `std::span<T>` covering the same
    * buffer.
    */
-  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::span: implicit from arrays, containers and std::span, and
-  // to std::span.
+  // mirrors std::span: implicit from arrays, containers and std::span, and to std::span.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   [[nodiscard]] constexpr operator std::span<T>() const & noexcept { return std::span<T>(m_ptr, m_size); }
 
   operator std::span<T>() const && = delete;

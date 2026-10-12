@@ -20,8 +20,8 @@ public:
   }
 
   template <typename U, std::enable_if_t<std::is_same_v<const U, T>, int> = 0>
-  // NOLINTNEXTLINE(reloco-explicit-conversion): iterator/handle constructed from its position by the owning container
-  // or macro.
+  // iterator/handle constructed from its position by the owning container or macro.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   constexpr static_bounds_policy(const static_bounds_policy<U> &other) noexcept
       : begin_(other.begin_), end_(other.end_) {}
 
@@ -57,8 +57,8 @@ public:
   constexpr explicit dynamic_bounds_policy(const Container *c) noexcept : container_(c) {}
 
   template <typename UContainer, typename U, std::enable_if_t<std::is_same_v<const U, T>, int> = 0>
-  // NOLINTNEXTLINE(reloco-explicit-conversion): iterator/handle constructed from its position by the owning container
-  // or macro.
+  // iterator/handle constructed from its position by the owning container or macro.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   constexpr dynamic_bounds_policy(const dynamic_bounds_policy<UContainer, U> &other) noexcept
       : container_(other.container_) {}
 
@@ -115,8 +115,8 @@ public:
 
   // Implicit conversion to const_iterator (requires the policy to support it)
   template <typename U, typename UPolicy, std::enable_if_t<std::is_same_v<const U, T>, int> = 0>
-  // NOLINTNEXTLINE(reloco-explicit-conversion): iterator/handle constructed from its position by the owning container
-  // or macro.
+  // iterator/handle constructed from its position by the owning container or macro.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   constexpr contiguous_iterator(const contiguous_iterator<U, UPolicy> &other) noexcept
       : current_(other.unsafe_current()), policy_(other.policy()) {}
 
@@ -146,8 +146,8 @@ public:
   // NOLINTNEXTLINE(reloco-ref-qualified-member): an iterator is a handle; the element outlives it.
   RELOCO_CHECKED [[nodiscard]] constexpr reference operator[](difference_type n) const & noexcept {
     policy_.assert_deref(current_ + n);
-    // NOLINTNEXTLINE(reloco-signed-index): assert_deref(current_ + n) above validates the offset against the policy
-    // bounds.
+    // assert_deref(current_ + n) above validates the offset against the policy bounds.
+    // NOLINTNEXTLINE(reloco-signed-index)
     return current_[n];
   }
 

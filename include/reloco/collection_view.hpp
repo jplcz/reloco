@@ -200,8 +200,8 @@ public:
    */
   template <typename Container, std::enable_if_t<detail::is_collection_view_source<Container, T>::value, int> = 0>
   constexpr explicit collection_view(Container &c RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
-      // NOLINTNEXTLINE(reloco-banned-construct): type-erased context carries const-ness separately; restored before
-      // use.
+      // type-erased context carries const-ness separately; restored before use.
+      // NOLINTNEXTLINE(reloco-banned-construct)
       : ctx_(const_cast<void *>(static_cast<const void *>(std::addressof(c)))), vtbl_(&s_vtbl<Container>) {}
 
   /**
@@ -507,8 +507,8 @@ private:
     using traits = collection_view_traits<std::remove_const_t<Container>>;
     if constexpr (traits::has_data) {
       return +[](const void *ctx) noexcept -> T * {
-        // NOLINTNEXTLINE(reloco-banned-construct): type-erased context carries const-ness separately; restored before
-        // use.
+        // type-erased context carries const-ness separately; restored before use.
+        // NOLINTNEXTLINE(reloco-banned-construct)
         auto &container = *static_cast<Container *>(const_cast<void *>(ctx));
         return traits::data(container);
       };

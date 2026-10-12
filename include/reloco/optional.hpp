@@ -71,20 +71,20 @@ public:
   using value_type = T;
 
   constexpr optional() noexcept : has_value_(false) { detail::poison_memory_region(std::addressof(value_), sizeof(T)); }
-  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::expected/std::optional: implicit construction from a value
-  // or error is the API.
+  // mirrors std::expected/std::optional: implicit construction from a value or error is the API.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   constexpr optional(nullopt_t) noexcept : has_value_(false) {
     detail::poison_memory_region(std::addressof(value_), sizeof(T));
   }
 
-  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::expected/std::optional: implicit construction from a value
-  // or error is the API.
+  // mirrors std::expected/std::optional: implicit construction from a value or error is the API.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   constexpr optional(const T &value) noexcept(std::is_nothrow_copy_constructible_v<T>) : has_value_(false) {
     construct(value);
   }
 
-  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::expected/std::optional: implicit construction from a value
-  // or error is the API.
+  // mirrors std::expected/std::optional: implicit construction from a value or error is the API.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   constexpr optional(T &&value) noexcept(std::is_nothrow_move_constructible_v<T>) : has_value_(false) {
     construct(std::move(value));
   }
@@ -467,8 +467,8 @@ public:
    * `optional<T>`.
    */
   template <typename U = T>
-  // NOLINTNEXTLINE(reloco-must-use-result): the previous value is returned for convenience; discarding it is a
-  // legitimate use.
+  // the previous value is returned for convenience; discarding it is a legitimate use.
+  // NOLINTNEXTLINE(reloco-must-use-result)
   optional replace(U &&value) & noexcept(std::is_nothrow_constructible_v<T, U &&> &&
                                          std::is_nothrow_move_constructible_v<T>) {
     optional old = take();
@@ -577,8 +577,8 @@ private:
     has_value_ = true;
   }
 
-  // NOLINTNEXTLINE(reloco-banned-low-level): discriminated by the engaged flag; storage for the active alternative
-  // only, never type-punned.
+  // discriminated by the engaged flag; storage for the active alternative only, never type-punned.
+  // NOLINTNEXTLINE(reloco-banned-low-level)
   union {
     char dummy_;
     T value_;

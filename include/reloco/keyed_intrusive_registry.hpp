@@ -389,8 +389,8 @@ public:
 private:
   /** @brief Extracts the owner key from a registry node. */
   struct owner_of {
-    // NOLINTNEXTLINE(reloco-lifetime-annotations): the result aliases the node parameter (annotated), not the stateless
-    // functor object.
+    // the result aliases the node parameter (annotated), not the stateless functor object.
+    // NOLINTNEXTLINE(reloco-lifetime-annotations)
     const OwnerKey &operator()(const node &n RELOCO_LIFETIMEBOUND) const & noexcept { return n.owner; }
   };
 

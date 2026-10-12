@@ -257,8 +257,8 @@ public:
    * use @ref is_null or `operator bool` to check before dereferencing
    * manually, or prefer `operator*`/`operator->`, which check for you.
    */
-  // NOLINTNEXTLINE(reloco-lifetime-annotations): returns the held raw pointer by value; the pointee is not owned by
-  // this object.
+  // returns the held raw pointer by value; the pointee is not owned by this object.
+  // NOLINTNEXTLINE(reloco-lifetime-annotations)
   [[nodiscard]] constexpr T *get() const & noexcept RELOCO_CALLABLE_WHEN("unconsumed") {
     RELOCO_ASSERT(!moved_from_, "checked_value: access after move");
     return value_;
@@ -278,8 +278,8 @@ public:
    * @brief Moves the held pointer out, nulls the source, and poisons this
    * wrapper's typestate.
    */
-  // NOLINTNEXTLINE(reloco-lifetime-annotations): returns the held raw pointer by value; the pointee is not owned by
-  // this object.
+  // returns the held raw pointer by value; the pointee is not owned by this object.
+  // NOLINTNEXTLINE(reloco-lifetime-annotations)
   [[nodiscard]] constexpr T *take() && noexcept RELOCO_CALLABLE_WHEN("unconsumed") RELOCO_SET_TYPESTATE(consumed) {
     RELOCO_ASSERT(!moved_from_, "checked_value: take() after move");
     moved_from_ = true;

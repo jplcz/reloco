@@ -296,8 +296,8 @@ public:
 
   masked_pointer() noexcept : encoded_val_(AuthPolicy::template sign<T>(nullptr)) {}
 
-  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors the std smart pointers: implicit from nullptr_t and from
-  // convertible pointer types.
+  // mirrors the std smart pointers: implicit from nullptr_t and from convertible pointer types.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   masked_pointer(std::nullptr_t) noexcept : encoded_val_(AuthPolicy::template sign<T>(nullptr)) {}
 
   explicit masked_pointer(T *ptr) noexcept : encoded_val_(AuthPolicy::template sign<T>(ptr)) {}

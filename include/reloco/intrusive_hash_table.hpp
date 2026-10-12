@@ -165,8 +165,8 @@ public:
   // Mutable -> const conversion only, same direction every other reloco
   // iterator/const_iterator pair allows.
   template <bool WasConst, typename = std::enable_if_t<IsConst && !WasConst>>
-  // NOLINTNEXTLINE(reloco-explicit-conversion): iterator/handle constructed from its position by the owning container
-  // or macro.
+  // iterator/handle constructed from its position by the owning container or macro.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   constexpr intrusive_hash_iterator(const intrusive_hash_iterator<T, Hook, WasConst> &other) noexcept
       : m_buckets(other.buckets()), m_index(other.index()), m_cur(other.node()) {}
 
@@ -382,13 +382,13 @@ public:
   }
 
   [[nodiscard]] const_iterator iterator_to(const T &node) const & noexcept RELOCO_LIFETIMEBOUND {
-    // NOLINTNEXTLINE(reloco-banned-construct): const node API forwards to the non-const hook accessor; no mutation of
-    // the node payload.
+    // const node API forwards to the non-const hook accessor; no mutation of the node payload.
+    // NOLINTNEXTLINE(reloco-banned-construct)
     RELOCO_ASSERT(hook_of(const_cast<T &>(node)).is_linked(),
                   "reloco::intrusive_hash_table::iterator_to: node is not linked");
     const KeyOf keyOf{};
-    // NOLINTNEXTLINE(reloco-banned-construct): const node API forwards to the non-const hook accessor; no mutation of
-    // the node payload.
+    // const node API forwards to the non-const hook accessor; no mutation of the node payload.
+    // NOLINTNEXTLINE(reloco-banned-construct)
     return const_iterator(buckets_, index_for(keyOf(node)), const_cast<T *>(&node));
   }
 
