@@ -84,7 +84,7 @@ public:
   [[nodiscard]] constexpr size_type length() const noexcept { return size_; }
   [[nodiscard]] constexpr bool empty() const noexcept { return size_ == 0; }
 
-  [[nodiscard]] constexpr const_reference operator[](size_type pos) const noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] constexpr const_reference operator[](size_type pos) const noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(pos < size(), "string_view index out of bounds");
     return data_[pos];
   }

@@ -8,6 +8,11 @@
 // (ordinary header-only build) or by the one translation unit building a
 // shared library with `RELOCO_SHARED_BUILD` -- see `reloco_extern.hpp`.
 
+// Unsafe by design: type-erased intrusive tree nodes are linked by raw pointers; the safe, typed facade is the public map/set containers.
+// Exempt from reloco-tidy memory-safety rules; everything here is reached only
+// through the checked public API.
+RELOCO_BEGIN_UNSAFE_CODE
+
 RELOCO_API void bst_unlink(node_header *&root, node_header *node) noexcept {
   if (!node->left) {
     bst_transplant(root, node, node->right);
@@ -53,3 +58,5 @@ RELOCO_API void bst_clear(node_header *&root, allocator_ref alloc, const type_me
     }
   }
 }
+
+RELOCO_END_UNSAFE_CODE

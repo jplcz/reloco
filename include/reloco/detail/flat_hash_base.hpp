@@ -86,6 +86,11 @@
 #include <type_traits>
 #include <utility>
 
+// Unsafe by design: open-addressing table indexes raw slot storage via type-erased pointers; the safe facade is the public flat_* containers.
+// Exempt from reloco-tidy memory-safety rules; everything here is reached only
+// through the checked public API.
+RELOCO_BEGIN_UNSAFE_CODE
+
 namespace reloco::detail {
 
 /**
@@ -523,3 +528,5 @@ private:
 };
 
 } // namespace reloco::detail
+
+RELOCO_END_UNSAFE_CODE

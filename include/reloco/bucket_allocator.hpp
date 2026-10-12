@@ -99,6 +99,10 @@
 
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
+// Unsafe by design: dispatches to pool allocators by size class over raw block addresses.
+// Exempt from reloco-tidy memory-safety rules; callers see the typed, checked API.
+RELOCO_BEGIN_UNSAFE_CODE
+
 namespace reloco {
 
 /**
@@ -238,7 +242,10 @@ private:
                            std::size_t slab_bytes) noexcept
         : pools{pool_allocator_context<Lock>(bucket_sizes[Is], alignment, upstream, slab_bytes)...} {}
 
-    [[nodiscard]] constexpr pool_allocator_context<Lock> &operator[](std::size_t idx) noexcept { return pools[idx]; }
+    RELOCO_CHECKED [[nodiscard]] constexpr pool_allocator_context<Lock> &operator[](std::size_t idx) noexcept {
+    RELOCO_ASSERT(idx < bucket_count, "bucket_allocator: bucket index out of range");
+    return pools[idx];
+  }
 
     array<pool_allocator_context<Lock>, bucket_count> pools;
   };
@@ -339,3 +346,5 @@ private:
 } // namespace reloco
 
 RELOCO_END_UNSAFE_BUFFER_USAGE
+
+RELOCO_END_UNSAFE_CODE

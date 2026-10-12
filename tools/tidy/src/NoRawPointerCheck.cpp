@@ -72,6 +72,16 @@ void NoRawPointerCheck::check(const MatchFinder::MatchResult &result) {
   if (const CXXRecordDecl *rd = enclosingClass(anchor->getDeclContext()))
     if (recordIsPointer(rd) || recordIsOwner(rd))
       return;
+  if (const auto *pv = llvm::dyn_cast<ParmVarDecl>(anchor)) {
+    // Parameters of a function *type* (vtable slots, callbacks) belong to the C-style calling convention of
+    // the pointer they describe; the function that implements it is what gets checked.
+    if (!llvm::isa_and_nonnull<FunctionDecl>(pv->getDeclContext()))
+      return;
+    // A captureless lambda is a function-pointer thunk for such a slot.
+    if (const auto *call = llvm::dyn_cast<CXXMethodDecl>(pv->getDeclContext());
+        call && call->getParent()->isLambda() && call->getParent()->capture_size() == 0)
+      return;
+  }
   if (const auto *pv = llvm::dyn_cast<ParmVarDecl>(anchor))
     if (const auto *fd = llvm::dyn_cast_or_null<FunctionDecl>(pv->getDeclContext()); fd && fd->isExternC())
       return;

@@ -140,7 +140,7 @@ public:
     return span<const std::byte>(ptr_, len_);
   }
 
-  [[nodiscard]] std::byte operator[](std::size_t index) const noexcept {
+  RELOCO_CHECKED [[nodiscard]] std::byte operator[](std::size_t index) const noexcept {
     RELOCO_ASSERT(index < len_, "bytes: index out of range");
     return ptr_[index];
   }
@@ -345,12 +345,12 @@ public:
 
   void clear() noexcept { len_ = 0; }
 
-  [[nodiscard]] std::byte &operator[](std::size_t index) noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] std::byte &operator[](std::size_t index) noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(index < len_, "bytes_mut: index out of range");
     return data_[index];
   }
 
-  [[nodiscard]] const std::byte &operator[](std::size_t index) const noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] const std::byte &operator[](std::size_t index) const noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(index < len_, "bytes_mut: index out of range");
     return data_[index];
   }

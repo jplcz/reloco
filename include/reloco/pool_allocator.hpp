@@ -67,6 +67,10 @@
 // stack_allocator.hpp's own treatment of the same concern.
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
+// Unsafe by design: slab/free-list management threads raw addresses through unallocated blocks.
+// Exempt from reloco-tidy memory-safety rules; callers see the typed, checked API.
+RELOCO_BEGIN_UNSAFE_CODE
+
 namespace reloco {
 
 /**
@@ -301,3 +305,5 @@ private:
 } // namespace reloco
 
 RELOCO_END_UNSAFE_BUFFER_USAGE
+
+RELOCO_END_UNSAFE_CODE

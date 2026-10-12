@@ -10,6 +10,7 @@
  * equivalents for over-aligned requests). */
 
 #include "allocator.hpp"
+#include "lifetime.hpp"
 #include <cstdlib>
 #include <cstring>
 
@@ -20,6 +21,10 @@
 // This backend is raw malloc/realloc/free/aligned_alloc plumbing throughout;
 // treated as a single checked boundary, matching allocator.hpp itself.
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+
+// Unsafe by design: wraps the OS/libc heap, which is a raw-pointer API.
+// Exempt from reloco-tidy memory-safety rules; callers see the typed, checked API.
+RELOCO_BEGIN_UNSAFE_CODE
 
 namespace reloco {
 
@@ -88,3 +93,5 @@ template <> struct allocator_traits<heap_allocator_tag> {
 } // namespace reloco
 
 RELOCO_END_UNSAFE_BUFFER_USAGE
+
+RELOCO_END_UNSAFE_CODE

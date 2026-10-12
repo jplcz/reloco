@@ -21,6 +21,10 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
+// Unsafe by design: adapts the futex(2) syscall, which takes raw addresses.
+// Exempt from reloco-tidy memory-safety rules; callers see the typed, checked API.
+RELOCO_BEGIN_UNSAFE_CODE
+
 namespace reloco {
 
 namespace detail {
@@ -73,3 +77,5 @@ RELOCO_API void futex_wake_all(futex_word &word) noexcept {
 }
 
 } // namespace reloco
+
+RELOCO_END_UNSAFE_CODE

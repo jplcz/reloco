@@ -165,12 +165,12 @@ public:
   }
 
   // Syntactic sugar for direct pointer access
-  T *operator->() noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(unconsumed) {
+  RELOCO_CHECKED T *operator->() noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(unconsumed) {
     RELOCO_ASSERT(m_ptr != nullptr, "Object consumed");
     return m_ptr;
   }
 
-  const T *operator->() const noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(unconsumed) {
+  RELOCO_CHECKED const T *operator->() const noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(unconsumed) {
     RELOCO_ASSERT(m_ptr != nullptr, "Object consumed");
     return m_ptr;
   }

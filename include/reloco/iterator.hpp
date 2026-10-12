@@ -214,7 +214,7 @@ public:
 
     constexpr cursor() noexcept = default;
 
-    [[nodiscard]] reference operator*() noexcept RELOCO_LIFETIMEBOUND { return detail::unwrap_item(*current_); }
+    RELOCO_CHECKED [[nodiscard]] reference operator*() noexcept RELOCO_LIFETIMEBOUND { return detail::unwrap_item(*current_); }
 
     cursor &operator++() noexcept {
       current_ = owner_->next();

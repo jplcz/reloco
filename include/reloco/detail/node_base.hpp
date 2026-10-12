@@ -47,8 +47,15 @@
 #include "../reloco_extern.hpp"
 #include "type_metadata.hpp"
 
+#include "../lifetime.hpp"
+
 #include <cstddef>
 #include <new>
+
+// Unsafe by design: node allocation hands out raw storage that the typed containers wrap; pointers never escape the public API.
+// Exempt from reloco-tidy memory-safety rules; everything here is reached only
+// through the checked public API.
+RELOCO_BEGIN_UNSAFE_CODE
 
 namespace reloco::detail {
 
@@ -170,3 +177,5 @@ public:
 };
 
 } // namespace reloco::detail
+
+RELOCO_END_UNSAFE_CODE

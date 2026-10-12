@@ -250,9 +250,9 @@ public:
 
   // ---- Operator Overloads ----
 
-  [[nodiscard]] reference operator[](size_t offset) noexcept { return reference(*this, offset); }
+  RELOCO_CHECKED [[nodiscard]] reference operator[](size_t offset) noexcept { return reference(*this, offset); }
 
-  [[nodiscard]] uint8_t operator[](size_t offset) const noexcept { return read_byte(offset); }
+  RELOCO_CHECKED [[nodiscard]] uint8_t operator[](size_t offset) const noexcept { return read_byte(offset); }
 
   // ---- Utility ----
 
@@ -328,13 +328,13 @@ private:
   public:
     byte_iterator() = default;
 
-    [[nodiscard]] reference operator*() const noexcept {
+    RELOCO_CHECKED [[nodiscard]] reference operator*() const noexcept {
       RELOCO_ASSERT(region_ != nullptr, "Dereferencing an uninitialized masked_byte_region iterator");
       RELOCO_ASSERT(idx_ < Size, "Out-of-bounds masked_byte_region iterator dereference (likely dereferenced end())");
       return (*region_)[idx_];
     }
 
-    [[nodiscard]] reference operator[](difference_type n) const noexcept { return *(*this + n); }
+    RELOCO_CHECKED [[nodiscard]] reference operator[](difference_type n) const noexcept { return *(*this + n); }
 
     byte_iterator &operator++() noexcept {
       ++idx_;

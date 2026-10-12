@@ -115,12 +115,12 @@ public:
 
   ~unique_ptr() noexcept { reset(); }
 
-  [[nodiscard]] T &operator*() const & noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] T &operator*() const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(ptr_ != nullptr, "unique_ptr: dereference of null unique_ptr");
     return *ptr_;
   }
 
-  [[nodiscard]] T *operator->() const & noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] T *operator->() const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(ptr_ != nullptr, "unique_ptr: access of null unique_ptr");
     return ptr_;
   }

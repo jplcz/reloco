@@ -167,8 +167,14 @@ public:
   constexpr intrusive_hash_iterator(const intrusive_hash_iterator<T, Hook, WasConst> &other) noexcept
       : m_buckets(other.buckets()), m_index(other.index()), m_cur(other.node()) {}
 
-  [[nodiscard]] reference operator*() const noexcept { return *m_cur; }
-  [[nodiscard]] pointer operator->() const noexcept { return m_cur; }
+  RELOCO_CHECKED [[nodiscard]] reference operator*() const noexcept {
+    RELOCO_ASSERT(m_cur != nullptr, "reloco::intrusive_hash_iterator: dereference of end() iterator");
+    return *m_cur;
+  }
+  RELOCO_CHECKED [[nodiscard]] pointer operator->() const noexcept {
+    RELOCO_ASSERT(m_cur != nullptr, "reloco::intrusive_hash_iterator: dereference of end() iterator");
+    return m_cur;
+  }
 
   intrusive_hash_iterator &operator++() noexcept {
     advance();

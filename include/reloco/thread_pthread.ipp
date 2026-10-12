@@ -7,6 +7,10 @@
  * from thread.hpp itself, guarded on RELOCO_SHARED_PROVIDE_DEFINITIONS
  * (see reloco/detail/compat.hpp). Never included directly. */
 
+// Unsafe by design: adapts the pthread C API, whose entry points take and return raw pointers.
+// Exempt from reloco-tidy memory-safety rules; callers see the typed, checked API.
+RELOCO_BEGIN_UNSAFE_CODE
+
 namespace detail {
 
 // Applies box->name to the calling (i.e. the just-spawned) thread itself,
@@ -110,3 +114,5 @@ RELOCO_API void thread::detach() & noexcept {
   pthread_detach(handle_);
   joinable_ = false;
 }
+
+RELOCO_END_UNSAFE_CODE

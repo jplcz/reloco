@@ -46,12 +46,12 @@ public:
       }
     }
 
-    [[nodiscard]] T &operator*() const & noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_CHECKED [[nodiscard]] T &operator*() const & noexcept RELOCO_LIFETIMEBOUND {
       RELOCO_ASSERT(cell_ != nullptr, "guard used after being moved from");
       return cell_->payload_;
     }
 
-    [[nodiscard]] T *operator->() const & noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_CHECKED [[nodiscard]] T *operator->() const & noexcept RELOCO_LIFETIMEBOUND {
       RELOCO_ASSERT(cell_ != nullptr, "guard used after being moved from");
       return &cell_->payload_;
     }

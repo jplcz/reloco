@@ -81,7 +81,7 @@ public:
     constexpr iterator(T *ptr, std::size_t remaining, std::size_t chunk_size) noexcept
         : m_ptr(ptr), m_remaining(remaining), m_chunk_size(chunk_size) {}
 
-    [[nodiscard]] constexpr span<T> operator*() const noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_CHECKED [[nodiscard]] constexpr span<T> operator*() const noexcept RELOCO_LIFETIMEBOUND {
       return span<T>(m_ptr, m_remaining < m_chunk_size ? m_remaining : m_chunk_size);
     }
 
@@ -157,7 +157,7 @@ public:
     constexpr iterator(T *ptr, std::size_t remaining_windows, std::size_t window_size) noexcept
         : m_ptr(ptr), m_remaining_windows(remaining_windows), m_window_size(window_size) {}
 
-    [[nodiscard]] constexpr span<T> operator*() const noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_CHECKED [[nodiscard]] constexpr span<T> operator*() const noexcept RELOCO_LIFETIMEBOUND {
       return span<T>(m_ptr, m_window_size);
     }
 
@@ -536,7 +536,7 @@ public:
    * @param idx Zero-based index of the element to access.
    * @return Reference to the element at position @p idx.
    */
-  [[nodiscard]] constexpr T &operator[](std::size_t idx) const & noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] constexpr T &operator[](std::size_t idx) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(idx < m_size, "span index out of bounds");
     return m_ptr[idx];
   }

@@ -56,6 +56,11 @@
 #include <type_traits>
 #include <utility>
 
+// Unsafe by design: type-erased intrusive tree nodes are linked by raw pointers; the safe, typed facade is the public map/set containers.
+// Exempt from reloco-tidy memory-safety rules; everything here is reached only
+// through the checked public API.
+RELOCO_BEGIN_UNSAFE_CODE
+
 namespace reloco::detail {
 
 // ---------------------------------------------------------------------------
@@ -645,3 +650,5 @@ private:
 #endif
 
 } // namespace reloco::detail
+
+RELOCO_END_UNSAFE_CODE

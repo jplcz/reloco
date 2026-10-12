@@ -223,15 +223,15 @@ public:
     return std::move(value_);
   }
 
-  [[nodiscard]] T &operator*() & noexcept RELOCO_LIFETIMEBOUND { return value(); }
-  [[nodiscard]] const T &operator*() const & noexcept RELOCO_LIFETIMEBOUND { return value(); }
+  RELOCO_CHECKED [[nodiscard]] T &operator*() & noexcept RELOCO_LIFETIMEBOUND { return value(); }
+  RELOCO_CHECKED [[nodiscard]] const T &operator*() const & noexcept RELOCO_LIFETIMEBOUND { return value(); }
 
-  [[nodiscard]] T *operator->() noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] T *operator->() noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(has_value_, "optional has no value");
     return std::addressof(value_);
   }
 
-  [[nodiscard]] const T *operator->() const noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] const T *operator->() const noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(has_value_, "optional has no value");
     return std::addressof(value_);
   }

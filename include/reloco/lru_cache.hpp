@@ -159,7 +159,7 @@ public:
 
     constexpr const_iterator() noexcept = default;
 
-    [[nodiscard]] value_type operator*() const noexcept {
+    RELOCO_CHECKED [[nodiscard]] value_type operator*() const noexcept {
       const node &n = nodes_->operator[](idx_).value();
       return value_type(n.key, n.value);
     }

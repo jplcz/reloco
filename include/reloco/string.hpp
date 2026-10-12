@@ -367,12 +367,12 @@ public:
 
   // ---- element access (checked / fallible / explicitly-unsafe tiers) ----
 
-  [[nodiscard]] reference operator[](size_type pos) & noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] reference operator[](size_type pos) & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(pos < size_, "string index out of bounds");
     return data_[pos];
   }
 
-  [[nodiscard]] const_reference operator[](size_type pos) const & noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] const_reference operator[](size_type pos) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(pos < size_, "string index out of bounds");
     return data_[pos];
   }

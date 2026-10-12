@@ -54,12 +54,12 @@ template <typename T, std::size_t N> struct RELOCO_OWNER array {
     return std::cref(data_[index]);
   }
 
-  [[nodiscard]] constexpr T &operator[](size_type index) & noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] constexpr T &operator[](size_type index) & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(index < N, "array index out of bounds");
     return data_[index];
   }
 
-  [[nodiscard]] constexpr const T &operator[](size_type index) const & noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] constexpr const T &operator[](size_type index) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(index < N, "array index out of bounds");
     return data_[index];
   }
@@ -231,12 +231,12 @@ template <typename T> struct array<T, 0> {
     return unexpected(error::container_empty);
   }
 
-  [[nodiscard]] constexpr T &operator[](size_type) & noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] constexpr T &operator[](size_type) & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(false, "array index out of bounds");
     return *static_cast<T *>(nullptr);
   }
 
-  [[nodiscard]] constexpr const T &operator[](size_type) const & noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] constexpr const T &operator[](size_type) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(false, "array index out of bounds");
     return *static_cast<const T *>(nullptr);
   }

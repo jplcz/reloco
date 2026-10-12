@@ -16,6 +16,11 @@
 #include <cstdio>
 #endif
 
+// Unsafe by design: assertion plumbing must work in freestanding/kernel builds and uses raw C-string/varargs interfaces.
+// Exempt from reloco-tidy memory-safety rules; everything here is reached only
+// through the checked public API.
+RELOCO_BEGIN_UNSAFE_CODE
+
 namespace reloco {
 
 #if !defined(RELOCO_KERNEL)
@@ -202,3 +207,5 @@ inline void set_assert_handler(assert_handler_t new_handler) { detail::get_handl
       }                                                                                                                \
   } while (0)
 #endif
+
+RELOCO_END_UNSAFE_CODE

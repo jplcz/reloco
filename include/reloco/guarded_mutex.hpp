@@ -71,12 +71,12 @@ public:
         cell_->mutex_.unlock();
     }
 
-    [[nodiscard]] T &operator*() const & noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_CHECKED [[nodiscard]] T &operator*() const & noexcept RELOCO_LIFETIMEBOUND {
       RELOCO_ASSERT(cell_ != nullptr, "guard used after being moved from");
       return cell_->value_;
     }
 
-    [[nodiscard]] T *operator->() const & noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_CHECKED [[nodiscard]] T *operator->() const & noexcept RELOCO_LIFETIMEBOUND {
       RELOCO_ASSERT(cell_ != nullptr, "guard used after being moved from");
       return &cell_->value_;
     }

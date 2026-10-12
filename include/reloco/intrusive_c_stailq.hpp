@@ -49,12 +49,12 @@ public:
   template <bool WasConst, typename = std::enable_if_t<IsConst && !WasConst>>
   constexpr c_stailq_iterator(const c_stailq_iterator<T, Hook, WasConst> &other) noexcept : current_(other.node()) {}
 
-  [[nodiscard]] reference operator*() const noexcept {
+  RELOCO_CHECKED [[nodiscard]] reference operator*() const noexcept {
     RELOCO_ASSERT(current_ != nullptr, "reloco::c_stailq_iterator: Dereference on null element");
     return *current_;
   }
 
-  [[nodiscard]] pointer operator->() const noexcept {
+  RELOCO_CHECKED [[nodiscard]] pointer operator->() const noexcept {
     RELOCO_ASSERT(current_ != nullptr, "reloco::c_stailq_iterator: Dereference on null element");
     return current_;
   }

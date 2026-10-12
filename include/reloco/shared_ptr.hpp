@@ -234,12 +234,12 @@ public:
     std::swap(block_, other.block_);
   }
 
-  [[nodiscard]] T &operator*() const & noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] T &operator*() const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(ptr_ != nullptr, "shared_ptr: dereference of null shared_ptr");
     return *ptr_;
   }
 
-  [[nodiscard]] T *operator->() const & noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] T *operator->() const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(ptr_ != nullptr, "shared_ptr: access of null shared_ptr");
     return ptr_;
   }

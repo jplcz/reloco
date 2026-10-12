@@ -15,6 +15,10 @@
  * requirement (see docs/shared-library.md).
  */
 
+// Unsafe by design: wraps the OS/libc heap, which is a raw-pointer API.
+// Exempt from reloco-tidy memory-safety rules; callers see the typed, checked API.
+RELOCO_BEGIN_UNSAFE_CODE
+
 namespace detail {
 
 #if !defined(_MSC_VER)
@@ -85,3 +89,5 @@ RELOCO_API result<mem_block> allocator_traits<heap_allocator_tag>::reallocate(vo
   return block;
 #endif
 }
+
+RELOCO_END_UNSAFE_CODE

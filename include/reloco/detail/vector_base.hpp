@@ -78,6 +78,8 @@
 #include "type_metadata.hpp"
 #include "type_operations.hpp"
 
+#include "../lifetime.hpp"
+
 #include <cstddef>
 #include <cstring>
 #include <functional>
@@ -85,6 +87,11 @@
 #include <limits>
 #include <type_traits>
 #include <utility>
+
+// Unsafe by design: type-erased storage: elements are addressed as raw bytes through void*/byte* plus runtime type metadata; the safe, typed facade is vector<T>.
+// Exempt from reloco-tidy memory-safety rules; everything here is reached only
+// through the checked public API.
+RELOCO_BEGIN_UNSAFE_CODE
 
 namespace reloco {
 
@@ -850,12 +857,12 @@ public:
     return std::cref(static_cast<const T *>(this->data_)[index]);
   }
 
-  [[nodiscard]] T &operator[](size_type index) & noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] T &operator[](size_type index) & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(index < this->size_, "inline_vector index out of bounds");
     return static_cast<T *>(this->data_)[index];
   }
 
-  [[nodiscard]] const T &operator[](size_type index) const & noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] const T &operator[](size_type index) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(index < this->size_, "inline_vector index out of bounds");
     return static_cast<const T *>(this->data_)[index];
   }
@@ -1312,7 +1319,7 @@ public:
     this->head_ = 0;
   }
 
-  [[nodiscard]] T &operator[](size_type logical_index) & noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] T &operator[](size_type logical_index) & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(logical_index < this->len_, "deque index out of bounds");
     std::size_t physical_index = this->head_ + logical_index;
     if (physical_index >= this->cap_)
@@ -1320,7 +1327,7 @@ public:
     return static_cast<T *>(this->data_)[physical_index];
   }
 
-  [[nodiscard]] const T &operator[](size_type logical_index) const & noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] const T &operator[](size_type logical_index) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(logical_index < this->len_, "deque index out of bounds");
     std::size_t physical_index = this->head_ + logical_index;
     if (physical_index >= this->cap_)
@@ -1620,3 +1627,5 @@ RELOCO_END_UNSAFE_BUFFER_USAGE
 } // namespace detail
 
 } // namespace reloco
+
+RELOCO_END_UNSAFE_CODE

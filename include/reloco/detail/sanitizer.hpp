@@ -42,6 +42,8 @@
 
 #include "compat.hpp"
 
+#include "../lifetime.hpp"
+
 #include <cstddef>
 
 #if !defined(RELOCO_DISABLE_SANITIZER_ANNOTATIONS)
@@ -75,6 +77,11 @@
 #if RELOCO_VALGRIND_ENABLED
 #include <valgrind/memcheck.h>
 #endif
+
+// Unsafe by design: sanitizer annotations take raw address ranges by definition.
+// Exempt from reloco-tidy memory-safety rules; everything here is reached only
+// through the checked public API.
+RELOCO_BEGIN_UNSAFE_CODE
 
 namespace reloco::detail {
 
@@ -117,3 +124,5 @@ constexpr
 }
 
 } // namespace reloco::detail
+
+RELOCO_END_UNSAFE_CODE

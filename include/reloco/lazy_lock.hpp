@@ -99,10 +99,10 @@ public:
    * first if this is the first call (from any thread; concurrent callers
    * block until it completes), matching Rust's `LazyLock`'s `Deref`.
    */
-  [[nodiscard]] const T &operator*() const & noexcept RELOCO_LIFETIMEBOUND { return *get(); }
+  RELOCO_CHECKED [[nodiscard]] const T &operator*() const & noexcept RELOCO_LIFETIMEBOUND { return *get(); }
 
   /** @brief Same as `operator*`, for `->` member access. */
-  [[nodiscard]] const T *operator->() const & noexcept RELOCO_LIFETIMEBOUND { return get(); }
+  RELOCO_CHECKED [[nodiscard]] const T *operator->() const & noexcept RELOCO_LIFETIMEBOUND { return get(); }
 
   /**
    * @brief Returns a pointer to the value, running the captured closure

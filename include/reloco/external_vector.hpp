@@ -109,11 +109,11 @@ public:
 
   // ---- checked tier: RELOCO_ASSERT, active even when NDEBUG is defined ----
 
-  [[nodiscard]] T &operator[](size_type index) & noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] T &operator[](size_type index) & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(index < size_, "external_vector index out of bounds");
     return data_.unsafe_at(index);
   }
-  [[nodiscard]] const T &operator[](size_type index) const & noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] const T &operator[](size_type index) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(index < size_, "external_vector index out of bounds");
     return data_.unsafe_at(index);
   }

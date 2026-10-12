@@ -79,11 +79,13 @@ public:
   constexpr c_list_head_iterator(const c_list_head_iterator<T, Hook, WasConst> &other) noexcept
       : current_(other.node()) {}
 
-  [[nodiscard]] reference operator*() const noexcept {
+  RELOCO_CHECKED [[nodiscard]] reference operator*() const noexcept {
+    RELOCO_ASSERT(current_ != nullptr, "reloco::c_list_head_iterator: dereference of null node");
     return *detail::c_linux_hook_access<T, Hook>::container(current_);
   }
 
-  [[nodiscard]] pointer operator->() const noexcept {
+  RELOCO_CHECKED [[nodiscard]] pointer operator->() const noexcept {
+    RELOCO_ASSERT(current_ != nullptr, "reloco::c_list_head_iterator: dereference of null node");
     return detail::c_linux_hook_access<T, Hook>::container(current_);
   }
 

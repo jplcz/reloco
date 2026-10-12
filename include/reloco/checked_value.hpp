@@ -134,15 +134,15 @@ public:
     return std::move(value_);
   }
 
-  constexpr T *operator->() noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") { return &get(); }
+  RELOCO_CHECKED constexpr T *operator->() noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") { return &get(); }
 
-  constexpr const T *operator->() const noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+  RELOCO_CHECKED constexpr const T *operator->() const noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
     return &get();
   }
 
-  constexpr T &operator*() & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") { return get(); }
+  RELOCO_CHECKED constexpr T &operator*() & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") { return get(); }
 
-  constexpr const T &operator*() const & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+  RELOCO_CHECKED constexpr const T &operator*() const & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
     return get();
   }
 
@@ -274,14 +274,14 @@ public:
   }
 
   /** @brief Dereferences the pointee. Traps if moved from or null. */
-  constexpr T &operator*() const noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+  RELOCO_CHECKED constexpr T &operator*() const noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
     RELOCO_ASSERT(!moved_from_, "checked_value: access after move");
     RELOCO_ASSERT(value_ != nullptr, "checked_value: dereferencing a null pointer");
     return *value_;
   }
 
   /** @brief Member access on the pointee. Traps if moved from or null. */
-  constexpr T *operator->() const noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+  RELOCO_CHECKED constexpr T *operator->() const noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
     RELOCO_ASSERT(!moved_from_, "checked_value: access after move");
     RELOCO_ASSERT(value_ != nullptr, "checked_value: dereferencing a null pointer");
     return value_;

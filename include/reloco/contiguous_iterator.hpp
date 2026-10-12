@@ -127,17 +127,17 @@ public:
   // Contrast with begin()/end() below, which correctly remain
   // RELOCO_LIFETIMEBOUND: the *iterator itself* must not outlive the
   // container it was created from.
-  [[nodiscard]] constexpr reference operator*() const noexcept {
+  RELOCO_CHECKED [[nodiscard]] constexpr reference operator*() const noexcept {
     policy_.assert_deref(current_);
     return *current_;
   }
 
-  [[nodiscard]] constexpr pointer operator->() const noexcept {
+  RELOCO_CHECKED [[nodiscard]] constexpr pointer operator->() const noexcept {
     policy_.assert_deref(current_);
     return current_;
   }
 
-  [[nodiscard]] constexpr reference operator[](difference_type n) const noexcept {
+  RELOCO_CHECKED [[nodiscard]] constexpr reference operator[](difference_type n) const noexcept {
     policy_.assert_deref(current_ + n);
     return current_[n];
   }

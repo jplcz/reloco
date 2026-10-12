@@ -39,7 +39,8 @@ public:
 
   [[nodiscard]] constexpr T *get() const noexcept RELOCO_LIFETIMEBOUND { return m_ptr.get(); }
 
-  [[nodiscard]] constexpr T &operator*() const noexcept RELOCO_LIFETIMEBOUND {
+  // RELOCO_CHECKED: never null by construction (see below), so no runtime check is needed.
+  RELOCO_CHECKED [[nodiscard]] constexpr T &operator*() const noexcept RELOCO_LIFETIMEBOUND {
     // Bypass value_ptr's checked null-guard: a value_ref is only ever
     // constructed from a valid lvalue and never becomes null afterward, so
     // the check is provably redundant here and would be pure overhead. This
@@ -50,7 +51,7 @@ public:
     RELOCO_END_UNSAFE_BUFFER_USAGE
   }
 
-  [[nodiscard]] constexpr T *operator->() const noexcept RELOCO_LIFETIMEBOUND { return m_ptr.get(); }
+  RELOCO_CHECKED [[nodiscard]] constexpr T *operator->() const noexcept RELOCO_LIFETIMEBOUND { return m_ptr.get(); }
 
   /**
    * @brief Returns the nullable pointer representation of this borrow.

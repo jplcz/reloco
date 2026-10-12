@@ -5,6 +5,7 @@
 #pragma once
 
 #include "allocator.hpp"
+#include "lifetime.hpp"
 #include "detail/compat.hpp"
 #include "detail/sanitizer.hpp"
 #include "error.hpp"
@@ -13,6 +14,10 @@
 #include <memory>
 
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+
+// Unsafe by design: bump allocation inside a caller-provided buffer requires pointer arithmetic on raw addresses.
+// Exempt from reloco-tidy memory-safety rules; callers see the typed, checked API.
+RELOCO_BEGIN_UNSAFE_CODE
 
 namespace reloco {
 
@@ -95,3 +100,5 @@ using stack_allocator = allocator<stack_allocator_tag>;
 } // namespace reloco
 
 RELOCO_END_UNSAFE_BUFFER_USAGE
+
+RELOCO_END_UNSAFE_CODE

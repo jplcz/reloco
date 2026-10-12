@@ -8,6 +8,10 @@
  * on RELOCO_SHARED_PROVIDE_DEFINITIONS (see reloco/detail/compat.hpp).
  * Never included directly. */
 
+// Unsafe by design: bump allocation inside a caller-provided buffer requires pointer arithmetic on raw addresses.
+// Exempt from reloco-tidy memory-safety rules; callers see the typed, checked API.
+RELOCO_BEGIN_UNSAFE_CODE
+
 RELOCO_API result<mem_block> allocator_traits<stack_allocator_tag>::allocate(value_ref<context_type> ctx,
                                                                              std::size_t bytes,
                                                                              std::size_t alignment) noexcept {
@@ -39,3 +43,5 @@ RELOCO_API result<std::size_t> allocator_traits<stack_allocator_tag>::expand_in_
   }
   return unexpected(error::allocation_failed);
 }
+
+RELOCO_END_UNSAFE_CODE

@@ -102,6 +102,10 @@
 // pool_allocator.hpp's own treatment of the same concern.
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
+// Unsafe by design: wraps libc malloc/free and size queries, which are raw-pointer APIs.
+// Exempt from reloco-tidy memory-safety rules; callers see the typed, checked API.
+RELOCO_BEGIN_UNSAFE_CODE
+
 namespace reloco {
 
 namespace detail {
@@ -634,3 +638,5 @@ private:
 } // namespace reloco
 
 RELOCO_END_UNSAFE_BUFFER_USAGE
+
+RELOCO_END_UNSAFE_CODE

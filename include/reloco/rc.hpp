@@ -228,12 +228,12 @@ public:
     std::swap(block_, other.block_);
   }
 
-  [[nodiscard]] T &operator*() const & noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] T &operator*() const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(ptr_ != nullptr, "rc: dereference of null rc");
     return *ptr_;
   }
 
-  [[nodiscard]] T *operator->() const & noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] T *operator->() const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(ptr_ != nullptr, "rc: access of null rc");
     return ptr_;
   }

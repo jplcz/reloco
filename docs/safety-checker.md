@@ -292,6 +292,30 @@ template <typename F> void spawn(F fn RELOCO_REQUIRE_SEND) noexcept;
 void start(int n) noexcept { spawn([n]() noexcept { (void)n; }); }
 ```
 
+## Calibration against reloco's own headers
+
+The plugin is run over `tests/compile_all_headers.cpp` (all public headers, `-std=c++20`) to find false
+positives and to decide what the library itself must fix:
+
+```sh
+clang-tidy-24 --load=build-tidy/libreloco-tidy.so --checks='-*,reloco-*' \
+    --header-filter='include/reloco/.*' tests/compile_all_headers.cpp -- -std=c++20 -Iinclude
+```
+
+Results of the first pass (about 2300 findings, now about 935) and what they led to:
+
+| Finding | Resolution |
+|---|---|
+| `reloco-member-init` fired on fields of instantiated class templates whose in-class initializer is instantiated lazily | The check skips template instantiations; the template pattern is checked instead. |
+| `reloco-ref-qualified-member` fired on every non-const member (418 of 517) | Default narrowed to members that return an alias; `StrictNonConst: true` restores the strict rule. |
+| `reloco-no-raw-pointer` fired on parameters of function pointer types and of captureless lambdas (vtable slots) | Those parameters are exempt; the function implementing the slot is still checked. |
+| `reloco-checked-operator`: 80 library operators lacked `RELOCO_CHECKED` | They assert, delegate to an asserting accessor, or are non-null by construction, so they are now annotated; the iterator operators without a check gained an assertion. 207 findings down to 0. |
+| `detail/` type-erased bases and the allocator and OS shims address raw memory by design | Wrapped in `RELOCO_BEGIN_UNSAFE_CODE` / `RELOCO_END_UNSAFE_CODE` with a comment saying why. |
+
+Known remaining findings are real work items, not tool bugs: raw pointers in iterator/handle types that
+should carry `RELOCO_POINTER`, `const char *` message parameters, `explicit` conversions and `noexcept`
+gaps, and `std::` types in public signatures.
+
 ## Fix-its and "how to fix" notes
 
 Every diagnostic that has a well-known remedy carries a `note: how to fix: ...`

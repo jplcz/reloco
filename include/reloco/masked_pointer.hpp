@@ -313,7 +313,7 @@ public:
 
   // Enable ONLY if U (which is T) is not void
   template <typename U = T, std::enable_if_t<!std::is_void_v<U>, int> = 0>
-  [[nodiscard]] U *operator->() const noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] U *operator->() const noexcept RELOCO_LIFETIMEBOUND {
     U *result = static_cast<U *>(get());
     RELOCO_ASSERT(result != nullptr, "Dereferencing null pointer");
     return result; // Optimized: don't call get() twice
@@ -321,7 +321,7 @@ public:
 
   // Enable ONLY if U (which is T) is not void
   template <typename U = T, std::enable_if_t<!std::is_void_v<U>, int> = 0>
-  [[nodiscard]] U &operator*() const noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] U &operator*() const noexcept RELOCO_LIFETIMEBOUND {
     U *result = static_cast<U *>(get());
     RELOCO_ASSERT(result != nullptr, "Dereferencing null pointer");
     return *result; // Optimized: don't call get() twice

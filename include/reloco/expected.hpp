@@ -325,11 +325,11 @@ public:
     return m_has_value ? m_value : T();
   }
 
-  constexpr T *operator->() & noexcept RELOCO_LIFETIMEBOUND { return &value(); }
-  constexpr const T *operator->() const & noexcept RELOCO_LIFETIMEBOUND { return &value(); }
+  RELOCO_CHECKED constexpr T *operator->() & noexcept RELOCO_LIFETIMEBOUND { return &value(); }
+  RELOCO_CHECKED constexpr const T *operator->() const & noexcept RELOCO_LIFETIMEBOUND { return &value(); }
 
-  constexpr T &operator*() & noexcept RELOCO_LIFETIMEBOUND { return value(); }
-  constexpr const T &operator*() const & noexcept RELOCO_LIFETIMEBOUND { return value(); }
+  RELOCO_CHECKED constexpr T &operator*() & noexcept RELOCO_LIFETIMEBOUND { return value(); }
+  RELOCO_CHECKED constexpr const T &operator*() const & noexcept RELOCO_LIFETIMEBOUND { return value(); }
 
   RELOCO_BLOCK_RVALUE_ACCESS(T);
 

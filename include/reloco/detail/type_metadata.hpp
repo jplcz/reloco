@@ -47,8 +47,15 @@
 #include "../relocatable.hpp"
 #include "../reloco_extern.hpp"
 
+#include "../lifetime.hpp"
+
 #include <cstddef>
 #include <type_traits>
+
+// Unsafe by design: type descriptors store function pointers and raw layout data consumed only by detail/ code.
+// Exempt from reloco-tidy memory-safety rules; everything here is reached only
+// through the checked public API.
+RELOCO_BEGIN_UNSAFE_CODE
 
 namespace reloco::detail {
 
@@ -143,3 +150,5 @@ inline constexpr const type_metadata &metadata_for =
     metadata_instance<sizeof(T), effective_alignment_v<T>, capabilities_for<T>>;
 
 } // namespace reloco::detail
+
+RELOCO_END_UNSAFE_CODE

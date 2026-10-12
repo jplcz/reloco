@@ -35,12 +35,12 @@ public:
   [[nodiscard]] constexpr T *get() const noexcept RELOCO_LIFETIMEBOUND { return ptr_; }
 
   template <typename U = T, std::enable_if_t<!std::is_void_v<U>, int> = 0>
-  [[nodiscard]] constexpr U &operator*() const noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] constexpr U &operator*() const noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(ptr_ != nullptr, "value_ptr: dereferencing a null pointer");
     return *ptr_;
   }
 
-  [[nodiscard]] constexpr T *operator->() const noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] constexpr T *operator->() const noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(ptr_ != nullptr, "value_ptr: dereferencing a null pointer");
     return ptr_;
   }

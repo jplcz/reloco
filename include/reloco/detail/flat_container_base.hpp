@@ -57,6 +57,11 @@
 #include <type_traits>
 #include <utility>
 
+// Unsafe by design: shared storage helpers address elements through raw pointers; the safe facade is the public flat_* containers.
+// Exempt from reloco-tidy memory-safety rules; everything here is reached only
+// through the checked public API.
+RELOCO_BEGIN_UNSAFE_CODE
+
 namespace reloco::detail {
 
 /**
@@ -273,3 +278,5 @@ private:
 };
 
 } // namespace reloco::detail
+
+RELOCO_END_UNSAFE_CODE

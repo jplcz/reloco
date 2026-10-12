@@ -11,6 +11,11 @@
  * Never included directly.
  */
 
+// Unsafe by design: type-erased storage: grows/relocates raw byte buffers via runtime type metadata; the safe, typed facade is vector<T>.
+// Exempt from reloco-tidy memory-safety rules; everything here is reached only
+// through the checked public API.
+RELOCO_BEGIN_UNSAFE_CODE
+
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
 RELOCO_API result<void> trivial_operator_set::clone_range(const type_metadata &type, const void *src, void *dest,
@@ -975,3 +980,5 @@ RELOCO_API result<void> unowned_deque_base::try_erase_at_base(const vector_opera
 }
 
 RELOCO_END_UNSAFE_BUFFER_USAGE
+
+RELOCO_END_UNSAFE_CODE
