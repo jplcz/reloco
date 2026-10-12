@@ -41,6 +41,7 @@ add_library(reloco-tidy MODULE
     src/RelocoCheckBase.cpp
     src/RefQualifiedMemberCheck.cpp
     src/NoRawPointerCheck.cpp
+    src/StaticStringCheck.cpp
     src/NoCArrayCheck.cpp
     src/NoexceptCheck.cpp
     src/EasyChecks.cpp

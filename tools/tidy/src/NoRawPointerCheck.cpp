@@ -27,6 +27,19 @@ const CXXRecordDecl *enclosingClass(const DeclContext *dc) {
 
 } // namespace
 
+bool isStaticStrType(QualType t, const ASTContext &ctx) {
+  for (int guard = 0; guard < 32 && !t.isNull(); ++guard) {
+    if (const auto *at = llvm::dyn_cast<AttributedType>(t.getTypePtr()))
+      if (const auto *an = llvm::dyn_cast_or_null<AnnotateTypeAttr>(at->getAttr()); an && an->getAnnotation() == "reloco_static_str")
+        return true;
+    const QualType next = t.getSingleStepDesugaredType(ctx);
+    if (next == t)
+      break;
+    t = next;
+  }
+  return false;
+}
+
 void NoRawPointerCheck::registerMatchers(MatchFinder *finder) {
   finder->addMatcher(fieldDecl(unless(isImplicit())).bind("decl"), this);
   finder->addMatcher(varDecl(unless(isImplicit()), unless(parmVarDecl())).bind("decl"), this);
@@ -61,6 +74,9 @@ void NoRawPointerCheck::check(const MatchFinder::MatchResult &result) {
   if (type.isNull() || type->isDependentType() || !type->isPointerType() || type->isFunctionPointerType() ||
       type->isMemberPointerType())
     return;
+  // const char *RELOCO_STATIC_STR: a pointer that can never dangle; StaticStringCheck verifies the values.
+  if (isStaticStrType(type, *result.Context))
+    return;
   if (exempt(*result.SourceManager, loc) || inUnsafeTier(anchor) || isVtableLike(type->getPointeeType()))
     return;
   if (const auto *fd = llvm::dyn_cast<FunctionDecl>(anchor); fd && fd->isExternC())
@@ -86,6 +102,12 @@ void NoRawPointerCheck::check(const MatchFinder::MatchResult &result) {
     if (const auto *fd = llvm::dyn_cast_or_null<FunctionDecl>(pv->getDeclContext()); fd && fd->isExternC())
       return;
 
+  if (const QualType pointee = type->getPointeeType(); pointee->isCharType()) {
+    diag(loc, "'const char *' %0 without a static-lifetime guarantee; use reloco::string_view, or declare it "
+              "'const char *RELOCO_STATIC_STR' if it only ever refers to string literals / static storage")
+        << what;
+    return;
+  }
   diag(loc, "raw pointer %0; use reloco::value_ptr/value_ref/span, or confine it to a gsl::pointer/gsl::owner type "
             "or an unsafe_* function")
       << what;

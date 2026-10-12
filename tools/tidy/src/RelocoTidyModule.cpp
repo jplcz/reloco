@@ -15,6 +15,7 @@ public:
   void addCheckFactories(clang::tidy::ClangTidyCheckFactories &f) override {
     f.registerCheck<RefQualifiedMemberCheck>("reloco-ref-qualified-member");
     f.registerCheck<NoRawPointerCheck>("reloco-no-raw-pointer");
+    f.registerCheck<StaticStringCheck>("reloco-static-string");
     f.registerCheck<NoCArrayCheck>("reloco-no-c-array");
     f.registerCheck<NoexceptCheck>("reloco-noexcept");
     f.registerCheck<ImplicitConversionCheck>("reloco-implicit-conversion");

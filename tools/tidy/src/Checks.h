@@ -38,6 +38,12 @@ private:
 // Raw pointers only inside gsl::pointer/gsl::owner types, the unsafe tier,
 // vtables, function pointers and extern "C"; everything else uses value_ptr/value_ref/span.
 RELOCO_TIDY_CHECK(NoRawPointerCheck);
+// A pointer marked RELOCO_STATIC_STR (const char *RELOCO_STATIC_STR) must only ever receive string literals
+// or other static-lifetime strings: checks returns, arguments, initialisers and assignments.
+RELOCO_TIDY_CHECK(StaticStringCheck);
+
+// True when the pointer type carries RELOCO_STATIC_STR (looks through typedef sugar).
+bool isStaticStrType(clang::QualType t, const clang::ASTContext &ctx);
 // Every function (and lambda) must be noexcept.
 RELOCO_TIDY_CHECK(NoexceptCheck);
 // Classes are move-only unless marked RELOCO_COPYABLE (Rust's Copy): implicit copies are flagged,

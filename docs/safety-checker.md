@@ -188,6 +188,7 @@ CLion runs clang-tidy itself, so use its external-tool path for the plugin:
 | `reloco-send-sync` | Arguments passed to a `RELOCO_REQUIRE_SEND` parameter (thread/task spawn) must be Send; arguments to a `RELOCO_REQUIRE_SYNC` parameter must be Sync. Send is structural: scalars and aggregates of Send members; owners (`RELOCO_OWNER`) iff their template arguments are; raw pointers, references, views (`RELOCO_POINTER`), `RELOCO_NOT_SEND` types and lambdas capturing by reference or `this` are not. `RELOCO_SEND` overrides after an audit. Sync: `RELOCO_SYNC`, atomics, mutexes, all-const types, or a mutex owner. | Rust's `Send`/`Sync`. |
 | `reloco-signed-index` | `[]`, `at()` and `try_at()` indices of signed integer type are rejected unless the value-range analysis (shared with `reloco-narrowing-flow`) proves them non-negative (constants, masks, `unsigned` casts). A negative index becomes a huge unsigned value or an out-of-bounds read. Fix: use `std::size_t`, a range-for, or check `i >= 0` first. | Signed indexing is a classic source of out-of-bounds bugs. |
 | `reloco-ns-pointer` | **Opt-in by type.** Pointers tagged `RELOCO_NS(tag)` (system-call arguments, VM guest memory) are numbers in a foreign address space: they may not be dereferenced (`*p`, `p[i]`, `p->m`), assigned, initialised, passed, returned or cast to a normal pointer or a pointer with another tag. Integers may be cast *to* them (that is how they are created) and pointer arithmetic keeps the tag. Only a `RELOCO_NS_TRANSLATOR` function (or the unsafe tier) may convert. | Confused-deputy and guest/user pointer bugs. |
+| `reloco-static-string` | **Opt-in by type.** `const char *RELOCO_STATIC_STR` declares that a string pointer only ever refers to string literals or static storage. Values returned, passed, initialised or assigned to such a pointer must be a literal, `nullptr`, a static array, or another `RELOCO_STATIC_STR` value. Unannotated `const char *` is reported by `reloco-no-raw-pointer` (use `reloco::string_view`). | Dangling C-string pointers. |
 | `reloco-early-static` | **Opt-in by type.** A `RELOCO_EARLY_STATIC` class (or variable) must be usable before the C++ runtime starts: every user constructor is `constexpr`, the destructor is trivial (no `atexit` registration), the type is literal, and each static/global object of it is constant-initialised (`constexpr`, `constinit` or a provably constant initialiser). Fix-it inserts `constinit ` (C++20). | Bare-metal startup, no static-init-order fiasco. |
 | `reloco-borrow-check` | Best-effort Rust-style borrow checking inside one function. See below. | Aliasing XOR mutability. |
 
@@ -419,3 +420,16 @@ The macros expand to `_Pragma("region ...")`, which GCC, Clang and MSVC accept s
 `RELOCO_REQUIRE_SEND`, `RELOCO_REQUIRE_SYNC`, `RELOCO_NS(tag)`, `RELOCO_NS_TRANSLATOR`, `RELOCO_EARLY_STATIC`, `RELOCO_UNSAFE_BUFFER_USAGE`, `RELOCO_BEGIN/END_SAFE_CODE`,
 `RELOCO_BEGIN/END_UNSAFE_CODE`, `RELOCO_BEGIN/END_UNSAFE_BUFFER_USAGE`. All compile to nothing
 where the compiler lacks the attribute. See also [lifetime safety](lifetime-safety.md).
+
+### `RELOCO_STATIC_STR`
+
+```cpp
+// Declares that the returned string has static lifetime (only literals / static storage).
+// The annotation goes after the '*'; it is empty on GCC/MSVC.
+const char *RELOCO_STATIC_STR name() noexcept { return "widget"; }
+
+// Parameter: callers may only pass literals or other RELOCO_STATIC_STR values.
+void log_msg(const char *RELOCO_STATIC_STR msg) noexcept;
+
+// Anything else must use reloco::string_view instead.
+```

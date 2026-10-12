@@ -25,6 +25,7 @@ from pathlib import Path
 CHECKS = [
     "reloco-ref-qualified-member",
     "reloco-no-raw-pointer",
+    "reloco-static-string",
     "reloco-no-c-array",
     "reloco-implicit-conversion",
     "reloco-explicit-conversion",

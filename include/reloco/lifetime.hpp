@@ -264,6 +264,20 @@
 #endif
 
 /**
+ * @def RELOCO_STATIC_STR
+ * @brief Declares that a `const char *` has static storage duration (a string literal, or storage that lives
+ * for the whole program), so it can never dangle. `reloco-no-raw-pointer` accepts such a pointer; any other
+ * `const char *` must be a `reloco::string_view`. `reloco-static-string` verifies that every value returned or
+ * passed through a RELOCO_STATIC_STR declaration really is static. Place it after the `*`:
+ * `const char *RELOCO_STATIC_STR name() const noexcept;`. Compiles to nothing for GCC/MSVC.
+ */
+#if RELOCO_HAS_CPP_ATTRIBUTE(clang::annotate_type)
+#define RELOCO_STATIC_STR [[clang::annotate_type("reloco_static_str")]]
+#else
+#define RELOCO_STATIC_STR
+#endif
+
+/**
  * @def RELOCO_NS_TRANSLATOR
  * @brief Marks a function allowed to convert `RELOCO_NS` pointers: its body may dereference and cast them, and it
  * hands back a real pointer or copies the data out. Place it first in the declaration:

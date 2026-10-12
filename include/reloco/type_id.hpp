@@ -104,6 +104,7 @@
  */
 
 #include "detail/compat.hpp"
+#include "lifetime.hpp"
 
 #include <cstddef>
 #include <functional>
@@ -141,9 +142,9 @@ template <typename T> struct RELOCO_EXPORT type_id_tag {
   // can't be evaluated at compile time for a T that falls through to this
   // fallback, exactly like any other constexpr function called with
   // arguments that force a non-constant code path.
-  static const char *name() noexcept { return typeid(T).name(); }
+  static const char *RELOCO_STATIC_STR name() noexcept { return typeid(T).name(); }
 #else
-  static constexpr const char *name() noexcept { return nullptr; }
+  static constexpr const char *RELOCO_STATIC_STR name() noexcept { return nullptr; }
 #endif
 };
 
