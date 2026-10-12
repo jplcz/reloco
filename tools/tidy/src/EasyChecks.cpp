@@ -669,6 +669,7 @@ void MemberInitCheck::check(const MatchFinder::MatchResult &result) {
     return;
   if (fd->isInvalidDecl() || t.isNull() || t->isDependentType() || parent->isUnion() || parent->isLambda() ||
       t->isReferenceType() || fd->isTemplated() || fd->isUnnamedBitField() ||
+      (fd->isBitField() && !result.Context->getLangOpts().CPlusPlus20) || // no default member initializer before C++20
       exempt(*result.SourceManager, fd->getLocation()) || inUnsafeTier(fd))
     return;
   const QualType base = result.Context->getBaseElementType(t);
