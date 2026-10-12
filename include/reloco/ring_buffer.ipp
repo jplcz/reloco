@@ -9,6 +9,8 @@
  * (see `reloco/detail/compat.hpp`). Never included directly.
  */
 
+// Raw memcpy/memmove over the ring's storage; ranges are bounded by len_/cap_ before use.
+RELOCO_BEGIN_UNSAFE_CODE
 RELOCO_API result<void> unowned_trivial_ring_base::try_write_base(const void *src, std::size_t count,
                                                                   std::size_t elem_size) noexcept {
   if (len_ + count > cap_)
@@ -22,7 +24,7 @@ RELOCO_API result<void> unowned_trivial_ring_base::try_write_base(const void *sr
   if (tail >= cap_)
     tail -= cap_;
 
-  std::size_t first_chunk = std::min(count, cap_ - tail);
+  const std::size_t first_chunk = std::min(count, cap_ - tail);
   std::memcpy(dest_bytes + tail * elem_size, src_bytes, first_chunk * elem_size);
 
   if (first_chunk < count) {
@@ -32,7 +34,10 @@ RELOCO_API result<void> unowned_trivial_ring_base::try_write_base(const void *sr
   len_ += count;
   return {};
 }
+RELOCO_END_UNSAFE_CODE
 
+// Raw memcpy/memmove over the ring's storage; ranges are bounded by len_/cap_ before use.
+RELOCO_BEGIN_UNSAFE_CODE
 RELOCO_API void unowned_trivial_ring_base::write_overwrite_base(const void *src, std::size_t count,
                                                                 std::size_t elem_size) noexcept {
   if (count == 0 || cap_ == 0)
@@ -53,7 +58,7 @@ RELOCO_API void unowned_trivial_ring_base::write_overwrite_base(const void *src,
   if (tail >= cap_)
     tail -= cap_;
 
-  std::size_t first_chunk = std::min(count, cap_ - tail);
+  const std::size_t first_chunk = std::min(count, cap_ - tail);
   std::memcpy(dest_bytes + tail * elem_size, src_bytes, first_chunk * elem_size);
 
   if (first_chunk < count) {
@@ -63,12 +68,15 @@ RELOCO_API void unowned_trivial_ring_base::write_overwrite_base(const void *src,
   len_ += count;
   if (len_ > cap_) {
     // We overflowed. Advance head by the overflow amount.
-    std::size_t overflow = len_ - cap_;
+    const std::size_t overflow = len_ - cap_;
     head_ = (head_ + overflow) % cap_;
     len_ = cap_;
   }
 }
+RELOCO_END_UNSAFE_CODE
 
+// Raw memcpy/memmove over the ring's storage; ranges are bounded by len_/cap_ before use.
+RELOCO_BEGIN_UNSAFE_CODE
 RELOCO_API std::size_t unowned_trivial_ring_base::read_base(void *dest, std::size_t count,
                                                             std::size_t elem_size) noexcept {
   count = std::min(count, len_);
@@ -78,7 +86,7 @@ RELOCO_API std::size_t unowned_trivial_ring_base::read_base(void *dest, std::siz
   char *dest_bytes = static_cast<char *>(dest);
   const char *src_bytes = static_cast<const char *>(data_);
 
-  std::size_t first_chunk = std::min(count, cap_ - head_);
+  const std::size_t first_chunk = std::min(count, cap_ - head_);
   std::memcpy(dest_bytes, src_bytes + head_ * elem_size, first_chunk * elem_size);
 
   if (first_chunk < count) {
@@ -89,7 +97,9 @@ RELOCO_API std::size_t unowned_trivial_ring_base::read_base(void *dest, std::siz
   len_ -= count;
   return count;
 }
+RELOCO_END_UNSAFE_CODE
 
+RELOCO_BEGIN_UNSAFE_CODE
 RELOCO_API result<void> unowned_trivial_ring_base::try_reserve_base(allocator_ref alloc, std::size_t new_cap,
                                                                     std::size_t elem_size, std::size_t align,
                                                                     void *inline_storage, std::size_t max_inline,
@@ -102,7 +112,7 @@ RELOCO_API result<void> unowned_trivial_ring_base::try_reserve_base(allocator_re
   const std::size_t required_bytes = new_cap * elem_size;
 
   // Inline Promotion
-  if (inline_storage && data_ == inline_storage) {
+  if (inline_storage != nullptr && data_ == inline_storage) {
     if (new_cap <= max_inline) {
       cap_ = max_inline;
       return {};
@@ -113,7 +123,7 @@ RELOCO_API result<void> unowned_trivial_ring_base::try_reserve_base(allocator_re
 
     char *new_data = static_cast<char *>(res->ptr);
     if (len_ > 0) {
-      std::size_t first_chunk = std::min(len_, cap_ - head_);
+      const std::size_t first_chunk = std::min(len_, cap_ - head_);
       std::memcpy(new_data, static_cast<char *>(data_) + head_ * elem_size, first_chunk * elem_size);
       if (first_chunk < len_) {
         std::memcpy(new_data + first_chunk * elem_size, data_, (len_ - first_chunk) * elem_size);
@@ -126,12 +136,12 @@ RELOCO_API result<void> unowned_trivial_ring_base::try_reserve_base(allocator_re
   }
 
   // Expand in place (requires shifting if wrapped)
-  if (data_) {
+  if (data_ != nullptr) {
     if (auto res = alloc.expand_in_place(data_, cap_ * elem_size, required_bytes); res) {
-      std::size_t newly_allocated_cap = *res / elem_size;
+      const std::size_t newly_allocated_cap = *res / elem_size;
       if (len_ > 0 && head_ + len_ > cap_) {
-        std::size_t added_cap = newly_allocated_cap - cap_;
-        std::size_t head_len = cap_ - head_;
+        const std::size_t added_cap = newly_allocated_cap - cap_;
+        const std::size_t head_len = cap_ - head_;
         char *byte_data = static_cast<char *>(data_);
         std::memmove(byte_data + (head_ + added_cap) * elem_size, byte_data + head_ * elem_size, head_len * elem_size);
         head_ += added_cap;
@@ -143,17 +153,17 @@ RELOCO_API result<void> unowned_trivial_ring_base::try_reserve_base(allocator_re
 
   // Reallocate / Allocate
   auto res =
-      data_ ? alloc.reallocate(data_, cap_ * elem_size, required_bytes, align) : alloc.allocate(required_bytes, align);
+      data_ != nullptr ? alloc.reallocate(data_, cap_ * elem_size, required_bytes, align) : alloc.allocate(required_bytes, align);
   if (!res)
     return unexpected(res.error());
 
   char *new_data = static_cast<char *>(res->ptr);
-  std::size_t newly_allocated_cap = res->size / elem_size;
+  const std::size_t newly_allocated_cap = res->size / elem_size;
 
-  if (data_) {
+  if (data_ != nullptr) {
     if (len_ > 0 && head_ + len_ > cap_) {
-      std::size_t added_cap = newly_allocated_cap - cap_;
-      std::size_t head_len = cap_ - head_;
+      const std::size_t added_cap = newly_allocated_cap - cap_;
+      const std::size_t head_len = cap_ - head_;
       std::memmove(new_data + (head_ + added_cap) * elem_size, new_data + head_ * elem_size, head_len * elem_size);
       head_ += added_cap;
     }
@@ -163,3 +173,4 @@ RELOCO_API result<void> unowned_trivial_ring_base::try_reserve_base(allocator_re
   cap_ = newly_allocated_cap;
   return {};
 }
+RELOCO_END_UNSAFE_CODE

@@ -125,12 +125,15 @@ public:
    * `effective_alignment_v<T>` (checked via `RELOCO_ASSERT`) and outlive
    * `*this`.
    */
+  // Storage reinterpretation over the buffer; element lifetime tracked by the container.
+  RELOCO_BEGIN_UNSAFE_CODE
   constexpr explicit outline_vector(
       span<std::byte> storage RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
       : base_t(storage.data(), storage.size() / sizeof(T)) {
     RELOCO_ASSERT(reinterpret_cast<std::uintptr_t>(storage.data()) % effective_alignment_v<T> == 0,
                   "outline_vector: storage span is not aligned for T");
   }
+  RELOCO_END_UNSAFE_CODE
 
   /**
    * @brief Destructor. Destroys any live elements; never touches the

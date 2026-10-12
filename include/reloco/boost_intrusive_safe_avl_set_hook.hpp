@@ -71,6 +71,9 @@ public:
   safe_avl_set_hook() noexcept = default;
   safe_avl_set_hook(const safe_avl_set_hook &) noexcept = default;
   safe_avl_set_hook &operator=(const safe_avl_set_hook &) noexcept = default;
+  // Boost hooks have no move: a "move" is a copy that yields a fresh, unlinked hook.
+  safe_avl_set_hook(safe_avl_set_hook &&) noexcept = default;
+  safe_avl_set_hook &operator=(safe_avl_set_hook &&) noexcept = default;
 
   ~safe_avl_set_hook() {
     RELOCO_ASSERT(!this->is_linked(),
@@ -100,6 +103,9 @@ public:
   safe_avl_set_member_hook() noexcept = default;
   safe_avl_set_member_hook(const safe_avl_set_member_hook &) noexcept = default;
   safe_avl_set_member_hook &operator=(const safe_avl_set_member_hook &) noexcept = default;
+  // Boost hooks have no move: a "move" is a copy that yields a fresh, unlinked hook.
+  safe_avl_set_member_hook(safe_avl_set_member_hook &&) noexcept = default;
+  safe_avl_set_member_hook &operator=(safe_avl_set_member_hook &&) noexcept = default;
 
   ~safe_avl_set_member_hook() {
     RELOCO_ASSERT(!this->is_linked(), "reloco::boost_intrusive::safe_avl_set_member_hook destroyed while still linked "

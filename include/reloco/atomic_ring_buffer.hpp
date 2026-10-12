@@ -174,6 +174,8 @@ public:
     write_idx_.store(w + count, std::memory_order_release);
   }
 
+  // Raw memcpy over the ring's storage; ranges are bounded by the reserved capacity before use.
+  RELOCO_BEGIN_UNSAFE_CODE
   [[nodiscard]] result<void> try_write(span<const T> data) & noexcept {
     auto [s1, s2] = write_slices(data.size()); // Request exact size!
     if (s1.size() + s2.size() < data.size()) {
@@ -190,6 +192,7 @@ public:
     commit(data.size());
     return {};
   }
+  RELOCO_END_UNSAFE_CODE
 
   /**
    * @brief Single-element push (Rust: `push`). Fails if queue is full.
@@ -206,11 +209,14 @@ public:
   /**
    * @brief Writes a trivially copyable struct zero-copy.
    */
+  // Raw memcpy over the ring's storage; ranges are bounded by the reserved capacity before use.
+  RELOCO_BEGIN_UNSAFE_CODE
   template <typename U> [[nodiscard]] result<void> try_write_object(const U &obj) & noexcept {
     static_assert(std::is_trivially_copyable_v<U>, "Object must be trivially copyable");
     static_assert(sizeof(U) % sizeof(T) == 0, "Size must align");
     return try_write(span<const T>(reinterpret_cast<const T *>(&obj), sizeof(U) / sizeof(T)));
   }
+  RELOCO_END_UNSAFE_CODE
 
   // ---- RAII Zero-Copy Write Transaction (Typestate Protected) ----
 
@@ -310,6 +316,8 @@ public:
     read_idx_.store(r + count, std::memory_order_release);
   }
 
+  // Raw memcpy over the ring's storage; ranges are bounded by the reserved capacity before use.
+  RELOCO_BEGIN_UNSAFE_CODE
   size_type read(span<T> dest) & noexcept {
     auto [s1, s2] = read_slices(dest.size()); // Request exact size!
     if (s1.empty())
@@ -327,6 +335,7 @@ public:
     consume(total_read);
     return total_read;
   }
+  RELOCO_END_UNSAFE_CODE
 
   /**
    * @brief Single-element pop (Rust: `pop`). Fails if queue is empty.
@@ -343,6 +352,8 @@ public:
   /**
    * @brief Safely reads a trivially copyable object, consuming it.
    */
+  // Raw memcpy over the ring's storage; ranges are bounded by the reserved capacity before use.
+  RELOCO_BEGIN_UNSAFE_CODE
   template <typename U> [[nodiscard]] result<U> try_read_object() & noexcept {
     static_assert(std::is_trivially_copyable_v<U>, "Object must be trivially copyable");
     static_assert(sizeof(U) % sizeof(T) == 0, "Size must align");
@@ -366,11 +377,14 @@ public:
     consume(req_elems);
     return obj;
   }
+  RELOCO_END_UNSAFE_CODE
 
   /**
    * @brief Safely reads a struct WITHOUT consuming it.
    * Perfect for checking packet headers safely over the wrap boundary.
    */
+  // Raw memcpy over the ring's storage; ranges are bounded by the reserved capacity before use.
+  RELOCO_BEGIN_UNSAFE_CODE
   template <typename U> [[nodiscard]] result<U> try_peek_object(size_type offset = 0) & noexcept {
     static_assert(std::is_trivially_copyable_v<U>, "Object must be trivially copyable");
     static_assert(sizeof(U) % sizeof(T) == 0, "Size must align");
@@ -399,6 +413,7 @@ public:
     }
     return obj;
   }
+  RELOCO_END_UNSAFE_CODE
 
   /**
    * @brief Decodes a structured frame atomically from the lock-free queue.
@@ -543,6 +558,8 @@ public:
  * @brief An SPSC queue allocated entirely on the stack (zero-allocation).
  * The requested capacity MUST be a power of 2, enforced at compile time.
  */
+// Raw memcpy over the ring's storage; ranges are bounded by the reserved capacity before use.
+RELOCO_BEGIN_UNSAFE_CODE
 template <typename T, std::size_t Capacity> class inline_spsc_ring_buffer : public spsc_ring_buffer<T> {
   static_assert((Capacity >= 2) && ((Capacity & (Capacity - 1)) == 0), "Inline SPSC capacity must be a power of 2");
 
@@ -559,11 +576,14 @@ public:
   inline_spsc_ring_buffer(inline_spsc_ring_buffer &&) = delete;
   inline_spsc_ring_buffer &operator=(inline_spsc_ring_buffer &&) = delete;
 };
+RELOCO_END_UNSAFE_CODE
 
 /**
  * @brief An SPSC queue mapped over raw, unowned external memory (e.g. DMA, IPC).
  * Automatically rounds the byte length DOWN to the nearest power of 2 for safety.
  */
+// Raw memcpy over the ring's storage; ranges are bounded by the reserved capacity before use.
+RELOCO_BEGIN_UNSAFE_CODE
 template <typename T> class outline_spsc_ring_buffer : public spsc_ring_buffer<T> {
 public:
   template <typename U>
@@ -579,12 +599,13 @@ public:
   outline_spsc_ring_buffer(outline_spsc_ring_buffer &&) = delete;
   outline_spsc_ring_buffer &operator=(outline_spsc_ring_buffer &&) = delete;
 };
+RELOCO_END_UNSAFE_CODE
 
 /**
  * @brief An SPSC queue dynamically allocated on the heap.
  * Capacity is automatically rounded up to the nearest power of 2.
  */
-template <typename T> class heap_spsc_ring_buffer : public spsc_ring_buffer<T> {
+template <typename T> class RELOCO_OWNER heap_spsc_ring_buffer : public spsc_ring_buffer<T> {
   allocator_ref alloc_;
 
   // Private constructor invoked ONLY when allocation succeeds

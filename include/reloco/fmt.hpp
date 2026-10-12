@@ -73,7 +73,7 @@ struct RELOCO_EXPORT RELOCO_POINTER sink {
    * @param sv String view containing characters to write.
    */
   void write(reloco::string_view sv) const noexcept {
-    if (write_fn && !sv.empty()) {
+    if (write_fn != nullptr && !sv.empty()) {
       write_fn(ctx, sv);
     }
   }
@@ -92,6 +92,8 @@ struct RELOCO_EXPORT RELOCO_POINTER sink {
    */
   void push_back(char c) const noexcept { put(c); }
 
+  // Output-iterator idiom (`*it = c`): returns the sink itself, nothing is indexed.
+  // NOLINTNEXTLINE(reloco-checked-operator)
   [[nodiscard]] constexpr sink &operator*() noexcept { return *this; }
 
   template <typename T> constexpr sink &operator=(T value) noexcept {

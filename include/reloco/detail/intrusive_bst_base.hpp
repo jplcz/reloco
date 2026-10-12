@@ -95,7 +95,7 @@ namespace reloco::detail {
  * converts to `const_iterator` implicitly, matching every other reloco
  * container's mutable/const iterator pair.
  */
-template <typename T, auto Hook, bool IsConst> class intrusive_bst_iterator {
+template <typename T, auto Hook, bool IsConst> class RELOCO_POINTER intrusive_bst_iterator {
 public:
   using iterator_category = std::bidirectional_iterator_tag;
   using value_type = T;
@@ -110,13 +110,19 @@ public:
   // Mutable -> const conversion only, same direction every other reloco
   // iterator/const_iterator pair allows.
   template <bool WasConst, typename = std::enable_if_t<IsConst && !WasConst>>
-  constexpr intrusive_bst_iterator(const intrusive_bst_iterator<T, Hook, WasConst> &other) noexcept
+  explicit constexpr intrusive_bst_iterator(const intrusive_bst_iterator<T, Hook, WasConst> &other) noexcept
       : m_node(other.node()), m_root(other.root()) {}
 
-  [[nodiscard]] reference operator*() const noexcept { return *m_node; }
-  [[nodiscard]] pointer operator->() const noexcept { return m_node; }
+  RELOCO_CHECKED [[nodiscard]] reference operator*() const noexcept {
+    RELOCO_ASSERT(m_node != nullptr, "dereferenced end() iterator");
+    return *m_node;
+  }
+  RELOCO_CHECKED [[nodiscard]] pointer operator->() const noexcept {
+    RELOCO_ASSERT(m_node != nullptr, "dereferenced end() iterator");
+    return m_node;
+  }
 
-  intrusive_bst_iterator &operator++() noexcept {
+  intrusive_bst_iterator &operator++() & noexcept {
     RELOCO_ASSERT(m_node != nullptr, "reloco::detail::intrusive_bst_iterator: incrementing an end() iterator");
     m_node = successor(m_node);
     return *this;
@@ -126,7 +132,7 @@ public:
     ++*this;
     return tmp;
   }
-  intrusive_bst_iterator &operator--() noexcept {
+  intrusive_bst_iterator &operator--() & noexcept {
     m_node = m_node != nullptr ? predecessor(m_node) : rightmost(m_root);
     return *this;
   }
@@ -146,8 +152,8 @@ public:
   // Exposed only so the mutable -> const converting constructor above (a
   // different instantiation of this same template) can read another
   // iterator's state; not meant for general use.
-  [[nodiscard]] constexpr T *node() const noexcept { return m_node; }
-  [[nodiscard]] constexpr T *root() const noexcept { return m_root; }
+  [[nodiscard]] constexpr T *node() const & noexcept { return m_node; }
+  [[nodiscard]] constexpr T *root() const & noexcept { return m_root; }
 
 private:
   [[nodiscard]] static T *leftmost(T *node) noexcept {
@@ -207,7 +213,8 @@ private:
  * `RELOCO_POINTER` view, so handing back something `RELOCO_LIFETIMEBOUND`
  * to it from a temporary would dangle immediately.
  */
-template <typename Derived, typename T, auto Hook, typename KeyOf, typename Compare> class intrusive_bst_base {
+template <typename Derived, typename T, auto Hook, typename KeyOf, typename Compare>
+class RELOCO_POINTER intrusive_bst_base {
 public:
   using value_type = T;
   using key_type = std::decay_t<decltype(KeyOf{}(std::declval<const T &>()))>;
@@ -251,11 +258,14 @@ public:
     RELOCO_ASSERT(hook_of(node).is_linked(), "reloco::detail::intrusive_bst_base::iterator_to: node is not linked");
     return iterator(&node, root_);
   }
+  // Intrusive tree: nodes are owned by the caller; const_cast recovers the node mutably from a const view.
+  RELOCO_BEGIN_UNSAFE_CODE
   [[nodiscard]] const_iterator iterator_to(const T &node) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(hook_of(const_cast<T &>(node)).is_linked(),
                   "reloco::detail::intrusive_bst_base::iterator_to: node is not linked");
     return const_iterator(const_cast<T *>(&node), root_);
   }
+  RELOCO_END_UNSAFE_CODE
   iterator iterator_to(T &node) && = delete;
   const_iterator iterator_to(const T &node) const && = delete;
 
@@ -878,7 +888,7 @@ protected:
     hx.parent = y;
   }
 
-  template <typename K> [[nodiscard]] T *find_ptr(const K &key) const noexcept {
+  template <typename K> [[nodiscard]] T *find_ptr(const K &key) const & noexcept {
     const Compare less{};
     const KeyOf keyOf{};
     T *cur = root_;
@@ -893,7 +903,7 @@ protected:
     return nullptr;
   }
 
-  template <typename K> [[nodiscard]] T *lower_bound_ptr(const K &key) const noexcept {
+  template <typename K> [[nodiscard]] T *lower_bound_ptr(const K &key) const & noexcept {
     const Compare less{};
     const KeyOf keyOf{};
     T *cur = root_;
@@ -909,7 +919,7 @@ protected:
     return result_node;
   }
 
-  template <typename K> [[nodiscard]] T *upper_bound_ptr(const K &key) const noexcept {
+  template <typename K> [[nodiscard]] T *upper_bound_ptr(const K &key) const & noexcept {
     const Compare less{};
     const KeyOf keyOf{};
     T *cur = root_;
@@ -934,7 +944,7 @@ protected:
   // needed (unlike a general overlapping-interval tree) specifically
   // because ranges don't overlap here.
   template <typename K, typename EndOf>
-  [[nodiscard]] T *find_containing_ptr(const K &addr, EndOf end_of) const noexcept {
+  [[nodiscard]] T *find_containing_ptr(const K &addr, EndOf end_of) const & noexcept {
     const Compare less{};
     T *at_or_after = upper_bound_ptr(addr); // first node with key > addr
     T *candidate = at_or_after != nullptr ? predecessor(at_or_after) : rightmost(root_);
@@ -952,7 +962,7 @@ protected:
   // while its `KeyOf` stays `< hi`. Returns `nullptr` for an empty/invalid
   // query range (`!less(lo, hi)`) or no intersection.
   template <typename K, typename EndOf>
-  [[nodiscard]] T *find_overlap_ptr(const K &lo, const K &hi, EndOf end_of) const noexcept {
+  [[nodiscard]] T *find_overlap_ptr(const K &lo, const K &hi, EndOf end_of) const & noexcept {
     const Compare less{};
     if (!less(lo, hi))
       return nullptr;
@@ -970,8 +980,8 @@ protected:
   size_type size_ = 0;
 
 private:
-  [[nodiscard]] Derived &derived() noexcept { return static_cast<Derived &>(*this); }
-  [[nodiscard]] const Derived &derived() const noexcept { return static_cast<const Derived &>(*this); }
+  [[nodiscard]] Derived &derived() & noexcept { return static_cast<Derived &>(*this); }
+  [[nodiscard]] const Derived &derived() const & noexcept { return static_cast<const Derived &>(*this); }
 };
 
 } // namespace reloco::detail

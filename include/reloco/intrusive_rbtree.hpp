@@ -98,6 +98,8 @@ namespace reloco {
  * CLRS red-black fixup needs. No sentinel "nil" node is used anywhere --
  * `nullptr` always means "black, no child/parent here".
  */
+// Embedded links into the tree; the hook is neither an owner nor a borrower of the nodes.
+// NOLINTNEXTLINE(reloco-pointer-annotation)
 template <typename T> struct intrusive_rbtree_hook {
   T *parent = nullptr;
   T *left = nullptr;
@@ -116,6 +118,8 @@ template <typename T> struct intrusive_rbtree_hook {
  * `intrusive_hash_table`'s own `KeyOf`); @p Compare orders two keys,
  * defaulting to `std::less<key_type>`.
  */
+// Intrusive tree node access; nodes are owned by the caller.
+RELOCO_BEGIN_UNSAFE_CODE
 template <typename T, intrusive_rbtree_hook<T> T::*Hook, typename KeyOf,
           typename Compare = std::less<std::decay_t<decltype(KeyOf{}(std::declval<const T &>()))>>>
 class RELOCO_POINTER intrusive_rbtree
@@ -381,5 +385,6 @@ private:
       hook_of(*x).red = false;
   }
 };
+RELOCO_END_UNSAFE_CODE
 
 } // namespace reloco

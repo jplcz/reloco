@@ -129,9 +129,12 @@ namespace boost_intrusive {
  * the intrusive container never owned it (`boost::intrusive`'s own
  * usual ownership model).
  */
+// Opt-in disposer for heap-allocated nodes the intrusive container never owned; the caller chooses it explicitly.
+RELOCO_BEGIN_UNSAFE_CODE
 template <typename T> [[nodiscard]] auto default_delete_disposer() noexcept {
   return [](T *node) { delete node; };
 }
+RELOCO_END_UNSAFE_CODE
 
 } // namespace boost_intrusive
 

@@ -49,3 +49,13 @@ void cases(plain a, point pt, view vw, boxed<int> bx) noexcept {
   plain nl = a;          // NOLINT(reloco-implicit-copy)
   (void)b; (void)c; (void)d; (void)e2; (void)f; (void)g; (void)h; (void)k; (void)p2; (void)v2; (void)b2; (void)nl;
 }
+
+struct copy_only_assign {
+  copy_only_assign() = default;
+  copy_only_assign(const copy_only_assign &) noexcept = default;
+  copy_only_assign &operator=(const copy_only_assign &) noexcept = default;
+};
+copy_only_assign make_copy_only() noexcept;
+void assign_from_temporary(copy_only_assign &dst) noexcept {
+  dst = make_copy_only(); // fine: a temporary has nothing to move out of beyond the copy the type forces
+}

@@ -73,6 +73,9 @@ void ImplicitCopyCheck::check(const MatchFinder::MatchResult &result) {
     if (cur.get<CXXFunctionalCastExpr>() || cur.get<CXXStaticCastExpr>() || cur.get<CXXCtorInitializer>())
       return;
   } else if (const auto *oc = result.Nodes.getNodeAs<CXXOperatorCallExpr>("assign")) {
+    // Assigning from a temporary is a copy only because the type has no move assignment; there is nothing to move.
+    if (oc->getNumArgs() == 2 && !oc->getArg(1)->IgnoreImplicit()->isLValue())
+      return;
     rd = llvm::cast<CXXMethodDecl>(oc->getDirectCallee())->getParent();
     loc = oc->getOperatorLoc();
   }

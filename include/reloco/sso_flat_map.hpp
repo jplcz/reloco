@@ -98,6 +98,8 @@ public:
    * @brief Looks up @p key, returning a mutable reference to its mapped
    * value on success or `error::not_found` otherwise.
    */
+  // const_cast shares the non-const implementation; the result is never written through a const object.
+  RELOCO_BEGIN_UNSAFE_CODE
   template <typename K>
   [[nodiscard]] result<std::reference_wrapper<mapped_type>> try_at(const K &key) & noexcept RELOCO_LIFETIMEBOUND {
     auto found = base::try_find(key);
@@ -112,6 +114,7 @@ public:
     auto &mutable_pair = const_cast<value_type &>(found->get());
     return std::ref(mutable_pair.second);
   }
+  RELOCO_END_UNSAFE_CODE
 
   /**
    * @brief Looks up @p key, returning a read-only reference to its mapped
@@ -216,12 +219,15 @@ struct container_ref_traits<sso_flat_map<Key, Mapped, InlineCapacity, Compare>> 
     return &found_res->get();
   }
 
+  // const_cast shares the non-const implementation; the result is never written through a const object.
+  RELOCO_BEGIN_UNSAFE_CODE
   static void for_each(container_type &c, void *visitor_ctx,
                        void (*visit)(void *, const key_type &, element_type &) noexcept) noexcept {
     c.for_each([visitor_ctx, visit](const typename container_type::value_type &entry) noexcept {
       visit(visitor_ctx, entry.first, const_cast<element_type &>(entry.second));
     });
   }
+  RELOCO_END_UNSAFE_CODE
 };
 
 /**

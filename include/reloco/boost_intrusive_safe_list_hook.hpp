@@ -77,6 +77,9 @@ public:
   safe_list_hook() noexcept = default;
   safe_list_hook(const safe_list_hook &) noexcept = default;
   safe_list_hook &operator=(const safe_list_hook &) noexcept = default;
+  // Boost hooks have no move: a "move" is a copy that yields a fresh, unlinked hook.
+  safe_list_hook(safe_list_hook &&) noexcept = default;
+  safe_list_hook &operator=(safe_list_hook &&) noexcept = default;
 
   ~safe_list_hook() {
     RELOCO_ASSERT(!this->is_linked(),
@@ -107,6 +110,9 @@ public:
   safe_list_member_hook() noexcept = default;
   safe_list_member_hook(const safe_list_member_hook &) noexcept = default;
   safe_list_member_hook &operator=(const safe_list_member_hook &) noexcept = default;
+  // Boost hooks have no move: a "move" is a copy that yields a fresh, unlinked hook.
+  safe_list_member_hook(safe_list_member_hook &&) noexcept = default;
+  safe_list_member_hook &operator=(safe_list_member_hook &&) noexcept = default;
 
   ~safe_list_member_hook() {
     RELOCO_ASSERT(!this->is_linked(),

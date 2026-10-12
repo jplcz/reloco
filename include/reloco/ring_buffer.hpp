@@ -108,12 +108,12 @@ protected:
 
   constexpr unowned_trivial_ring_base() noexcept = default;
 
-  constexpr unowned_trivial_ring_base(void *storage, const size_type capacity) noexcept
+  constexpr unowned_trivial_ring_base(void *storage RELOCO_LIFETIMEBOUND, const size_type capacity) noexcept
       : data_(storage), cap_(capacity) {}
 
   // Explicit state adoption for the cursor
-  constexpr unowned_trivial_ring_base(void *storage, const size_type capacity, const size_type head,
-                                      const size_type len) noexcept
+  constexpr unowned_trivial_ring_base(void *storage RELOCO_LIFETIMEBOUND, const size_type capacity,
+                                      const size_type head, const size_type len) noexcept
       : data_(storage), head_(head), len_(len), cap_(capacity) {}
 
   [[nodiscard]] RELOCO_API result<void> try_reserve_base(allocator_ref alloc, std::size_t new_cap,
@@ -137,10 +137,10 @@ template <typename T> class RELOCO_POINTER unowned_ring_base : public unowned_tr
 protected:
   constexpr unowned_ring_base() noexcept = default;
 
-  constexpr unowned_ring_base(void *storage, const size_type capacity) noexcept
+  constexpr unowned_ring_base(void *storage RELOCO_LIFETIMEBOUND, const size_type capacity) noexcept
       : unowned_trivial_ring_base(storage, capacity) {}
 
-  constexpr unowned_ring_base(void *storage, const size_type capacity, const size_type head,
+  constexpr unowned_ring_base(void *storage RELOCO_LIFETIMEBOUND, const size_type capacity, const size_type head,
                               const size_type len) noexcept
       : unowned_trivial_ring_base(storage, capacity, head, len) {}
 
@@ -302,7 +302,7 @@ public:
 
   // ---- Element Access ----
 
-  [[nodiscard]] T &operator[](size_type index) & noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] T &operator[](size_type index) & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(index < this->len_, "ring_buffer index out of bounds");
     std::size_t physical = this->head_ + index;
     if (physical >= this->cap_)
@@ -310,7 +310,7 @@ public:
     return static_cast<T *>(this->data_)[physical];
   }
 
-  [[nodiscard]] const T &operator[](size_type index) const & noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] const T &operator[](size_type index) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(index < this->len_, "ring_buffer index out of bounds");
     std::size_t physical = this->head_ + index;
     if (physical >= this->cap_)
@@ -385,6 +385,8 @@ public:
    * @brief Reorders the physical buffer so that all elements are contiguous,
    * returning a single span. Uses zero allocations. (Rust: `make_contiguous`)
    */
+  // Raw access to the ring's untyped storage; every index is bounded by len_/cap_ before use.
+  RELOCO_BEGIN_UNSAFE_CODE
   span<T> make_contiguous() & noexcept RELOCO_LIFETIMEBOUND {
     if (this->len_ <= 1) {
       if (this->len_ == 1 && this->head_ > 0) {
@@ -415,6 +417,7 @@ public:
     this->head_ = 0;
     return span<T>(typed_data, this->len_);
   }
+  RELOCO_END_UNSAFE_CODE
 
   // ---- Heterogeneous Object I/O ----
 
@@ -470,12 +473,14 @@ public:
    * Useful for reading packet headers to determine payload sizes before extracting.
    * @param element_offset The logical index to start peeking from (defaults to 0 / front).
    */
+  // Raw access to the ring's untyped storage; every index is bounded by len_/cap_ before use.
+  RELOCO_BEGIN_UNSAFE_CODE
   template <typename U> [[nodiscard]] result<U> try_peek_object(size_type element_offset = 0) const & noexcept {
     static_assert(std::is_trivially_copyable_v<U>, "Object must be trivially copyable to peek");
     static_assert(sizeof(U) % sizeof(T) == 0, "Object size must be a multiple of buffer element size");
 
     const std::size_t required_elements = sizeof(U) / sizeof(T);
-    if (this->len_ < element_offset + required_elements) {
+    if (required_elements > this->len_ || element_offset > this->len_ - required_elements) {
       return unexpected(error::out_of_bounds);
     }
 
@@ -496,6 +501,7 @@ public:
 
     return obj;
   }
+  RELOCO_END_UNSAFE_CODE
 
   // ---- Stream Parsing & Frame Decoding ----
 
@@ -732,6 +738,8 @@ public:
    * @param[out] header_bytes Encoded size of the header.
    * @param[out] frame_size Total size of the frame (header included) as reported by the codec.
    */
+  // Raw access to the ring's untyped storage; every index is bounded by len_/cap_ before use.
+  RELOCO_BEGIN_UNSAFE_CODE
   template <typename Codec>
   [[nodiscard]] packed_probe peek_packed_header(typename Codec::header_type &header, size_type &header_bytes,
                                                 size_type &frame_size) const noexcept {
@@ -757,6 +765,7 @@ public:
       return packed_probe::corrupt;
     return packed_probe::ok;
   }
+  RELOCO_END_UNSAFE_CODE
 
   /**
    * @brief Packed-header counterpart of `try_peek_frame`: hands the payload of the oldest complete frame to
@@ -923,6 +932,8 @@ public:
    * @param offset Logical index to start peeking from (defaults to 0).
    * @return The actual number of elements copied.
    */
+  // Raw access to the ring's untyped storage; every index is bounded by len_/cap_ before use.
+  RELOCO_BEGIN_UNSAFE_CODE
   size_type peek(span<T> dest, size_type offset = 0) const & noexcept {
     if (offset >= this->len_ || dest.empty())
       return 0;
@@ -942,6 +953,7 @@ public:
 
     return count;
   }
+  RELOCO_END_UNSAFE_CODE
 
   // ---- Cascading Transfers ----
 
@@ -1031,19 +1043,24 @@ public:
    * @param offset Logical byte offset to read from (default 0).
    * @return The struct by value, or reloco::nullopt if not enough bytes exist.
    */
+  // Raw access to the ring's untyped storage; every index is bounded by len_/cap_ before use.
+  RELOCO_BEGIN_UNSAFE_CODE
   template <typename U> [[nodiscard]] optional<U> peek_struct(size_type offset = 0) const noexcept {
     static_assert(sizeof(T) == 1, "peek_struct requires a byte-oriented buffer (char, uint8_t, std::byte)");
     static_assert(std::is_trivially_copyable_v<U>, "Can only peek trivially copyable structs");
 
-    if (this->len_ - offset < sizeof(U)) {
+    if (offset > this->len_ || this->len_ - offset < sizeof(U)) {
       return nullopt; // Not enough data
     }
 
     U result;
+    // offset + sizeof(U) <= len_ was checked above, and len_ <= cap_ fits ptrdiff_t.
+    // NOLINTNEXTLINE(reloco-narrowing-flow)
     std::copy_n(this->begin() + static_cast<std::ptrdiff_t>(offset), sizeof(U), reinterpret_cast<T *>(&result));
 
     return result;
   }
+  RELOCO_END_UNSAFE_CODE
 
   /**
    * @brief Attempts to extract a complete length-prefixed packet.
@@ -1081,6 +1098,8 @@ public:
    *
    * @param alignment The required byte alignment (e.g., alignof(MyStruct)).
    */
+  // Raw access to the ring's untyped storage; every index is bounded by len_/cap_ before use.
+  RELOCO_BEGIN_UNSAFE_CODE
   void align_write_head(std::size_t alignment) & noexcept {
     static_assert(sizeof(T) == 1, "Alignment padding requires a byte-oriented buffer");
 
@@ -1098,6 +1117,7 @@ public:
       this->commit(padding_needed);
     }
   }
+  RELOCO_END_UNSAFE_CODE
 
   // ---- Zero-Copy Allocation & Commit ----
 
@@ -1115,7 +1135,7 @@ public:
       return {}; // Full
 
     std::size_t tail = this->head_ + this->len_;
-    std::size_t available;
+    std::size_t available = 0;
 
     if (tail < this->cap_) {
       // Free space is contiguous from tail to the physical end of the buffer
@@ -1134,6 +1154,8 @@ public:
    * @brief Allocates uninitialized contiguous space for a trivially copyable object.
    * Allows direct mutation (e.g., placement-new or direct struct assignment).
    */
+  // Raw access to the ring's untyped storage; every index is bounded by len_/cap_ before use.
+  RELOCO_BEGIN_UNSAFE_CODE
   template <typename U> [[nodiscard]] result<U *> try_allocate_object() & noexcept RELOCO_LIFETIMEBOUND {
     static_assert(std::is_trivially_copyable_v<U>, "Object must be trivially copyable");
     static_assert(sizeof(U) % sizeof(T) == 0, "Object size must align with buffer element size");
@@ -1147,6 +1169,7 @@ public:
 
     return reinterpret_cast<U *>(chunk.data());
   }
+  RELOCO_END_UNSAFE_CODE
 
   /**
    * @brief Commits elements written directly into the allocated space, officially adding them to the buffer.
@@ -1201,10 +1224,12 @@ public:
    * @return Logical index of the start of the sequence, or reloco::nullopt.
    */
   [[nodiscard]] reloco::optional<size_type> find_sequence(span<const T> seq, size_type offset = 0) const & noexcept {
-    if (seq.empty() || this->len_ - offset < seq.size())
+    if (seq.empty() || offset > this->len_ || this->len_ - offset < seq.size())
       return reloco::nullopt;
 
     // Cast the unsigned offset to a signed difference type for safe iterator arithmetic
+    // offset < len_ (checked above) and len_ <= cap_, so it fits ptrdiff_t.
+    // NOLINTNEXTLINE(reloco-narrowing-flow)
     auto it_begin = this->begin() + static_cast<std::ptrdiff_t>(offset);
     auto it_end = this->end();
 
@@ -1257,7 +1282,7 @@ public:
   public:
     ring_iterator() = default;
 
-    reference operator*() const noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_CHECKED reference operator*() const noexcept RELOCO_LIFETIMEBOUND {
       RELOCO_ASSERT(buf_ != nullptr, "Dereferencing an uninitialized ring_iterator");
       RELOCO_ASSERT(logical_idx_ < buf_->len_, "Out-of-bounds ring_iterator dereference (likely dereferenced end())");
 
@@ -1265,7 +1290,7 @@ public:
       return static_cast<pointer>(buf_->data_)[physical_idx];
     }
 
-    pointer operator->() const noexcept RELOCO_LIFETIMEBOUND { return &(**this); }
+    RELOCO_CHECKED pointer operator->() const noexcept RELOCO_LIFETIMEBOUND { return &(**this); }
 
     ring_iterator &operator++() noexcept {
       ++logical_idx_;
@@ -1295,12 +1320,15 @@ public:
       return tmp;
     }
 
+    // Modular conversion: adding the wrapped value of a negative n subtracts its magnitude (and `-n` would be UB
+    // for the most negative n). The bounds asserts below catch any wrap past begin()/end().
+    static constexpr size_type wrap_unsigned(difference_type n) noexcept {
+      // NOLINTNEXTLINE(reloco-narrowing-flow)
+      return static_cast<size_type>(n);
+    }
+
     ring_iterator &operator+=(difference_type n) noexcept {
-      if (n >= 0) {
-        logical_idx_ += static_cast<size_type>(n);
-      } else {
-        logical_idx_ -= static_cast<size_type>(-n);
-      }
+      logical_idx_ += wrap_unsigned(n);
 
       RELOCO_ASSERT(buf_ != nullptr, "Arithmetic on uninitialized ring_iterator");
       // Catches both going past end() AND underflowing below begin() (due to unsigned wrap)
@@ -1310,11 +1338,7 @@ public:
     }
 
     ring_iterator &operator-=(difference_type n) noexcept {
-      if (n >= 0) {
-        logical_idx_ -= static_cast<size_type>(n);
-      } else {
-        logical_idx_ += static_cast<size_type>(-n);
-      }
+      logical_idx_ -= wrap_unsigned(n);
 
       RELOCO_ASSERT(buf_ != nullptr, "Arithmetic on uninitialized ring_iterator");
       RELOCO_ASSERT(logical_idx_ <= buf_->len_, "ring_iterator arithmetic out of bounds");
@@ -1329,7 +1353,7 @@ public:
       return static_cast<difference_type>(a.logical_idx_) - static_cast<difference_type>(b.logical_idx_);
     }
 
-    reference operator[](difference_type n) const noexcept { return *(*this + n); }
+    RELOCO_CHECKED reference operator[](difference_type n) const noexcept { return *(*this + n); }
 
     bool operator==(const ring_iterator &other) const noexcept {
       return logical_idx_ == other.logical_idx_ && buf_ == other.buf_;
@@ -1435,7 +1459,13 @@ public:
   }
 };
 
-template <typename T> class heap_trivial_ring_base : public unowned_ring_base<T> {
+template <typename T> class RELOCO_OWNER heap_trivial_ring_base : public unowned_ring_base<T> {
+public:
+  heap_trivial_ring_base(const heap_trivial_ring_base &) = delete;
+  heap_trivial_ring_base &operator=(const heap_trivial_ring_base &) = delete;
+  heap_trivial_ring_base(heap_trivial_ring_base &&) = delete;
+  heap_trivial_ring_base &operator=(heap_trivial_ring_base &&) = delete;
+
 protected:
   constexpr explicit heap_trivial_ring_base(const allocator_ref alloc = default_allocator()) noexcept
       : unowned_ring_base<T>(), alloc_(alloc) {}
@@ -1478,6 +1508,8 @@ protected:
 
 public:
   [[nodiscard]] constexpr static bool is_inline() noexcept { return false; }
+  // The allocator is externally owned, not part of this object; the handle may outlive it.
+  // NOLINTNEXTLINE(reloco-ref-qualified-member,reloco-lifetime-annotations)
   [[nodiscard]] allocator_ref get_allocator() const noexcept { return alloc_; }
   [[nodiscard]] static constexpr std::size_t inline_capacity() noexcept { return 0; }
 
@@ -1486,7 +1518,15 @@ private:
 };
 
 template <typename T> class inline_trivial_ring_base : public unowned_ring_base<T> {
+public:
+  inline_trivial_ring_base(const inline_trivial_ring_base &) = delete;
+  inline_trivial_ring_base &operator=(const inline_trivial_ring_base &) = delete;
+  inline_trivial_ring_base(inline_trivial_ring_base &&) = delete;
+  inline_trivial_ring_base &operator=(inline_trivial_ring_base &&) = delete;
+
 protected:
+  // Raw access to the ring's untyped storage; every index is bounded by len_/cap_ before use.
+  RELOCO_BEGIN_UNSAFE_CODE
   constexpr inline_trivial_ring_base(void *storage, const std::size_t capacity) noexcept
       : unowned_ring_base<T>(storage, capacity) {}
 
@@ -1496,7 +1536,10 @@ protected:
     this->len_ = 0;
     this->head_ = 0;
   }
+  RELOCO_END_UNSAFE_CODE
 
+  // Raw access to the ring's untyped storage; every index is bounded by len_/cap_ before use.
+  RELOCO_BEGIN_UNSAFE_CODE
   void move_construct_from_base(std::size_t elem_size, inline_trivial_ring_base &&other) noexcept {
     if (other.len_ > 0) {
       char *dest = static_cast<char *>(this->data_);
@@ -1515,6 +1558,7 @@ protected:
     other.len_ = 0;
     other.head_ = 0;
   }
+  RELOCO_END_UNSAFE_CODE
 
   void move_assign_from_base(std::size_t elem_size, inline_trivial_ring_base &&other) noexcept {
     if (this == &other)
@@ -1522,7 +1566,12 @@ protected:
     move_construct_from_base(elem_size, std::move(other));
   }
 
-  [[nodiscard]] constexpr void *get_inline_storage() const noexcept { return this->data_; }
+  // Raw access to the ring's untyped storage; every index is bounded by len_/cap_ before use.
+  RELOCO_BEGIN_UNSAFE_CODE
+  [[nodiscard]] constexpr void *get_inline_storage() const & noexcept RELOCO_LIFETIMEBOUND { return this->data_; }
+  RELOCO_END_UNSAFE_CODE
+
+  [[nodiscard]] constexpr void *get_inline_storage() const && = delete;
   [[nodiscard]] constexpr std::size_t max_capacity(std::size_t) const noexcept { return this->cap_; }
 
 public:
@@ -1532,7 +1581,15 @@ public:
 };
 
 template <typename T> class outline_trivial_ring_base : public unowned_ring_base<T> {
+public:
+  outline_trivial_ring_base(const outline_trivial_ring_base &) = delete;
+  outline_trivial_ring_base &operator=(const outline_trivial_ring_base &) = delete;
+  outline_trivial_ring_base(outline_trivial_ring_base &&) = delete;
+  outline_trivial_ring_base &operator=(outline_trivial_ring_base &&) = delete;
+
 protected:
+  // Raw access to the ring's untyped storage; every index is bounded by len_/cap_ before use.
+  RELOCO_BEGIN_UNSAFE_CODE
   constexpr outline_trivial_ring_base(void *storage, std::size_t capacity) noexcept
       : unowned_trivial_ring_base(storage, capacity) {}
 
@@ -1549,12 +1606,18 @@ protected:
                              (memory.size() * sizeof(U)) / sizeof(T)) {
     static_assert(!std::is_const_v<U>, "outline_ring_buffer writes to its storage and requires a mutable span");
   }
+  RELOCO_END_UNSAFE_CODE
 
   void destroy_elements(std::size_t) noexcept {
     this->len_ = 0;
     this->head_ = 0;
   }
-  [[nodiscard]] constexpr void *get_inline_storage() const noexcept { return this->data_; }
+  // Raw access to the ring's untyped storage; every index is bounded by len_/cap_ before use.
+  RELOCO_BEGIN_UNSAFE_CODE
+  [[nodiscard]] constexpr void *get_inline_storage() const & noexcept RELOCO_LIFETIMEBOUND { return this->data_; }
+  RELOCO_END_UNSAFE_CODE
+
+  [[nodiscard]] constexpr void *get_inline_storage() const && = delete;
   [[nodiscard]] constexpr std::size_t max_capacity(std::size_t) const noexcept { return this->cap_; }
 
 public:
@@ -1563,7 +1626,14 @@ public:
   [[nodiscard]] std::size_t inline_capacity() const noexcept { return this->cap_; }
 };
 
-template <typename T> class mixed_trivial_ring_base : public unowned_ring_base<T> {
+template <typename T> class RELOCO_OWNER mixed_trivial_ring_base : public unowned_ring_base<T> {
+public:
+  mixed_trivial_ring_base(const mixed_trivial_ring_base &) = delete;
+  mixed_trivial_ring_base &operator=(const mixed_trivial_ring_base &) = delete;
+  mixed_trivial_ring_base(mixed_trivial_ring_base &&) = delete;
+  mixed_trivial_ring_base &operator=(mixed_trivial_ring_base &&) = delete;
+
+protected:
 private:
   void *inline_storage_;
   std::size_t inline_capacity_;
@@ -1588,6 +1658,8 @@ protected:
     }
   }
 
+  // Raw access to the ring's untyped storage; every index is bounded by len_/cap_ before use.
+  RELOCO_BEGIN_UNSAFE_CODE
   void move_construct_from_base(std::size_t elem_size, mixed_trivial_ring_base &&other) noexcept {
     alloc_ = other.alloc_;
     if (other.is_inline()) {
@@ -1618,6 +1690,7 @@ protected:
       other.cap_ = other.inline_capacity_;
     }
   }
+  RELOCO_END_UNSAFE_CODE
 
   void move_assign_from_base(std::size_t elem_size, mixed_trivial_ring_base &&other) noexcept {
     if (this == &other)
@@ -1626,13 +1699,17 @@ protected:
     move_construct_from_base(elem_size, std::move(other));
   }
 
-  [[nodiscard]] constexpr void *get_inline_storage() const noexcept { return inline_storage_; }
+  [[nodiscard]] constexpr void *get_inline_storage() const & noexcept RELOCO_LIFETIMEBOUND { return inline_storage_; }
+
+  [[nodiscard]] constexpr void *get_inline_storage() const && = delete;
   [[nodiscard]] static constexpr std::size_t max_capacity(std::size_t elem_size) noexcept {
     return std::numeric_limits<std::size_t>::max() / elem_size;
   }
 
 public:
   [[nodiscard]] constexpr bool is_inline() const noexcept { return this->data_ == inline_storage_; }
+  // The allocator is externally owned, not part of this object; the handle may outlive it.
+  // NOLINTNEXTLINE(reloco-ref-qualified-member,reloco-lifetime-annotations)
   [[nodiscard]] allocator_ref get_allocator() const noexcept { return alloc_; }
   [[nodiscard]] std::size_t inline_capacity() const noexcept { return inline_capacity_; }
 };
@@ -1741,6 +1818,8 @@ public:
    * @brief Deep-copies the ring buffer using the provided allocator.
    * Linearizes the layout into the new clone automatically!
    */
+  // Raw access to the ring's untyped storage; every index is bounded by len_/cap_ before use.
+  RELOCO_BEGIN_UNSAFE_CODE
   [[nodiscard]] result<typed_ring_buffer> try_clone(allocator_ref alloc = Base::get_allocator()) const noexcept {
     typed_ring_buffer clone(alloc);
 
@@ -1763,6 +1842,7 @@ public:
 
     return clone;
   }
+  RELOCO_END_UNSAFE_CODE
 };
 
 #if RELOCO_SHARED_PROVIDE_DEFINITIONS
@@ -1820,6 +1900,8 @@ public:
   // ReSharper disable once CppPossiblyUninitializedMember
   constexpr inline_ring_buffer() noexcept // NOLINT(*-pro-type-member-init)
       : detail::typed_ring_buffer<T, detail::inline_trivial_ring_base<T>>(storage_, Capacity) {}
+
+  ~inline_ring_buffer() = default;
 
   // Copy Constructor (Deep copies data into the new local array)
   constexpr inline_ring_buffer(const inline_ring_buffer &other) noexcept // NOLINT(*-pro-type-member-init)
@@ -1897,6 +1979,8 @@ public:
  */
 template <typename T> class RELOCO_POINTER ring_buffer_ref : public detail::unowned_ring_base<T> {
 public:
+  ~ring_buffer_ref() = default;
+
   // ---- Sourcing from an Immutable Borrow ----
 
   /**

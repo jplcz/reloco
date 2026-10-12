@@ -80,6 +80,8 @@ private:
  * `mutable_container_ref`. Identical in shape to `flat_set`'s adapter (see
  * `flat_set.hpp`): `key_type`/`element_type` are both `T`.
  */
+// const_cast shares the non-const implementation; the result is never written through a const object.
+RELOCO_BEGIN_UNSAFE_CODE
 template <typename T, std::size_t InlineCapacity, typename Compare>
 struct container_ref_traits<sso_flat_set<T, InlineCapacity, Compare>> {
   static constexpr bool is_associative = true;
@@ -122,6 +124,7 @@ struct container_ref_traits<sso_flat_set<T, InlineCapacity, Compare>> {
     c.for_each([visitor_ctx, visit](const T &val) noexcept { visit(visitor_ctx, val, const_cast<T &>(val)); });
   }
 };
+RELOCO_END_UNSAFE_CODE
 
 /**
  * @brief Adapts `reloco::sso_flat_set<T, InlineCapacity, Compare>` for the

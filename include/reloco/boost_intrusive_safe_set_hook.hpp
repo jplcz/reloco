@@ -68,6 +68,9 @@ public:
   safe_set_hook() noexcept = default;
   safe_set_hook(const safe_set_hook &) noexcept = default;
   safe_set_hook &operator=(const safe_set_hook &) noexcept = default;
+  // Boost hooks have no move: a "move" is a copy that yields a fresh, unlinked hook.
+  safe_set_hook(safe_set_hook &&) noexcept = default;
+  safe_set_hook &operator=(safe_set_hook &&) noexcept = default;
 
   ~safe_set_hook() {
     RELOCO_ASSERT(!this->is_linked(), "reloco::boost_intrusive::safe_set_hook destroyed while still linked into a "
@@ -96,6 +99,9 @@ public:
   safe_set_member_hook() noexcept = default;
   safe_set_member_hook(const safe_set_member_hook &) noexcept = default;
   safe_set_member_hook &operator=(const safe_set_member_hook &) noexcept = default;
+  // Boost hooks have no move: a "move" is a copy that yields a fresh, unlinked hook.
+  safe_set_member_hook(safe_set_member_hook &&) noexcept = default;
+  safe_set_member_hook &operator=(safe_set_member_hook &&) noexcept = default;
 
   ~safe_set_member_hook() {
     RELOCO_ASSERT(!this->is_linked(),

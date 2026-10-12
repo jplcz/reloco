@@ -80,6 +80,8 @@ template <typename T> struct cow_traits {
  * silently alias (unsound once the borrowed source is gone). Use
  * `try_clone()` for an explicit, fallible deep copy.
  */
+// Placement storage for the owned value; the owned_ flag tracks whether it is constructed.
+RELOCO_BEGIN_UNSAFE_CODE
 template <typename T> class RELOCO_OWNER cow {
 public:
   using value_type = T;
@@ -90,7 +92,7 @@ public:
    * any later clone (`to_mut()`/`into_owned()`). The referenced object
    * must outlive this `cow`.
    */
-  constexpr cow(const T &value RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
+  explicit constexpr cow(const T &value RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
       : ptr_(std::addressof(value)), alloc_(default_allocator()) {}
 
   /**
@@ -144,10 +146,15 @@ public:
   /**
    * @brief Read-only access to the current value, borrowed or owned.
    */
-  [[nodiscard]] const T &get() const & noexcept RELOCO_LIFETIMEBOUND { return owned_ ? *owned_ptr() : *ptr_; }
+  [[nodiscard]] const T &get() const & noexcept RELOCO_LIFETIMEBOUND {
+    RELOCO_ASSERT(owned_ || ptr_ != nullptr, "cow dereferenced while empty");
+    return owned_ ? *owned_ptr() : *ptr_;
+  }
 
-  [[nodiscard]] const T &operator*() const & noexcept RELOCO_LIFETIMEBOUND { return get(); }
-  [[nodiscard]] const T *operator->() const & noexcept RELOCO_LIFETIMEBOUND { return &get(); }
+  [[nodiscard]] const T &get() const && = delete;
+
+  RELOCO_CHECKED [[nodiscard]] const T &operator*() const & noexcept RELOCO_LIFETIMEBOUND { return get(); }
+  RELOCO_CHECKED [[nodiscard]] const T *operator->() const & noexcept RELOCO_LIFETIMEBOUND { return &get(); }
 
   /**
    * @brief Rust `Cow::to_mut` equivalent: clones the borrowed value into
@@ -193,8 +200,10 @@ public:
   }
 
 private:
-  T *owned_ptr() noexcept { return reinterpret_cast<T *>(&storage_); }
-  const T *owned_ptr() const noexcept { return reinterpret_cast<const T *>(&storage_); }
+  T *owned_ptr() & noexcept RELOCO_LIFETIMEBOUND { return reinterpret_cast<T *>(&storage_); }
+  const T *owned_ptr() const & noexcept RELOCO_LIFETIMEBOUND { return reinterpret_cast<const T *>(&storage_); }
+
+  const T *owned_ptr() const && = delete;
 
   void construct_owned(T &&value) noexcept(std::is_nothrow_move_constructible_v<T>) {
     new (static_cast<void *>(&storage_)) T(std::move(value));
@@ -218,5 +227,6 @@ private:
   bool owned_{false};
   allocator_ref alloc_{};
 };
+RELOCO_END_UNSAFE_CODE
 
 } // namespace reloco

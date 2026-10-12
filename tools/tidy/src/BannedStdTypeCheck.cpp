@@ -156,6 +156,15 @@ void BannedStdTypeCheck::check(const MatchFinder::MatchResult &result) {
   SourceLocation loc;
   if (const auto *tl = result.Nodes.getNodeAs<TypeLoc>("type")) {
     // Qualified and unqualified sub-locs of one spelling report the same location and are deduplicated.
+    // A template parameter spelled `T` that was instantiated with a std type is the caller's choice, not this code's.
+    for (QualType t = tl->getType(); !t.isNull();) {
+      if (llvm::isa<SubstTemplateTypeParmType>(t.getTypePtr()))
+        return;
+      const QualType next = t.getSingleStepDesugaredType(*result.Context);
+      if (next == t)
+        break;
+      t = next;
+    }
     nd = declOf(tl->getType());
     loc = tl->getBeginLoc();
   } else if (const auto *dre = result.Nodes.getNodeAs<DeclRefExpr>("ref")) {

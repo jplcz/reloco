@@ -50,19 +50,21 @@ public:
    * @brief Implicitly converts to the wrapped value, so a `wrapping<T>`
    * can be used anywhere a `T` is expected (e.g. comparisons, formatting).
    */
+  // Implicit by design: part of the documented value-like API.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   [[nodiscard]] constexpr operator T() const noexcept { return value_; }
 
-  constexpr wrapping &operator+=(wrapping other) noexcept {
+  constexpr wrapping &operator+=(wrapping other) & noexcept {
     value_ = wrapping_add(value_, other.value_);
     return *this;
   }
 
-  constexpr wrapping &operator-=(wrapping other) noexcept {
+  constexpr wrapping &operator-=(wrapping other) & noexcept {
     value_ = wrapping_sub(value_, other.value_);
     return *this;
   }
 
-  constexpr wrapping &operator*=(wrapping other) noexcept {
+  constexpr wrapping &operator*=(wrapping other) & noexcept {
     value_ = wrapping_mul(value_, other.value_);
     return *this;
   }
@@ -82,7 +84,7 @@ public:
   /** @brief Unary negation, wrapping modulo-2^N exactly like `0 - *this`. */
   [[nodiscard]] constexpr wrapping operator-() const noexcept { return wrapping(wrapping_sub(T(0), value_)); }
 
-  constexpr wrapping &operator++() noexcept {
+  constexpr wrapping &operator++() & noexcept {
     value_ = wrapping_add(value_, T(1));
     return *this;
   }
@@ -93,7 +95,7 @@ public:
     return old;
   }
 
-  constexpr wrapping &operator--() noexcept {
+  constexpr wrapping &operator--() & noexcept {
     value_ = wrapping_sub(value_, T(1));
     return *this;
   }

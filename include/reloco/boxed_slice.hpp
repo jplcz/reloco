@@ -169,17 +169,21 @@ public:
 
   [[nodiscard]] constexpr size_type size() const noexcept { return size_; }
   [[nodiscard]] constexpr bool empty() const noexcept { return size_ == 0; }
+  // The allocator is externally owned, not part of this object; the handle may outlive it.
+  // NOLINTNEXTLINE(reloco-ref-qualified-member,reloco-lifetime-annotations)
   [[nodiscard]] constexpr allocator_ref get_allocator() const noexcept { return alloc_; }
 
-  [[nodiscard]] T &operator[](size_type index) & noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] T &operator[](size_type index) & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(index < size_, "boxed_slice index out of bounds");
     return ptr_[index];
   }
 
-  [[nodiscard]] const T &operator[](size_type index) const & noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] const T &operator[](size_type index) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(index < size_, "boxed_slice index out of bounds");
     return ptr_[index];
   }
+
+  [[nodiscard]] const T &operator[](size_type index) const && = delete;
 
   [[nodiscard]] result<std::reference_wrapper<T>> try_at(size_type index) & noexcept RELOCO_LIFETIMEBOUND {
     if (index >= size_)
@@ -203,6 +207,8 @@ public:
     return ptr_[index];
   }
 
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE const T &unsafe_at(size_type index) const && = delete;
+
   [[nodiscard]] T &front() & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(!empty(), "boxed_slice is empty");
     return ptr_[0];
@@ -212,6 +218,8 @@ public:
     RELOCO_ASSERT(!empty(), "boxed_slice is empty");
     return ptr_[0];
   }
+
+  [[nodiscard]] const T &front() const && = delete;
 
   [[nodiscard]] T &back() & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(!empty(), "boxed_slice is empty");
@@ -223,8 +231,12 @@ public:
     return ptr_[size_ - 1];
   }
 
+  [[nodiscard]] const T &back() const && = delete;
+
   [[nodiscard]] T *data() & noexcept RELOCO_LIFETIMEBOUND { return ptr_; }
   [[nodiscard]] const T *data() const & noexcept RELOCO_LIFETIMEBOUND { return ptr_; }
+
+  [[nodiscard]] const T *data() const && = delete;
 
 private:
   boxed_slice(T *ptr, size_type size, allocator_ref alloc) noexcept : ptr_(ptr), size_(size), alloc_(alloc) {}

@@ -50,7 +50,7 @@
 namespace reloco {
 
 /** @brief Appends bytes and LEB128 varints to a fixed span; never writes past its end. */
-class packed_writer {
+class RELOCO_POINTER packed_writer {
 public:
   constexpr explicit packed_writer(span<char> out) noexcept : out_(out) {}
 
@@ -66,14 +66,16 @@ public:
   /** @brief Appends @p v as an unsigned LEB128 varint: 1 byte below 128, up to 10 bytes for 64-bit values. */
   constexpr void put_varint(std::uint64_t v) noexcept {
     while (v >= 0x80U) {
-      put_u8(static_cast<std::uint8_t>(v | 0x80U));
+      put_u8(static_cast<std::uint8_t>(0x80U + (v & 0x7FU)));
       v >>= 7;
     }
-    put_u8(static_cast<std::uint8_t>(v));
+    put_u8(static_cast<std::uint8_t>(v & 0x7FU));
   }
 
   /** @brief Appends @p v zigzag-mapped, so small negative numbers stay short too. */
   constexpr void put_svarint(std::int64_t v) noexcept {
+    // Two's-complement reinterpretation is the zigzag definition; no value is lost.
+    // NOLINTNEXTLINE(reloco-narrowing-flow)
     put_varint((static_cast<std::uint64_t>(v) << 1) ^ static_cast<std::uint64_t>(v >> 63));
   }
 
@@ -89,7 +91,7 @@ private:
 };
 
 /** @brief Reads bytes and LEB128 varints from a fixed span; never reads past its end. */
-class packed_reader {
+class RELOCO_POINTER packed_reader {
 public:
   constexpr explicit packed_reader(span<const char> in) noexcept : in_(in) {}
 

@@ -115,7 +115,9 @@ public:
   [[nodiscard]] bool is_bound() const noexcept { return cell_.get() != nullptr; }
 
   /** @brief The bound real allocator, or `nullptr` if not yet bound. Never blocks. */
-  [[nodiscard]] const allocator_ref *bound() const noexcept RELOCO_LIFETIMEBOUND { return cell_.get(); }
+  [[nodiscard]] const allocator_ref *bound() const & noexcept RELOCO_LIFETIMEBOUND { return cell_.get(); }
+
+  [[nodiscard]] const allocator_ref *bound() const && = delete;
 
 private:
   once_lock<allocator_ref> cell_;
@@ -126,13 +128,15 @@ private:
  */
 struct deferred_allocator_tag {};
 
+// The allocator interface is raw memory by definition (void* blocks in and out); sizes are the caller's contract.
+RELOCO_BEGIN_UNSAFE_CODE
 template <> struct allocator_traits<deferred_allocator_tag> {
   using context_type = deferred_allocator_context;
 
   [[nodiscard]] static result<mem_block> allocate(value_ref<context_type> ctx, std::size_t bytes,
                                                   std::size_t alignment) noexcept {
     const allocator_ref *real = ctx->bound();
-    if (!real)
+    if (real == nullptr)
       return unexpected(error::not_initialized);
     return real->allocate(bytes, alignment);
   }
@@ -144,14 +148,14 @@ template <> struct allocator_traits<deferred_allocator_tag> {
     // have been bound -- `real` being null here would mean the caller
     // somehow holds a pointer this context never actually handed out.
     RELOCO_DEBUG_ASSERT(real != nullptr, "deferred_allocator: deallocate() called while still unbound");
-    if (real)
+    if (real != nullptr)
       real->deallocate(ptr, bytes);
   }
 
   [[nodiscard]] static result<std::size_t> expand_in_place(value_ref<context_type> ctx, void *ptr, std::size_t old_size,
                                                            std::size_t new_size) noexcept {
     const allocator_ref *real = ctx->bound();
-    if (!real)
+    if (real == nullptr)
       return unexpected(error::unsupported_operation);
     return real->expand_in_place(ptr, old_size, new_size);
   }
@@ -159,17 +163,18 @@ template <> struct allocator_traits<deferred_allocator_tag> {
   [[nodiscard]] static result<mem_block> reallocate(value_ref<context_type> ctx, void *ptr, std::size_t old_size,
                                                     std::size_t new_size, std::size_t alignment) noexcept {
     const allocator_ref *real = ctx->bound();
-    if (!real)
+    if (real == nullptr)
       return unexpected(error::unsupported_operation);
     return real->reallocate(ptr, old_size, new_size, alignment);
   }
 
   static void advise(value_ref<context_type> ctx, void *ptr, std::size_t bytes, usage_hint hint) noexcept {
     const allocator_ref *real = ctx->bound();
-    if (real)
+    if (real != nullptr)
       real->advise(ptr, bytes, hint);
   }
 };
+RELOCO_END_UNSAFE_CODE
 
 /**
  * @brief Bind-once placeholder `allocator_ref` source; see the file-level

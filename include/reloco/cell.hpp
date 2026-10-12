@@ -106,6 +106,8 @@ public:
   }
 
 private:
+  // Interior mutability is the purpose of `cell` (Rust `Cell`): single-threaded, never lent out by reference.
+  // NOLINTNEXTLINE(reloco-mutable-member)
   mutable T value_;
 };
 
@@ -124,7 +126,7 @@ public:
    * @brief A live shared borrow of the wrapped value. Move-only; releases
    * the borrow on destruction.
    */
-  class RELOCO_CONSUMABLE(unconsumed) ref_guard {
+  class RELOCO_POINTER RELOCO_CONSUMABLE(unconsumed) ref_guard {
   public:
     RELOCO_BLOCK_RVALUE_ACCESS(T);
 
@@ -140,12 +142,14 @@ public:
         --cell_->borrow_state_;
     }
 
-    [[nodiscard]] const T &operator*() const & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+    RELOCO_CHECKED [[nodiscard]] const T &operator*() const & noexcept RELOCO_LIFETIMEBOUND
+        RELOCO_CALLABLE_WHEN("unconsumed") {
       RELOCO_ASSERT(cell_ != nullptr, "ref_guard used after being moved from");
       return cell_->value_;
     }
 
-    [[nodiscard]] const T *operator->() const & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+    RELOCO_CHECKED [[nodiscard]] const T *operator->() const & noexcept RELOCO_LIFETIMEBOUND
+        RELOCO_CALLABLE_WHEN("unconsumed") {
       RELOCO_ASSERT(cell_ != nullptr, "ref_guard used after being moved from");
       return &cell_->value_;
     }
@@ -160,7 +164,7 @@ public:
    * @brief A live exclusive borrow of the wrapped value. Move-only;
    * releases the borrow on destruction.
    */
-  class RELOCO_CONSUMABLE(unconsumed) mut_guard {
+  class RELOCO_POINTER RELOCO_CONSUMABLE(unconsumed) mut_guard {
   public:
     RELOCO_BLOCK_RVALUE_ACCESS(T);
 
@@ -176,12 +180,14 @@ public:
         cell_->borrow_state_ = 0;
     }
 
-    [[nodiscard]] T &operator*() const & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+    RELOCO_CHECKED [[nodiscard]] T &operator*() const & noexcept RELOCO_LIFETIMEBOUND
+        RELOCO_CALLABLE_WHEN("unconsumed") {
       RELOCO_ASSERT(cell_ != nullptr, "mut_guard used after being moved from");
       return cell_->value_;
     }
 
-    [[nodiscard]] T *operator->() const & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+    RELOCO_CHECKED [[nodiscard]] T *operator->() const & noexcept RELOCO_LIFETIMEBOUND
+        RELOCO_CALLABLE_WHEN("unconsumed") {
       RELOCO_ASSERT(cell_ != nullptr, "mut_guard used after being moved from");
       return &cell_->value_;
     }
@@ -250,8 +256,11 @@ public:
   [[nodiscard]] T &get_mut() & noexcept RELOCO_LIFETIMEBOUND { return value_; }
 
 private:
+  // Interior mutability is the purpose of `ref_cell` (Rust `RefCell`): the runtime borrow flag is the guard.
+  // NOLINTBEGIN(reloco-mutable-member)
   mutable T value_;
   mutable std::ptrdiff_t borrow_state_;
+  // NOLINTEND(reloco-mutable-member)
 };
 
 /**

@@ -12,6 +12,19 @@ using namespace reloco;
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
 namespace {
+// Offsets past the end (or large enough to wrap `offset + size`) must be rejected, not read out of bounds.
+TEST(RingBufferTest, PeekWithHugeOffsetIsRejected) {
+  auto rb = ring_buffer<char>();
+  ASSERT_TRUE(rb.try_reserve(16).has_value());
+  const std::string_view hw = "Hello";
+  ASSERT_TRUE(rb.try_write(span<const char>(hw.data(), hw.size())).has_value());
+
+  EXPECT_FALSE(rb.peek_struct<std::uint32_t>(6).has_value());
+  EXPECT_FALSE(rb.peek_struct<std::uint32_t>(static_cast<std::size_t>(-1)).has_value());
+  EXPECT_FALSE(rb.try_peek_object<std::uint32_t>(static_cast<std::size_t>(-1)).has_value());
+  EXPECT_TRUE(rb.peek_struct<std::uint32_t>(1).has_value());
+}
+
 TEST(RingBufferTest, BasicBulkReadWrite) {
   auto rb = ring_buffer<char>();
   ASSERT_TRUE(rb.try_reserve(10).has_value());

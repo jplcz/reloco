@@ -51,19 +51,21 @@ public:
    * `saturating<T>` can be used anywhere a `T` is expected (e.g.
    * comparisons, formatting).
    */
+  // Implicit by design: part of the documented value-like API.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   [[nodiscard]] constexpr operator T() const noexcept { return value_; }
 
-  constexpr saturating &operator+=(saturating other) noexcept {
+  constexpr saturating &operator+=(saturating other) & noexcept {
     value_ = saturating_add(value_, other.value_);
     return *this;
   }
 
-  constexpr saturating &operator-=(saturating other) noexcept {
+  constexpr saturating &operator-=(saturating other) & noexcept {
     value_ = saturating_sub(value_, other.value_);
     return *this;
   }
 
-  constexpr saturating &operator*=(saturating other) noexcept {
+  constexpr saturating &operator*=(saturating other) & noexcept {
     value_ = saturating_mul(value_, other.value_);
     return *this;
   }
@@ -87,7 +89,7 @@ public:
    */
   [[nodiscard]] constexpr saturating operator-() const noexcept { return saturating(saturating_sub(T(0), value_)); }
 
-  constexpr saturating &operator++() noexcept {
+  constexpr saturating &operator++() & noexcept {
     value_ = saturating_add(value_, T(1));
     return *this;
   }
@@ -98,7 +100,7 @@ public:
     return old;
   }
 
-  constexpr saturating &operator--() noexcept {
+  constexpr saturating &operator--() & noexcept {
     value_ = saturating_sub(value_, T(1));
     return *this;
   }

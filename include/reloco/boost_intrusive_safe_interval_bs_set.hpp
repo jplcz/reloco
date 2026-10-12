@@ -148,10 +148,13 @@ public:
 
   /** @copydoc safe_interval_list::find_overlap */
   [[nodiscard]] result<T *> find_overlap(address_type start, address_type end) noexcept {
+    // Read the functors through local references so the loop does not touch `this` while it is borrowed.
+    const auto &comp = this->key_comp();
+    const auto &end_of_fn = end_of_;
     for (T &item : *this) {
-      if (start_of_(item) >= end)
+      if (comp.start_of(item) >= end)
         break; // Ascending order: no later item can overlap `[start, end)` either.
-      if (start < end_of_(item))
+      if (start < end_of_fn(item))
         return &item;
     }
     return unexpected(error::not_found);
@@ -162,13 +165,14 @@ public:
                                                             address_type min_size,
                                                             address_type alignment = address_type{1}) noexcept {
     result<interval_gap<address_type>> found = unexpected(error::not_found);
-    for_each_gap(space_start, space_end, [&](address_type gap_start, address_type gap_end) noexcept {
-      if (auto candidate = fits(gap_start, gap_end, min_size, alignment); candidate) {
-        found = candidate;
-        return true; // Stop at the first fit.
-      }
-      return false;
-    });
+    for_each_gap(space_start, space_end,
+                 [&found, min_size, alignment](address_type gap_start, address_type gap_end) noexcept {
+                   if (auto candidate = fits(gap_start, gap_end, min_size, alignment); candidate) {
+                     found = candidate;
+                     return true; // Stop at the first fit.
+                   }
+                   return false;
+                 });
     return found;
   }
 
@@ -178,10 +182,12 @@ public:
                                                                    address_type min_size, address_type alignment,
                                                                    Rng &&rng) noexcept {
     address_type total_slots = address_type{0};
-    for_each_gap(space_start, space_end, [&](address_type gap_start, address_type gap_end) noexcept {
-      total_slots = static_cast<address_type>(total_slots + slot_count(gap_start, gap_end, min_size, alignment));
-      return false; // Never stop early: the total needs every gap.
-    });
+    for_each_gap(space_start, space_end,
+                 [&total_slots, min_size, alignment](address_type gap_start, address_type gap_end) noexcept {
+                   total_slots =
+                       static_cast<address_type>(total_slots + slot_count(gap_start, gap_end, min_size, alignment));
+                   return false; // Never stop early: the total needs every gap.
+                 });
     if (total_slots == address_type{0})
       return unexpected(error::not_found);
 
@@ -189,18 +195,21 @@ public:
     address_type step = alignment <= address_type{1} ? address_type{1} : alignment;
 
     result<interval_gap<address_type>> chosen = unexpected(error::not_found);
-    for_each_gap(space_start, space_end, [&](address_type gap_start, address_type gap_end) noexcept {
-      address_type slots = slot_count(gap_start, gap_end, min_size, alignment);
-      if (slots == address_type{0})
-        return false;
-      if (pick < slots) {
-        address_type chosen_start = static_cast<address_type>(align_up(gap_start, alignment) + pick * step);
-        chosen = interval_gap<address_type>{chosen_start, static_cast<address_type>(chosen_start + min_size)};
-        return true; // Stop: this is the gap `pick` landed in.
-      }
-      pick = static_cast<address_type>(pick - slots);
-      return false;
-    });
+    for_each_gap(space_start, space_end,
+                 [&chosen, &pick, step, min_size, alignment](address_type gap_start, address_type gap_end) noexcept {
+                   address_type slots = slot_count(gap_start, gap_end, min_size, alignment);
+                   if (slots == address_type{0})
+                     return false;
+                   if (pick < slots) {
+                     address_type chosen_start =
+                         static_cast<address_type>(align_up(gap_start, alignment) + pick * step);
+                     chosen =
+                         interval_gap<address_type>{chosen_start, static_cast<address_type>(chosen_start + min_size)};
+                     return true; // Stop: this is the gap `pick` landed in.
+                   }
+                   pick = static_cast<address_type>(pick - slots);
+                   return false;
+                 });
     return chosen;
   }
 
@@ -224,12 +233,15 @@ public:
   result<T *> try_resize(T &target, address_type new_start, address_type new_end, Resizer resizer) noexcept {
     if (!(new_start < new_end))
       return unexpected(error::invalid_argument);
+    // Read the functors through local references so the loop does not touch `this` while it is borrowed.
+    const auto &comp = this->key_comp();
+    const auto &end_of_fn = end_of_;
     for (T &item : *this) {
       if (&item == &target)
         continue;
-      if (start_of_(item) >= new_end)
+      if (comp.start_of(item) >= new_end)
         break; // Ascending order: no later item can overlap `[new_start, new_end)` either.
-      if (new_start < end_of_(item))
+      if (new_start < end_of_fn(item))
         return unexpected(error::already_exists);
     }
     resizer(target, new_start, new_end);
@@ -265,13 +277,16 @@ public:
   template <typename Visitor>
   void for_each_gap(address_type space_start, address_type space_end, Visitor visit) noexcept {
     address_type cursor = space_start;
+    // Read the functors through local references so the loop does not touch `this` while it is borrowed.
+    const auto &comp = this->key_comp();
+    const auto &end_of_fn = end_of_;
     for (T &item : *this) {
-      address_type item_start = start_of_(item);
+      address_type item_start = comp.start_of(item);
       if (item_start > cursor) {
         if (visit(cursor, item_start))
           return;
       }
-      address_type item_end = end_of_(item);
+      address_type item_end = end_of_fn(item);
       if (item_end > cursor)
         cursor = item_end;
       if (cursor >= space_end)

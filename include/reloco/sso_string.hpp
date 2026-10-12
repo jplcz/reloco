@@ -198,6 +198,8 @@ public:
   [[nodiscard]] constexpr size_type length() const noexcept { return size_; }
   [[nodiscard]] constexpr size_type capacity() const noexcept { return cap_; }
   [[nodiscard]] constexpr bool empty() const noexcept { return size_ == 0; }
+  // The allocator is externally owned, not part of this object; the handle may outlive it.
+  // NOLINTNEXTLINE(reloco-ref-qualified-member,reloco-lifetime-annotations)
   [[nodiscard]] constexpr allocator_ref get_allocator() const noexcept { return alloc_; }
   [[nodiscard]] constexpr bool is_inline() const noexcept { return data_ == sso_buf_; }
 
@@ -408,12 +410,12 @@ public:
 
   // ---- element access (checked / fallible / explicitly-unsafe tiers) ----
 
-  [[nodiscard]] reference operator[](size_type pos) & noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] reference operator[](size_type pos) & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(pos < size_, "string index out of bounds");
     return data_[pos];
   }
 
-  [[nodiscard]] const_reference operator[](size_type pos) const & noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] const_reference operator[](size_type pos) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(pos < size_, "string index out of bounds");
     return data_[pos];
   }
@@ -525,16 +527,26 @@ public:
     return data_;
   }
 
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE const_pointer unsafe_c_str() const && = delete;
+
   [[nodiscard]] view_type view() const & noexcept RELOCO_LIFETIMEBOUND { return view_type(data(), size_); }
 
+  // Implicit by design: part of the documented value-like API.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   [[nodiscard]] operator view_type() const & noexcept RELOCO_LIFETIMEBOUND { return view(); }
 
+  // std-interop-begin: implicit view into std::basic_string_view for std APIs.
+  // Implicit by design: part of the documented value-like API.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   [[nodiscard]] operator std::basic_string_view<CharT, TraitsT>() const & noexcept RELOCO_LIFETIMEBOUND {
     return std::basic_string_view<CharT, TraitsT>(data(), size_);
   }
+  // std-interop-end
 
   // std-interop-begin: opt-in conversion to std::basic_string for interop
   // with APIs that already speak std::string; never used internally.
+  // Allocates through std::allocator; its failure mode is the standard library's, not ours.
+  // NOLINTNEXTLINE(reloco-noexcept)
   explicit operator std::basic_string<CharT, TraitsT>() const {
     return std::basic_string<CharT, TraitsT>(data(), size_);
   }
@@ -639,6 +651,7 @@ RELOCO_TYPE_ID_NAME(reloco::wsso_string, "reloco::wsso_string");
 
 RELOCO_END_UNSAFE_BUFFER_USAGE
 
+// std-interop-begin: std::hash specialization so the string works as an unordered_* key.
 namespace std {
 
 template <typename CharT, typename TraitsT> struct hash<reloco::basic_sso_string<CharT, TraitsT>> {
@@ -648,3 +661,4 @@ template <typename CharT, typename TraitsT> struct hash<reloco::basic_sso_string
 };
 
 } // namespace std
+// std-interop-end

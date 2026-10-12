@@ -90,6 +90,8 @@ using container_of_member_t = typename detail::member_pointer_traits<decltype(Me
  * passing any other pointer is undefined behavior, exactly like the
  * kernel macro it mirrors.
  */
+// Pointer arithmetic from member to enclosing object; sound only for the member the caller names.
+RELOCO_BEGIN_UNSAFE_CODE
 template <auto Member>
 [[nodiscard]] constexpr container_of_class_t<Member> *container_of(container_of_member_t<Member> *member) noexcept {
   using class_type = container_of_class_t<Member>;
@@ -100,10 +102,13 @@ template <auto Member>
   return reinterpret_cast<class_type *>(addr);
   RELOCO_END_UNSAFE_BUFFER_USAGE
 }
+RELOCO_END_UNSAFE_CODE
 
 /**
  * @brief `const`-qualified overload of `container_of<Member>(member)`.
  */
+// Pointer arithmetic from member to enclosing object; sound only for the member the caller names.
+RELOCO_BEGIN_UNSAFE_CODE
 template <auto Member>
 [[nodiscard]] constexpr const container_of_class_t<Member> *
 container_of(const container_of_member_t<Member> *member) noexcept {
@@ -115,5 +120,6 @@ container_of(const container_of_member_t<Member> *member) noexcept {
   return reinterpret_cast<const class_type *>(addr);
   RELOCO_END_UNSAFE_BUFFER_USAGE
 }
+RELOCO_END_UNSAFE_CODE
 
 } // namespace reloco

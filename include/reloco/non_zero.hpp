@@ -71,6 +71,8 @@ public:
    * @brief Implicitly converts to the wrapped value, so a `non_zero<T>`
    * can be used anywhere a `T` is expected (e.g. arithmetic, comparisons).
    */
+  // Implicit by design: part of the documented value-like API.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
   [[nodiscard]] constexpr operator T() const noexcept { return value_; }
 
   [[nodiscard]] constexpr bool operator==(const non_zero &other) const noexcept { return value_ == other.value_; }

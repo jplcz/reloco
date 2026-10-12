@@ -72,6 +72,9 @@ public:
   safe_bs_set_hook() noexcept = default;
   safe_bs_set_hook(const safe_bs_set_hook &) noexcept = default;
   safe_bs_set_hook &operator=(const safe_bs_set_hook &) noexcept = default;
+  // Boost hooks have no move: a "move" is a copy that yields a fresh, unlinked hook.
+  safe_bs_set_hook(safe_bs_set_hook &&) noexcept = default;
+  safe_bs_set_hook &operator=(safe_bs_set_hook &&) noexcept = default;
 
   ~safe_bs_set_hook() {
     RELOCO_ASSERT(!this->is_linked(),
@@ -101,6 +104,9 @@ public:
   safe_bs_set_member_hook() noexcept = default;
   safe_bs_set_member_hook(const safe_bs_set_member_hook &) noexcept = default;
   safe_bs_set_member_hook &operator=(const safe_bs_set_member_hook &) noexcept = default;
+  // Boost hooks have no move: a "move" is a copy that yields a fresh, unlinked hook.
+  safe_bs_set_member_hook(safe_bs_set_member_hook &&) noexcept = default;
+  safe_bs_set_member_hook &operator=(safe_bs_set_member_hook &&) noexcept = default;
 
   ~safe_bs_set_member_hook() {
     RELOCO_ASSERT(!this->is_linked(),

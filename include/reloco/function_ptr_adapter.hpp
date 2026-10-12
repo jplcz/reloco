@@ -71,7 +71,7 @@ template <typename R, typename... TargetArgs> struct function_signature_traits<R
 // types out of `TargetArgsTuple`, used to produce a clearer static_assert than letting
 // the mismatch surface from inside the generated trampoline's body instead.
 template <typename R, typename Fn, typename TargetArgsTuple, std::size_t... I>
-constexpr bool is_invocable_with_prefix(std::index_sequence<I...>) {
+constexpr bool is_invocable_with_prefix(std::index_sequence<I...>) noexcept {
   return std::is_invocable_r_v<R, Fn, std::tuple_element_t<I, TargetArgsTuple>...>;
 }
 
@@ -107,11 +107,11 @@ private:
   template <typename R, typename... TargetArgs> struct trampoline_for<R(TargetArgs...)> {
     // Only the leading `arity` of the (possibly longer) `TargetArgs...` pack are ever
     // forwarded to `Fn`; the rest are bound as ordinary parameters and simply dropped.
-    template <std::size_t... I> static R invoke_prefix(std::index_sequence<I...>, TargetArgs... args) {
+    template <std::size_t... I> static R invoke_prefix(std::index_sequence<I...>, TargetArgs... args) noexcept {
       return std::invoke(Fn, std::get<I>(std::forward_as_tuple(std::forward<TargetArgs>(args)...))...);
     }
 
-    static R call(TargetArgs... args) {
+    static R call(TargetArgs... args) noexcept {
       return invoke_prefix(std::make_index_sequence<arity>{}, std::forward<TargetArgs>(args)...);
     }
   };
@@ -124,7 +124,10 @@ public:
    * destination function pointer type at the conversion/assignment site.
    */
   template <typename Signature, typename = std::enable_if_t<std::is_function_v<Signature>>>
-  constexpr operator Signature *() const noexcept {
+  // Implicit by design: the adapter exists to be assigned to a C function-pointer slot.
+  // The result is a static trampoline, not an alias of this object.
+  // NOLINTNEXTLINE(reloco-explicit-conversion,reloco-lifetime-annotations,reloco-ref-qualified-member)
+  constexpr operator Signature *() const & noexcept {
     using traits = detail::function_signature_traits<Signature>;
     static_assert(arity <= traits::arity,
                   "target function pointer type has fewer parameters than the bound function requires");

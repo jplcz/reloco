@@ -112,6 +112,8 @@ namespace reloco {
  * `intrusive_rbtree_hook`, since a splay tree carries no per-node balancing
  * metadata at all.
  */
+// Embedded links into the tree; the hook is neither an owner nor a borrower of the nodes.
+// NOLINTNEXTLINE(reloco-pointer-annotation)
 template <typename T> struct intrusive_splay_tree_hook {
   T *parent = nullptr;
   T *left = nullptr;

@@ -111,6 +111,8 @@ public:
    */
   [[nodiscard]] const T &peek() const & noexcept RELOCO_LIFETIMEBOUND { return data_.front(); }
 
+  [[nodiscard]] const T &peek() const && = delete;
+
   [[nodiscard]] result<std::reference_wrapper<const T>> try_peek() const & noexcept RELOCO_LIFETIMEBOUND {
     return data_.try_front();
   }
