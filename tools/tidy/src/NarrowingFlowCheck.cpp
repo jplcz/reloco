@@ -9,6 +9,7 @@
 #include "Checks.h"
 
 #include "clang/AST/ParentMapContext.h"
+#include "clang/AST/RecursiveASTVisitor.h"
 
 #include <algorithm>
 #include <optional>
@@ -46,7 +47,41 @@ std::optional<i128> constant(const Expr *e, const ASTContext &ctx) {
   return v.isSigned() ? static_cast<i128>(v.getSExtValue()) : static_cast<i128>(v.getZExtValue());
 }
 
-Range rangeOf(const Expr *e, const ASTContext &ctx, int depth = 0) {
+
+// True if the body modifies or leaks the address of `vd` (assignment, ++/--, compound assignment, address-of, non-const ref bind).
+class WritesVar : public RecursiveASTVisitor<WritesVar> {
+public:
+  explicit WritesVar(const VarDecl *vd) : vd_(vd) {}
+  bool found = false;
+  bool VisitBinaryOperator(BinaryOperator *bo) {
+    if (bo->isAssignmentOp() && refersTo(bo->getLHS()))
+      found = true;
+    return true;
+  }
+  bool VisitUnaryOperator(UnaryOperator *uo) {
+    if ((uo->isIncrementDecrementOp() || uo->getOpcode() == UO_AddrOf) && refersTo(uo->getSubExpr()))
+      found = true;
+    return true;
+  }
+  bool VisitCXXOperatorCallExpr(CXXOperatorCallExpr *oc) {
+    if (oc->getNumArgs() > 0 && refersTo(oc->getArg(0)))
+      found = true;
+    return true;
+  }
+
+private:
+  bool refersTo(const Expr *e) const {
+    const auto *dre = llvm::dyn_cast<DeclRefExpr>(e->IgnoreParenImpCasts());
+    return dre && dre->getDecl() == vd_;
+  }
+  const VarDecl *vd_;
+};
+
+// Range of a counting-loop variable: `for (T i = C0; i < C1; ++i)` (also <=, !=, `i += C`, `i++`), where the body never
+// writes `i`. Returns nullopt when the loop is not of that simple shape.
+std::optional<Range> loopRange(const VarDecl *vd, ASTContext &ctx);
+
+Range rangeOf(const Expr *e, ASTContext &ctx, int depth = 0) {
   const QualType t = e->getType();
   const Range full = typeRange(t, ctx);
   if (depth > 8)
@@ -103,7 +138,72 @@ Range rangeOf(const Expr *e, const ASTContext &ctx, int depth = 0) {
     const Range b = rangeOf(co->getFalseExpr(), ctx, depth + 1);
     return clampTo({std::min(a.lo, b.lo), std::max(a.hi, b.hi)}, full);
   }
+  if (const auto *dre = llvm::dyn_cast<DeclRefExpr>(e))
+    if (const auto *vd = llvm::dyn_cast<VarDecl>(dre->getDecl()))
+      if (const auto r = loopRange(vd, ctx))
+        return clampTo(*r, full);
   return full;
+}
+
+std::optional<Range> loopRange(const VarDecl *vd, ASTContext &ctx) {
+  if (!vd->hasInit() || !isInt(vd->getType()) || vd->getType().isVolatileQualified())
+    return std::nullopt;
+  const auto init = constant(vd->getInit(), ctx);
+  if (!init)
+    return std::nullopt;
+  const auto *ds = [&]() -> const DeclStmt * {
+    for (const auto &p : ctx.getParents(*vd))
+      if (const auto *d = p.get<DeclStmt>())
+        return d;
+    return nullptr;
+  }();
+  if (!ds)
+    return std::nullopt;
+  const ForStmt *fs = nullptr;
+  for (const auto &p : ctx.getParents(*ds))
+    fs = p.get<ForStmt>();
+  if (!fs || fs->getInit() != ds || !fs->getCond() || !fs->getInc())
+    return std::nullopt;
+  auto isVar = [&](const Expr *e) {
+    const auto *d = llvm::dyn_cast<DeclRefExpr>(e->IgnoreParenImpCasts());
+    return d && d->getDecl() == vd;
+  };
+  // Condition: i < C, i <= C or i != C.
+  const auto *cond = llvm::dyn_cast<BinaryOperator>(fs->getCond()->IgnoreParenImpCasts());
+  if (!cond || !isVar(cond->getLHS()))
+    return std::nullopt;
+  const auto bound = constant(cond->getRHS(), ctx);
+  if (!bound)
+    return std::nullopt;
+  i128 hi;
+  switch (cond->getOpcode()) {
+  case BO_LT:
+  case BO_NE:
+    hi = *bound - 1;
+    break;
+  case BO_LE:
+    hi = *bound;
+    break;
+  default:
+    return std::nullopt;
+  }
+  // Increment: strictly upward (++i, i++, i += positive constant).
+  const Expr *inc = fs->getInc()->IgnoreParenImpCasts();
+  bool up = false;
+  if (const auto *uo = llvm::dyn_cast<UnaryOperator>(inc))
+    up = uo->isIncrementOp() && isVar(uo->getSubExpr());
+  else if (const auto *bo = llvm::dyn_cast<BinaryOperator>(inc))
+    up = bo->getOpcode() == BO_AddAssign && isVar(bo->getLHS()) && constant(bo->getRHS(), ctx) && *constant(bo->getRHS(), ctx) > 0;
+  if (!up || *init > hi)
+    return std::nullopt;
+  if (cond->getOpcode() == BO_NE && *init > *bound)
+    return std::nullopt;
+  WritesVar w(vd);
+  if (fs->getBody())
+    w.TraverseStmt(const_cast<Stmt *>(fs->getBody()));
+  if (w.found)
+    return std::nullopt;
+  return Range{*init, hi};
 }
 
 std::string str(i128 v) {

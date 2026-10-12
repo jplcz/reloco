@@ -21,3 +21,27 @@ std::uint8_t bad_arith(std::uint8_t a, std::uint8_t b) noexcept { return static_
 std::uint16_t suppressed(std::uint32_t x) noexcept { return static_cast<std::uint16_t>(x); }  // NOLINT(reloco-narrowing-flow)
 // An all-ones constant is a deliberate mask, not a narrowing.
 std::uint32_t all_ones() noexcept { return static_cast<std::uint32_t>(-1); }
+
+// A counting loop bounds its variable: [0, 9] fits a byte.
+std::uint8_t ok_loop_bound() noexcept {
+  std::uint8_t last = 0;
+  for (std::int32_t i = 0; i < 10; ++i)
+    last = static_cast<std::uint8_t>(i);
+  return last;
+}
+// The body rewrites the variable, so the bound proves nothing.
+std::uint8_t bad_loop_written(std::uint32_t k) noexcept {
+  std::uint8_t last = 0;
+  for (std::uint32_t i = 0; i < 10; ++i) {
+    i = k;
+    last = static_cast<std::uint8_t>(i);  // expect: reloco-narrowing-flow
+  }
+  return last;
+}
+// The bound does not fit a byte.
+std::uint8_t bad_loop_wide() noexcept {
+  std::uint8_t last = 0;
+  for (std::uint32_t i = 0; i < 1000; ++i)
+    last = static_cast<std::uint8_t>(i);  // expect: reloco-narrowing-flow
+  return last;
+}

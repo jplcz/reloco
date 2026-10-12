@@ -134,6 +134,28 @@ void ExplicitConversionCheck::registerMatchers(MatchFinder *finder) {
                      this);
 }
 
+namespace {
+// Location for an `explicit` keyword: after any leading `[[...]]` attribute lists, which must precede decl-specifiers.
+SourceLocation explicitInsertionLoc(SourceLocation start, const SourceManager &sm) {
+  bool invalid = false;
+  const llvm::StringRef buf = sm.getBufferData(sm.getFileID(start), &invalid);
+  if (invalid)
+    return start;
+  size_t off = sm.getFileOffset(start);
+  for (;;) {
+    if (!buf.substr(off).starts_with("[["))
+      break;
+    const size_t close = buf.find("]]", off);
+    if (close == llvm::StringRef::npos)
+      return start;
+    off = close + 2;
+    while (off < buf.size() && (buf[off] == ' ' || buf[off] == '\t' || buf[off] == '\n'))
+      ++off;
+  }
+  return start.getLocWithOffset(static_cast<int>(off - sm.getFileOffset(start)));
+}
+} // namespace
+
 void ExplicitConversionCheck::check(const MatchFinder::MatchResult &result) {
   if (const auto *c = result.Nodes.getNodeAs<CXXConstructorDecl>("ctor")) {
     if (c->getNumParams() == 0 || c->getMinRequiredArguments() > 1 || c->getParent()->isLambda() ||
@@ -148,7 +170,7 @@ void ExplicitConversionCheck::check(const MatchFinder::MatchResult &result) {
                                     "the implicit conversion with NOLINT and a reason)")
              << c->getParent()->getName();
     if (c->getOuterLocStart().isValid() && !c->getOuterLocStart().isMacroID())
-      d << FixItHint::CreateInsertion(c->getOuterLocStart(), "explicit ");
+      d << FixItHint::CreateInsertion(explicitInsertionLoc(c->getOuterLocStart(), *result.SourceManager), "explicit ");
   } else if (const auto *cv = result.Nodes.getNodeAs<CXXConversionDecl>("conv")) {
     if (cv->isTemplateInstantiation() || cv->getParent()->isLambda() || exempt(*result.SourceManager, cv->getLocation()))
       return;
@@ -157,7 +179,7 @@ void ExplicitConversionCheck::check(const MatchFinder::MatchResult &result) {
     auto d = diag(cv->getLocation(), "conversion operator must be explicit; add 'explicit' (call a named conversion "
                                      "function if an implicit one is really needed)");
     if (cv->getOuterLocStart().isValid() && !cv->getOuterLocStart().isMacroID())
-      d << FixItHint::CreateInsertion(cv->getOuterLocStart(), "explicit ");
+      d << FixItHint::CreateInsertion(explicitInsertionLoc(cv->getOuterLocStart(), *result.SourceManager), "explicit ");
   }
 }
 
@@ -528,6 +550,30 @@ bool isGuardedOperator(const FunctionDecl *fd) {
   const unsigned arity = fd->getNumParams() + (llvm::isa<CXXMethodDecl>(fd) && !fd->isStatic() ? 1u : 0u);
   return arity == 1; // unary dereference, not multiplication
 }
+
+// Dereferencing an iterator is guarded by the iterator protocol (compare with end() first); an iterator cannot bounds
+// check itself, so `*it` / `it->` on iterator types is not a checked-access defect.
+bool isIteratorRecord(const CXXRecordDecl *rd) {
+  if (!rd || !rd->hasDefinition())
+    return false;
+  if (rd->getName().ends_with("iterator") || rd->getName().ends_with("_iterator"))
+    return true;
+  const auto has = [](const CXXRecordDecl *c) {
+    for (const Decl *d : c->decls())
+      if (const auto *nd = llvm::dyn_cast<TypedefNameDecl>(d); nd && nd->getName() == "iterator_category")
+        return true;
+    return false;
+  };
+  if (has(rd))
+    return true;
+  bool found = false;
+  rd->forallBases([&](const CXXRecordDecl *b) {
+    if (has(b))
+      found = true;
+    return !found;
+  });
+  return found;
+}
 } // namespace
 
 void CheckedOperatorCheck::registerMatchers(MatchFinder *finder) {
@@ -558,6 +604,9 @@ void CheckedOperatorCheck::check(const MatchFinder::MatchResult &result) {
     return;
   if (annotatedInScope(callee, "reloco_checked"))
     return;
+  if (callee->getOverloadedOperator() != OO_Subscript)
+    if (const auto *m = llvm::dyn_cast<CXXMethodDecl>(callee); m && isIteratorRecord(m->getParent()))
+      return;
   if (const FunctionDecl *encl = enclosingFunction(result); encl && inUnsafeTier(encl))
     return;
   diag(oc->getBeginLoc(), "use of unchecked %0; the type does not declare it RELOCO_CHECKED, use a checked accessor") << callee;

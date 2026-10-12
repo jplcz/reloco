@@ -59,3 +59,14 @@ copy_only_assign make_copy_only() noexcept;
 void assign_from_temporary(copy_only_assign &dst) noexcept {
   dst = make_copy_only(); // fine: a temporary has nothing to move out of beyond the copy the type forces
 }
+
+// Generic code copying the caller's own T (or a type built from it) is the caller's choice, not the template's.
+struct copyable_payload {
+  copyable_payload() noexcept;
+  copyable_payload(const copyable_payload &) noexcept;
+};
+template <typename T> struct holder {
+  T value;
+  void set(const T &v) noexcept { value = v; }
+};
+void use_holder(holder<copyable_payload> &h, const copyable_payload &p) noexcept { h.set(p); }

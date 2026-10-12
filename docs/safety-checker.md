@@ -661,3 +661,13 @@ void log_msg(const char *RELOCO_STATIC_STR msg) noexcept;
 
 // Anything else must use reloco::string_view instead.
 ```
+
+## Instantiation and fix-it notes
+
+- `reloco-implicit-copy` skips copies of a type that equals or contains a template argument of the enclosing
+  function/class specialization: the caller chose that type, not the template.
+- `reloco-checked-operator` does not flag use-site `*it` / `it->` on iterator types (`iterator_category` member or a
+  name ending in `iterator`); `operator[]` stays checked.
+- `reloco-narrowing-flow` tracks `for (T i = C0; i < C1; ++i)` loops when the body never writes `i`.
+- `reloco-explicit-conversion` fix-its insert `explicit` after any leading `[[attribute]]` list.
+- `tests/compile_all_headers.cpp` covers nearly all public headers; calibration must report 0.

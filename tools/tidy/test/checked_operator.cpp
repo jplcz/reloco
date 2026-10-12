@@ -23,3 +23,11 @@ int use(unchecked &u, checked &c, whole &w) noexcept {
   return x + c[2] + *c + w[0] + *w;
 }
 void unsafe_use(unchecked &u) noexcept { (void)u[1]; }
+
+// Iterators cannot bounds check themselves: `*it` is guarded by the end() comparison, so uses are not flagged.
+struct some_iterator {
+  using iterator_category = int;
+  int &operator*() const noexcept;  // NOLINT(reloco-checked-operator)
+  int *operator->() const noexcept;  // NOLINT(reloco-checked-operator)
+};
+int use_iterator(some_iterator it) noexcept { return *it + it.operator->()[0]; }
