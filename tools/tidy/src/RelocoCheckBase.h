@@ -77,7 +77,8 @@ protected:
   // Fix-it anchor: the end of ')' plus trailing const/volatile (and, with skipRef, '&'/'&&'), i.e. where a
   // ref-qualifier (skipRef=false) or noexcept (skipRef=true) is inserted. Invalid when it cannot be located safely.
   [[nodiscard]] static SourceLocation functionQualifierEnd(const FunctionDecl *fd, const SourceManager &sm,
-                                                           const LangOptions &lo, bool skipRef);
+                                                           const LangOptions &lo, bool skipRef,
+                                                           bool skipNoexcept = false);
 
 private:
   std::string exemptPathsOpt_;

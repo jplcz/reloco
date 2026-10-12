@@ -18,3 +18,11 @@ struct RELOCO_POINTER view {
   int *p;
   int &deref() const noexcept { return *p; }  // handles hand out their pointee
 };
+
+struct fixit_shapes {
+  int v = 0;
+  int &a() & noexcept { return v; }                       // expect: reloco-lifetime-annotations
+  const int &b() const & noexcept(true) { return v; }     // expect: reloco-lifetime-annotations
+  int &c() & { return v; }                                // expect: reloco-lifetime-annotations
+  auto d() & noexcept -> int & { return v; }              // expect: reloco-lifetime-annotations
+};

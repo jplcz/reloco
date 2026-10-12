@@ -166,7 +166,7 @@ bool RelocoCheck::isAliasing(QualType t) {
 }
 
 SourceLocation RelocoCheck::functionQualifierEnd(const FunctionDecl *fd, const SourceManager &sm, const LangOptions &lo,
-                                                 bool skipRef) {
+                                                 bool skipRef, bool skipNoexcept) {
   const TypeSourceInfo *tsi = fd->getTypeSourceInfo();
   if (!tsi)
     return {};
@@ -184,6 +184,26 @@ SourceLocation RelocoCheck::functionQualifierEnd(const FunctionDecl *fd, const S
     if (!cv && !ref)
       break;
     prev = tok->getLocation();
+  }
+  if (skipNoexcept) {
+    auto tok = Lexer::findNextToken(prev, sm, lo);
+    if (tok && !tok->getLocation().isMacroID() && tok->is(tok::raw_identifier) && tok->getRawIdentifier() == "noexcept") {
+      prev = tok->getLocation();
+      tok = Lexer::findNextToken(prev, sm, lo);
+      if (tok && tok->is(tok::l_paren)) {
+        int depth = 0;
+        for (; tok; tok = Lexer::findNextToken(tok->getLocation(), sm, lo)) {
+          if (tok->is(tok::l_paren))
+            ++depth;
+          else if (tok->is(tok::r_paren) && --depth == 0) {
+            prev = tok->getLocation();
+            break;
+          }
+        }
+        if (!tok)
+          return {};
+      }
+    }
   }
   return Lexer::getLocForEndOfToken(prev, 0, sm, lo);
 }

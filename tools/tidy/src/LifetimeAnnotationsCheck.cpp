@@ -4,6 +4,8 @@
 
 #include "Checks.h"
 
+#include "clang/Lex/Lexer.h"
+
 #include "clang/AST/Attr.h"
 
 namespace reloco::tidy {
@@ -59,7 +61,18 @@ void LifetimeAnnotationsCheck::check(const MatchFinder::MatchResult &result) {
     const QualType ret = md->getReturnType();
     if (!isAliasing(ret) || isStaticStrType(ret, *result.Context) || refersToOwnClass(ret, rd) || thisIsLifetimeBound(md, *result.Context))
       return;
-    diag(md->getLocation(), "member %0 returns an alias of its object; annotate it with RELOCO_LIFETIMEBOUND") << md;
+    auto d = diag(md->getLocation(), "member %0 returns an alias of its object; annotate it with RELOCO_LIFETIMEBOUND") << md;
+    // Insert after the cv/ref/noexcept qualifiers; a trailing return type or requires-clause is left to the user.
+    const SourceManager &sm = *result.SourceManager;
+    const LangOptions &lo = result.Context->getLangOpts();
+    if (const SourceLocation at = functionQualifierEnd(md, sm, lo, true, true); at.isValid() && !at.isMacroID()) {
+      const auto next = Lexer::findNextToken(at.getLocWithOffset(-1), sm, lo);
+      const bool plain = next && !next->isOneOf(tok::arrow) &&
+                         !(next->is(tok::raw_identifier) && (next->getRawIdentifier() == "requires" ||
+                                                             next->getRawIdentifier() == "try"));
+      if (plain)
+        d << FixItHint::CreateInsertion(at, " RELOCO_LIFETIMEBOUND");
+    }
     howToFix(md->getLocation(), "append the macro after the qualifiers: 'int &first() & noexcept RELOCO_LIFETIMEBOUND;' so Clang "
                                 "rejects 'auto &r = make().first();'");
     return;
