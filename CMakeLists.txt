@@ -318,6 +318,7 @@ if(JPLCZ_RELOCO_ENABLE_STRICT_WARNINGS)
             -Wnull-dereference
             -Wdouble-promotion
             -Wimplicit-fallthrough
+            -Wconditional-uninitialized
             -Woverloaded-virtual
             -Wnon-virtual-dtor
             -Wextra-semi
