@@ -29,6 +29,10 @@ option(JPLCZ_RELOCO_CHECK_NO_STD_TYPES
 glibc-dependent std:: facilities outside explicitly marked interop points \
 (see scripts/check-no-std-types.py)"
     ${JPLCZ_RELOCO_DEVELOPMENT_DEFAULT})
+option(JPLCZ_RELOCO_BUILD_TIDY
+    "Build the reloco-tidy clang-tidy plugin (tools/tidy) and the jplcz_reloco_tidy target that checks the \
+public headers with it (needs libclang-N-dev / llvm-N-dev matching clang-tidy-N)"
+    OFF)
 option(JPLCZ_RELOCO_BUILD_DEMOS
     "Build demos/ (small standalone example programs)" ${JPLCZ_RELOCO_DEVELOPMENT_DEFAULT})
 option(JPLCZ_RELOCO_INSTALL
@@ -896,4 +900,13 @@ if(JPLCZ_RELOCO_IS_TOP_LEVEL AND JPLCZ_RELOCO_INSTALL)
     set(CPACK_RPM_PACKAGE_DESCRIPTION "${CPACK_PACKAGE_DESCRIPTION_SUMMARY}")
 
     include(CPack)
+endif()
+
+if(JPLCZ_RELOCO_BUILD_TIDY)
+    add_subdirectory(tools/tidy)
+    include(tools/tidy/RelocoTidy.cmake)
+    # Checks every public header through tests/compile_all_headers.cpp; run with `ninja jplcz_reloco_tidy`.
+    reloco_tidy_add_target(jplcz_reloco_tidy
+        FILES "${CMAKE_CURRENT_SOURCE_DIR}/tests/compile_all_headers.cpp"
+        EXTRA_ARGS -std=c++20 "-I${CMAKE_CURRENT_SOURCE_DIR}/include")
 endif()

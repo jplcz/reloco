@@ -292,6 +292,35 @@ template <typename F> void spawn(F fn RELOCO_REQUIRE_SEND) noexcept;
 void start(int n) noexcept { spawn([n]() noexcept { (void)n; }); }
 ```
 
+## CMake integration and profiles
+
+```cmake
+# Build the plugin together with reloco and add `ninja jplcz_reloco_tidy`, which checks every public header.
+# Requires libclang-N-dev / llvm-N-dev matching clang-tidy-N.
+cmake -S . -B build -G Ninja -DJPLCZ_RELOCO_BUILD_TIDY=ON
+ninja -C build jplcz_reloco_tidy
+```
+
+In your own project (after `add_subdirectory(<reloco>/tools/tidy)` or setting `RELOCO_TIDY_PLUGIN`):
+
+```cmake
+include(<reloco>/tools/tidy/RelocoTidy.cmake)
+
+# Which profile to use: "strict" (all rules everywhere) or "library" (opt-in, for gradual adoption).
+set(RELOCO_TIDY_PROFILE strict)
+
+# Run the checker on every compile of my_target (CMake's CXX_CLANG_TIDY hook; slows the build).
+reloco_tidy_attach(my_target)
+
+# Or keep builds fast and add a separate `ninja my_lint` target covering the sources of these targets,
+# plus extra files that no target compiles (EXTRA_ARGS are the compiler flags for those files).
+reloco_tidy_add_target(my_lint TARGETS my_target FILES src/extra.cpp EXTRA_ARGS -std=c++20)
+```
+
+`tools/tidy/profiles/strict.clang-tidy` and `library.clang-tidy` are ready-made `.clang-tidy` files; the
+helpers pass the chosen one with `--config-file`, and you can copy either to your repository root for
+IDE use (see the IDE guide above).
+
 ## Calibration against reloco's own headers
 
 The plugin is run over `tests/compile_all_headers.cpp` (all public headers, `-std=c++20`) to find false

@@ -73,6 +73,11 @@ target_compile_options(reloco-tidy PRIVATE -fno-rtti -Wall -Wextra)
 # plugin was built against; hence the version match with the clang-tidy-N binary).
 target_compile_definitions(reloco-tidy PRIVATE RELOCO_TIDY_LLVM_MAJOR=${LLVM_VERSION_MAJOR})
 
+# Tell a parent project (JPLCZ_RELOCO_BUILD_TIDY) which clang-tidy matches this plugin.
+if(NOT PROJECT_IS_TOP_LEVEL)
+  set(RELOCO_TIDY_LLVM_VERSION "${RELOCO_TIDY_LLVM_VERSION}" PARENT_SCOPE)
+endif()
+
 # Fixture tests: tools/tidy/test/*.cpp carry `// expect: <check> <line-offset>` markers.
 enable_testing()
 find_program(_reloco_tidy_bin NAMES clang-tidy-${RELOCO_TIDY_LLVM_VERSION} clang-tidy
@@ -83,4 +88,7 @@ if(_reloco_tidy_bin AND Python3_FOUND)
            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test/run_tests.py"
                    --clang-tidy "${_reloco_tidy_bin}" --plugin "$<TARGET_FILE:reloco-tidy>"
                    --include "${CMAKE_CURRENT_SOURCE_DIR}/../../include")
+endif()
+if(_reloco_tidy_bin AND NOT PROJECT_IS_TOP_LEVEL)
+  set(RELOCO_TIDY_DEFAULT_EXECUTABLE "${_reloco_tidy_bin}" PARENT_SCOPE)
 endif()

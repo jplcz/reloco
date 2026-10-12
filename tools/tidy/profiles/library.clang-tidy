@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 Jarosław Pelczar <jarek@jpelczar.com>
+#
+# SPDX-License-Identifier: BSD-2-Clause
+
+# reloco-tidy "library" profile: opt-in adoption for an existing code base.
+# Rules apply only inside code that asks for them, so you can migrate directory by directory without
+# a wall of warnings; see "Opt-in mode for derived projects" in docs/safety-checker.md.
+# Mark a region safe with RELOCO_SAFE_MATH or by wrapping new code in the project's safe-code macro.
+Checks: '-*,reloco-*'
+WarningsAsErrors: ''
+HeaderFilterRegex: '.*'
+CheckOptions:
+  - key: reloco-no-raw-pointer.SafeCodeMode
+    value: 'opt-in'
+  - key: reloco-no-raw-pointer.ExemptPaths
+    value: '/tests/;/demos/;/test/;/examples/;/_deps/;/third_party/'

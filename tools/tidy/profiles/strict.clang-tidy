@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 Jarosław Pelczar <jarek@jpelczar.com>
+#
+# SPDX-License-Identifier: BSD-2-Clause
+
+# reloco-tidy "strict" profile: every rule applies to all code outside exempt paths.
+# Copy to your project's .clang-tidy (or `cp` it over the top of an existing one) and run clang-tidy with
+#   --load=<build>/libreloco-tidy.so      (or use tools/clang-tidy-reloco, which does this for you)
+# Use for new code that should follow the whole rule set from day one.
+Checks: '-*,reloco-*'
+WarningsAsErrors: ''
+HeaderFilterRegex: '.*'
+CheckOptions:
+  # Paths (';'-separated) that are not checked: tests, demos, third-party code.
+  - key: reloco-no-raw-pointer.ExemptPaths
+    value: '/tests/;/demos/;/test/;/examples/;/_deps/;/third_party/'
+  # false = require '&' only on members returning an alias; true = require it on every non-const member.
+  - key: reloco-ref-qualified-member.StrictNonConst
+    value: 'false'
