@@ -38,6 +38,10 @@ void ImplicitBoolCheck::check(const MatchFinder::MatchResult &result) {
   for (const auto &p : result.Context->getParents(*ce))
     if (const auto *uo = p.get<UnaryOperator>(); uo && uo->getOpcode() == UO_LNot)
       negated = true;
+  // `if (T *p = f())`: the operand is the condition variable itself, spelled at its declaration; no rewrite is possible.
+  if (const auto *dre = llvm::dyn_cast<DeclRefExpr>(sub->IgnoreParenImpCasts());
+      dre && dre->getDecl()->getLocation() == dre->getLocation())
+    negated = true;
   if (!negated && end.isValid() && !end.isMacroID() && !sub->getEndLoc().isMacroID() &&
       llvm::isa<DeclRefExpr, MemberExpr, CallExpr>(sub->IgnoreParenImpCasts()))
     d << FixItHint::CreateInsertion(end, std::string(" ") + cmp);

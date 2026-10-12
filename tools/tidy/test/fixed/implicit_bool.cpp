@@ -18,3 +18,12 @@ void run(int n, const int *p, double d, bool b, flag_holder h) noexcept {
   if (h) {}
   (void)x;
 }
+
+// A condition variable has no separate operand to compare: reported, but without a fix-it.
+int *make_ptr() noexcept;
+int use_cond_var() noexcept {
+  if (int *p = make_ptr()) {  // expect: reloco-implicit-bool
+    return *p;
+  }
+  return 0;
+}
