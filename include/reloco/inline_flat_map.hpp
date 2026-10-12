@@ -87,7 +87,7 @@ public:
     flat_map<Key, Mapped, Compare> map = std::move(*map_res);
     bool failed = false;
     error first_error{};
-    base::for_each([&](const value_type &entry) noexcept {
+    base::for_each([&failed, &first_error, &alloc, &map](const value_type &entry) noexcept {
       if (failed)
         return;
       auto clone_res = construction_helpers::try_clone<value_type>(alloc, entry);
@@ -129,7 +129,7 @@ public:
     flat_map<Key, Mapped, Compare> map = std::move(*map_res);
     bool failed = false;
     error first_error{};
-    base::for_each([&](const value_type &entry) noexcept {
+    base::for_each([&failed, &first_error, &map](const value_type &entry) noexcept {
       if (failed)
         return;
       // elements are stored const to protect the key; the mapped value is mutable by the API contract.

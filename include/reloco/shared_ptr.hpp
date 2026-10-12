@@ -183,7 +183,7 @@ public:
   constexpr shared_ptr(std::nullptr_t) noexcept {}
 
   shared_ptr(const shared_ptr &other) noexcept : ptr_(other.ptr_), block_(other.block_) {
-    if (block_)
+    if (block_ != nullptr)
       block_->shared_count_.fetch_add(1, std::memory_order_relaxed);
   }
 
@@ -192,14 +192,14 @@ public:
   // mirrors the std smart pointers: implicit from nullptr_t and from convertible pointer types.
   // NOLINTNEXTLINE(reloco-explicit-conversion)
   shared_ptr(const shared_ptr<U> &other) noexcept : ptr_(other.ptr_), block_(other.block_) {
-    if (block_)
+    if (block_ != nullptr)
       block_->shared_count_.fetch_add(1, std::memory_order_relaxed);
   }
 
   /** @brief Aliasing constructor: shares ownership with `other` but points
    * at `ptr` instead (used by the `*_pointer_cast` helpers below). */
   template <typename U> shared_ptr(const shared_ptr<U> &other, T *ptr) noexcept : ptr_(ptr), block_(other.block_) {
-    if (block_)
+    if (block_ != nullptr)
       block_->shared_count_.fetch_add(1, std::memory_order_relaxed);
   }
 
@@ -217,7 +217,7 @@ public:
   }
 
   ~shared_ptr() {
-    if (block_)
+    if (block_ != nullptr)
       block_->release_shared();
   }
 
@@ -288,13 +288,13 @@ public:
   /** @brief Number of `shared_ptr`s (including this one) sharing ownership,
    * or `0` for an empty pointer. */
   [[nodiscard]] std::size_t use_count() const noexcept {
-    return block_ ? block_->shared_count_.load(std::memory_order_relaxed) : 0;
+    return block_ != nullptr ? block_->shared_count_.load(std::memory_order_relaxed) : 0;
   }
 
   /** @brief Releases ownership, destroying the object if this was the last
    * owner, and resets this pointer to the null state. */
   void reset() noexcept {
-    if (block_) {
+    if (block_ != nullptr) {
       block_->release_shared();
       block_ = nullptr;
       ptr_ = nullptr;
@@ -368,12 +368,12 @@ public:
   // mirrors the std smart pointers: implicit from nullptr_t and from convertible pointer types.
   // NOLINTNEXTLINE(reloco-explicit-conversion)
   weak_ptr(const shared_ptr<T> &other) noexcept : ptr_(other.ptr_), block_(other.block_) {
-    if (block_)
+    if (block_ != nullptr)
       block_->weak_count_.fetch_add(1, std::memory_order_relaxed);
   }
 
   weak_ptr(const weak_ptr &other) noexcept : ptr_(other.ptr_), block_(other.block_) {
-    if (block_)
+    if (block_ != nullptr)
       block_->weak_count_.fetch_add(1, std::memory_order_relaxed);
   }
 
@@ -381,7 +381,7 @@ public:
   // mirrors the std smart pointers: implicit from nullptr_t and from convertible pointer types.
   // NOLINTNEXTLINE(reloco-explicit-conversion)
   weak_ptr(const weak_ptr<U> &other) noexcept : ptr_(other.ptr_), block_(other.block_) {
-    if (block_)
+    if (block_ != nullptr)
       block_->weak_count_.fetch_add(1, std::memory_order_relaxed);
   }
 
@@ -391,7 +391,7 @@ public:
   }
 
   ~weak_ptr() {
-    if (block_)
+    if (block_ != nullptr)
       block_->release_weak();
   }
 
@@ -426,13 +426,13 @@ public:
   /** @brief `true` once the last `shared_ptr` has released the object (or
    * this observer was never bound to one). */
   [[nodiscard]] bool expired() const noexcept {
-    return !block_ || block_->shared_count_.load(std::memory_order_relaxed) == 0;
+    return block_ == nullptr || block_->shared_count_.load(std::memory_order_relaxed) == 0;
   }
 
   /** @brief Attempts to promote this observer to a `shared_ptr`, atomically
    * failing with `error::pointer_expired` if the object is already gone. */
   [[nodiscard]] result<shared_ptr<T>> lock() const noexcept {
-    if (!block_)
+    if (block_ == nullptr)
       return unexpected(error::empty_pointer);
     if (!block_->try_add_shared())
       return unexpected(error::pointer_expired);
@@ -440,11 +440,11 @@ public:
   }
 
   [[nodiscard]] std::size_t use_count() const noexcept {
-    return block_ ? block_->shared_count_.load(std::memory_order_relaxed) : 0;
+    return block_ != nullptr ? block_->shared_count_.load(std::memory_order_relaxed) : 0;
   }
 
   void reset() noexcept {
-    if (block_) {
+    if (block_ != nullptr) {
       block_->release_weak();
       block_ = nullptr;
       ptr_ = nullptr;

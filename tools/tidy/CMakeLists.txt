@@ -61,6 +61,8 @@ add_library(reloco-tidy MODULE
     src/BannedStdTypeCheck.cpp
     src/BannedConstructCheck.cpp
     src/MemberOrderCheck.cpp
+    src/VirtualCallCheck.cpp
+    src/ImplicitBoolCheck.cpp
     src/BorrowCheck.cpp)
 set_target_properties(reloco-tidy PROPERTIES
     CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF

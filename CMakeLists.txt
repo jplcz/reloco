@@ -319,6 +319,12 @@ if(JPLCZ_RELOCO_ENABLE_STRICT_WARNINGS)
             -Wdouble-promotion
             -Wimplicit-fallthrough
             -Wconditional-uninitialized
+            -Wunsequenced
+            -Wpessimizing-move
+            -Wredundant-move
+            -Wsuggest-override
+            -Wsign-compare
+            -Wfloat-equal
             -Woverloaded-virtual
             -Wnon-virtual-dtor
             -Wextra-semi

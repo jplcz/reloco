@@ -168,6 +168,18 @@ RELOCO_TIDY_CHECK(EnumSwitchCheck);
 RELOCO_TIDY_CHECK(BannedLowLevelCheck);
 // Mutable namespace-scope/static variables.
 RELOCO_TIDY_CHECK(MutableGlobalCheck);
+// Virtual calls on `this` from constructors and destructors dispatch statically to the class being built.
+RELOCO_TIDY_CHECK(VirtualCallInCtorCheck);
+// Copy/move-constructing a polymorphic base from a derived object slices it.
+RELOCO_TIDY_CHECK(SlicingCheck);
+// Pointers, integers and floats used as conditions must be compared explicitly.
+RELOCO_TIDY_CHECK(ImplicitBoolCheck);
+// Lambdas must list their captures; `[=]` and `[&]` are banned.
+RELOCO_TIDY_CHECK(LambdaDefaultCaptureCheck);
+// std::move of a const non-trivial object silently copies.
+RELOCO_TIDY_CHECK(MoveConstCheck);
+// Virtual functions must not have default arguments (bound statically).
+RELOCO_TIDY_CHECK(VirtualDefaultArgumentCheck);
 // `mutable` members (interior mutability) must be atomics, locks or reloco cells, or be RELOCO_GUARDED_BY a lock.
 RELOCO_TIDY_CHECK(MutableMemberCheck);
 // operator[], unary operator* and operator-> must be RELOCO_CHECKED, and only checked ones may be used.

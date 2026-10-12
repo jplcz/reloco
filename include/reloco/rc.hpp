@@ -177,7 +177,7 @@ public:
   constexpr rc(std::nullptr_t) noexcept {}
 
   rc(const rc &other) noexcept : ptr_(other.ptr_), block_(other.block_) {
-    if (block_)
+    if (block_ != nullptr)
       ++block_->shared_count_;
   }
 
@@ -186,14 +186,14 @@ public:
   // mirrors the std smart pointers: implicit from nullptr_t and from convertible pointer types.
   // NOLINTNEXTLINE(reloco-explicit-conversion)
   rc(const rc<U> &other) noexcept : ptr_(other.ptr_), block_(other.block_) {
-    if (block_)
+    if (block_ != nullptr)
       ++block_->shared_count_;
   }
 
   /** @brief Aliasing constructor: shares ownership with `other` but points
    * at `ptr` instead (used by the `*_pointer_cast` helpers below). */
   template <typename U> rc(const rc<U> &other, T *ptr) noexcept : ptr_(ptr), block_(other.block_) {
-    if (block_)
+    if (block_ != nullptr)
       ++block_->shared_count_;
   }
 
@@ -211,7 +211,7 @@ public:
   }
 
   ~rc() {
-    if (block_)
+    if (block_ != nullptr)
       block_->release_shared();
   }
 
@@ -286,14 +286,14 @@ public:
     // GCC 16 loses track of that initialization after inlining into callers
     // and wrongly reports shared_count_ as uninitialized.
     RELOCO_BEGIN_SUPPRESS_GCC_UNINITIALIZED_FALSE_POSITIVE;
-    return block_ ? block_->shared_count_ : 0;
+    return block_ != nullptr ? block_->shared_count_ : 0;
     RELOCO_END_SUPPRESS_GCC_UNINITIALIZED_FALSE_POSITIVE;
   }
 
   /** @brief Releases ownership, destroying the object if this was the last
    * owner, and resets this pointer to the null state. */
   void reset() noexcept {
-    if (block_) {
+    if (block_ != nullptr) {
       block_->release_shared();
       block_ = nullptr;
       ptr_ = nullptr;
@@ -365,12 +365,12 @@ public:
   // mirrors the std smart pointers: implicit from nullptr_t and from convertible pointer types.
   // NOLINTNEXTLINE(reloco-explicit-conversion)
   weak_rc(const rc<T> &other) noexcept : ptr_(other.ptr_), block_(other.block_) {
-    if (block_)
+    if (block_ != nullptr)
       ++block_->weak_count_;
   }
 
   weak_rc(const weak_rc &other) noexcept : ptr_(other.ptr_), block_(other.block_) {
-    if (block_)
+    if (block_ != nullptr)
       ++block_->weak_count_;
   }
 
@@ -378,7 +378,7 @@ public:
   // mirrors the std smart pointers: implicit from nullptr_t and from convertible pointer types.
   // NOLINTNEXTLINE(reloco-explicit-conversion)
   weak_rc(const weak_rc<U> &other) noexcept : ptr_(other.ptr_), block_(other.block_) {
-    if (block_)
+    if (block_ != nullptr)
       ++block_->weak_count_;
   }
 
@@ -388,7 +388,7 @@ public:
   }
 
   ~weak_rc() {
-    if (block_)
+    if (block_ != nullptr)
       block_->release_weak();
   }
 
@@ -422,22 +422,22 @@ public:
 
   /** @brief `true` once the last `rc` has released the object (or this
    * observer was never bound to one). */
-  [[nodiscard]] bool expired() const noexcept { return !block_ || block_->shared_count_ == 0; }
+  [[nodiscard]] bool expired() const noexcept { return block_ == nullptr || block_->shared_count_ == 0; }
 
   /** @brief Attempts to promote this observer to an `rc`, failing with
    * `error::pointer_expired` if the object is already gone. */
   [[nodiscard]] result<rc<T>> lock() const noexcept {
-    if (!block_)
+    if (block_ == nullptr)
       return unexpected(error::empty_pointer);
     if (!block_->try_add_shared())
       return unexpected(error::pointer_expired);
     return rc<T>(block_, ptr_);
   }
 
-  [[nodiscard]] std::size_t use_count() const noexcept { return block_ ? block_->shared_count_ : 0; }
+  [[nodiscard]] std::size_t use_count() const noexcept { return block_ != nullptr ? block_->shared_count_ : 0; }
 
   void reset() noexcept {
-    if (block_) {
+    if (block_ != nullptr) {
       block_->release_weak();
       block_ = nullptr;
       ptr_ = nullptr;

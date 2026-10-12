@@ -175,7 +175,7 @@ CLion runs clang-tidy itself, so use its external-tool path for the plugin:
 | `reloco-unused-result` | A discarded call result of those types is an error; cast to `void` with a reason. | Dropped errors. |
 | `reloco-const-local` | A local that is never mutated must be `const` (pointers, references and arrays excluded). | Immutable by default, like `let`. |
 | `reloco-no-shadow` | A local may not shadow another local or parameter of an enclosing scope. | |
-| `reloco-enum-switch` | A `switch` over an enum lists every enumerator, **even when it has a `default`**: a `default` that stands in for enumerators (usually written to silence GCC/Clang or static analyzers) is reported. `default` stays allowed as an extra arm for out-of-range values once all enumerators are listed; suppress with `NOLINT` where a catch-all is intended. | A new enumerator breaks the build. Pair with `-Wimplicit-fallthrough` for fallthrough. |
+| `reloco-enum-switch` | A `switch` over an enum lists every enumerator, **even when it has a `default`**: a `default` that stands in for enumerators (usually written to silence GCC/Clang or static analyzers) is reported. `default` stays allowed as an extra arm for out-of-range values once all enumerators are listed; suppress with `NOLINT` where a catch-all is intended. | A new enumerator breaks the build. Pair with `-Wimplicit-fallthrough` for fallthrough. A `switch` over a non-enum integer or char must have a `default`. |
 | `reloco-banned-low-level` | `goto`, `setjmp`/`longjmp`, `union` and `volatile` (suppress MMIO with `NOLINT` and a reason). | Each bypasses a static guarantee. |
 | `reloco-mutable-global` | Mutable namespace-scope, static-member and function-static variables are banned, except atomic/mutex/lock types. | Rust's `static mut`. |
 | `reloco-unsafe-call-scope` | Calls to `unsafe_*` / `[[unsafe_buffer_usage]]` functions are only allowed from the unsafe tier or inside unsafe regions (also Clang's `unsafe_buffer_usage` blocks). | Rust's `unsafe` blocks. |
@@ -198,6 +198,12 @@ CLion runs clang-tidy itself, so use its external-tool path for the plugin:
 | `reloco-escaping-local` | A pointer, array decay, view or `RELOCO_LIFETIMEBOUND` result derived from a local may not be stored through a pointer or non-const reference parameter (`*out = &x;`, `out->p = buf;`). See below. | The caller is left with a dangling pointer; Clang's `-Wlifetime-safety` does not see stores through parameters. |
 | `reloco-member-order` | A member may not be initialised from a member declared after it, and a pointer/view member into a sibling member makes a copyable class unsafe. See below. | Members are constructed in declaration order and destroyed in reverse; self-pointers dangle after copy or relocation. |
 | `reloco-mutable-member` | A `mutable` member must be an atomic, lock, `once_flag` or reloco cell, or be `RELOCO_GUARDED_BY` a lock. See below. | `mutable` hides mutation behind a const interface (Rust's interior mutability needs `Cell`/`Mutex`); `const_cast` is already banned. |
+| `reloco-virtual-call-in-ctor` | No unqualified virtual call on `this` from a constructor or destructor (unless the class or method is `final`). See below. | The call dispatches to the class under construction/destruction, never to a derived override. |
+| `reloco-virtual-default-argument` | A virtual function may not have default arguments. See below. | Defaults are bound to the static type, so a call through a base reference ignores the override's default. |
+| `reloco-slicing` | A polymorphic class may not be copy/move-constructed from an object of a derived class (by-value parameters, `T t = derived;`). See below. | The derived part is silently cut off (object slicing). |
+| `reloco-implicit-bool` | Pointers, integers, floats and member pointers may not be used as conditions (`if (p)`, `while (n)`, `!n`, `a && p`); compare explicitly. Types with `explicit operator bool` are fine. See below. | Hides what is being tested (null vs zero vs valid) and mixes up `if (n)` for counts and flags. |
+| `reloco-lambda-default-capture` | Lambdas must list their captures: `[=]` and `[&]` (also with extras like `[&, a]`) are flagged, with the implicitly captured names in the message. See below. | A default capture silently grabs new variables and `this`, and `[&]` makes escaping lambdas dangle. |
+| `reloco-move-const` | `std::move` of a const, non-trivially-copyable object is flagged: it yields `const T&&` and silently selects the copy constructor. See below. | A move that is really a copy hides an expensive operation. |
 
 ### `RELOCO_OUT`
 
@@ -344,6 +350,101 @@ Flagged: any `mutable` field whose type is not an atomic, lock/mutex, `once_flag
 `cell`, and that has no `RELOCO_GUARDED_BY`. Type names are matched by substring, also for dependent
 types. Use unsafe regions or `NOLINT` with a reason for the rare
 logically-const caches (lazy init, `enable_shared_from_this` back-pointers).
+
+### `reloco-virtual-call-in-ctor`
+
+```cpp
+struct base {
+  base() noexcept { setup(); }             // flagged: never reaches derived::setup
+  virtual ~base() noexcept { teardown(); } // flagged: derived is already destroyed here
+  virtual void setup() noexcept {}
+  virtual void teardown() noexcept {}
+};
+struct explicit_binding {
+  explicit_binding() noexcept { explicit_binding::setup(); }  // fine: qualified, statically bound
+  virtual void setup() noexcept {}
+};
+```
+
+Fix by calling a non-virtual helper, qualifying the call, marking the class or method `final`, or moving
+the work to an `init()` step run after construction. Unsafe regions and `NOLINT` suppress it.
+
+### `reloco-slicing`
+
+```cpp
+struct shape { virtual ~shape() = default; virtual int area() const noexcept; };
+struct square : shape { int side = 2; int area() const noexcept override; };
+
+int by_value(shape s) noexcept;       // taking a polymorphic type by value invites slicing
+int by_ref(const shape &s) noexcept;  // fine
+
+void run(square sq) noexcept {
+  shape copy = sq;  // flagged: 'side' and the override are lost
+  by_value(sq);     // flagged: the parameter is copy-constructed from a derived object
+  by_ref(sq);       // fine
+}
+```
+
+Only classes with virtual functions are checked, so plain inheritance of data (`plain_derived` to
+`plain_base`) is left alone. Implicit special members of derived classes are ignored. Pass by reference
+or smart pointer, or give the base a virtual `clone()`. Unsafe regions and `NOLINT` suppress it.
+
+### `reloco-implicit-bool`
+
+```cpp
+void run(int n, const int *p, bool b, flag_holder h) noexcept {
+  if (n) {}          // flagged: fix-it appends '!= 0'
+  if (p) {}          // flagged: fix-it appends '!= nullptr'
+  bool none = !p;    // flagged: write 'p == nullptr' (no automatic fix for negations)
+  if (n != 0) {}     // fine
+  if (b) {}          // fine: already bool
+  if (h) {}          // fine: explicit operator bool states the intent
+}
+```
+
+Integer literals and macro expansions are skipped. Unsafe regions and `NOLINT` suppress it.
+
+### `reloco-lambda-default-capture`
+
+```cpp
+void run() noexcept {
+  int a = 1, b = 2;
+  auto bad = [&]() noexcept { return a + b; };       // flagged: names are implicit
+  auto good = [a, &b]() noexcept { return a + b; };  // fine: each capture is visible
+  auto moved = [v = std::move(a)]() noexcept { return v; };  // init-capture moves explicitly
+}
+```
+
+There is no automatic fix because choosing copy or reference per variable is a design decision.
+Unsafe regions and `NOLINT` suppress it.
+
+### `reloco-move-const`
+
+```cpp
+void run() noexcept {
+  const heavy c;
+  heavy m;
+  heavy a = std::move(c);  // flagged: const heavy&& binds to heavy(const heavy&), a copy
+  heavy b = std::move(m);  // fine: a real move
+  const int n = 3;
+  int i = std::move(n);    // fine: trivially copyable, copying is what happens either way
+}
+```
+
+Remove `const` from the source object, or drop the `std::move` and spell the copy. Unsafe regions and
+`NOLINT` suppress it.
+
+### `reloco-virtual-default-argument`
+
+```cpp
+struct widget {
+  virtual ~widget() = default;
+  virtual int size(int scale = 1) const noexcept;  // flagged: an override's own default is ignored via widget&
+  int size_default() const noexcept { return size(1); }  // fix: a non-virtual overload supplies the default
+};
+```
+
+Unsafe regions and `NOLINT` suppress it.
 
 ### `RELOCO_NS` poison pointers
 

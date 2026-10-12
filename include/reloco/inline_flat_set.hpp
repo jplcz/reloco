@@ -80,7 +80,7 @@ public:
     flat_set<T, Compare> set = std::move(*set_res);
     bool failed = false;
     error first_error{};
-    base::for_each([&](const T &elem) noexcept {
+    base::for_each([&failed, &first_error, &alloc, &set](const T &elem) noexcept {
       if (failed)
         return;
       auto clone_res = construction_helpers::try_clone<T>(alloc, elem);
@@ -122,7 +122,7 @@ public:
     flat_set<T, Compare> set = std::move(*set_res);
     bool failed = false;
     error first_error{};
-    base::for_each([&](const T &elem) noexcept {
+    base::for_each([&failed, &first_error, &set](const T &elem) noexcept {
       if (failed)
         return;
       // elements are stored const to protect the key; the mapped value is mutable by the API contract.

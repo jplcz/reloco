@@ -28,6 +28,12 @@ public:
     f.registerCheck<BannedLowLevelCheck>("reloco-banned-low-level");
     f.registerCheck<MutableGlobalCheck>("reloco-mutable-global");
     f.registerCheck<MutableMemberCheck>("reloco-mutable-member");
+    f.registerCheck<SlicingCheck>("reloco-slicing");
+    f.registerCheck<VirtualDefaultArgumentCheck>("reloco-virtual-default-argument");
+    f.registerCheck<MoveConstCheck>("reloco-move-const");
+    f.registerCheck<LambdaDefaultCaptureCheck>("reloco-lambda-default-capture");
+    f.registerCheck<ImplicitBoolCheck>("reloco-implicit-bool");
+    f.registerCheck<VirtualCallInCtorCheck>("reloco-virtual-call-in-ctor");
     f.registerCheck<CheckedOperatorCheck>("reloco-checked-operator");
     f.registerCheck<SafeMathCheck>("reloco-safe-math");
     f.registerCheck<MemberInitCheck>("reloco-member-init");

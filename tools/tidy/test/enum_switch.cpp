@@ -43,3 +43,17 @@ int h(e v) noexcept {
   }
   return 0;
 }
+
+int integer_no_default(int v) noexcept {
+  switch (v) { // expect: reloco-enum-switch
+  case 1: return 1;
+  case 2: return 2;
+  }
+  return 0;
+}
+int integer_with_default(int v) noexcept {
+  switch (v) {
+  case 1: return 1;
+  default: return 0;
+  }
+}

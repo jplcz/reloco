@@ -320,7 +320,7 @@ void NoShadowCheck::check(const MatchFinder::MatchResult &result) {
 // reloco-enum-switch
 // ---------------------------------------------------------------------------
 void EnumSwitchCheck::registerMatchers(MatchFinder *finder) {
-  finder->addMatcher(switchStmt(hasCondition(expr(hasType(hasUnqualifiedDesugaredType(enumType()))))).bind("sw"), this);
+  finder->addMatcher(switchStmt().bind("sw"), this);
 }
 
 void EnumSwitchCheck::check(const MatchFinder::MatchResult &result) {
@@ -328,8 +328,21 @@ void EnumSwitchCheck::check(const MatchFinder::MatchResult &result) {
   if (exempt(*result.SourceManager, sw->getSwitchLoc()))
     return;
   const auto *et = sw->getCond()->IgnoreParenImpCasts()->getType()->getAs<EnumType>();
-  if (!et)
+  if (!et) {
+    // Integer/char switches have no enumerator list to check, so a 'default' is the only exhaustiveness there is.
+    if (sw->getCond()->isTypeDependent() || sw->getCond()->getType()->isBooleanType())
+      return;
+    bool anyDefault = false;
+    for (const SwitchCase *sc = sw->getSwitchCaseList(); sc; sc = sc->getNextSwitchCase())
+      anyDefault |= llvm::isa<DefaultStmt>(sc);
+    if (!anyDefault) {
+      diag(sw->getSwitchLoc(), "switch over %0 has no 'default'; unhandled values are silently ignored")
+          << sw->getCond()->getType();
+      howToFix(sw->getSwitchLoc(), "add 'default:' that handles or reports the unexpected value (e.g. "
+                                   "'default: return error::invalid_argument;')");
+    }
     return;
+  }
   const EnumDecl *ed = et->getDecl()->getDefinitionOrSelf();
   if (!ed)
     return;
