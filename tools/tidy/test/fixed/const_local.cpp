@@ -28,3 +28,11 @@ movable returned() {
   movable m = make(); // returned by name: const would force a copy
   return m;
 }
+
+struct ranged { int *begin(); int *end(); };
+ranged make_ranged();
+void range_for_mutates() {
+  ranged r = make_ranged(); // begin()/end() are non-const: not const-eligible
+  for (int x : r)
+    (void)x;
+}

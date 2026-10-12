@@ -285,6 +285,11 @@ void ConstLocalCheck::check(const MatchFinder::MatchResult &result) {
   const auto *dre_probe = vd;
   if (analyzer.isMutated(dre_probe))
     return;
+  // Range-for calls non-const begin()/end() on its range, which the analyzer does not report as a mutation.
+  if (!match(findAll(cxxForRangeStmt(hasRangeInit(ignoringParenImpCasts(declRefExpr(to(equalsNode(vd))))))), *fn->getBody(),
+             *result.Context)
+           .empty())
+    return;
   // `return v;` moves (or elides) only a non-const local; const would turn it into a copy.
   for (const auto &m : match(findAll(returnStmt(hasReturnValue(ignoringParenImpCasts(declRefExpr(to(equalsNode(vd)))))).bind("ret")),
                              *fn->getBody(), *result.Context))
