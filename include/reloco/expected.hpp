@@ -32,7 +32,7 @@ struct RELOCO_EXPORT expected_tag_t {};
 
 // reloco types are trivially relocatable: copy/move are the implicit, bitwise ones.
 // NOLINTNEXTLINE(reloco-rule-of-five)
-template <typename T, typename E> class [[nodiscard]] expected : expected_tag_t {
+template <typename T, typename E> class RELOCO_COPYABLE [[nodiscard]] expected : expected_tag_t {
   static_assert(std::is_nothrow_move_constructible_v<T>, "T must be nothrow move constructible");
   static_assert(std::is_nothrow_move_constructible_v<E>, "E must be nothrow move constructible");
 
@@ -362,7 +362,7 @@ public:
 
 // reloco types are trivially relocatable: copy/move are the implicit, bitwise ones.
 // NOLINTNEXTLINE(reloco-rule-of-five)
-template <typename E> class [[nodiscard]] expected<void, E> {
+template <typename E> class RELOCO_COPYABLE [[nodiscard]] expected<void, E> {
   static_assert(std::is_nothrow_move_constructible_v<E>, "E must be nothrow move constructible");
 
   // discriminated by has_value_; storage for the active alternative only, never type-punned.
