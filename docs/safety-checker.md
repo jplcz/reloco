@@ -671,3 +671,17 @@ void log_msg(const char *RELOCO_STATIC_STR msg) noexcept;
 - `reloco-narrowing-flow` tracks `for (T i = C0; i < C1; ++i)` loops when the body never writes `i`.
 - `reloco-explicit-conversion` fix-its insert `explicit` after any leading `[[attribute]]` list.
 - `tests/compile_all_headers.cpp` covers nearly all public headers; calibration must report 0.
+- `reloco-implicit-conversion` accepts `x & MASK` when MASK is a non-negative constant that fits the destination (the
+  hex-nibble idiom `table[x & 0x0F]`). Its fix-it spells the canonical type, never a member typedef that the use
+  site cannot name.
+- `reloco-member-init` offers no fix-it for fields of nested records and ignores pre-C++20 bit-fields (they cannot
+  have default member initializers).
+- `reloco-implicit-bool` rewrites `!p` as `p == nullptr` (parenthesised unless the parent is `if`/`while`/`for`/
+  `return`/a logical operator) and offers no fix-it for condition variables (`if (T *p = f())`).
+- `reloco-lambda-default-capture` fix-its list the captures explicitly (`[&n, this]`, `[&, x]` drops the default). No
+  fix-it is offered inside dependent contexts, where the captured set is not known.
+- `reloco-pointer-annotation` skips classes named `formatter` (stateless specialisations).
+- `reloco-aliased-arguments` ignores a const reference bound to a temporary: `v = v.substr(1)` copies the view by
+  value, the temporary never overlaps the receiver.
+- `reloco-borrow-check` treats copying a pointer or view out of another object (lvalue-to-rvalue, or a copy/move
+  constructor) as a value copy, not a borrow: `int *old = head_;` does not borrow `head_`.
