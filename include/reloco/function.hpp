@@ -55,6 +55,9 @@
 
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
+// Unsafe by design: type-erased callable storage holds untyped pointers by construction.
+RELOCO_BEGIN_UNSAFE_CODE
+
 namespace reloco {
 
 template <typename Sig> class function;
@@ -356,5 +359,7 @@ template <typename R, typename... Args> struct is_send<function<R(Args...)>> : s
 template <typename R, typename... Args> struct is_sync<function<R(Args...)>> : std::false_type {};
 
 } // namespace reloco
+
+RELOCO_END_UNSAFE_CODE
 
 RELOCO_END_UNSAFE_BUFFER_USAGE

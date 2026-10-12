@@ -73,6 +73,9 @@
 // arithmetic): a single checked boundary, matching vector.hpp/allocator.hpp.
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
+// Unsafe by design: reference-counted raw byte storage; the public API is the bounds-checked bytes/bytes_mut views.
+RELOCO_BEGIN_UNSAFE_CODE
+
 namespace reloco {
 
 class bytes;
@@ -425,5 +428,7 @@ template <> struct is_sync<bytes> : std::false_type {};
 #endif
 
 } // namespace reloco
+
+RELOCO_END_UNSAFE_CODE
 
 RELOCO_END_UNSAFE_BUFFER_USAGE

@@ -215,6 +215,7 @@ template <typename Key, typename Mapped, typename Compare> struct container_ref_
     return &found_res->get();
   }
 
+  // NOLINTNEXTLINE(reloco-no-raw-pointer): type-erased visitor context handed back to the visitor unchanged.
   static void for_each(container_type &c, void *visitor_ctx,
                        void (*visit)(void *, const key_type &, element_type &) noexcept) noexcept {
     c.for_each([visitor_ctx, visit](const typename container_type::value_type &entry) noexcept {

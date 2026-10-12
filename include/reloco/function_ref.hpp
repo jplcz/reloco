@@ -52,6 +52,9 @@
 #include <type_traits>
 #include <utility>
 
+// Unsafe by design: a non-owning function_ref stores an untyped object pointer plus a trampoline by construction.
+RELOCO_BEGIN_UNSAFE_CODE
+
 namespace reloco {
 
 /** @brief Tag type carrying a compile-time, non-type template argument
@@ -219,3 +222,5 @@ template <typename R, typename... Args> struct is_send<function_ref<R(Args...)>>
 template <typename R, typename... Args> struct is_sync<function_ref<R(Args...)>> : std::false_type {};
 
 } // namespace reloco
+
+RELOCO_END_UNSAFE_CODE

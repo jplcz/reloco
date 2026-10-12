@@ -71,6 +71,14 @@ void NoRawPointerCheck::check(const MatchFinder::MatchResult &result) {
     return;
   }
 
+  // Instantiations inherit their types from the template pattern, which is checked on its own.
+  for (const DeclContext *dc = anchor->getDeclContext(); dc; dc = dc->getParent()) {
+    if (const auto *f = llvm::dyn_cast<FunctionDecl>(dc); f && f->isTemplateInstantiation())
+      return;
+    if (const auto *r = llvm::dyn_cast<ClassTemplateSpecializationDecl>(dc);
+        r && r->getSpecializationKind() != TSK_ExplicitSpecialization)
+      return;
+  }
   if (type.isNull() || type->isDependentType() || !type->isPointerType() || type->isFunctionPointerType() ||
       type->isMemberPointerType())
     return;

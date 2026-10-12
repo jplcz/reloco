@@ -130,6 +130,7 @@ template <typename Key, typename Value> struct container_ref_traits<std::map<Key
     return it == c.end() ? nullptr : &it->second;
   }
 
+  // NOLINTNEXTLINE(reloco-no-raw-pointer): type-erased visitor context handed back to the visitor unchanged.
   static void for_each(std::map<Key, Value> &c, void *visitor_ctx,
                        void (*visit)(void *, const Key &, Value &) noexcept) noexcept {
     for (auto &[key, value] : c)

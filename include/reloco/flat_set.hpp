@@ -118,6 +118,7 @@ template <typename T, typename Compare> struct container_ref_traits<flat_set<T, 
     return const_cast<element_type *>(&found_res->get());
   }
 
+  // NOLINTNEXTLINE(reloco-no-raw-pointer): type-erased visitor context handed back to the visitor unchanged.
   static void for_each(container_type &c, void *visitor_ctx,
                        void (*visit)(void *, const key_type &, element_type &) noexcept) noexcept {
     // Traverse the flat_set and visit each element (where key == value)

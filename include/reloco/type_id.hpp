@@ -222,8 +222,10 @@ public:
   [[nodiscard]] constexpr const char *RELOCO_STATIC_STR name() const & noexcept { return name_; }
 
 private:
+  // NOLINTNEXTLINE(reloco-no-raw-pointer): identity token compared by address, never dereferenced.
   constexpr explicit type_id(const void *tag, const char *RELOCO_STATIC_STR name) noexcept : tag_(tag), name_(name) {}
 
+  // NOLINTNEXTLINE(reloco-no-raw-pointer): identity token compared by address, never dereferenced.
   const void *tag_{nullptr};
   const char *RELOCO_STATIC_STR name_{nullptr};
 };

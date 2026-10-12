@@ -85,6 +85,9 @@
 
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
+// Unsafe by design: type-erased storage holds untyped pointers by construction.
+RELOCO_BEGIN_UNSAFE_CODE
+
 namespace reloco {
 
 /**
@@ -445,5 +448,7 @@ private:
 template <> struct is_trivially_relocatable<any> : std::false_type {};
 
 } // namespace reloco
+
+RELOCO_END_UNSAFE_CODE
 
 RELOCO_END_UNSAFE_BUFFER_USAGE

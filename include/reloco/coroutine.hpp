@@ -46,6 +46,7 @@
 #include <coroutine>
 #include <cstddef>
 #include <new>
+#include "lifetime.hpp"
 #include <type_traits>
 #include <utility>
 
@@ -59,6 +60,9 @@
 #endif
 
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+
+// Unsafe by design: coroutine frames are raw allocations managed through the compiler-defined promise protocol.
+RELOCO_BEGIN_UNSAFE_CODE
 
 namespace reloco {
 
@@ -320,6 +324,8 @@ inline task<void> task_promise<void>::get_return_object_on_allocation_failure() 
 } // namespace detail
 
 } // namespace reloco
+
+RELOCO_END_UNSAFE_CODE
 
 RELOCO_END_UNSAFE_BUFFER_USAGE
 

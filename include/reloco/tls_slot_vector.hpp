@@ -140,6 +140,9 @@
 // allocator.hpp/tls_provider.hpp/keyed_intrusive_registry.hpp.
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
+// Unsafe by design: slot tables are raw per-thread storage addressed by the TLS key; only the checked accessors are public.
+RELOCO_BEGIN_UNSAFE_CODE
+
 namespace reloco {
 
 namespace detail {
@@ -623,5 +626,7 @@ private:
 };
 
 } // namespace reloco
+
+RELOCO_END_UNSAFE_CODE
 
 RELOCO_END_UNSAFE_BUFFER_USAGE

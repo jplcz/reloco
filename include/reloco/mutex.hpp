@@ -208,6 +208,7 @@ public:
 
   [[nodiscard]] RELOCO_API bool try_lock() & noexcept RELOCO_TRY_ACQUIRE(true);
 
+  // NOLINTNEXTLINE(reloco-no-raw-pointer): native handle of the OS primitive, for interop with platform APIs.
   [[nodiscard]] native_handle_type native_handle() & noexcept { return &handle_; }
 
 private:
@@ -236,6 +237,7 @@ public:
 
   [[nodiscard]] RELOCO_API bool try_lock() & noexcept RELOCO_TRY_ACQUIRE(true);
 
+  // NOLINTNEXTLINE(reloco-no-raw-pointer): native handle of the OS primitive, for interop with platform APIs.
   [[nodiscard]] native_handle_type native_handle() & noexcept { return &handle_; }
 
 private:
@@ -268,6 +270,7 @@ public:
 
   [[nodiscard]] RELOCO_API bool try_lock_shared() & noexcept RELOCO_TRY_ACQUIRE_SHARED(true);
 
+  // NOLINTNEXTLINE(reloco-no-raw-pointer): native handle of the OS primitive, for interop with platform APIs.
   [[nodiscard]] native_handle_type native_handle() & noexcept { return &handle_; }
 
 private:
@@ -336,6 +339,7 @@ public:
 
   RELOCO_API void notify_all() & noexcept;
 
+  // NOLINTNEXTLINE(reloco-no-raw-pointer): native handle of the OS primitive, for interop with platform APIs.
   [[nodiscard]] native_handle_type native_handle() & noexcept { return &cond_; }
 
 private:
@@ -575,6 +579,7 @@ public:
 
   [[nodiscard]] RELOCO_API bool try_lock() & noexcept RELOCO_TRY_ACQUIRE(true);
 
+  // NOLINTNEXTLINE(reloco-no-raw-pointer): native handle of the OS primitive, for interop with platform APIs.
   [[nodiscard]] native_handle_type native_handle() & noexcept { return mutex_.native_handle(); }
 
 private:
