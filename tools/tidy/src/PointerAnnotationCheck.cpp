@@ -26,9 +26,11 @@ void PointerAnnotationCheck::check(const MatchFinder::MatchResult &result) {
     const bool borrowsRaw = (t->isPointerType() && !t->isFunctionPointerType() && !t->isMemberPointerType()) ||
                             t->isReferenceType();
     if (borrowsRaw || (!t->isDependentType() && isPointerLike(t))) {
-      diag(rd->getLocation(), "%0 holds borrowed storage in member '%1'; annotate the class with RELOCO_POINTER "
+      diag(rd->getLocation(), "%0 holds borrowed storage in member %1; annotate the class with RELOCO_POINTER "
                               "(borrows) or RELOCO_OWNER (owns)")
           << rd << fd;
+      howToFix(rd->getLocation(), "'struct RELOCO_POINTER view { const int *p; };' for a non-owning handle (Clang then tracks "
+                                  "dangling), 'struct RELOCO_OWNER box { ... };' for the type that owns the storage");
       return;
     }
   }

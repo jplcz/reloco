@@ -55,7 +55,9 @@ void LifetimeAnnotationsCheck::check(const MatchFinder::MatchResult &result) {
     const QualType ret = md->getReturnType();
     if (!isAliasing(ret) || refersToOwnClass(ret, rd) || thisIsLifetimeBound(md))
       return;
-    diag(md->getLocation(), "member '%0' returns an alias of its object; annotate it with RELOCO_LIFETIMEBOUND") << md;
+    diag(md->getLocation(), "member %0 returns an alias of its object; annotate it with RELOCO_LIFETIMEBOUND") << md;
+    howToFix(md->getLocation(), "append the macro after the qualifiers: 'int &first() & noexcept RELOCO_LIFETIMEBOUND;' so Clang "
+                                "rejects 'auto &r = make().first();'");
     return;
   }
 
@@ -70,9 +72,11 @@ void LifetimeAnnotationsCheck::check(const MatchFinder::MatchResult &result) {
         continue;
       if (t->isFunctionPointerType() || isPointerLike(t) || hasBorrowAnnotation(p))
         continue;
-      diag(p->getLocation(), "handle constructor borrows parameter '%0'; annotate it with RELOCO_LIFETIMEBOUND or "
+      diag(p->getLocation(), "handle constructor borrows parameter %0; annotate it with RELOCO_LIFETIMEBOUND or "
                              "RELOCO_LIFETIME_CAPTURE_BY_THIS")
           << p;
+      howToFix(p->getLocation(), "'view(const buf &b RELOCO_LIFETIMEBOUND)' for a handle that borrows the argument, or "
+                                 "'RELOCO_LIFETIME_CAPTURE_BY_THIS' when the parameter is stored into *this");
     }
   }
 }

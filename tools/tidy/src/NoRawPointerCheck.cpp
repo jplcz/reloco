@@ -79,6 +79,8 @@ void NoRawPointerCheck::check(const MatchFinder::MatchResult &result) {
   diag(loc, "raw pointer %0; use reloco::value_ptr/value_ref/span, or confine it to a gsl::pointer/gsl::owner type "
             "or an unsafe_* function")
       << what;
+  howToFix(loc, "take 'reloco::span<T>' for a range, 'reloco::value_ref<T>' for a required object, 'reloco::value_ptr<T>' for an "
+                "optional one: 'void fill(int *p, size_t n)' becomes 'void fill(reloco::span<int> out)'");
 }
 
 } // namespace reloco::tidy

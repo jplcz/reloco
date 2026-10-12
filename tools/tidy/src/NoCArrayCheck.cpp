@@ -23,6 +23,8 @@ void NoCArrayCheck::check(const MatchFinder::MatchResult &result) {
   diag(d->getLocation(), "raw C array '%0'; use reloco::array, reloco::inline_vector or a span, or suppress with NOLINT where "
                          "constructors cannot run (early boot / embedded)")
       << d->getName();
+  howToFix(d->getLocation(), "'int buf[16];' becomes 'reloco::array<int, 16> buf{};' (fixed size) or "
+                             "'reloco::inline_vector<int, 16> buf;' (growing, bounded); pass it around as 'reloco::span<int>'");
 }
 
 } // namespace reloco::tidy

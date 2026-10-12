@@ -4,6 +4,8 @@
 
 #include "Checks.h"
 
+#include "clang/Lex/Lexer.h"
+
 namespace reloco::tidy {
 
 void UninitLocalCheck::registerMatchers(MatchFinder *finder) {
@@ -34,7 +36,13 @@ void UninitLocalCheck::check(const MatchFinder::MatchResult &result) {
     if (rd->hasDefinition() && !rd->hasTrivialDefaultConstructor())
       return;
   }
-  diag(vd->getLocation(), "local variable %0 is declared uninitialized; give it a value (e.g. '= {}')") << vd;
+  auto d = diag(vd->getLocation(), "local variable %0 is declared uninitialized; give it a value (e.g. '= {}'); the fix "
+                                   "zero-initialises, pick a meaningful value when one exists")
+           << vd;
+  const SourceLocation end = vd->getEndLoc();
+  if (end.isValid() && !end.isMacroID())
+    d << FixItHint::CreateInsertion(Lexer::getLocForEndOfToken(end, 0, *result.SourceManager, result.Context->getLangOpts()),
+                                    " = {}");
 }
 
 } // namespace reloco::tidy

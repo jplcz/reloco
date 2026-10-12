@@ -4,6 +4,7 @@
 
 #include "Checks.h"
 
+
 namespace reloco::tidy {
 
 namespace {
@@ -46,19 +47,25 @@ void RefQualifiedMemberCheck::check(const MatchFinder::MatchResult &result) {
     // Non-aliasing const getters return values, which stay valid on temporaries.
     if (!aliasing || handle)
       return;
-    if (md->getRefQualifier() == RQ_None)
-      diag(md->getLocation(), "const member '%0' returns an alias of its object but is not ref-qualified; "
-                              "declare it 'const &' and delete the 'const &&' overload")
-          << md;
+    if (md->getRefQualifier() == RQ_None) {
+      auto d = diag(md->getLocation(), "const member %0 returns an alias of its object but is not ref-qualified; "
+                                       "declare it 'const &' and delete the 'const &&' overload")
+               << md;
+      if (const SourceLocation at = functionQualifierEnd(md, *result.SourceManager, result.Context->getLangOpts(), false); at.isValid())
+        d << FixItHint::CreateInsertion(at, " &");
+    }
     else if (md->getRefQualifier() == RQ_LValue && !hasRvalueOverload(md))
-      diag(md->getLocation(), "const & member '%0' returns an alias of its object and still binds temporaries; "
+      diag(md->getLocation(), "const & member %0 returns an alias of its object and still binds temporaries; "
                               "add a deleted 'const &&' overload (RELOCO_BLOCK_RVALUE_ACCESS)")
           << md;
     return;
   }
 
-  if (md->getRefQualifier() == RQ_None)
-    diag(md->getLocation(), "non-const member '%0' is callable on temporaries; qualify it with '&'") << md;
+  if (md->getRefQualifier() == RQ_None) {
+    auto d = diag(md->getLocation(), "non-const member %0 is callable on temporaries; qualify it with '&'") << md;
+    if (const SourceLocation at = functionQualifierEnd(md, *result.SourceManager, result.Context->getLangOpts(), false); at.isValid())
+      d << FixItHint::CreateInsertion(at, " &");
+  }
 }
 
 } // namespace reloco::tidy

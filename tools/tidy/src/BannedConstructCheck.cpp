@@ -61,6 +61,10 @@ void BannedConstructCheck::check(const MatchFinder::MatchResult &result) {
     if (unsafeOk && encl && inUnsafeTier(encl))
       return;
     diag(s->getBeginLoc(), "%0") << msg;
+    howToFix(s->getBeginLoc(), "return reloco::expected<T, E>/result<T> instead of throwing; own memory with reloco containers or "
+                               "unique_ptr instead of new/delete; replace casts with static_cast or a checked conversion; replace "
+                               "memcpy/strlen with span/string_view operations. If it is genuinely required, confine it to an "
+                               "unsafe_* function or a RELOCO_BEGIN_UNSAFE_CODE region with a comment saying why it is sound");
   };
 
   for (const auto &k : kinds)

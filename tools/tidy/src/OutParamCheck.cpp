@@ -107,6 +107,8 @@ void OutParamCheck::check(const MatchFinder::MatchResult &result) {
                     (t->isLValueReferenceType() && !t.getNonReferenceType().isConstQualified());
     if (!ok) {
       diag(p->getLocation(), "RELOCO_OUT requires a pointer or lvalue reference to non-const; %0 is neither") << p;
+      howToFix(p->getLocation(), "'void get(int *x RELOCO_OUT)' or 'void get(int &x RELOCO_OUT)'; read-only inputs stay const and "
+                                 "unmarked");
       continue;
     }
     outs.push_back(p);
@@ -163,6 +165,8 @@ void OutParamCheck::check(const MatchFinder::MatchResult &result) {
           continue;
         if (!w && reads(cs->getStmt(), p))
           diag(cs->getStmt()->getBeginLoc(), "out-parameter %0 is read before it has been written") << p;
+          howToFix(cs->getStmt()->getBeginLoc(), "assign first ('*x = initial;'), or take the value as a separate input "
+                                                 "parameter instead of an out-parameter");
         if (writes(cs->getStmt(), p))
           w = true;
       }
@@ -179,6 +183,8 @@ void OutParamCheck::check(const MatchFinder::MatchResult &result) {
         if (auto cs = el.getAs<CFGStmt>(); cs && llvm::isa<ReturnStmt>(cs->getStmt()))
           loc = cs->getStmt()->getBeginLoc();
       diag(loc, "out-parameter %0 is not written on every path that returns") << p;
+      howToFix(loc, "write it before each return, e.g. '*x = 0;' at the top of the function, then overwrite later; for "
+                    "'T &x RELOCO_OUT' assign 'x = value;'");
     }
   }
 }

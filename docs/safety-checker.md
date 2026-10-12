@@ -108,6 +108,34 @@ tracking. Use Clang's `-Wlifetime-safety` for use-after-return/scope. It is a bu
 
 Slicing is deliberately not a separate rule: polymorphic bases are already a red flag.
 
+## Fix-its and "how to fix" notes
+
+Every diagnostic that has a well-known remedy carries a `note: how to fix: ...`
+line showing the concrete replacement. Mechanical remedies are also offered as
+automatic fix-its, applied with `clang-tidy -fix`:
+
+```sh
+# Apply all automatic fixes, then review the diff before building.
+clang-tidy-24 --load=libreloco-tidy.so --checks='-*,reloco-*' -fix src/foo.cpp -- -std=c++20 -Iinclude
+```
+
+| Check | Automatic fix |
+|-------|---------------|
+| `reloco-explicit-conversion` | inserts `explicit ` |
+| `reloco-must-use-result` | inserts `[[nodiscard]] ` |
+| `reloco-ref-qualified-member` | inserts ` &` after the cv-qualifiers |
+| `reloco-noexcept` | inserts ` noexcept` after cv/ref qualifiers |
+| `reloco-const-local` | inserts `const ` (single-declarator statements only) |
+| `reloco-uninit-local` | appends ` = {}` |
+| `reloco-implicit-conversion` | wraps the expression in `static_cast<T>(...)` |
+| `reloco-member-init` | appends `{}` to the field |
+
+Fix-its are skipped inside macro expansions. Fixes such as ` = {}`, `const`
+and `static_cast` change semantics, so review the diff rather than applying it
+blindly. All other checks (borrow, copy, out-param, C arrays, banned
+constructs, ...) only emit the note, because the right fix depends on the
+design.
+
 ## Exemptions
 
 Every check honours these; each use should say why it is sound.

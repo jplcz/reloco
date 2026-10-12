@@ -71,6 +71,14 @@ protected:
   // named unsafe_*. Raw pointers and casts are tolerated there.
   [[nodiscard]] static bool inUnsafeTier(const Decl *d);
 
+  // Attaches a "how to fix" note with a concrete before/after example to the preceding warning.
+  void howToFix(SourceLocation loc, llvm::StringRef text);
+
+  // Fix-it anchor: the end of ')' plus trailing const/volatile (and, with skipRef, '&'/'&&'), i.e. where a
+  // ref-qualifier (skipRef=false) or noexcept (skipRef=true) is inserted. Invalid when it cannot be located safely.
+  [[nodiscard]] static SourceLocation functionQualifierEnd(const FunctionDecl *fd, const SourceManager &sm,
+                                                           const LangOptions &lo, bool skipRef);
+
 private:
   std::string exemptPathsOpt_;
   std::vector<std::string> exemptPaths_;

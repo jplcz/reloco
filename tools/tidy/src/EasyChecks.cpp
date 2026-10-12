@@ -7,6 +7,7 @@
 #include "clang/AST/Attr.h"
 #include "clang/AST/ParentMapContext.h"
 #include "clang/Analysis/Analyses/ExprMutationAnalyzer.h"
+#include "clang/Lex/Lexer.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringSet.h"
 
@@ -109,9 +110,16 @@ void ImplicitConversionCheck::check(const MatchFinder::MatchResult &result) {
     if (er.Val.isFloat() && ce->getCastKind() == CK_FloatingCast)
       return;
   }
-  diag(ce->getBeginLoc(), "implicit conversion from %0 to %1 may change the value; convert explicitly (static_cast or a "
-                          "checked helper)")
-      << src << dst;
+  auto d = diag(ce->getBeginLoc(), "implicit conversion from %0 to %1 may change the value; convert explicitly "
+                                   "(static_cast or a checked helper)")
+           << src << dst;
+  const SourceRange sr = ce->getSubExpr()->getSourceRange();
+  if (sr.isValid() && !sr.getBegin().isMacroID() && !sr.getEnd().isMacroID()) {
+    const SourceLocation end = Lexer::getLocForEndOfToken(sr.getEnd(), 0, *result.SourceManager, ctx.getLangOpts());
+    if (end.isValid())
+      d << FixItHint::CreateInsertion(sr.getBegin(), "static_cast<" + dst.getUnqualifiedType().getAsString(ctx.getPrintingPolicy()) + ">(")
+        << FixItHint::CreateInsertion(end, ")");
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -134,11 +142,22 @@ void ExplicitConversionCheck::check(const MatchFinder::MatchResult &result) {
     const CXXRecordDecl *pr = recordOf(c->getParamDecl(0)->getType());
     if (pr && pr->getIdentifier() && pr->getName() == "initializer_list")
       return;
-    diag(c->getLocation(), "single-argument constructor of '%0' must be explicit") << c->getParent()->getName();
+    if (c->isOutOfLine())
+      return; // the in-class declaration carries (or lacks) the keyword
+    auto d = diag(c->getLocation(), "single-argument constructor of '%0' must be explicit; add 'explicit' (or accept "
+                                    "the implicit conversion with NOLINT and a reason)")
+             << c->getParent()->getName();
+    if (c->getOuterLocStart().isValid() && !c->getOuterLocStart().isMacroID())
+      d << FixItHint::CreateInsertion(c->getOuterLocStart(), "explicit ");
   } else if (const auto *cv = result.Nodes.getNodeAs<CXXConversionDecl>("conv")) {
     if (cv->isTemplateInstantiation() || cv->getParent()->isLambda() || exempt(*result.SourceManager, cv->getLocation()))
       return;
-    diag(cv->getLocation(), "conversion operator must be explicit");
+    if (cv->isOutOfLine())
+      return;
+    auto d = diag(cv->getLocation(), "conversion operator must be explicit; add 'explicit' (call a named conversion "
+                                     "function if an implicit one is really needed)");
+    if (cv->getOuterLocStart().isValid() && !cv->getOuterLocStart().isMacroID())
+      d << FixItHint::CreateInsertion(cv->getOuterLocStart(), "explicit ");
   }
 }
 
@@ -163,8 +182,11 @@ void MustUseResultCheck::check(const MatchFinder::MatchResult &result) {
   if (const auto *spec = llvm::dyn_cast<ClassTemplateSpecializationDecl>(rd))
     if (spec->getSpecializedTemplate()->getTemplatedDecl()->hasAttr<WarnUnusedResultAttr>())
       return;
-  diag(fn->getLocation(), "'%0' returns a fallible '%1' and must be [[nodiscard]] (or the type must be)")
-      << fn << rd->getName();
+  auto d = diag(fn->getLocation(), "%0 returns a fallible '%1' and must be [[nodiscard]] (or mark the type itself "
+                                   "[[nodiscard]] once, so every function returning it is covered)")
+           << fn << rd->getName();
+  if (fn->getOuterLocStart().isValid() && !fn->getOuterLocStart().isMacroID())
+    d << FixItHint::CreateInsertion(fn->getOuterLocStart(), "[[nodiscard]] ");
 }
 
 // ---------------------------------------------------------------------------
@@ -196,6 +218,8 @@ void UnusedResultCheck::check(const MatchFinder::MatchResult &result) {
     return;
   diag(call->getBeginLoc(), "result of fallible '%0' is discarded; handle it or cast to void with a reason")
       << recordOf(call->getType())->getName();
+  howToFix(call->getBeginLoc(), "'if (auto r = f(); !r) return r.error();' to propagate, or '(void)f(); // best effort: <why "
+                                "failure is harmless>' to ignore it on purpose");
 }
 
 // ---------------------------------------------------------------------------
@@ -221,7 +245,14 @@ void ConstLocalCheck::check(const MatchFinder::MatchResult &result) {
   const auto *dre_probe = vd;
   if (analyzer.isMutated(dre_probe))
     return;
-  diag(vd->getLocation(), "local '%0' is never modified; declare it const") << vd;
+  auto d = diag(vd->getLocation(), "local %0 is never modified; declare it const") << vd;
+  // `int a = 1, b = 2;` shares one specifier: only offer the fix when the declaration stands alone.
+  bool alone = false;
+  for (const DynTypedNode &p : result.Context->getParents(*vd))
+    if (const auto *ds = p.get<DeclStmt>())
+      alone = ds->isSingleDecl();
+  if (alone && vd->getOuterLocStart().isValid() && !vd->getOuterLocStart().isMacroID())
+    d << FixItHint::CreateInsertion(vd->getOuterLocStart(), "const ");
 }
 
 // ---------------------------------------------------------------------------
@@ -280,7 +311,7 @@ void NoShadowCheck::check(const MatchFinder::MatchResult &result) {
     }
   }
   if (hit) {
-    diag(vd->getLocation(), "'%0' shadows a variable declared in an enclosing scope; rename it") << vd;
+    diag(vd->getLocation(), "%0 shadows a variable declared in an enclosing scope; rename it") << vd;
     diag(hit->getLocation(), "shadowed declaration is here", DiagnosticIDs::Note);
   }
 }
@@ -315,9 +346,11 @@ void EnumSwitchCheck::check(const MatchFinder::MatchResult &result) {
       covered.push_back(er.Val.getInt());
   }
   if (hasDefault) {
-    diag(sw->getSwitchLoc(), "switch over enum '%0' must list every enumerator instead of using 'default', so a new "
+    diag(sw->getSwitchLoc(), "switch over enum %0 must list every enumerator instead of using 'default', so a new "
                              "enumerator breaks the build")
         << ed;
+    howToFix(sw->getSwitchLoc(), "delete 'default:' and add a case for each remaining enumerator (group them with fallthrough "
+                                 "labels if they share handling); adding an enumerator later then fails to compile");
     return;
   }
   for (const EnumConstantDecl *ec : ed->enumerators()) {
@@ -326,7 +359,8 @@ void EnumSwitchCheck::check(const MatchFinder::MatchResult &result) {
       if (llvm::APSInt::isSameValue(v, ec->getInitVal()))
         found = true;
     if (!found) {
-      diag(sw->getSwitchLoc(), "switch over enum '%0' does not handle enumerator '%1'") << ed << ec;
+      diag(sw->getSwitchLoc(), "switch over enum %0 does not handle enumerator %1") << ed << ec;
+      howToFix(sw->getSwitchLoc(), "add 'case E::name:' for every missing enumerator");
       return;
     }
   }
@@ -350,16 +384,31 @@ void BannedLowLevelCheck::check(const MatchFinder::MatchResult &result) {
   const SourceManager &sm = *result.SourceManager;
   if (const auto *g = result.Nodes.getNodeAs<Stmt>("goto")) {
     if (!exempt(sm, g->getBeginLoc()))
+    {
       diag(g->getBeginLoc(), "goto is banned; use structured control flow");
+      howToFix(g->getBeginLoc(), "use an early 'return', 'break'/'continue', or extract the cleanup into a function or an RAII "
+                                 "object instead of jumping to a label");
+    }
   } else if (const auto *u = result.Nodes.getNodeAs<RecordDecl>("union")) {
     if (!exempt(sm, u->getLocation()) && !inUnsafeTier(u) && !u->isTemplated())
+    {
       diag(u->getLocation(), "unions allow type punning; use a tagged variant");
+      howToFix(u->getLocation(), "'reloco::variant<A, B>' for alternatives; hardware register maps belong in an unsafe_* function or a NOLINT "
+                                 "region");
+    }
   } else if (const auto *d = result.Nodes.getNodeAs<DeclaratorDecl>("volatile")) {
     if (!exempt(sm, d->getLocation()) && !inUnsafeTier(d) && !d->isTemplated())
+    {
       diag(d->getLocation(), "volatile is banned outside hardware-access code; suppress with NOLINT where it is MMIO");
+      howToFix(d->getLocation(), "use an atomic ('std::atomic<T>') for shared state; for real MMIO keep 'volatile' and add "
+                                 "'// NOLINT(reloco-banned-low-level): MMIO register'");
+    }
   } else if (const auto *c = result.Nodes.getNodeAs<CallExpr>("jmp")) {
     if (!exempt(sm, c->getBeginLoc()))
+    {
       diag(c->getBeginLoc(), "setjmp/longjmp bypass destructors; use explicit error results");
+      howToFix(c->getBeginLoc(), "return 'reloco::expected<T, E>' up the call chain instead of jumping");
+    }
   }
 }
 
@@ -387,7 +436,9 @@ void MutableGlobalCheck::check(const MatchFinder::MatchResult &result) {
       if (n.find(w) != std::string::npos)
         return;
   }
-  diag(vd->getLocation(), "mutable global/static '%0'; make it const, or wrap it in an atomic or lock type") << vd;
+  diag(vd->getLocation(), "mutable global/static %0; make it const, or wrap it in an atomic or lock type") << vd;
+  howToFix(vd->getLocation(), "'static int count;' becomes 'static std::atomic<int> count{};', or pass the state in as a "
+                              "parameter/member ('struct ctx { int count = 0; };') instead of sharing it globally");
 }
 
 // ---------------------------------------------------------------------------
@@ -410,9 +461,12 @@ void UnsafeCallScopeCheck::check(const MatchFinder::MatchResult &result) {
     return;
   if (exempt(*result.SourceManager, call->getBeginLoc()))
     return;
-  diag(call->getBeginLoc(), "call to unsafe '%0' outside the unsafe tier; call it from an unsafe_* function or wrap it in "
+  diag(call->getBeginLoc(), "call to unsafe %0 outside the unsafe tier; call it from an unsafe_* function or wrap it in "
                             "RELOCO_BEGIN_UNSAFE_CODE / RELOCO_END_UNSAFE_CODE")
       << callee;
+  howToFix(call->getBeginLoc(), "prefer the safe overload (span/result based); otherwise move this code into 'unsafe_xyz()' or "
+                                "wrap just the call: 'RELOCO_BEGIN_UNSAFE_CODE raw_poke(p); RELOCO_END_UNSAFE_CODE' with a "
+                                "comment stating the invariant that makes it sound");
 }
 
 // ---------------------------------------------------------------------------
@@ -447,7 +501,9 @@ void CheckedOperatorCheck::check(const MatchFinder::MatchResult &result) {
     if (!isGuardedOperator(fd) || fd->isTemplateInstantiation() || fd->getCanonicalDecl() != fd || exempt(sm, fd->getLocation()) ||
         inUnsafeTier(fd) || annotatedInScope(fd, "reloco_checked"))
       return;
-    diag(fd->getLocation(), "'%0' must be RELOCO_CHECKED (it must bounds/null check), or be an unsafe_* function") << fd;
+    diag(fd->getLocation(), "%0 must be RELOCO_CHECKED (it must bounds/null check), or be an unsafe_* function") << fd;
+    howToFix(fd->getLocation(), "make it check and then annotate: 'RELOCO_CHECKED T &operator[](size_t i) & noexcept' (clamp, "
+                                "assert or trap on out-of-range), or rename it 'unsafe_at' and offer a checked 'at()' instead");
     return;
   }
   const auto *oc = result.Nodes.getNodeAs<CXXOperatorCallExpr>("use");
@@ -458,7 +514,9 @@ void CheckedOperatorCheck::check(const MatchFinder::MatchResult &result) {
     return;
   if (const FunctionDecl *encl = enclosingFunction(result); encl && inUnsafeTier(encl))
     return;
-  diag(oc->getBeginLoc(), "use of unchecked '%0'; the type does not declare it RELOCO_CHECKED, use a checked accessor") << callee;
+  diag(oc->getBeginLoc(), "use of unchecked %0; the type does not declare it RELOCO_CHECKED, use a checked accessor") << callee;
+  howToFix(oc->getBeginLoc(), "call the checked accessor ('v.try_at(i)' returning a result, or 'front()'/'back()' which assert) or iterate "
+                              "with a range-for; inside an unsafe_* function or unsafe region the operator is allowed");
 }
 
 // ---------------------------------------------------------------------------
@@ -487,6 +545,8 @@ void SafeMathCheck::check(const MatchFinder::MatchResult &result) {
     return; // compile-time constants are checked by the compiler
   diag(e->getBeginLoc(), "raw integer arithmetic in RELOCO_SAFE_MATH code; use checked/saturating/wrapping helpers "
                          "(reloco/checked.hpp, saturating.hpp, wrapping.hpp)");
+  howToFix(e->getBeginLoc(), "'a + b' becomes 'checked_add(a, b)' (returns an optional/result), 'saturating_add(a, b)' to clamp, "
+                             "or 'wrapping_add(a, b)' when modular arithmetic is intended");
 }
 
 // ---------------------------------------------------------------------------
@@ -512,7 +572,11 @@ void MemberInitCheck::check(const MatchFinder::MatchResult &result) {
     if (!rd->hasDefinition() || !rd->hasTrivialDefaultConstructor())
       return; // initialises itself
   }
-  diag(fd->getLocation(), "field '%0' has no default member initializer; add '= {}' or a value") << fd;
+  auto d = diag(fd->getLocation(), "field %0 has no default member initializer; add '= {}' or a value") << fd;
+  if (fd->getEndLoc().isValid() && !fd->getEndLoc().isMacroID() && !fd->isBitField())
+    d << FixItHint::CreateInsertion(Lexer::getLocForEndOfToken(fd->getEndLoc(), 0, *result.SourceManager,
+                                                              result.Context->getLangOpts()),
+                                    "{}");
 }
 
 // ---------------------------------------------------------------------------
@@ -555,8 +619,10 @@ void RuleOfFiveCheck::check(const MatchFinder::MatchResult &result) {
   add(cassign, "copy assignment");
   add(mctor, "move constructor");
   add(massign, "move assignment");
-  diag(rd->getLocation(), "'%0' declares some special members but not: %1; declare all five (= default / = delete)")
+  diag(rd->getLocation(), "%0 declares some special members but not: %1; declare all five (= default / = delete)")
       << rd << missing;
+  howToFix(rd->getLocation(), "'T(const T &) = delete; T &operator=(const T &) = delete; T(T &&) noexcept = default; "
+                              "T &operator=(T &&) noexcept = default; ~T() = default;' for a move-only type");
 }
 
 } // namespace reloco::tidy

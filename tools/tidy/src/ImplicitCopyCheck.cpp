@@ -82,6 +82,8 @@ void ImplicitCopyCheck::check(const MatchFinder::MatchResult &result) {
     return;
   diag(loc, "implicit copy of '%0'; move it, copy explicitly with '%0(x)', or mark the type RELOCO_COPYABLE")
       << rd->getName();
+  howToFix(loc, "move it ('take(std::move(x))' or return by value), clone on purpose ('T copy(x);'), or, for small "
+                "plain-data types, declare 'struct RELOCO_COPYABLE T { ... };'");
 }
 
 } // namespace reloco::tidy

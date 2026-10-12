@@ -13,6 +13,9 @@ checks exempt by default, so the runner clears ExemptPaths. A `// checks: a, b` 
 check option (e.g. SafeCodeMode=opt-in) for that fixture.
 """
 
+import difflib
+import shutil
+import tempfile
 import argparse
 import re
 import subprocess
@@ -104,7 +107,23 @@ def main() -> int:
             if proc.returncode not in (0, 1):
                 print(proc.stderr[-2000:])
         else:
-            print(f"ok   {fx.name} ({len(expected)} expectations)")
+            fixed = fx.parent / "fixed" / fx.name
+            note = ""
+            if fixed.exists():
+                # Apply the fix-its to a scratch copy and compare with the golden file in test/fixed/.
+                with tempfile.TemporaryDirectory() as tmp:
+                    copy = Path(tmp) / fx.name
+                    shutil.copy(fx, copy)
+                    fixcmd = [c if c != str(fx) else str(copy) for c in cmd]
+                    fixcmd.insert(fixcmd.index("--quiet"), "--fix")
+                    subprocess.run(fixcmd, capture_output=True, text=True)
+                    if copy.read_text() != fixed.read_text():
+                        failed += 1
+                        print(f"FAIL {fx.name}: fix-its differ from test/fixed/{fx.name}")
+                        sys.stdout.writelines(difflib.unified_diff(fixed.read_text().splitlines(True), copy.read_text().splitlines(True), "expected", "actual"))
+                        continue
+                    note = ", fix-its ok"
+            print(f"ok   {fx.name} ({len(expected)} expectations{note})")
     return 1 if failed else 0
 
 

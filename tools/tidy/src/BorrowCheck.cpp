@@ -430,6 +430,9 @@ void BorrowCheck::check(const MatchFinder::MatchResult &result) {
     diag(b.declLoc, "borrow created here", DiagnosticIDs::Note);
     if (b.var)
       diag(b.lastUse, "borrow is still used here", DiagnosticIDs::Note);
+    howToFix(use->getBeginLoc(), "end the borrow first (copy the value out: 'int v = r;' and use v later), reorder so the "
+                                 "last use of the borrow comes before this access, or borrow disjoint fields. If the "
+                                 "aliasing is sound, mark the function RELOCO_BORROW_EXEMPT with a comment");
   });
 }
 

@@ -165,6 +165,33 @@ bool RelocoCheck::isAliasing(QualType t) {
   return !t->isDependentType() && isPointerLike(t);
 }
 
+SourceLocation RelocoCheck::functionQualifierEnd(const FunctionDecl *fd, const SourceManager &sm, const LangOptions &lo,
+                                                 bool skipRef) {
+  const TypeSourceInfo *tsi = fd->getTypeSourceInfo();
+  if (!tsi)
+    return {};
+  const auto ftl = tsi->getTypeLoc().getAsAdjusted<FunctionTypeLoc>();
+  if (!ftl || ftl.getRParenLoc().isInvalid() || ftl.getRParenLoc().isMacroID())
+    return {};
+  SourceLocation prev = ftl.getRParenLoc();
+  for (;;) {
+    const auto tok = Lexer::findNextToken(prev, sm, lo);
+    if (!tok || tok->getLocation().isMacroID())
+      break;
+    // Raw lexing yields keywords as identifiers.
+    const bool cv = tok->is(tok::raw_identifier) && (tok->getRawIdentifier() == "const" || tok->getRawIdentifier() == "volatile");
+    const bool ref = skipRef && tok->isOneOf(tok::amp, tok::ampamp);
+    if (!cv && !ref)
+      break;
+    prev = tok->getLocation();
+  }
+  return Lexer::getLocForEndOfToken(prev, 0, sm, lo);
+}
+
+void RelocoCheck::howToFix(SourceLocation loc, llvm::StringRef text) {
+  diag(loc, "how to fix: %0", DiagnosticIDs::Note) << text;
+}
+
 bool RelocoCheck::inUnsafeTier(const Decl *d) {
   for (const Decl *c = d; c && !llvm::isa<TranslationUnitDecl>(c);
        c = Decl::castFromDeclContext(c->getDeclContext())) {

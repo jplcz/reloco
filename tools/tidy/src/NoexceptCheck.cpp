@@ -28,7 +28,14 @@ void NoexceptCheck::check(const MatchFinder::MatchResult &result) {
     return;
   // Dependent noexcept(expr) specifications are conditional and therefore explicit.
   if (proto->getExceptionSpecType() == EST_None || proto->getExceptionSpecType() == EST_Dynamic)
-    diag(fn->getLocation(), "function '%0' must be declared noexcept") << fn;
+  {
+    auto d = diag(fn->getLocation(), "function %0 must be declared noexcept; add 'noexcept' (or 'noexcept(expr)' when "
+                                     "it is conditional) and report failure through a result type")
+             << fn;
+    if (const SourceLocation at = functionQualifierEnd(fn, *result.SourceManager, result.Context->getLangOpts(), true);
+        at.isValid())
+      d << FixItHint::CreateInsertion(at, " noexcept");
+  }
 }
 
 } // namespace reloco::tidy
