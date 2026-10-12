@@ -71,6 +71,7 @@ def main() -> int:
     ap.add_argument("--clang-tidy", required=True)
     ap.add_argument("--plugin", required=True)
     ap.add_argument("--include", default="")
+    ap.add_argument("--bless", action="store_true", help="write test/fixed/<name> for fixtures whose fix-its change the file and have no golden yet")
     ap.add_argument("fixtures", nargs="*")
     args = ap.parse_args()
 
@@ -119,6 +120,16 @@ def main() -> int:
         else:
             fixed = fx.parent / "fixed" / fx.name
             note = ""
+            if args.bless and not fixed.exists():
+                with tempfile.TemporaryDirectory() as tmp:
+                    copy = Path(tmp) / fx.name
+                    shutil.copy(fx, copy)
+                    fixcmd = [c if c != str(fx) else str(copy) for c in cmd]
+                    fixcmd.insert(fixcmd.index("--quiet"), "--fix")
+                    subprocess.run(fixcmd, capture_output=True, text=True)
+                    if copy.read_text() != fx.read_text():
+                        fixed.write_text(copy.read_text())
+                        print(f"bless {fixed.name}")
             if fixed.exists():
                 # Apply the fix-its to a scratch copy and compare with the golden file in test/fixed/.
                 with tempfile.TemporaryDirectory() as tmp:

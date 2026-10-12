@@ -38,6 +38,9 @@ clang-tidy-24 --load=build-tidy/libreloco-tidy.so --checks='-*,reloco-*' \
 Fixture tests: `ctest` target `reloco_tidy_fixtures`, or directly
 `python3 tools/tidy/test/run_tests.py --clang-tidy <exe> --plugin <so> --include include`.
 Fixtures use `// expect: <check>` on the offending line.
+A fixture with a file of the same name in `tools/tidy/test/fixed/` also has its fix-its applied to a
+scratch copy and compared with that golden. Add `--bless` to create the golden for a fixture whose
+fix-its change the file (review the diff before keeping it).
 
 ## Using the checker in your IDE
 
