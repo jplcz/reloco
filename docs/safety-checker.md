@@ -408,6 +408,11 @@ template <typename F> void spawn(F fn RELOCO_REQUIRE_SEND) noexcept;
 void start(int n) noexcept { spawn([n]() noexcept { (void)n; }); }
 ```
 
+Reloco's own `reloco::spawn` and `thread_builder::spawn` carry `RELOCO_REQUIRE_SEND`, so
+`reloco::spawn([&x] { ... })` and lambdas capturing raw pointers are reported with a fix note. `thread_scope::spawn`
+is deliberately not annotated: scoped threads are joined before the borrowed data dies, so by-reference captures
+are allowed there (Rust's `Scope::spawn` bound is `Send`, not `'static`).
+
 ## CMake integration and profiles
 
 ```cmake

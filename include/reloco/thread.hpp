@@ -412,7 +412,8 @@ template <typename R> struct thread_result_slot {
 template <typename R> class join_handle;
 
 template <typename F, typename R = std::invoke_result_t<std::decay_t<F> &>>
-[[nodiscard]] result<join_handle<R>> spawn(F &&f, allocator_ref alloc = default_allocator()) noexcept;
+[[nodiscard]] result<join_handle<R>> spawn(F &&f RELOCO_REQUIRE_SEND,
+                                           allocator_ref alloc = default_allocator()) noexcept;
 
 /**
  * @brief Owned handle to a spawned thread's eventual result, matching
@@ -523,7 +524,8 @@ private:
  * `'static` half; do not capture a reference to a value that might not
  * outlive the spawned thread).
  */
-template <typename F, typename R> [[nodiscard]] result<join_handle<R>> spawn(F &&f, allocator_ref alloc) noexcept {
+template <typename F, typename R>
+[[nodiscard]] result<join_handle<R>> spawn(F &&f RELOCO_REQUIRE_SEND, allocator_ref alloc) noexcept {
   static_assert(is_send_v<std::decay_t<F>>,
                 "reloco::spawn: F must be Send (see send_sync.hpp) -- it (and everything it captures) will run on "
                 "another thread");
@@ -633,7 +635,8 @@ public:
    * the free `spawn()` function (see its docs); consumes `*this`.
    */
   template <typename F, typename R = std::invoke_result_t<std::decay_t<F> &>>
-  [[nodiscard]] result<join_handle<R>> spawn(F &&f, allocator_ref alloc = default_allocator()) && noexcept {
+  [[nodiscard]] result<join_handle<R>> spawn(F &&f RELOCO_REQUIRE_SEND,
+                                             allocator_ref alloc = default_allocator()) && noexcept {
     static_assert(is_send_v<std::decay_t<F>>,
                   "thread_builder::spawn: F must be Send (see send_sync.hpp) -- it (and everything it captures) "
                   "will run on another thread");
