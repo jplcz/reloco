@@ -36,3 +36,13 @@ int use_negated(int *p, int *q, int n) noexcept {
   const int flag = !p;  // expect: reloco-implicit-bool
   return flag + n;
 }
+
+unsigned bits(unsigned flags, int *p) {
+  if (flags & 0x2u) // expect: reloco-implicit-bool
+    return 1;
+  if (!(flags & 0x4u)) // expect: reloco-implicit-bool
+    return 2;
+  if (*p) // expect: reloco-implicit-bool
+    return 3;
+  return flags ? 4 : 5; // expect: reloco-implicit-bool
+}

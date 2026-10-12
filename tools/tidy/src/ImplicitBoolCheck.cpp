@@ -37,16 +37,24 @@ void ImplicitBoolCheck::check(const MatchFinder::MatchResult &result) {
   for (const auto &p : result.Context->getParents(*ce))
     if (const auto *uo = p.get<UnaryOperator>(); uo && uo->getOpcode() == UO_LNot)
       notOp = uo;
-  const bool simple = end.isValid() && !end.isMacroID() && !sub->getEndLoc().isMacroID() &&
-                      llvm::isa<DeclRefExpr, MemberExpr, CallExpr>(sub->IgnoreParenImpCasts());
+  const bool rewritable = end.isValid() && !end.isMacroID() && !sub->getEndLoc().isMacroID() &&
+                          !sub->getBeginLoc().isMacroID();
+  const Expr *bare0 = sub->IgnoreImpCasts();
+  // Primary-like operands take ` != 0` directly; anything else (`a & b`, `*p`, `a ? b : c`) is parenthesised first.
+  const bool primary = llvm::isa<DeclRefExpr, MemberExpr, CallExpr, ParenExpr, ArraySubscriptExpr, UnaryOperator>(bare0);
+  const bool simple = rewritable;
   // `if (T *p = f())`: the operand is the condition variable itself, spelled at its declaration; no rewrite is possible.
   const auto *dre = llvm::dyn_cast<DeclRefExpr>(sub->IgnoreParenImpCasts());
-  if (dre && dre->getDecl()->getLocation() == dre->getLocation())
+  if (dre && dre->getDecl()->getLocation() == dre->getLocation()) {
+    // `if (T *p = f())` can become `if (T *p = f(); p != nullptr)`; a `while` condition has no such form.
     return;
+  }
   if (!simple)
     return;
   if (!notOp) {
-    d << FixItHint::CreateInsertion(end, std::string(" ") + cmp);
+    if (!primary)
+      d << FixItHint::CreateInsertion(sub->getBeginLoc(), "(");
+    d << FixItHint::CreateInsertion(end, std::string(primary ? "" : ")") + " " + cmp);
     return;
   }
   // `!p` becomes `p == nullptr`; parenthesised unless the parent is a logical operator or a condition, where the
@@ -64,7 +72,7 @@ void ImplicitBoolCheck::check(const MatchFinder::MatchResult &result) {
   }
   const StringRef text = Lexer::getSourceText(CharSourceRange::getTokenRange(sub->getSourceRange()), sm,
                                               result.Context->getLangOpts());
-  std::string eq = text.str();
+  std::string eq = primary ? text.str() : "(" + text.str() + ")";
   eq += t->isPointerType() || t->isMemberPointerType() ? " == nullptr" : t->isFloatingType() ? " == 0.0" : " == 0";
   if (!bare)
     eq = "(" + eq + ")";
