@@ -381,16 +381,16 @@ public:
     return result;
   }
 
-  constexpr wide_int &operator+=(wide_int other) noexcept { return *this = *this + other; }
-  constexpr wide_int &operator-=(wide_int other) noexcept { return *this = *this - other; }
-  constexpr wide_int &operator*=(wide_int other) noexcept { return *this = *this * other; }
-  constexpr wide_int &operator/=(wide_int other) noexcept { return *this = *this / other; }
-  constexpr wide_int &operator%=(wide_int other) noexcept { return *this = *this % other; }
-  constexpr wide_int &operator&=(wide_int other) noexcept { return *this = *this & other; }
-  constexpr wide_int &operator|=(wide_int other) noexcept { return *this = *this | other; }
-  constexpr wide_int &operator^=(wide_int other) noexcept { return *this = *this ^ other; }
-  constexpr wide_int &operator<<=(unsigned shift) noexcept { return *this = *this << shift; }
-  constexpr wide_int &operator>>=(unsigned shift) noexcept { return *this = *this >> shift; }
+  constexpr wide_int &operator+=(wide_int other) & noexcept { return *this = *this + other; }
+  constexpr wide_int &operator-=(wide_int other) & noexcept { return *this = *this - other; }
+  constexpr wide_int &operator*=(wide_int other) & noexcept { return *this = *this * other; }
+  constexpr wide_int &operator/=(wide_int other) & noexcept { return *this = *this / other; }
+  constexpr wide_int &operator%=(wide_int other) & noexcept { return *this = *this % other; }
+  constexpr wide_int &operator&=(wide_int other) & noexcept { return *this = *this & other; }
+  constexpr wide_int &operator|=(wide_int other) & noexcept { return *this = *this | other; }
+  constexpr wide_int &operator^=(wide_int other) & noexcept { return *this = *this ^ other; }
+  constexpr wide_int &operator<<=(unsigned shift) & noexcept { return *this = *this << shift; }
+  constexpr wide_int &operator>>=(unsigned shift) & noexcept { return *this = *this >> shift; }
 
   [[nodiscard]] friend constexpr bool operator==(const wide_int &a, const wide_int &b) noexcept {
     for (std::size_t i = 0; i < limb_count; ++i)

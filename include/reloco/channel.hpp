@@ -376,10 +376,10 @@ public:
     /** @brief Constructs the `end()` sentinel: never dereferenced, never advanced. */
     iterator() noexcept = default;
 
-    RELOCO_CHECKED [[nodiscard]] reference operator*() const noexcept RELOCO_LIFETIMEBOUND { return *current_; }
-    RELOCO_CHECKED [[nodiscard]] pointer operator->() const noexcept RELOCO_LIFETIMEBOUND { return &*current_; }
+    RELOCO_CHECKED [[nodiscard]] reference operator*() const & noexcept RELOCO_LIFETIMEBOUND { return *current_; }
+    RELOCO_CHECKED [[nodiscard]] pointer operator->() const & noexcept RELOCO_LIFETIMEBOUND { return &*current_; }
 
-    iterator &operator++() noexcept {
+    iterator &operator++() & noexcept {
       advance();
       return *this;
     }

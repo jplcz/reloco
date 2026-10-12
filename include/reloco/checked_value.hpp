@@ -134,9 +134,9 @@ public:
     return std::move(value_);
   }
 
-  RELOCO_CHECKED constexpr T *operator->() noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") { return &get(); }
+  RELOCO_CHECKED constexpr T *operator->() & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") { return &get(); }
 
-  RELOCO_CHECKED constexpr const T *operator->() const noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+  RELOCO_CHECKED constexpr const T *operator->() const & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
     return &get();
   }
 
@@ -180,6 +180,8 @@ public:
     RELOCO_ASSERT(!moved_from_, "checked_value: as_known() after move");
     return *this;
   }
+
+  const checked_value &as_known() const && = delete;
 
 private:
   static constexpr T take_from(checked_value &other) noexcept {
@@ -248,10 +250,12 @@ public:
    * use @ref is_null or `operator bool` to check before dereferencing
    * manually, or prefer `operator*`/`operator->`, which check for you.
    */
-  [[nodiscard]] constexpr T *get() const noexcept RELOCO_CALLABLE_WHEN("unconsumed") {
+  [[nodiscard]] constexpr T *get() const & noexcept RELOCO_CALLABLE_WHEN("unconsumed") {
     RELOCO_ASSERT(!moved_from_, "checked_value: access after move");
     return value_;
   }
+
+  [[nodiscard]] constexpr T *get() const && = delete;
 
   /** @brief Whether the held pointer is null. Traps if moved from. */
   [[nodiscard]] constexpr bool is_null() const noexcept RELOCO_CALLABLE_WHEN("unconsumed") {
@@ -274,14 +278,14 @@ public:
   }
 
   /** @brief Dereferences the pointee. Traps if moved from or null. */
-  RELOCO_CHECKED constexpr T &operator*() const noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+  RELOCO_CHECKED constexpr T &operator*() const & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
     RELOCO_ASSERT(!moved_from_, "checked_value: access after move");
     RELOCO_ASSERT(value_ != nullptr, "checked_value: dereferencing a null pointer");
     return *value_;
   }
 
   /** @brief Member access on the pointee. Traps if moved from or null. */
-  RELOCO_CHECKED constexpr T *operator->() const noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+  RELOCO_CHECKED constexpr T *operator->() const & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
     RELOCO_ASSERT(!moved_from_, "checked_value: access after move");
     RELOCO_ASSERT(value_ != nullptr, "checked_value: dereferencing a null pointer");
     return value_;
@@ -301,10 +305,12 @@ public:
    * `RELOCO_BEGIN_UNSAFE_BUFFER_USAGE`/`RELOCO_END_UNSAFE_BUFFER_USAGE`,
    * making the opt-out to the unsafe tier explicit and greppable at each use.
    */
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr T *unsafe_get() const noexcept {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr T *unsafe_get() const & noexcept {
     RELOCO_DEBUG_ASSERT(!moved_from_, "checked_value: access after move");
     return value_;
   }
+
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr T *unsafe_get() const && = delete;
 
   /**
    * @brief Dereferences the pointee without the always-on moved-from/null
@@ -319,11 +325,13 @@ public:
    * Marked `RELOCO_UNSAFE_BUFFER_USAGE`, same call-site requirement as
    * @ref unsafe_get.
    */
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr T &unsafe_deref() const noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr T &unsafe_deref() const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(!moved_from_, "checked_value: access after move");
     RELOCO_DEBUG_ASSERT(value_ != nullptr, "checked_value: dereferencing a null pointer");
     return *value_;
   }
+
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr T &unsafe_deref() const && = delete;
 
   /** @brief Explicit, Rust-`Clone`-style copy of the pointer value itself. */
   [[nodiscard]] constexpr checked_value clone() const noexcept RELOCO_CALLABLE_WHEN("unconsumed") {
@@ -345,6 +353,8 @@ public:
     RELOCO_ASSERT(!moved_from_, "checked_value: as_known() after move");
     return *this;
   }
+
+  const checked_value &as_known() const && = delete;
 
 private:
   static constexpr T *take_from(checked_value &other) noexcept {

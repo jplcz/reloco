@@ -315,7 +315,7 @@ public:
    * @brief Accesses an existing element with an always-on bounds check.
    * @param index Zero-based index of the element to access.
    */
-  [[nodiscard]] T &at(size_type index) noexcept {
+  [[nodiscard]] T &at(size_type index) & noexcept {
     RELOCO_ASSERT(vtbl_ && index < vtbl_->size(ctx_), "mutable_container_ref index out of bounds");
     return vtbl_->at(ctx_, index);
   }
@@ -323,7 +323,7 @@ public:
   /**
    * @brief Accesses an existing element with a debug-only bounds check.
    */
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE T &unsafe_at(size_type index) noexcept {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE T &unsafe_at(size_type index) & noexcept {
     RELOCO_DEBUG_ASSERT(vtbl_ && index < vtbl_->size(ctx_), "mutable_container_ref index out of bounds");
     return vtbl_->at(ctx_, index);
   }
@@ -519,7 +519,7 @@ public:
   /**
    * @brief Accesses the entry mapped to `key`, trapping if `key` is absent.
    */
-  [[nodiscard]] T &at(const key_type &key) noexcept {
+  [[nodiscard]] T &at(const key_type &key) & noexcept {
     RELOCO_ASSERT(vtbl_, "mutable_container_ref is unbound");
     T *found = vtbl_->find(ctx_, key);
     RELOCO_ASSERT(found, "mutable_container_ref key not found");
@@ -530,7 +530,7 @@ public:
    * @brief Accesses the entry mapped to `key` with a debug-only presence
    * check.
    */
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE T &unsafe_at(const key_type &key) noexcept {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE T &unsafe_at(const key_type &key) & noexcept {
     RELOCO_DEBUG_ASSERT(vtbl_, "mutable_container_ref is unbound");
     T *found = vtbl_->find(ctx_, key);
     RELOCO_DEBUG_ASSERT(found, "mutable_container_ref key not found");

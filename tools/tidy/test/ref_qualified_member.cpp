@@ -11,6 +11,11 @@ struct [[gsl::Pointer]] handle {
   int get() const noexcept { return *p; }  // handle const accessors are fine
 };
 
+struct [[gsl::Pointer]] proxy {
+  int *p;
+  proxy &operator=(int x) noexcept { *p = x; return *this; }  // handle: usable on the returned temporary
+};
+
 struct widget {
   int v = 0;
 

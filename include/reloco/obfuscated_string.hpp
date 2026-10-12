@@ -184,10 +184,14 @@ public:
   }
 
   /** @brief NUL-terminated pointer to the decoded plaintext. */
-  [[nodiscard]] const char *c_str() const noexcept RELOCO_LIFETIMEBOUND { return plain_; }
+  [[nodiscard]] const char *c_str() const & noexcept RELOCO_LIFETIMEBOUND { return plain_; }
+
+  [[nodiscard]] const char *c_str() const && = delete;
 
   /** @brief The decoded plaintext, excluding the trailing NUL. */
-  [[nodiscard]] string_view view() const noexcept RELOCO_LIFETIMEBOUND { return string_view(plain_, N - 1); }
+  [[nodiscard]] string_view view() const & noexcept RELOCO_LIFETIMEBOUND { return string_view(plain_, N - 1); }
+
+  [[nodiscard]] string_view view() const && = delete;
 
   /** @brief Length of the decoded plaintext, excluding the trailing NUL. */
   [[nodiscard]] static constexpr size_t size() noexcept { return N - 1; }
@@ -286,7 +290,9 @@ public:
    * public API -- this is still ciphertext, not plaintext, so exposing
    * the pointer discloses nothing beyond what `decrypt()` already does.
    */
-  [[nodiscard]] constexpr const uint8_t *data() const noexcept { return data_; }
+  [[nodiscard]] constexpr const uint8_t *data() const & noexcept { return data_; }
+
+  [[nodiscard]] constexpr const uint8_t *data() const && = delete;
 
   /**
    * @brief The per-literal XOR key. Exposed only for

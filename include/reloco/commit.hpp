@@ -86,13 +86,15 @@ public:
    * @brief Grants mutable access to the payload during the transaction.
    * @return A mutable reference to the payload.
    */
-  constexpr T &get() noexcept { return m_payload; }
+  constexpr T &get() & noexcept { return m_payload; }
 
   /**
    * @brief Grants read-only access to the payload.
    * @return A const reference to the payload.
    */
-  constexpr const T &get() const noexcept { return m_payload; }
+  constexpr const T &get() const & noexcept { return m_payload; }
+
+  constexpr const T &get() const && = delete;
 
   /**
    * @brief Commits the transaction, disarming the rollback and extracting the payload.
@@ -158,8 +160,10 @@ public:
    * @note Live data is completely isolated from these changes until commit().
    * @return A mutable reference to the shadow copy.
    */
-  constexpr T &get() noexcept { return m_shadow; }
-  constexpr const T &get() const noexcept { return m_shadow; }
+  constexpr T &get() & noexcept { return m_shadow; }
+  constexpr const T &get() const & noexcept { return m_shadow; }
+
+  constexpr const T &get() const && = delete;
 
   /**
    * @brief Overwrites the live data with the shadow copy and disarms the transaction.

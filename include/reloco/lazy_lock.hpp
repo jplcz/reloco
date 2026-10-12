@@ -112,6 +112,8 @@ public:
     return &cell_.get_or_init([this]() noexcept(std::is_nothrow_invocable_v<F &>) -> T { return f_(); });
   }
 
+  [[nodiscard]] const T *get() const && = delete;
+
 private:
   mutable F f_;
   mutable once_lock<T> cell_;

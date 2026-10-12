@@ -118,6 +118,8 @@ public:
     return nullptr;
   }
 
+  [[nodiscard]] const T *get() const && = delete;
+
   /**
    * @brief Same as `get() const`, non-`const`. The caller is responsible
    * for ensuring no other thread concurrently reads/writes the cell while
@@ -201,7 +203,7 @@ public:
    * Returns a reference to the stored value (already-initialized, or
    * freshly initialized by this call).
    */
-  template <typename F> [[nodiscard]] T &get_or_init(F &&f) noexcept(std::is_nothrow_invocable_v<F &>) {
+  template <typename F> [[nodiscard]] T &get_or_init(F &&f) & noexcept(std::is_nothrow_invocable_v<F &>) {
     auto init_result = get_or_try_init(
         [&f]() noexcept(std::is_nothrow_invocable_v<F &>) -> result<T> { return result<T>(std::forward<F>(f)()); });
     RELOCO_ASSERT(init_result.has_value(), "once_lock::get_or_init: unreachable -- wrapped closure never fails");
@@ -243,13 +245,15 @@ private:
     return s;
   }
 
-  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) T *ptr() noexcept {
+  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) T *ptr() & noexcept {
     return std::addressof(storage_.value_);
   }
 
-  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) const T *ptr() const noexcept {
+  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) const T *ptr() const & noexcept {
     return std::addressof(storage_.value_);
   }
+
+  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) const T *ptr() const && = delete;
 
   // See `fallible_singleton::storage_type` for why this union needs its
   // own no-op destructor: `T` may be non-trivially destructible, and a

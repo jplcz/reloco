@@ -155,7 +155,7 @@ public:
   fail_awaiter await_transform(unexpected<error> &&err) noexcept { return fail_awaiter{err.value(), this}; }
 
   // Any other awaitable (e.g. another task, a user event) is awaited as is.
-  template <typename A> A &&await_transform(A &&a) noexcept { return static_cast<A &&>(a); }
+  template <typename A> A &&await_transform(A &&a) & noexcept { return static_cast<A &&>(a); }
 
   // ---- state ------------------------------------------------------------
 

@@ -89,7 +89,7 @@ public:
     return detail::c_linux_hook_access<T, Hook>::container(current_);
   }
 
-  c_list_head_iterator &operator++() noexcept {
+  c_list_head_iterator &operator++() & noexcept {
     current_ = current_->next;
     return *this;
   }
@@ -100,7 +100,7 @@ public:
     return tmp;
   }
 
-  c_list_head_iterator &operator--() noexcept {
+  c_list_head_iterator &operator--() & noexcept {
     current_ = current_->prev;
     return *this;
   }
@@ -192,9 +192,13 @@ public:
     return empty() ? nullptr : detail::c_linux_hook_access<T, Hook>::container(root_.next);
   }
 
+  [[nodiscard]] T *front() const && = delete;
+
   [[nodiscard]] T *back() const & noexcept {
     return empty() ? nullptr : detail::c_linux_hook_access<T, Hook>::container(root_.prev);
   }
+
+  [[nodiscard]] T *back() const && = delete;
 
   /** @brief list_add: O(1) insertion at the front. */
   void push_front(T &node) & noexcept {

@@ -438,7 +438,7 @@ public:
    * @brief Returns the contiguous data pointer with an always-on
    * precondition check.
    */
-  [[nodiscard]] T *data() noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] T *data() & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(mvtbl_ && mvtbl_->data, "mutable_collection_view does not support contiguous data access");
     return mvtbl_->data(this->context());
   }
@@ -447,7 +447,7 @@ public:
    * @brief Returns the contiguous data pointer with a debug-only
    * precondition check.
    */
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE T *unsafe_data() noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE T *unsafe_data() & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(mvtbl_ && mvtbl_->data, "mutable_collection_view does not support contiguous data access");
     return mvtbl_->data(this->context());
   }
@@ -470,7 +470,7 @@ public:
    * @brief Accesses an element with an always-on bounds check.
    * @param index Zero-based index of the element to access.
    */
-  [[nodiscard]] T &at(size_type index) noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] T &at(size_type index) & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(mvtbl_ && index < this->size(), "mutable_collection_view index out of bounds");
     return mvtbl_->at(this->context(), index);
   }
@@ -478,7 +478,7 @@ public:
   /**
    * @brief Accesses an element with a debug-only bounds check.
    */
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE T &unsafe_at(size_type index) noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE T &unsafe_at(size_type index) & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(mvtbl_ && index < this->size(), "mutable_collection_view index out of bounds");
     return mvtbl_->at(this->context(), index);
   }

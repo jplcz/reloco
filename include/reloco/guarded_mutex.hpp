@@ -87,11 +87,15 @@ public:
       return cell_->value_;
     }
 
+  [[nodiscard]] const T &get() const && = delete;
+
     /** @brief Mutable access to the protected value; equivalent to `*this`, spelled out for parity with `get()`. */
     [[nodiscard]] T &get_mut() const & noexcept RELOCO_LIFETIMEBOUND {
       RELOCO_ASSERT(cell_ != nullptr, "guard used after being moved from");
       return cell_->value_;
     }
+
+  [[nodiscard]] T &get_mut() const && = delete;
 
   private:
     friend class guarded_mutex;

@@ -195,7 +195,7 @@ public:
    * e.g. `flat_map::find`). See `get<T>()`/`try_get<T>()` for the
    * asserted/`result`-returning tiers.
    */
-  template <typename T> [[nodiscard]] T *downcast_mut() noexcept RELOCO_LIFETIMEBOUND {
+  template <typename T> [[nodiscard]] T *downcast_mut() & noexcept RELOCO_LIFETIMEBOUND {
     using decayed = std::decay_t<T>;
     return is<decayed>() ? static_cast<decayed *>(vtable_->data(&storage_)) : nullptr;
   }
@@ -205,10 +205,12 @@ public:
    * held `std::decay_t<T>`, or `nullptr` if this instance is empty or
    * holds a different type. See @ref downcast_mut for details.
    */
-  template <typename T> [[nodiscard]] const T *downcast_ref() const noexcept RELOCO_LIFETIMEBOUND {
+  template <typename T> [[nodiscard]] const T *downcast_ref() const & noexcept RELOCO_LIFETIMEBOUND {
     using decayed = std::decay_t<T>;
     return is<decayed>() ? static_cast<const decayed *>(vtable_->data(const_cast<storage *>(&storage_))) : nullptr;
   }
+
+  template <typename T> [[nodiscard]] const T *downcast_ref() const && = delete;
 
   /**
    * @brief Rust `Any::downcast` equivalent (consuming): moves the held
@@ -271,6 +273,8 @@ public:
     return *static_cast<const T *>(vtable_->data(const_cast<storage *>(&storage_)));
   }
 
+  template <typename T> [[nodiscard]] const T &get() const && = delete;
+
   /** @brief Rvalue overload of @ref get, moving the held `T` out. */
   template <typename T> [[nodiscard]] T &&get() && noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(is<T>(), "any: get<T>() called with an empty instance or the wrong T");
@@ -320,6 +324,8 @@ public:
     RELOCO_DEBUG_ASSERT(is<T>(), "any: unsafe_get<T>() called with an empty instance or the wrong T");
     return *static_cast<const T *>(vtable_->data(const_cast<storage *>(&storage_)));
   }
+
+  template <typename T> RELOCO_UNSAFE_BUFFER_USAGE [[nodiscard]] const T &unsafe_get() const && = delete;
 
 private:
   union storage {

@@ -116,7 +116,7 @@ public:
 
   RELOCO_CONSTEXPR20 ~optional() { destroy(); }
 
-  optional &operator=(nullopt_t) noexcept {
+  optional &operator=(nullopt_t) & noexcept {
     reset();
     return *this;
   }
@@ -226,12 +226,12 @@ public:
   RELOCO_CHECKED [[nodiscard]] T &operator*() & noexcept RELOCO_LIFETIMEBOUND { return value(); }
   RELOCO_CHECKED [[nodiscard]] const T &operator*() const & noexcept RELOCO_LIFETIMEBOUND { return value(); }
 
-  RELOCO_CHECKED [[nodiscard]] T *operator->() noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] T *operator->() & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(has_value_, "optional has no value");
     return std::addressof(value_);
   }
 
-  RELOCO_CHECKED [[nodiscard]] const T *operator->() const noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] const T *operator->() const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(has_value_, "optional has no value");
     return std::addressof(value_);
   }
@@ -512,18 +512,22 @@ public:
     return value_;
   }
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE T *unsafe_ptr() noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE const T &unsafe_value() const && = delete;
+
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE T *unsafe_ptr() & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(has_value_, "optional has no value");
     return std::addressof(value_);
   }
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE const T *unsafe_ptr() const noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE const T *unsafe_ptr() const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(has_value_, "optional has no value");
     return std::addressof(value_);
   }
+
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE const T *unsafe_ptr() const && = delete;
 
   template <typename... Args>
-  T &emplace(Args &&...args) noexcept(std::is_nothrow_constructible_v<T, Args...>) RELOCO_LIFETIMEBOUND {
+  T &emplace(Args &&...args) & noexcept(std::is_nothrow_constructible_v<T, Args...>) RELOCO_LIFETIMEBOUND {
     destroy();
     construct(std::forward<Args>(args)...);
     return value_;

@@ -164,7 +164,7 @@ public:
       return value_type(n.key, n.value);
     }
 
-    const_iterator &operator++() noexcept {
+    const_iterator &operator++() & noexcept {
       idx_ = nodes_->operator[](idx_).value().next;
       return *this;
     }
@@ -261,7 +261,9 @@ public:
 
   [[nodiscard]] result<lru_cache> try_clone() const noexcept { return try_clone(nodes_.get_allocator()); }
 
-  [[nodiscard]] allocator_ref get_allocator() const noexcept { return nodes_.get_allocator(); }
+  [[nodiscard]] allocator_ref get_allocator() const & noexcept { return nodes_.get_allocator(); }
+
+  [[nodiscard]] allocator_ref get_allocator() const && = delete;
 
   [[nodiscard]] size_type size() const noexcept { return index_.size(); }
   [[nodiscard]] size_type capacity() const noexcept { return capacity_; }

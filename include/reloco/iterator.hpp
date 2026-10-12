@@ -216,7 +216,7 @@ public:
 
     RELOCO_CHECKED [[nodiscard]] reference operator*() noexcept RELOCO_LIFETIMEBOUND { return detail::unwrap_item(*current_); }
 
-    cursor &operator++() noexcept {
+    cursor &operator++() & noexcept {
       current_ = owner_->next();
       return *this;
     }
@@ -480,7 +480,7 @@ public:
   }
 
 private:
-  [[nodiscard]] Derived &derived() noexcept { return static_cast<Derived &>(*this); }
+  [[nodiscard]] Derived &derived() & noexcept { return static_cast<Derived &>(*this); }
 };
 
 /**
@@ -749,7 +749,7 @@ public:
   /** @brief Rust `Peekable::peek()`: the next item, without consuming it
    * -- calling `.peek()` again (or `.next()`) before any intervening
    * mutation returns the exact same item. Empty once exhausted. */
-  [[nodiscard]] const optional<item_type> &peek() noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] const optional<item_type> &peek() & noexcept RELOCO_LIFETIMEBOUND {
     if (!cache_.has_value())
       cache_ = upstream_.next();
     return cache_;

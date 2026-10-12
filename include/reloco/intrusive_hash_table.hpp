@@ -176,7 +176,7 @@ public:
     return m_cur;
   }
 
-  intrusive_hash_iterator &operator++() noexcept {
+  intrusive_hash_iterator &operator++() & noexcept {
     advance();
     return *this;
   }
@@ -200,7 +200,9 @@ public:
   // iterator's state; not meant for general use.
   [[nodiscard]] constexpr span<T *> buckets() const noexcept { return m_buckets; }
   [[nodiscard]] constexpr size_type index() const noexcept { return m_index; }
-  [[nodiscard]] constexpr T *node() const noexcept { return m_cur; }
+  [[nodiscard]] constexpr T *node() const & noexcept { return m_cur; }
+
+  [[nodiscard]] constexpr T *node() const && = delete;
 
 private:
   void advance() noexcept {

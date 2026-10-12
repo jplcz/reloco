@@ -179,7 +179,9 @@ public:
   [[nodiscard]] constexpr size_type length() const noexcept { return size_; }
   [[nodiscard]] constexpr size_type capacity() const noexcept { return cap_; }
   [[nodiscard]] constexpr bool empty() const noexcept { return size_ == 0; }
-  [[nodiscard]] constexpr allocator_ref get_allocator() const noexcept { return alloc_; }
+  [[nodiscard]] constexpr allocator_ref get_allocator() const & noexcept { return alloc_; }
+
+  [[nodiscard]] constexpr allocator_ref get_allocator() const && = delete;
 
   /**
    * @brief Ensures capacity for at least @p new_cap characters (excluding
@@ -479,6 +481,8 @@ public:
   [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE const_pointer unsafe_c_str() const & noexcept RELOCO_LIFETIMEBOUND {
     return data_ ? data_ : &empty_char();
   }
+
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE const_pointer unsafe_c_str() const && = delete;
 
   [[nodiscard]] view_type view() const & noexcept RELOCO_LIFETIMEBOUND { return view_type(data(), size_); }
 

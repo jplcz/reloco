@@ -309,11 +309,13 @@ public:
 
   // ---- Core Accessors ----
 
-  [[nodiscard]] T *get() const noexcept RELOCO_LIFETIMEBOUND { return AuthPolicy::template auth<T>(encoded_val_); }
+  [[nodiscard]] T *get() const & noexcept RELOCO_LIFETIMEBOUND { return AuthPolicy::template auth<T>(encoded_val_); }
+
+  [[nodiscard]] T *get() const && = delete;
 
   // Enable ONLY if U (which is T) is not void
   template <typename U = T, std::enable_if_t<!std::is_void_v<U>, int> = 0>
-  RELOCO_CHECKED [[nodiscard]] U *operator->() const noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] U *operator->() const & noexcept RELOCO_LIFETIMEBOUND {
     U *result = static_cast<U *>(get());
     RELOCO_ASSERT(result != nullptr, "Dereferencing null pointer");
     return result; // Optimized: don't call get() twice
@@ -321,7 +323,7 @@ public:
 
   // Enable ONLY if U (which is T) is not void
   template <typename U = T, std::enable_if_t<!std::is_void_v<U>, int> = 0>
-  RELOCO_CHECKED [[nodiscard]] U &operator*() const noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] U &operator*() const & noexcept RELOCO_LIFETIMEBOUND {
     U *result = static_cast<U *>(get());
     RELOCO_ASSERT(result != nullptr, "Dereferencing null pointer");
     return *result; // Optimized: don't call get() twice
@@ -333,12 +335,12 @@ public:
 
   void swap(masked_pointer &other) noexcept { std::swap(encoded_val_, other.encoded_val_); }
 
-  masked_pointer &operator=(T *ptr) noexcept {
+  masked_pointer &operator=(T *ptr) & noexcept {
     reset(ptr);
     return *this;
   }
 
-  masked_pointer &operator=(std::nullptr_t) noexcept {
+  masked_pointer &operator=(std::nullptr_t) & noexcept {
     reset(nullptr);
     return *this;
   }
@@ -349,7 +351,7 @@ public:
    * @brief Matches Rust's `Option::take`: returns the current raw
    * pointer and resets `*this` to null, in one step.
    */
-  [[nodiscard]] T *take() noexcept {
+  [[nodiscard]] T *take() & noexcept {
     T *old = get();
     reset();
     return old;
@@ -359,7 +361,7 @@ public:
    * @brief Matches Rust's `Option::replace`/`std::mem::replace`: stores
    * @p ptr and returns the raw pointer it replaced.
    */
-  T *replace(T *ptr) noexcept {
+  T *replace(T *ptr) & noexcept {
     T *old = get();
     reset(ptr);
     return old;

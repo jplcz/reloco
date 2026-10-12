@@ -122,6 +122,8 @@ public:
     return *value;
   }
 
+  template <typename T> [[nodiscard]] const T &get() const && = delete;
+
   /** @copydoc get() & */
   template <typename T> [[nodiscard]] T &&get() && noexcept RELOCO_LIFETIMEBOUND {
     auto *value = std::get_if<T>(static_cast<std::variant<Ts...> *>(this));
@@ -194,6 +196,8 @@ public:
     RELOCO_DEBUG_ASSERT(value != nullptr, "variant does not hold the requested alternative");
     return *value;
   }
+
+  template <typename T> RELOCO_UNSAFE_BUFFER_USAGE [[nodiscard]] const T &unsafe_get() const && = delete;
 
   /**
    * @brief Rust `match`-expression equivalent: dispatches to whichever

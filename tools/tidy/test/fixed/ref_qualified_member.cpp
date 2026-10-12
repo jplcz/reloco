@@ -11,6 +11,11 @@ struct [[gsl::Pointer]] handle {
   int get() const noexcept { return *p; }  // handle const accessors are fine
 };
 
+struct [[gsl::Pointer]] proxy {
+  int *p;
+  proxy &operator=(int x) noexcept { *p = x; return *this; }  // handle: usable on the returned temporary
+};
+
 struct widget {
   int v = 0;
 
@@ -18,7 +23,9 @@ struct widget {
   int &ref() & noexcept { return v; }                 // expect: reloco-ref-qualified-member
   int &ref_ok() & noexcept { return v; }
   const int &cref() const & noexcept { return v; }    // expect: reloco-ref-qualified-member
-  const int &cref_lv() const & noexcept { return v; } // expect: reloco-ref-qualified-member
+  const int &cref_lv() const & noexcept { return v; }
+
+  const int &cref_lv() const && = delete; // expect: reloco-ref-qualified-member
   const int &cref_ok() const & noexcept { return v; }
   const int &cref_ok() const && = delete;
   void set(int x) noexcept { v = x; }               // non-aliasing: only flagged with StrictNonConst

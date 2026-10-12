@@ -102,7 +102,9 @@ public:
 
   [[nodiscard]] result<digraph> try_clone() const noexcept { return try_clone(adjacency_.get_allocator()); }
 
-  [[nodiscard]] allocator_ref get_allocator() const noexcept { return adjacency_.get_allocator(); }
+  [[nodiscard]] allocator_ref get_allocator() const & noexcept { return adjacency_.get_allocator(); }
+
+  [[nodiscard]] allocator_ref get_allocator() const && = delete;
 
   /// Number of nodes currently in the graph.
   [[nodiscard]] size_type node_count() const noexcept { return adjacency_.size(); }

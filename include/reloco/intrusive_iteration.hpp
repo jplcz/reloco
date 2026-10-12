@@ -55,12 +55,14 @@ public:
   }
 
   // Safe read-only access to the payload
-  const T &get() const noexcept RELOCO_CALLABLE_WHEN(unconsumed) {
+  const T &get() const & noexcept RELOCO_CALLABLE_WHEN(unconsumed) {
     RELOCO_ASSERT(m_node != nullptr, "Called on consumed transaction");
     return *m_node;
   }
 
-  T &get_mut() noexcept RELOCO_CALLABLE_WHEN(unconsumed) {
+  const T &get() const && = delete;
+
+  T &get_mut() & noexcept RELOCO_CALLABLE_WHEN(unconsumed) {
     RELOCO_ASSERT(m_node != nullptr, "Called on consumed transaction");
     return *m_node;
   }

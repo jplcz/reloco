@@ -187,22 +187,22 @@ public:
     return static_cast<unsigned>(scaled / static_cast<wide>(one_raw));
   }
 
-  constexpr fixed_point &operator+=(fixed_point other) noexcept {
+  constexpr fixed_point &operator+=(fixed_point other) & noexcept {
     raw_ = static_cast<Rep>(raw_ + other.raw_);
     return *this;
   }
 
-  constexpr fixed_point &operator-=(fixed_point other) noexcept {
+  constexpr fixed_point &operator-=(fixed_point other) & noexcept {
     raw_ = static_cast<Rep>(raw_ - other.raw_);
     return *this;
   }
 
-  constexpr fixed_point &operator*=(fixed_point other) noexcept {
+  constexpr fixed_point &operator*=(fixed_point other) & noexcept {
     *this = *this * other;
     return *this;
   }
 
-  constexpr fixed_point &operator/=(fixed_point other) noexcept {
+  constexpr fixed_point &operator/=(fixed_point other) & noexcept {
     *this = *this / other;
     return *this;
   }

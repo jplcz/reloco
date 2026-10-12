@@ -85,7 +85,7 @@ public:
       return span<T>(m_ptr, m_remaining < m_chunk_size ? m_remaining : m_chunk_size);
     }
 
-    constexpr iterator &operator++() noexcept {
+    constexpr iterator &operator++() & noexcept {
       const std::size_t step = m_remaining < m_chunk_size ? m_remaining : m_chunk_size;
       m_ptr += step;
       m_remaining -= step;
@@ -161,7 +161,7 @@ public:
       return span<T>(m_ptr, m_window_size);
     }
 
-    constexpr iterator &operator++() noexcept {
+    constexpr iterator &operator++() & noexcept {
       ++m_ptr;
       --m_remaining_windows;
       return *this;

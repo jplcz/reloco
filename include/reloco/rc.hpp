@@ -139,7 +139,7 @@ template <typename T> struct rc_control_block_combined final : rc_control_block 
   // ReSharper disable once CppPossiblyUninitializedMember
   explicit rc_control_block_combined(allocator_ref alloc) noexcept : alloc_(alloc) {} // NOLINT(*-pro-type-member-init)
 
-  T *object() noexcept { return reinterpret_cast<T *>(static_cast<void *>(storage_)); }
+  T *object() & noexcept { return reinterpret_cast<T *>(static_cast<void *>(storage_)); }
 
   void destroy_object() noexcept override { object()->~T(); }
 
@@ -385,7 +385,7 @@ public:
     return *this;
   }
 
-  weak_rc &operator=(const rc<T> &other) noexcept {
+  weak_rc &operator=(const rc<T> &other) & noexcept {
     weak_rc(other).swap(*this);
     return *this;
   }

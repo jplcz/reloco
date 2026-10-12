@@ -116,7 +116,7 @@ public:
     }
   }
 
-  inplace_function &operator=(std::nullptr_t) noexcept RELOCO_SET_TYPESTATE(consumed) {
+  inplace_function &operator=(std::nullptr_t) & noexcept RELOCO_SET_TYPESTATE(consumed) {
     reset();
     return *this;
   }
@@ -136,7 +136,7 @@ public:
   template <typename F, typename Decayed = std::decay_t<F>,
             typename =
                 std::enable_if_t<!std::is_same_v<Decayed, inplace_function> && std::is_invocable_r_v<R, F &&, Args...>>>
-  inplace_function &operator=(F &&f) noexcept(std::is_nothrow_constructible_v<Decayed, F &&>)
+  inplace_function &operator=(F &&f) & noexcept(std::is_nothrow_constructible_v<Decayed, F &&>)
       RELOCO_SET_TYPESTATE(unconsumed) {
 
     static_assert(sizeof(Decayed) <= Capacity, "Functor size exceeds Capacity.");
@@ -186,6 +186,8 @@ public:
     RELOCO_ASSERT(vptr_ != nullptr, "inplace_function: as_known() called on empty object");
     return *this;
   }
+
+  [[nodiscard]] const inplace_function &as_known() const && = delete;
 
   void swap(inplace_function &other) noexcept {
     if (this == &other)

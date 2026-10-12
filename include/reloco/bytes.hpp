@@ -175,7 +175,7 @@ public:
    * @brief Splits off `[0, at)`, keeping `[at, size())` in `*this`. Matches
    * Rust's `Bytes::split_to`.
    */
-  [[nodiscard]] bytes split_to(std::size_t at) noexcept {
+  [[nodiscard]] bytes split_to(std::size_t at) & noexcept {
     RELOCO_ASSERT(at <= len_, "bytes: split_to out of range");
     bytes front = slice(0, at);
     ptr_ += at;
@@ -193,7 +193,7 @@ public:
    * @brief Splits off `[at, size())`, keeping `[0, at)` in `*this`. Matches
    * Rust's `Bytes::split_off`.
    */
-  [[nodiscard]] bytes split_off(std::size_t at) noexcept {
+  [[nodiscard]] bytes split_off(std::size_t at) & noexcept {
     RELOCO_ASSERT(at <= len_, "bytes: split_off out of range");
     bytes back = slice(at, len_ - at);
     len_ = at;
@@ -341,30 +341,38 @@ public:
   [[nodiscard]] constexpr std::size_t size() const noexcept { return len_; }
   [[nodiscard]] constexpr std::size_t capacity() const noexcept { return capacity_; }
   [[nodiscard]] constexpr bool is_empty() const noexcept { return len_ == 0; }
-  [[nodiscard]] constexpr allocator_ref get_allocator() const noexcept { return alloc_; }
+  [[nodiscard]] constexpr allocator_ref get_allocator() const & noexcept { return alloc_; }
+
+  [[nodiscard]] constexpr allocator_ref get_allocator() const && = delete;
 
   void clear() noexcept { len_ = 0; }
 
-  RELOCO_CHECKED [[nodiscard]] std::byte &operator[](std::size_t index) noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] std::byte &operator[](std::size_t index) & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(index < len_, "bytes_mut: index out of range");
     return data_[index];
   }
 
-  RELOCO_CHECKED [[nodiscard]] const std::byte &operator[](std::size_t index) const noexcept RELOCO_LIFETIMEBOUND {
+  RELOCO_CHECKED [[nodiscard]] const std::byte &operator[](std::size_t index) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT(index < len_, "bytes_mut: index out of range");
     return data_[index];
   }
 
-  [[nodiscard]] constexpr std::byte *data() noexcept RELOCO_LIFETIMEBOUND { return data_; }
-  [[nodiscard]] constexpr const std::byte *data() const noexcept RELOCO_LIFETIMEBOUND { return data_; }
+  RELOCO_CHECKED [[nodiscard]] const std::byte &operator[](std::size_t index) const && = delete;
 
-  [[nodiscard]] constexpr span<std::byte> as_span() noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] constexpr std::byte *data() & noexcept RELOCO_LIFETIMEBOUND { return data_; }
+  [[nodiscard]] constexpr const std::byte *data() const & noexcept RELOCO_LIFETIMEBOUND { return data_; }
+
+  [[nodiscard]] constexpr const std::byte *data() const && = delete;
+
+  [[nodiscard]] constexpr span<std::byte> as_span() & noexcept RELOCO_LIFETIMEBOUND {
     return span<std::byte>(data_, len_);
   }
 
-  [[nodiscard]] constexpr span<const std::byte> as_span() const noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] constexpr span<const std::byte> as_span() const & noexcept RELOCO_LIFETIMEBOUND {
     return span<const std::byte>(data_, len_);
   }
+
+  [[nodiscard]] constexpr span<const std::byte> as_span() const && = delete;
 
   /**
    * @brief Converts `*this` into an immutable `bytes` without copying the

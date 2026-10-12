@@ -217,7 +217,8 @@ public:
    * Purely a debugging aid: never participates in equality, ordering, or
    * hashing.
    */
-  [[nodiscard]] constexpr const char *name() const noexcept { return name_; }
+  // NOLINTNEXTLINE(reloco-ref-qualified-member): points at static storage, not at this object.
+  [[nodiscard]] constexpr const char *name() const & noexcept { return name_; }
 
 private:
   constexpr explicit type_id(const void *tag, const char *name) noexcept : tag_(tag), name_(name) {}

@@ -56,7 +56,7 @@ public:
     return current_;
   }
 
-  c_slist_iterator &operator++() noexcept {
+  c_slist_iterator &operator++() & noexcept {
     RELOCO_ASSERT(current_ != nullptr, "reloco::c_slist_iterator: incrementing an end() iterator");
     current_ = detail::c_slist_hook_access<T, Hook>::next(current_);
     return *this;
@@ -76,7 +76,9 @@ public:
     return !(lhs == rhs);
   }
 
-  [[nodiscard]] constexpr T *node() const noexcept { return current_; }
+  [[nodiscard]] constexpr T *node() const & noexcept { return current_; }
+
+  [[nodiscard]] constexpr T *node() const && = delete;
 
 private:
   T *current_ = nullptr;
@@ -117,6 +119,8 @@ public:
   [[nodiscard]] const_iterator cend() const & noexcept { return end(); }
 
   [[nodiscard]] T *front() const & noexcept { return first_; }
+
+  [[nodiscard]] T *front() const && = delete;
 
   void push_front(T &node) & noexcept {
     detail::c_slist_hook_access<T, Hook>::next(&node) = first_;

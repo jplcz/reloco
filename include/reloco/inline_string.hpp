@@ -329,6 +329,8 @@ public:
     return data_;
   }
 
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE const_pointer unsafe_c_str() const && = delete;
+
   [[nodiscard]] view_type view() const & noexcept RELOCO_LIFETIMEBOUND { return view_type(data_, size_); }
 
   [[nodiscard]] operator view_type() const & noexcept RELOCO_LIFETIMEBOUND { return view(); }

@@ -388,7 +388,7 @@ public:
 private:
   /** @brief Extracts the owner key from a registry node. */
   struct owner_of {
-    const OwnerKey &operator()(const node &n) const noexcept { return n.owner; }
+    const OwnerKey &operator()(const node &n) const & noexcept { return n.owner; }
   };
 
   using table_type = intrusive_hash_table<node, &node::hook, owner_of, Hash, KeyEqual>;

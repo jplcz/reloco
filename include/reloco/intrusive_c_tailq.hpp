@@ -71,7 +71,7 @@ public:
     return current_;
   }
 
-  c_tailq_iterator &operator++() noexcept {
+  c_tailq_iterator &operator++() & noexcept {
     RELOCO_ASSERT(current_ != nullptr, "reloco::c_tailq_iterator: incrementing an end() iterator");
     current_ = detail::c_tailq_hook_access<T, Hook>::next(current_);
     return *this;
@@ -91,7 +91,9 @@ public:
     return !(lhs == rhs);
   }
 
-  [[nodiscard]] constexpr T *node() const noexcept { return current_; }
+  [[nodiscard]] constexpr T *node() const & noexcept { return current_; }
+
+  [[nodiscard]] constexpr T *node() const && = delete;
 
 private:
   T *current_ = nullptr;
@@ -149,6 +151,8 @@ public:
   [[nodiscard]] const_iterator cend() const & noexcept { return end(); }
 
   [[nodiscard]] T *front() const & noexcept { return first_; }
+
+  [[nodiscard]] T *front() const && = delete;
 
   /** @brief TAILQ_INSERT_HEAD: O(1) insertion at the front. */
   void push_front(T &node) & noexcept {

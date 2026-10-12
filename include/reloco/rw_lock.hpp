@@ -102,6 +102,8 @@ public:
       return cell_->value_;
     }
 
+  [[nodiscard]] const T &get() const && = delete;
+
   private:
     friend class rw_lock;
     explicit read_guard(rw_lock *cell) noexcept : cell_(cell) {}
@@ -141,11 +143,15 @@ public:
       return cell_->value_;
     }
 
+  [[nodiscard]] const T &get() const && = delete;
+
     /** @brief Mutable access to the protected value; equivalent to `*this`, spelled out for parity with `get()`. */
     [[nodiscard]] T &get_mut() const & noexcept RELOCO_LIFETIMEBOUND {
       RELOCO_ASSERT(cell_ != nullptr, "write_guard used after being moved from");
       return cell_->value_;
     }
+
+  [[nodiscard]] T &get_mut() const && = delete;
 
   private:
     friend class rw_lock;

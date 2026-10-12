@@ -127,28 +127,29 @@ public:
   // Contrast with begin()/end() below, which correctly remain
   // RELOCO_LIFETIMEBOUND: the *iterator itself* must not outlive the
   // container it was created from.
-  RELOCO_CHECKED [[nodiscard]] constexpr reference operator*() const noexcept {
+  RELOCO_CHECKED [[nodiscard]] constexpr reference operator*() const & noexcept {
     policy_.assert_deref(current_);
     return *current_;
   }
 
-  RELOCO_CHECKED [[nodiscard]] constexpr pointer operator->() const noexcept {
+  RELOCO_CHECKED [[nodiscard]] constexpr pointer operator->() const & noexcept {
     policy_.assert_deref(current_);
     return current_;
   }
 
-  RELOCO_CHECKED [[nodiscard]] constexpr reference operator[](difference_type n) const noexcept {
+  // NOLINTNEXTLINE(reloco-ref-qualified-member): an iterator is a handle; the element outlives it.
+  RELOCO_CHECKED [[nodiscard]] constexpr reference operator[](difference_type n) const & noexcept {
     policy_.assert_deref(current_ + n);
     return current_[n];
   }
 
-  constexpr contiguous_iterator &operator++() noexcept {
+  constexpr contiguous_iterator &operator++() & noexcept {
     policy_.assert_math(current_, 1);
     ++current_;
     return *this;
   }
 
-  constexpr contiguous_iterator &operator+=(difference_type n) noexcept {
+  constexpr contiguous_iterator &operator+=(difference_type n) & noexcept {
     policy_.assert_math(current_, n);
     // GCC, once it inlines this into algorithms like std::sort's final
     // insertion sort over a small stack array, can misjudge the
@@ -191,7 +192,7 @@ public:
   [[nodiscard]] constexpr bool operator<=(const contiguous_iterator &other) const noexcept { return !(other < *this); }
   [[nodiscard]] constexpr bool operator>=(const contiguous_iterator &other) const noexcept { return !(*this < other); }
 
-  constexpr contiguous_iterator &operator--() noexcept { return *this += -1; }
+  constexpr contiguous_iterator &operator--() & noexcept { return *this += -1; }
   constexpr contiguous_iterator operator--(int) noexcept {
     contiguous_iterator tmp = *this;
     --(*this);
@@ -202,11 +203,15 @@ public:
     ++(*this);
     return tmp;
   }
-  constexpr contiguous_iterator &operator-=(difference_type n) noexcept { return *this += -n; }
+  constexpr contiguous_iterator &operator-=(difference_type n) & noexcept { return *this += -n; }
   [[nodiscard]] constexpr contiguous_iterator operator-(difference_type n) const noexcept { return *this + (-n); }
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr pointer unsafe_current() const noexcept { return current_; }
-  [[nodiscard]] constexpr const BoundsPolicy &policy() const noexcept { return policy_; }
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr pointer unsafe_current() const & noexcept { return current_; }
+
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr pointer unsafe_current() const && = delete;
+  [[nodiscard]] constexpr const BoundsPolicy &policy() const & noexcept { return policy_; }
+
+  [[nodiscard]] constexpr const BoundsPolicy &policy() const && = delete;
 
 private:
   pointer current_{nullptr};

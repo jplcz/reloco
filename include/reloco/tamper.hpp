@@ -56,7 +56,7 @@ public:
   masked_integral(T val) noexcept { store(val); }
 
   // Assignment
-  masked_integral &operator=(T val) noexcept {
+  masked_integral &operator=(T val) & noexcept {
     store(val);
     return *this;
   }
@@ -65,64 +65,64 @@ public:
   [[nodiscard]] operator T() const noexcept { return load(); }
 
   // ---- Compound Arithmetic ----
-  masked_integral &operator+=(T val) noexcept {
+  masked_integral &operator+=(T val) & noexcept {
     store(load() + val);
     return *this;
   }
 
-  masked_integral &operator-=(T val) noexcept {
+  masked_integral &operator-=(T val) & noexcept {
     store(load() - val);
     return *this;
   }
 
-  masked_integral &operator*=(T val) noexcept {
+  masked_integral &operator*=(T val) & noexcept {
     store(load() * val);
     return *this;
   }
 
-  masked_integral &operator/=(T val) noexcept {
+  masked_integral &operator/=(T val) & noexcept {
     store(load() / val);
     return *this;
   }
 
-  masked_integral &operator%=(T val) noexcept {
+  masked_integral &operator%=(T val) & noexcept {
     store(load() % val);
     return *this;
   }
 
   // ---- Compound Bitwise ----
-  masked_integral &operator&=(T val) noexcept {
+  masked_integral &operator&=(T val) & noexcept {
     store(load() & val);
     return *this;
   }
 
-  masked_integral &operator|=(T val) noexcept {
+  masked_integral &operator|=(T val) & noexcept {
     store(load() | val);
     return *this;
   }
 
-  masked_integral &operator^=(T val) noexcept {
+  masked_integral &operator^=(T val) & noexcept {
     store(load() ^ val);
     return *this;
   }
 
-  masked_integral &operator<<=(T val) noexcept {
+  masked_integral &operator<<=(T val) & noexcept {
     store(load() << val);
     return *this;
   }
 
-  masked_integral &operator>>=(T val) noexcept {
+  masked_integral &operator>>=(T val) & noexcept {
     store(load() >> val);
     return *this;
   }
 
   // ---- Prefix Increment/Decrement ----
-  masked_integral &operator++() noexcept {
+  masked_integral &operator++() & noexcept {
     store(load() + 1);
     return *this;
   }
 
-  masked_integral &operator--() noexcept {
+  masked_integral &operator--() & noexcept {
     store(load() - 1);
     return *this;
   }
@@ -177,7 +177,7 @@ public:
   }
 
   // Convenience operators
-  tamper_proof_state &operator=(EnumT state) noexcept {
+  tamper_proof_state &operator=(EnumT state) & noexcept {
     set(state);
     return *this;
   }
@@ -223,7 +223,7 @@ public:
 
   // ---- Transparent Native Interaction ----
 
-  tamper_bool_impl &operator=(bool b) noexcept {
+  tamper_bool_impl &operator=(bool b) & noexcept {
     *this = tamper_bool_impl(b);
     return *this;
   }
@@ -253,17 +253,17 @@ public:
 
   // ---- Compound Operators ----
 
-  tamper_bool_impl &operator&=(const tamper_bool_impl &rhs) noexcept {
+  tamper_bool_impl &operator&=(const tamper_bool_impl &rhs) & noexcept {
     *this = *this & rhs;
     return *this;
   }
 
-  tamper_bool_impl &operator|=(const tamper_bool_impl &rhs) noexcept {
+  tamper_bool_impl &operator|=(const tamper_bool_impl &rhs) & noexcept {
     *this = *this | rhs;
     return *this;
   }
 
-  tamper_bool_impl &operator^=(const tamper_bool_impl &rhs) noexcept {
+  tamper_bool_impl &operator^=(const tamper_bool_impl &rhs) & noexcept {
     *this = *this ^ rhs;
     return *this;
   }

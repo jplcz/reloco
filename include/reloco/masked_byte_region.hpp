@@ -199,7 +199,9 @@ public:
   /**
    * @brief Proxy class to support array-like assignment: region[i] = 0xAA;
    */
-  class reference {
+  // RELOCO_POINTER: a by-value proxy handle, so its assignment operators must work on the temporary that
+  // operator[] returns (region[i] = 0xAA).
+  class RELOCO_POINTER reference {
     masked_byte_region &region_;
     size_t offset_;
 
@@ -336,7 +338,7 @@ private:
 
     RELOCO_CHECKED [[nodiscard]] reference operator[](difference_type n) const noexcept { return *(*this + n); }
 
-    byte_iterator &operator++() noexcept {
+    byte_iterator &operator++() & noexcept {
       ++idx_;
       return *this;
     }
@@ -347,7 +349,7 @@ private:
       return tmp;
     }
 
-    byte_iterator &operator--() noexcept {
+    byte_iterator &operator--() & noexcept {
       --idx_;
       return *this;
     }
@@ -358,7 +360,7 @@ private:
       return tmp;
     }
 
-    byte_iterator &operator+=(difference_type n) noexcept {
+    byte_iterator &operator+=(difference_type n) & noexcept {
       if (n >= 0) {
         idx_ += static_cast<size_t>(n);
       } else {
@@ -367,7 +369,7 @@ private:
       return *this;
     }
 
-    byte_iterator &operator-=(difference_type n) noexcept { return *this += -n; }
+    byte_iterator &operator-=(difference_type n) & noexcept { return *this += -n; }
 
     [[nodiscard]] friend byte_iterator operator+(byte_iterator it, difference_type n) noexcept { return it += n; }
     [[nodiscard]] friend byte_iterator operator+(difference_type n, byte_iterator it) noexcept { return it += n; }

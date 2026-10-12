@@ -48,7 +48,7 @@ public:
    * @post The memory is now initialized ('unconsumed').
    */
   template <typename... Args>
-  RELOCO_UNSAFE_BUFFER_USAGE [[nodiscard]] T &write(Args &&...args) noexcept RELOCO_LIFETIMEBOUND
+  RELOCO_UNSAFE_BUFFER_USAGE [[nodiscard]] T &write(Args &&...args) & noexcept RELOCO_LIFETIMEBOUND
       RELOCO_CALLABLE_WHEN(consumed) RELOCO_SET_TYPESTATE(unconsumed) {
     return *(new (&m_storage) T(std::forward<Args>(args)...));
   }
@@ -58,7 +58,7 @@ public:
    * @pre The memory must be uninitialized ('consumed').
    * @post The memory is now considered initialized ('unconsumed').
    */
-  RELOCO_UNSAFE_BUFFER_USAGE [[nodiscard]] T *assume_init() noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(consumed)
+  RELOCO_UNSAFE_BUFFER_USAGE [[nodiscard]] T *assume_init() & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(consumed)
       RELOCO_SET_TYPESTATE(unconsumed) {
     return std::launder(reinterpret_cast<T *>(&m_storage));
   }
@@ -76,16 +76,18 @@ public:
    * @brief Safe read-only access to the initialized memory.
    * @pre The memory MUST be initialized ('unconsumed').
    */
-  RELOCO_UNSAFE_BUFFER_USAGE [[nodiscard]] const T &get() const noexcept RELOCO_LIFETIMEBOUND
+  RELOCO_UNSAFE_BUFFER_USAGE [[nodiscard]] const T &get() const & noexcept RELOCO_LIFETIMEBOUND
       RELOCO_CALLABLE_WHEN(unconsumed) {
     return *std::launder(reinterpret_cast<const T *>(&m_storage));
   }
+
+  RELOCO_UNSAFE_BUFFER_USAGE [[nodiscard]] const T &get() const && = delete;
 
   /**
    * @brief Safe mutable access to the initialized memory.
    * @pre The memory MUST be initialized ('unconsumed').
    */
-  RELOCO_UNSAFE_BUFFER_USAGE [[nodiscard]] T &get_mut() noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(unconsumed) {
+  RELOCO_UNSAFE_BUFFER_USAGE [[nodiscard]] T &get_mut() & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(unconsumed) {
     return *std::launder(reinterpret_cast<T *>(&m_storage));
   }
 

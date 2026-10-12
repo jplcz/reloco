@@ -266,13 +266,15 @@ public:
 
   /** @brief The wrapped mutex, or `nullptr` if default-constructed or
    * moved-from. Does not imply ownership -- check `owns_lock()`. */
-  [[nodiscard]] mutex_type *mutex() const noexcept { return mutex_; }
+  [[nodiscard]] mutex_type *mutex() const & noexcept { return mutex_; }
+
+  [[nodiscard]] mutex_type *mutex() const && = delete;
 
   /** @brief Detaches from the wrapped mutex without unlocking it,
    * returning it to the caller, who becomes responsible for eventually
    * unlocking it (typically by adopting it into another lock wrapper via
    * `adopt_lock`). Matches `std::unique_lock::release()`. */
-  [[nodiscard]] mutex_type *release() noexcept {
+  [[nodiscard]] mutex_type *release() & noexcept {
     mutex_type *m = mutex_;
     mutex_ = nullptr;
     owns_ = false;

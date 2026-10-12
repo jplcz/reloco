@@ -150,7 +150,7 @@ public:
    * @brief Safe mutable access to the underlying object.
    * @pre You must check `if (guard.is_alive())` first!
    */
-  T &get() noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(unconsumed) {
+  T &get() & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(unconsumed) {
     RELOCO_ASSERT(m_ptr != nullptr, "Object consumed");
     return *m_ptr;
   }
@@ -159,18 +159,20 @@ public:
    * @brief Safe read-only access to the underlying object.
    * @pre You must check `if (guard.is_alive())` first!
    */
-  const T &get() const noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(unconsumed) {
+  const T &get() const & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(unconsumed) {
     RELOCO_ASSERT(m_ptr != nullptr, "Object consumed");
     return *m_ptr;
   }
 
+  const T &get() const && = delete;
+
   // Syntactic sugar for direct pointer access
-  RELOCO_CHECKED T *operator->() noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(unconsumed) {
+  RELOCO_CHECKED T *operator->() & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(unconsumed) {
     RELOCO_ASSERT(m_ptr != nullptr, "Object consumed");
     return m_ptr;
   }
 
-  RELOCO_CHECKED const T *operator->() const noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(unconsumed) {
+  RELOCO_CHECKED const T *operator->() const & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(unconsumed) {
     RELOCO_ASSERT(m_ptr != nullptr, "Object consumed");
     return m_ptr;
   }
