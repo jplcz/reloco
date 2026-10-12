@@ -590,10 +590,12 @@ clang-tidy-24 --load=libreloco-tidy.so --checks='-*,reloco-*' -fix src/foo.cpp -
 |-------|---------------|
 | `reloco-explicit-conversion` | inserts `explicit ` |
 | `reloco-must-use-result` | inserts `[[nodiscard]] ` |
-| `reloco-ref-qualified-member` | inserts ` &` after the cv-qualifiers |
+| `reloco-ref-qualified-member` | inserts ` &` after the cv-qualifiers on **every** redeclaration (in-class and out-of-line definitions); the deleted `const &&` twin is added only to definitions, never to declaration-only members |
 | `reloco-noexcept` | inserts ` noexcept` after cv/ref qualifiers |
-| `reloco-const-local` | inserts `const ` (single-declarator statements only) |
+| `reloco-const-local` | inserts `const ` (single-declarator statements only); see the skip list under *Instantiation and fix-it notes* |
 | `reloco-uninit-local` | appends ` = {}` |
+| `reloco-lifetime-annotations` | inserts ` RELOCO_LIFETIMEBOUND` after the qualifiers (after `noexcept(...)`); skipped when a trailing return type, `requires` or `try` follows |
+| `reloco-implicit-bool` | appends `!= 0` / `!= nullptr`; non-primary operands are parenthesised, so `if (flags & m)` becomes `if ((flags & m) != 0)` |
 | `reloco-implicit-conversion` | wraps the expression in `static_cast<T>(...)` |
 | `reloco-member-init` | appends `{}` to the field |
 
@@ -685,3 +687,16 @@ void log_msg(const char *RELOCO_STATIC_STR msg) noexcept;
   value, the temporary never overlaps the receiver.
 - `reloco-borrow-check` treats copying a pointer or view out of another object (lvalue-to-rvalue, or a copy/move
   constructor) as a value copy, not a borrow: `int *old = head_;` does not borrow `head_`.
+- `reloco-const-local` does not flag: variables written by inline-asm output operands; non-trivially-copyable locals
+  that are `return`ed by name (const would turn the move into a copy); variables used as a range-for range (the
+  analysis cannot see the non-const `begin()`/`end()` call).
+- `reloco-uninit-local` skips range-for loop variables (initialised by the loop).
+- `reloco-explicit-conversion` exempts `std::nullptr_t` converting constructors (`T(nullptr_t)` is the idiom for
+  "empty").
+- `reloco-lifetime-annotations` offers a fix-it only for the annotation-less accessor shape; constructors still need a
+  manual choice between lifetimebound and capture annotations.
+- `reloco-implicit-bool` parenthesises any operand that is not a DeclRef, Member, Call, Paren, ArraySubscript or unary
+  operator, so the inserted comparison binds to the whole expression (`!(a & b)` becomes `(a & b) == 0`).
+- `reloco-member-init` skips incomplete (flexible) array fields.
+- `reloco-implicit-copy` is silenced by `RELOCO_COPYABLE`; value types that have a user destructor and so no move
+  (`reloco::expected`, `array`, `sentinel`, `instant`) carry it.
