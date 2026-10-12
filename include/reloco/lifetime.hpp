@@ -145,6 +145,34 @@
 #define RELOCO_OUT
 #endif
 
+/**
+ * @def RELOCO_CHECKED
+ * @brief Declares that a class's `operator[]`, unary `operator*` and `operator->` perform bounds
+ * or null checking (e.g. return a `result`, assert, or clamp). reloco-tidy's `reloco-checked-operator`
+ * treats every *use* of those operators on a type that is not RELOCO_CHECKED as a violation, and
+ * flags definitions that lack the marker. Put it before the operator declaration, or before the
+ * class to cover all three: `RELOCO_CHECKED T &operator[](size_t i) & noexcept;`.
+ * Compiles to nothing for GCC/MSVC.
+ */
+#if RELOCO_HAS_CPP_ATTRIBUTE(clang::annotate)
+#define RELOCO_CHECKED [[clang::annotate("reloco_checked")]]
+#else
+#define RELOCO_CHECKED
+#endif
+
+/**
+ * @def RELOCO_SAFE_MATH
+ * @brief Opt-in marker on a function or class: reloco-tidy's `reloco-safe-math` then rejects raw
+ * integer `+ - * / % << >>`, `++`, `--` and unary `-` on non-constant operands inside it, requiring
+ * the checked/saturating/wrapping helpers (`reloco/checked.hpp`, `saturating.hpp`, `wrapping.hpp`).
+ * Code without the marker is never checked. Compiles to nothing for GCC/MSVC.
+ */
+#if RELOCO_HAS_CPP_ATTRIBUTE(clang::annotate)
+#define RELOCO_SAFE_MATH [[clang::annotate("reloco_safe_math")]]
+#else
+#define RELOCO_SAFE_MATH
+#endif
+
 // ============================================================================
 // reloco-tidy Safety Check Regions
 // ============================================================================

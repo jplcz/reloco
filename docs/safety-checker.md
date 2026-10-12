@@ -54,6 +54,20 @@ Fixtures use `// expect: <check>` on the offending line.
 | `reloco-implicit-copy` | Classes are move-only unless marked `RELOCO_COPYABLE` (Rust's `Copy`). Implicit copies (`T y = x`, by-value arguments, by-value range-for, copy assignment) are flagged. Explicit copies (`T(x)`, `T y(x)`, `T y{x}`, `static_cast<T>(x)`, member initialisers) are the equivalent of `.clone()` and always allowed. `RELOCO_POINTER` views are always copyable. | Makes every duplicate of a resource visible in the source. |
 | `reloco-uninit-local` | Locals are always initialised at declaration. Classes with a non-trivial default constructor, and static locals, are fine. | No indeterminate values. |
 | `reloco-out-param` | A `RELOCO_OUT` parameter must be written on every returning path and not read before its first write. See below. | Callers can rely on the output being set. |
+| `reloco-implicit-conversion` | Implicit narrowing, sign-changing and lossy float conversions are errors; use `static_cast` or a checked helper. Constants that fit are fine. | Rust has no implicit `as`. |
+| `reloco-explicit-conversion` | Single-argument constructors and conversion operators must be `explicit` (`initializer_list` constructors excepted). | No silent conversions. |
+| `reloco-must-use-result` | Functions returning `expected`/`result`/`error`/`status`/`optional` types must be `[[nodiscard]]` (or the type must be). | Rust's `#[must_use]`. |
+| `reloco-unused-result` | A discarded call result of those types is an error; cast to `void` with a reason. | Dropped errors. |
+| `reloco-const-local` | A local that is never mutated must be `const` (pointers, references and arrays excluded). | Immutable by default, like `let`. |
+| `reloco-no-shadow` | A local may not shadow another local or parameter of an enclosing scope. | |
+| `reloco-enum-switch` | A `switch` over an enum lists every enumerator and has no `default`. | A new enumerator breaks the build. Pair with `-Wimplicit-fallthrough` for fallthrough. |
+| `reloco-banned-low-level` | `goto`, `setjmp`/`longjmp`, `union` and `volatile` (suppress MMIO with `NOLINT` and a reason). | Each bypasses a static guarantee. |
+| `reloco-mutable-global` | Mutable namespace-scope, static-member and function-static variables are banned, except atomic/mutex/lock types. | Rust's `static mut`. |
+| `reloco-unsafe-call-scope` | Calls to `unsafe_*` / `[[unsafe_buffer_usage]]` functions are only allowed from the unsafe tier or inside unsafe regions (also Clang's `unsafe_buffer_usage` blocks). | Rust's `unsafe` blocks. |
+| `reloco-checked-operator` | `operator[]`, unary `operator*` and `operator->` must be `RELOCO_CHECKED` (they bounds/null check), on the operator or its class; using such an operator on a type that is not `RELOCO_CHECKED` is a violation. Callers inside the unsafe tier are exempt. | These are where out-of-bounds and null dereferences hide. |
+| `reloco-safe-math` | **Opt-in.** Inside a function or class marked `RELOCO_SAFE_MATH`, raw integer `+ - * / % << >>`, `++`, `--`, unary `-` on non-constant operands are rejected; use `checked.hpp`, `saturating.hpp` or `wrapping.hpp`. Unmarked code is never checked. | Overflow is explicit where it matters. |
+| `reloco-member-init` | Every field has a default member initializer (self-initialising class types excepted). | No indeterminate members. |
+| `reloco-rule-of-five` | Declaring any of destructor, copy/move constructor, copy/move assignment means declaring all five (`= default`/`= delete`). A lone defaulted destructor is allowed. | Explicit ownership semantics. |
 | `reloco-borrow-check` | Best-effort Rust-style borrow checking inside one function. See below. | Aliasing XOR mutability. |
 
 ### `RELOCO_OUT`
@@ -92,6 +106,8 @@ Intra-procedural and flow-sensitive (NLL-style):
 Limits: no inter-procedural reasoning, no aliasing through containers or heap, no use-after-move
 tracking. Use Clang's `-Wlifetime-safety` for use-after-return/scope. It is a bug finder, not a proof.
 
+Slicing is deliberately not a separate rule: polymorphic bases are already a red flag.
+
 ## Exemptions
 
 Every check honours these; each use should say why it is sound.
@@ -103,6 +119,7 @@ Every check honours these; each use should say why it is sound.
 | `RELOCO_UNSAFE_BUFFER_USAGE` function or a function named `unsafe_*` | the unsafe tier (raw pointers, casts, arrays tolerated) |
 | `#pragma clang unsafe_buffer_usage begin/end`, `RELOCO_BEGIN/END_UNSAFE_BUFFER_USAGE` | region, **borrow check only** |
 | `RELOCO_BORROW_EXEMPT` on a function or class | borrow check, e.g. `swap`/`exchange` primitives |
+| `RELOCO_CHECKED` / `RELOCO_SAFE_MATH` | not exemptions: they declare a type is checked / opt code into strict math |
 | `ExemptPaths` option (`;`-separated substrings, `none` to disable) | default `/tests/;/test/;/examples/;/example/;/demos/;/benchmarks/;/_deps/;/third_party/;/build/;/build-` |
 
 System headers are never reported.
@@ -131,6 +148,6 @@ The macros expand to `_Pragma("region ...")`, which GCC, Clang and MSVC accept s
 ## Macro reference (`reloco/lifetime.hpp`)
 
 `RELOCO_POINTER`, `RELOCO_OWNER`, `RELOCO_LIFETIMEBOUND`, `RELOCO_COPYABLE`, `RELOCO_OUT`,
-`RELOCO_BORROW_EXEMPT`, `RELOCO_UNSAFE_BUFFER_USAGE`, `RELOCO_BEGIN/END_SAFE_CODE`,
+`RELOCO_BORROW_EXEMPT`, `RELOCO_CHECKED`, `RELOCO_SAFE_MATH`, `RELOCO_UNSAFE_BUFFER_USAGE`, `RELOCO_BEGIN/END_SAFE_CODE`,
 `RELOCO_BEGIN/END_UNSAFE_CODE`, `RELOCO_BEGIN/END_UNSAFE_BUFFER_USAGE`. All compile to nothing
 where the compiler lacks the attribute. See also [lifetime safety](lifetime-safety.md).

@@ -43,6 +43,7 @@ add_library(reloco-tidy MODULE
     src/NoRawPointerCheck.cpp
     src/NoCArrayCheck.cpp
     src/NoexceptCheck.cpp
+    src/EasyChecks.cpp
     src/OutParamCheck.cpp
     src/UninitLocalCheck.cpp
     src/ImplicitCopyCheck.cpp
