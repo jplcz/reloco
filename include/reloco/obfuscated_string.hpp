@@ -100,6 +100,10 @@
 
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
+// Unsafe by design: decrypts into raw/volatile buffers so the plaintext can be
+// wiped; the public API exposes only checked accessors.
+RELOCO_BEGIN_UNSAFE_CODE
+
 namespace reloco {
 
 namespace security {
@@ -395,3 +399,5 @@ RELOCO_END_UNSAFE_BUFFER_USAGE
       ::reloco::obfuscated_string(str_literal, RELOCO_DETAIL_OBFUSCATED_SEED());                                       \
   } /* namespace */                                                                                                    \
   const ::reloco::obfuscated_string_ref name(reloco_obfuscated_storage_##name##_)
+
+RELOCO_END_UNSAFE_CODE

@@ -208,17 +208,17 @@ public:
    * @p msg is used as the `RELOCO_ASSERT_MSG` failure message instead of a
    * generic one, for a more actionable trap site.
    */
-  [[nodiscard]] T &expect(const char *msg) & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] T &expect(const char *RELOCO_STATIC_STR msg) & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT_MSG(has_value_, msg);
     return value_;
   }
   /** @copydoc expect(const char *) & */
-  [[nodiscard]] const T &expect(const char *msg) const & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] const T &expect(const char *RELOCO_STATIC_STR msg) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT_MSG(has_value_, msg);
     return value_;
   }
   /** @copydoc expect(const char *) & */
-  [[nodiscard]] T &&expect(const char *msg) && noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] T &&expect(const char *RELOCO_STATIC_STR msg) && noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT_MSG(has_value_, msg);
     return std::move(value_);
   }

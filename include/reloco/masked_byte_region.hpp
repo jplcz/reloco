@@ -66,6 +66,9 @@
 
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
+// Unsafe by design: volatile byte access so masking/wiping is never optimised away.
+RELOCO_BEGIN_UNSAFE_CODE
+
 namespace reloco {
 namespace security {
 
@@ -393,3 +396,5 @@ private:
 } // namespace reloco
 
 RELOCO_END_UNSAFE_BUFFER_USAGE
+
+RELOCO_END_UNSAFE_CODE

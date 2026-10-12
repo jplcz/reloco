@@ -154,22 +154,22 @@ public:
    * @p msg is used as the `RELOCO_ASSERT` failure message instead of a
    * generic one, for a more actionable trap site.
    */
-  constexpr T &expect(const char *msg) & noexcept RELOCO_LIFETIMEBOUND {
+  constexpr T &expect(const char *RELOCO_STATIC_STR msg) & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT_MSG(m_has_value, msg);
     return m_value;
   }
   /** @copydoc expect(const char *) & */
-  constexpr T &&expect(const char *msg) && noexcept RELOCO_LIFETIMEBOUND {
+  constexpr T &&expect(const char *RELOCO_STATIC_STR msg) && noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT_MSG(m_has_value, msg);
     return std::move(m_value);
   }
   /** @copydoc expect(const char *) & */
-  constexpr const T &expect(const char *msg) const & noexcept RELOCO_LIFETIMEBOUND {
+  constexpr const T &expect(const char *RELOCO_STATIC_STR msg) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT_MSG(m_has_value, msg);
     return m_value;
   }
   /** @copydoc expect(const char *) & */
-  constexpr const T &&expect(const char *msg) const && noexcept RELOCO_LIFETIMEBOUND {
+  constexpr const T &&expect(const char *RELOCO_STATIC_STR msg) const && noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT_MSG(m_has_value, msg);
     return std::move(m_value);
   }
@@ -179,22 +179,22 @@ public:
    * @p msg is used as the `RELOCO_ASSERT` failure message instead of a
    * generic one.
    */
-  constexpr E &expect_err(const char *msg) & noexcept RELOCO_LIFETIMEBOUND {
+  constexpr E &expect_err(const char *RELOCO_STATIC_STR msg) & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT_MSG(!m_has_value, msg);
     return m_error;
   }
   /** @copydoc expect_err(const char *) & */
-  constexpr E &&expect_err(const char *msg) && noexcept RELOCO_LIFETIMEBOUND {
+  constexpr E &&expect_err(const char *RELOCO_STATIC_STR msg) && noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT_MSG(!m_has_value, msg);
     return std::move(m_error);
   }
   /** @copydoc expect_err(const char *) & */
-  constexpr const E &expect_err(const char *msg) const & noexcept RELOCO_LIFETIMEBOUND {
+  constexpr const E &expect_err(const char *RELOCO_STATIC_STR msg) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT_MSG(!m_has_value, msg);
     return m_error;
   }
   /** @copydoc expect_err(const char *) & */
-  constexpr const E &&expect_err(const char *msg) const && noexcept RELOCO_LIFETIMEBOUND {
+  constexpr const E &&expect_err(const char *RELOCO_STATIC_STR msg) const && noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT_MSG(!m_has_value, msg);
     return std::move(m_error);
   }
@@ -412,29 +412,29 @@ public:
    * @p msg is used as the `RELOCO_ASSERT` failure message instead of a
    * generic one.
    */
-  void expect(const char *msg) const noexcept { RELOCO_ASSERT_MSG(m_has_value, msg); }
+  void expect(const char *RELOCO_STATIC_STR msg) const noexcept { RELOCO_ASSERT_MSG(m_has_value, msg); }
 
   /**
    * @brief Rust `Result::expect_err(msg)` equivalent: like `error()`, but
    * @p msg is used as the `RELOCO_ASSERT` failure message instead of a
    * generic one.
    */
-  constexpr E &expect_err(const char *msg) & noexcept RELOCO_LIFETIMEBOUND {
+  constexpr E &expect_err(const char *RELOCO_STATIC_STR msg) & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT_MSG(!m_has_value, msg);
     return m_error;
   }
   /** @copydoc expect_err(const char *) & */
-  constexpr E &&expect_err(const char *msg) && noexcept RELOCO_LIFETIMEBOUND {
+  constexpr E &&expect_err(const char *RELOCO_STATIC_STR msg) && noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT_MSG(!m_has_value, msg);
     return std::move(m_error);
   }
   /** @copydoc expect_err(const char *) & */
-  constexpr const E &expect_err(const char *msg) const & noexcept RELOCO_LIFETIMEBOUND {
+  constexpr const E &expect_err(const char *RELOCO_STATIC_STR msg) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT_MSG(!m_has_value, msg);
     return m_error;
   }
   /** @copydoc expect_err(const char *) & */
-  constexpr const E &&expect_err(const char *msg) const && noexcept RELOCO_LIFETIMEBOUND {
+  constexpr const E &&expect_err(const char *RELOCO_STATIC_STR msg) const && noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_ASSERT_MSG(!m_has_value, msg);
     return std::move(m_error);
   }

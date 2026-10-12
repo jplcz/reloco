@@ -12,6 +12,10 @@ bool isStatic(const Expr *e, const ASTContext &ctx) {
   e = e->IgnoreParenImpCasts();
   if (llvm::isa<StringLiteral>(e) || llvm::isa<CXXNullPtrLiteralExpr>(e) || llvm::isa<GNUNullExpr>(e))
     return true;
+  if (llvm::isa<SourceLocExpr>(e) || llvm::isa<ImplicitValueInitExpr>(e) || llvm::isa<CXXDefaultInitExpr>(e))
+    return true;
+  if (const auto *il = llvm::dyn_cast<InitListExpr>(e); il && il->getNumInits() <= 1)
+    return il->getNumInits() == 0 || isStatic(il->getInit(0), ctx);
   if (e->isNullPointerConstant(const_cast<ASTContext &>(ctx), Expr::NPC_ValueDependentIsNull))
     return true;
   if (const auto *co = llvm::dyn_cast<ConditionalOperator>(e))

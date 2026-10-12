@@ -17,6 +17,10 @@
 #include <string>
 #include <string_view>
 
+// Unsafe by design: string_view is the bounds-carrying view over raw character
+// storage, and its C-string interop takes null-terminated `const CharT *`.
+RELOCO_BEGIN_UNSAFE_CODE
+
 namespace reloco {
 
 // All of the below classes contain checked pointer arithmetic
@@ -418,6 +422,8 @@ RELOCO_END_UNSAFE_BUFFER_USAGE
 // `basic_string_view<CharT, TraitsT>` template itself.
 RELOCO_TYPE_ID_NAME(reloco::string_view, "reloco::string_view");
 RELOCO_TYPE_ID_NAME(reloco::wstring_view, "reloco::wstring_view");
+
+RELOCO_END_UNSAFE_CODE
 
 namespace std {
 

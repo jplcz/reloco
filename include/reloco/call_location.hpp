@@ -134,6 +134,7 @@
  */
 
 #include <reloco/reloco_config.hpp>
+#include <reloco/lifetime.hpp>
 
 // RELOCO_CALL_LOCATION_HAS_BUILTINS
 //     1 when __builtin_FILE()/__builtin_LINE() are available (GCC/Clang
@@ -189,7 +190,7 @@ namespace reloco {
 struct call_location {
   /** @brief Source file path at the captured call site. Never null when obtained from a `call_location_ref` whose
      `has_value()` is true. */
-  const char *file;
+  const char *RELOCO_STATIC_STR file;
   /** @brief Source line number at the captured call site. */
   int line;
 };
@@ -223,7 +224,7 @@ public:
    * 0 (see `reloco_config.hpp`).
    */
   static constexpr call_location_ref
-  current(const char *file = RELOCO_DETAIL_CALL_LOCATION_FILE_DEFAULT,
+  current(const char *RELOCO_STATIC_STR file = RELOCO_DETAIL_CALL_LOCATION_FILE_DEFAULT,
           int line = RELOCO_DETAIL_CALL_LOCATION_LINE_DEFAULT) noexcept {
     return call_location_ref(call_location{file, line});
   }
@@ -235,7 +236,7 @@ public:
   constexpr call_location value() const noexcept { return call_location{file_, line_}; }
 
 private:
-  const char *file_;
+  const char *RELOCO_STATIC_STR file_;
   int line_;
 };
 

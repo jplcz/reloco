@@ -171,7 +171,7 @@ template <typename T> struct RELOCO_EXPORT type_id_tag {
 #define RELOCO_TYPE_ID_NAME(T, name_str)                                                                               \
   template <> struct reloco::type_id_tag<T> {                                                                          \
     static constexpr char tag = 0;                                                                                     \
-    static constexpr const char *name() noexcept { return name_str; }                                                  \
+    static constexpr const char *RELOCO_STATIC_STR name() noexcept { return name_str; }                                                  \
   }
 
 /**
@@ -219,13 +219,13 @@ public:
    * hashing.
    */
   // NOLINTNEXTLINE(reloco-ref-qualified-member): points at static storage, not at this object.
-  [[nodiscard]] constexpr const char *name() const & noexcept { return name_; }
+  [[nodiscard]] constexpr const char *RELOCO_STATIC_STR name() const & noexcept { return name_; }
 
 private:
-  constexpr explicit type_id(const void *tag, const char *name) noexcept : tag_(tag), name_(name) {}
+  constexpr explicit type_id(const void *tag, const char *RELOCO_STATIC_STR name) noexcept : tag_(tag), name_(name) {}
 
   const void *tag_{nullptr};
-  const char *name_{nullptr};
+  const char *RELOCO_STATIC_STR name_{nullptr};
 };
 
 /**

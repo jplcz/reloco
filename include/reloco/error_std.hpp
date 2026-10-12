@@ -93,7 +93,7 @@ namespace detail {
  */
 class RELOCO_EXPORT error_category_impl final : public std::error_category {
 public:
-  [[nodiscard]] const char *name() const noexcept override { return "reloco"; }
+  [[nodiscard]] const char *RELOCO_STATIC_STR name() const noexcept override { return "reloco"; }
 
   [[nodiscard]] RELOCO_API std::string message(int ev) const override;
 
