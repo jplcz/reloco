@@ -116,7 +116,8 @@ void LambdaDefaultCaptureCheck::check(const MatchFinder::MatchResult &result) {
            << byRef << (names.empty() ? std::string() : "; implicitly captured: " + names);
   const SourceManager &sm = *result.SourceManager;
   const SourceLocation defLoc = le->getCaptureDefaultLoc();
-  if (canFix && !defLoc.isMacroID()) {
+  // The captures of a lambda in a template pattern are only known after instantiation: no fix-it there.
+  if (canFix && !defLoc.isMacroID() && !le->getLambdaClass()->isDependentContext()) {
     SourceLocation end = Lexer::getLocForEndOfToken(defLoc, 0, sm, result.Context->getLangOpts());
     if (hasExplicit) {
       // `[&, x]`: drop the default together with its comma.

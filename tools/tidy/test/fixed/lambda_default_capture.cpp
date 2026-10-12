@@ -20,3 +20,9 @@ struct widget {
     return f();
   }
 };
+
+// In a template the captures are not known until instantiation, so there is no fix-it.
+template <typename T> int generic(T t) noexcept {
+  auto f = [&]() noexcept { return t; };  // expect: reloco-lambda-default-capture
+  return f();
+}
