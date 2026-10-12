@@ -24,3 +24,9 @@ void f() noexcept {
   int nl;  // NOLINT(reloco-uninit-local)
   (void)a; (void)arr; (void)p; (void)ok1; (void)ok2; (void)ok3; (void)ok4; (void)ok5; (void)nl;
 }
+
+template <typename R> void range_for_in_template(R &r) noexcept {
+  for (int child : r) { // no diagnostic: initialised by the loop
+    (void)child;
+  }
+}

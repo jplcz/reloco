@@ -9,8 +9,10 @@
 namespace reloco::tidy {
 
 void UninitLocalCheck::registerMatchers(MatchFinder *finder) {
+  // A range-for loop variable is initialised by the loop itself (its init is only attached on instantiation).
   finder->addMatcher(varDecl(hasLocalStorage(), unless(parmVarDecl()),
-                             unless(isImplicit()))
+                             unless(isImplicit()),
+                             unless(hasParent(declStmt(hasParent(cxxForRangeStmt())))))
                          .bind("var"),
                      this);
 }

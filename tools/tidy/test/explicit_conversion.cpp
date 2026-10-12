@@ -15,3 +15,7 @@ struct a {
   // `explicit` must come after the attribute list, not before it.
   [[nodiscard]] operator char() const noexcept;  // expect: reloco-explicit-conversion
 };
+
+struct nullable_handle {
+  nullable_handle(decltype(nullptr)) noexcept {} // no diagnostic: 'T h = nullptr;' is idiomatic
+};

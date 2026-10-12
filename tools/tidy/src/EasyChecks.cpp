@@ -180,6 +180,8 @@ void ExplicitConversionCheck::check(const MatchFinder::MatchResult &result) {
     const CXXRecordDecl *pr = recordOf(c->getParamDecl(0)->getType());
     if (pr && pr->getIdentifier() && pr->getName() == "initializer_list")
       return;
+    if (c->getParamDecl(0)->getType().getNonReferenceType()->isNullPtrType())
+      return; // pointer-like types are conventionally initialised from nullptr: 'T p = nullptr;'
     if (c->isOutOfLine())
       return; // the in-class declaration carries (or lacks) the keyword
     auto d = diag(c->getLocation(), "single-argument constructor of '%0' must be explicit; add 'explicit' (or accept "
@@ -690,7 +692,7 @@ void MemberInitCheck::check(const MatchFinder::MatchResult &result) {
   auto d = diag(fd->getLocation(), "field %0 has no default member initializer; add '= {}' or a value") << fd;
   // A default member initializer in a nested class cannot be used by the enclosing class before it is complete
   // (e.g. in its static constexpr members), so only offer the fix-it for non-nested records.
-  if (fd->getEndLoc().isValid() && !fd->getEndLoc().isMacroID() && !fd->isBitField() &&
+  if (fd->getEndLoc().isValid() && !fd->getEndLoc().isMacroID() && !fd->isBitField() && !t->isIncompleteArrayType() &&
       !parent->getDeclContext()->isRecord())
     d << FixItHint::CreateInsertion(Lexer::getLocForEndOfToken(fd->getEndLoc(), 0, *result.SourceManager,
                                                               result.Context->getLangOpts()),

@@ -46,6 +46,16 @@ void RefQualifiedMemberCheck::check(const MatchFinder::MatchResult &result) {
       md->isCopyAssignmentOperator() || md->isMoveAssignmentOperator() || exempt(*result.SourceManager, md->getLocation()))
     return;
 
+  // The '&' must be added to the declaration and to every out-of-line definition, or they stop matching.
+  const auto addQualifierFixes = [&](DiagnosticBuilder &d, const CXXMethodDecl *method) {
+    for (const FunctionDecl *redecl : method->redecls())
+      if (const auto *m = llvm::dyn_cast<CXXMethodDecl>(redecl))
+        if (const SourceLocation at =
+                functionQualifierEnd(m, *result.SourceManager, result.Context->getLangOpts(), false);
+            at.isValid())
+          d << FixItHint::CreateInsertion(at, " &");
+  };
+
   const CXXRecordDecl *parent = md->getParent();
   const bool aliasing = isAliasing(md->getReturnType());
   const bool handle = recordIsPointer(parent);
@@ -70,8 +80,7 @@ void RefQualifiedMemberCheck::check(const MatchFinder::MatchResult &result) {
       auto d = diag(md->getLocation(), "const member %0 returns an alias of its object but is not ref-qualified; "
                                        "declare it 'const &' and delete the 'const &&' overload")
                << md;
-      if (const SourceLocation at = functionQualifierEnd(md, *result.SourceManager, result.Context->getLangOpts(), false); at.isValid())
-        d << FixItHint::CreateInsertion(at, " &");
+      addQualifierFixes(d, md);
     }
     else if (md->getRefQualifier() == RQ_LValue && !hasRvalueOverload(md)) {
       auto d = diag(md->getLocation(), "const & member %0 returns an alias of its object and still binds temporaries; "
@@ -98,8 +107,7 @@ void RefQualifiedMemberCheck::check(const MatchFinder::MatchResult &result) {
     return;
   if (md->getRefQualifier() == RQ_None) {
     auto d = diag(md->getLocation(), "non-const member %0 is callable on temporaries; qualify it with '&'") << md;
-    if (const SourceLocation at = functionQualifierEnd(md, *result.SourceManager, result.Context->getLangOpts(), false); at.isValid())
-      d << FixItHint::CreateInsertion(at, " &");
+    addQualifierFixes(d, md);
   }
 }
 

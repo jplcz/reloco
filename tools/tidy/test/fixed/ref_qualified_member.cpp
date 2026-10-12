@@ -40,3 +40,9 @@ template <typename T> struct box {
   T &get() & noexcept { return v; }                   // expect: reloco-ref-qualified-member
   T &get_ok() & noexcept { return v; }
 };
+
+struct split_def {
+  int v = 0;
+  int &get() & noexcept;  // expect: reloco-ref-qualified-member
+};
+int &split_def::get() & noexcept { return v; } // the fix-it qualifies this definition too
