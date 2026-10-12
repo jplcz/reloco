@@ -34,6 +34,7 @@ inline void apply_thread_name(const thread_entry_box *box) noexcept {
 // invokes the entry callable, then frees the box itself -- the spawned
 // thread is responsible for its own cleanup since nothing else observes
 // this pointer again.
+RELOCO_BEGIN_ALLOW_USE_AFTER_DESTROY
 inline void *thread_trampoline(void *arg) noexcept {
   auto *box = static_cast<thread_entry_box *>(arg);
   allocator_ref alloc = box->alloc;
@@ -43,6 +44,7 @@ inline void *thread_trampoline(void *arg) noexcept {
   alloc.deallocate(box, sizeof(thread_entry_box));
   return nullptr;
 }
+RELOCO_END_ALLOW_USE_AFTER_DESTROY
 
 } // namespace detail
 

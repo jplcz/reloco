@@ -194,6 +194,8 @@ CLion runs clang-tidy itself, so use its external-tool path for the plugin:
 | `reloco-static-string` | **Opt-in by type.** `const char *RELOCO_STATIC_STR` declares that a string pointer only ever refers to string literals or static storage. Values returned, passed, initialised or assigned to such a pointer must be a literal, `nullptr`, a static array, or another `RELOCO_STATIC_STR` value. Unannotated `const char *` is reported by `reloco-no-raw-pointer` (use `reloco::string_view`). | Dangling C-string pointers. |
 | `reloco-early-static` | **Opt-in by type.** A `RELOCO_EARLY_STATIC` class (or variable) must be usable before the C++ runtime starts: every user constructor is `constexpr`, the destructor is trivial (no `atexit` registration), the type is literal, and each static/global object of it is constant-initialised (`constexpr`, `constinit` or a provably constant initialiser). Fix-it inserts `constinit ` (C++20). | Bare-metal startup, no static-init-order fiasco. |
 | `reloco-borrow-check` | Best-effort Rust-style borrow checking inside one function. See below. | Aliasing XOR mutability. |
+| `reloco-aliased-arguments` | A call may not receive overlapping places when one of them is bound as a mutable reference, mutable pointer (`&x`) or non-const `this`: `f(x, x)`, `x.m(x)`, `x.m(x.field)`. See below. | Rust's "cannot borrow as mutable more than once" across call arguments. |
+| `reloco-escaping-local` | A pointer, array decay, view or `RELOCO_LIFETIMEBOUND` result derived from a local may not be stored through a pointer or non-const reference parameter (`*out = &x;`, `out->p = buf;`). See below. | The caller is left with a dangling pointer; Clang's `-Wlifetime-safety` does not see stores through parameters. |
 
 ### `RELOCO_OUT`
 
@@ -220,6 +222,10 @@ Intra-procedural and flow-sensitive (NLL-style):
 - A *borrow* is a local reference, pointer or `RELOCO_POINTER` view initialised from a place
   (a variable plus a field path): `auto &r = x.first;`, `span s = buf;`, `r = x.cfirst();`.
   A `RELOCO_LIFETIMEBOUND` call result borrows from the bound argument.
+- Inside a method, `this` is a root like any local: `const int &r = a_; a_ = 5; use(r);` and
+  `int &f = first(); push(3); use(f);` are flagged (`this->a_` and implicit members alike). A call
+  to a non-const method of the same object counts as a mutation of every member. A bare
+  `auto *self = this;` is a view of the whole object and is not tracked as a borrow.
 - It is live from its initialiser to its last use; inside a loop it lives to the loop end when
   declared outside the loop.
 - A *shared* borrow (const target) excludes mutation of the place: assignment, `++`/`--`, a
@@ -232,6 +238,61 @@ Limits: no inter-procedural reasoning, no aliasing through containers or heap, n
 tracking. Use Clang's `-Wlifetime-safety` for use-after-return/scope. It is a bug finder, not a proof.
 
 Slicing is deliberately not a separate rule: polymorphic bases are already a red flag.
+
+### `reloco-aliased-arguments`
+
+```cpp
+void mut_const(int &dst, const int &src) noexcept;  // dst is written, src is read
+
+void bad() noexcept {
+  int x = 0;
+  mut_const(x, x);          // flagged: dst and src are the same object, so writing dst changes src
+}
+void ok(int (&v)[2]) noexcept {
+  int n = 1;
+  mut_const(v[0], n);       // fine: different objects (copy the value out first when it aliases)
+}
+struct buf { int a = 0; void copy_from(const buf &o) & noexcept; };
+void receiver() noexcept {
+  buf b;
+  b.copy_from(b);           // flagged: the mutable 'this' and 'o' are the same object
+}
+```
+
+Arguments are compared as places (a local plus a field path, as in `reloco-borrow-check`). A pair is
+flagged when the places overlap and at least one is bound mutably: a non-const lvalue reference
+parameter, a non-const pointer parameter given `&place`, or the implicit object of a non-const
+method. By-value and rvalue-reference parameters are copies or moves and never conflict, so
+`v.set(v.get())` is fine. Array subscripts and arbitrary pointers are skipped because overlap cannot be
+decided. `RELOCO_BORROW_EXEMPT`, unsafe regions and `NOLINT` suppress it.
+
+### `reloco-escaping-local`
+
+```cpp
+struct sink { int *p = nullptr; };
+
+void bad(int **out, sink &s) noexcept {
+  int x = 0;
+  int buf[4] = {};
+  *out = &x;     // flagged: 'out' is caller storage, and x dies when this function returns
+  s.p = buf;     // flagged: an array decays to a pointer into the local
+}
+void ok(int **out, int *in) noexcept {
+  static int shared = 0;
+  *out = &shared;  // fine: static storage outlives the call
+  *out = in;       // fine: 'in' already points at caller-owned memory
+}
+```
+
+Flagged: a store whose target is reached through a pointer parameter (`*p`, `p->f`, `p[i]`) or a
+non-const reference parameter, whose type is a pointer or `RELOCO_POINTER` view, and whose value is
+`&local`, a local array, a view built from a local, or a `RELOCO_LIFETIMEBOUND` call on a local.
+Locals that are themselves pointers, references or views are skipped because they may point at
+caller memory. Stores into globals, members of `this` and return values are left to Clang's
+`-Wlifetime-safety`, which the CMake warning set enables when the compiler supports it
+(`-Wlifetime-safety`). For code that destroys an object and then frees its storage, wrap the
+function in `RELOCO_BEGIN_ALLOW_USE_AFTER_DESTROY` / `RELOCO_END_ALLOW_USE_AFTER_DESTROY`
+(see `lifetime.hpp`) to silence its `-Wlifetime-safety-invalidation` false positive.
 
 ### `RELOCO_NS` poison pointers
 

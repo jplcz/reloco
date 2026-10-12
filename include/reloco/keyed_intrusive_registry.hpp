@@ -410,11 +410,13 @@ private:
     return n;
   }
 
+  RELOCO_BEGIN_ALLOW_USE_AFTER_DESTROY
   static void destroy_node(node &n) noexcept {
     allocator_ref alloc = n.alloc;
     n.~node();
     alloc.deallocate(&n, sizeof(node));
   }
+  RELOCO_END_ALLOW_USE_AFTER_DESTROY
 
   RELOCO_NO_UNIQUE_ADDRESS Lock lock_{};
   table_type table_;

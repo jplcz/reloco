@@ -40,6 +40,8 @@ public:
     f.registerCheck<BannedStdTypeCheck>("reloco-banned-std-type");
     f.registerCheck<BannedConstructCheck>("reloco-banned-construct");
     f.registerCheck<BorrowCheck>("reloco-borrow-check");
+    f.registerCheck<AliasedArgumentsCheck>("reloco-aliased-arguments");
+    f.registerCheck<EscapingLocalCheck>("reloco-escaping-local");
     f.registerCheck<LeakCheck>("reloco-leak");
     f.registerCheck<LockGuardCheck>("reloco-lock-guard");
     f.registerCheck<NarrowingFlowCheck>("reloco-narrowing-flow");

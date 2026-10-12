@@ -98,6 +98,36 @@
 #define RELOCO_END_UNSAFE_BUFFER_USAGE
 #endif
 
+/**
+ * @def RELOCO_BEGIN_ALLOW_USE_AFTER_DESTROY
+ * @brief Silences Clang's `-Wlifetime-safety-invalidation` for the destroy-then-free pattern.
+ *
+ * Destroying an object and then handing its address to the allocator is not a use of the object, but
+ * Clang's lifetime analysis sees a pointer used after the destructor ran, and reports it at the
+ * parameter, so wrap the whole function that does destroy-then-free:
+ *
+ * @code
+ * RELOCO_BEGIN_ALLOW_USE_AFTER_DESTROY       // the pointer below is only the block to free afterwards
+ * void destroy_node(allocator_ref alloc, header *node) noexcept {
+ *   node->~header();                         // end the object's lifetime
+ *   alloc.deallocate(node, sizeof(header));  // release the storage
+ * }
+ * RELOCO_END_ALLOW_USE_AFTER_DESTROY
+ * @endcode
+ *
+ * Compiles to nothing on compilers without the warning.
+ */
+#if defined(__clang__)
+#define RELOCO_BEGIN_ALLOW_USE_AFTER_DESTROY                                                                           \
+  RELOCO_PRAGMA(clang diagnostic push)                                                                                 \
+  RELOCO_PRAGMA(clang diagnostic ignored "-Wunknown-warning-option")                                                   \
+  RELOCO_PRAGMA(clang diagnostic ignored "-Wlifetime-safety-invalidation")
+#define RELOCO_END_ALLOW_USE_AFTER_DESTROY RELOCO_PRAGMA(clang diagnostic pop)
+#else
+#define RELOCO_BEGIN_ALLOW_USE_AFTER_DESTROY
+#define RELOCO_END_ALLOW_USE_AFTER_DESTROY
+#endif
+
 // ============================================================================
 // reloco-tidy Borrow Checker Exemption
 // ============================================================================

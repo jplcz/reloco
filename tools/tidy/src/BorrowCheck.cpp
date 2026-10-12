@@ -31,8 +31,9 @@ namespace reloco::tidy {
 
 namespace {
 
+// The root of a place is a tracked local/parameter, or the enclosing method standing for `this`.
 struct Place {
-  const VarDecl *var = nullptr;
+  const ValueDecl *var = nullptr;
   llvm::SmallVector<const FieldDecl *, 2> path;
 
   explicit operator bool() const { return var != nullptr; }
@@ -84,16 +85,29 @@ QualType calleeReturn(const CallExpr *c) {
   return fd ? fd->getReturnType() : c->getType();
 }
 
+// The method whose `this` roots places in the function being analysed (null outside methods).
+const ValueDecl *g_thisRoot = nullptr;
+
+bool isThisRoot(const ValueDecl *v) { return llvm::isa_and_nonnull<FunctionDecl>(v); }
+
+bool rootIsConst(const ValueDecl *v) {
+  if (const auto *md = llvm::dyn_cast_or_null<CXXMethodDecl>(v))
+    return md->isConst();
+  return v && v->getType().getNonReferenceType().isConstQualified();
+}
+
 Place placeOf(const Expr *e) {
   e = strip(e);
   if (!e)
     return {};
+  if (llvm::isa<CXXThisExpr>(e))
+    return g_thisRoot ? Place{g_thisRoot, {}} : Place{};
   if (const auto *dre = llvm::dyn_cast<DeclRefExpr>(e)) {
     const auto *v = llvm::dyn_cast<VarDecl>(dre->getDecl());
     return isTrackedVar(v) ? Place{v, {}} : Place{};
   }
   if (const auto *me = llvm::dyn_cast<MemberExpr>(e)) {
-    if (me->isArrow())
+    if (me->isArrow() && !llvm::isa<CXXThisExpr>(strip(me->getBase())))
       return {};
     Place p = placeOf(me->getBase());
     if (!p)
@@ -168,7 +182,7 @@ enum class Access { read, mutate, borrow_mut };
 
 class Analyzer : public RecursiveASTVisitor<Analyzer> {
 public:
-  using Reporter = std::function<void(const DeclRefExpr *, const Borrow &, Access)>;
+  using Reporter = std::function<void(const Expr *, llvm::StringRef, const Borrow &, Access)>;
 
   Analyzer(ASTContext &ctx) : ctx_(ctx), sm_(ctx.getSourceManager()) {}
 
@@ -183,10 +197,13 @@ public:
     Place p = placeOf(vd->getInit());
     if (!p || p.var == vd)
       return true;
+    // 'auto *self = this;' is a view of the whole object, not a borrow of one member.
+    if (isThisRoot(p.var) && p.path.empty() && llvm::isa<CXXThisExpr>(strip(vd->getInit())))
+      return true;
     Borrow b;
     b.var = vd;
     b.place = std::move(p);
-    b.mut = isMutableTarget(t) && !b.place.var->getType().getNonReferenceType().isConstQualified();
+    b.mut = isMutableTarget(t) && !rootIsConst(b.place.var);
     b.declLoc = vd->getLocation();
     b.start = vd->getInit()->getEndLoc();
     borrows_.push_back(std::move(b));
@@ -201,8 +218,7 @@ public:
     Borrow b;
     b.place = std::move(p);
     const QualType lt = fs->getLoopVariable()->getType();
-    b.mut = lt->isReferenceType() && isMutableTarget(lt) &&
-            !b.place.var->getType().getNonReferenceType().isConstQualified();
+    b.mut = lt->isReferenceType() && isMutableTarget(lt) && !rootIsConst(b.place.var);
     b.declLoc = fs->getForLoc();
     b.start = fs->getBody()->getBeginLoc();
     b.end = fs->getBody()->getEndLoc();
@@ -217,23 +233,31 @@ public:
     return true;
   }
 
+  bool VisitCXXThisExpr(CXXThisExpr *te) {
+    if (g_thisRoot)
+      refs_.push_back(te);
+    return true;
+  }
+
   void finish(const Reporter &report) {
     computeLiveRanges();
     for (const Borrow &b : borrows_)
-      for (const DeclRefExpr *dre : refs_) {
-        const auto *v = llvm::cast<VarDecl>(dre->getDecl());
+      for (const Expr *root : refs_) {
+        const ValueDecl *v = rootDecl(root);
         if (v != b.place.var && v != b.var)
           continue;
-        if (v == b.var || !later(dre->getBeginLoc(), b.start) || later(dre->getBeginLoc(), b.end))
+        if (v == b.var || !later(root->getBeginLoc(), b.start) || later(root->getBeginLoc(), b.end))
           continue;
         Place q;
-        const Expr *top = topOfPlace(dre, q);
+        const Expr *top = topOfPlace(root, q);
         if (!q || !q.overlaps(b.place))
           continue;
         const Access a = classify(top);
         if (!b.mut && a == Access::read)
           continue;
-        report(dre, b, a);
+        const std::string name = isThisRoot(q.var) ? (q.path.empty() ? "this" : q.path.front()->getName().str())
+                                                    : q.var->getName().str();
+        report(root, name, b, a);
       }
   }
 
@@ -241,14 +265,21 @@ public:
 private:
   bool later(SourceLocation a, SourceLocation b) const { return sm_.isBeforeInTranslationUnit(b, a); }
 
-  // Climbs from a DeclRefExpr through field accesses to the full place expression.
-  const Expr *topOfPlace(const DeclRefExpr *dre, Place &out) {
-    const Expr *top = dre;
-    out = Place{llvm::cast<VarDecl>(dre->getDecl()), {}};
+  static const ValueDecl *rootDecl(const Expr *root) {
+    if (const auto *dre = llvm::dyn_cast<DeclRefExpr>(root))
+      return dre->getDecl();
+    return g_thisRoot;
+  }
+
+  // Climbs from a root (a variable reference or `this`) through field accesses to the full place expression.
+  const Expr *topOfPlace(const Expr *root, Place &out) {
+    const Expr *top = root;
+    out = Place{rootDecl(root), {}};
+    const bool thisRooted = llvm::isa<CXXThisExpr>(root);
     for (;;) {
       const auto *parent = parentOf(top);
       const auto *me = parent ? llvm::dyn_cast<MemberExpr>(parent) : nullptr;
-      if (!me || me->isArrow() || strip(me->getBase()) != strip(top))
+      if (!me || (me->isArrow() && !thisRooted) || strip(me->getBase()) != strip(top))
         break;
       if (const auto *fd = llvm::dyn_cast<FieldDecl>(me->getMemberDecl()))
         out.path.push_back(fd);
@@ -356,8 +387,8 @@ private:
         continue; // range-for: whole loop body
       b.end = b.start;
       b.lastUse = b.start;
-      for (const DeclRefExpr *dre : refs_) {
-        if (dre->getDecl() != b.var)
+      for (const Expr *dre : refs_) {
+        if (rootDecl(dre) != b.var)
           continue;
         SourceLocation use = dre->getEndLoc();
         // A use inside a loop that does not contain the declaration is live until the loop ends.
@@ -387,7 +418,225 @@ private:
 
 public:
   std::vector<Borrow> borrows_;
-  std::vector<const DeclRefExpr *> refs_;
+  std::vector<const Expr *> refs_;
+};
+
+// One call argument together with how the callee binds it.
+struct ArgBinding {
+  const Expr *expr;
+  bool mut;
+  Place place;
+};
+
+// An index or an unknown pointer makes overlap undecidable: treat those arguments as unrelated.
+bool hasUndecidableStep(const Expr *e) {
+  for (e = strip(e); e;) {
+    if (llvm::isa<ArraySubscriptExpr>(e))
+      return true;
+    if (const auto *me = llvm::dyn_cast<MemberExpr>(e))
+      e = strip(me->getBase());
+    else if (const auto *uo = llvm::dyn_cast<UnaryOperator>(e))
+      e = strip(uo->getSubExpr());
+    else
+      return false;
+  }
+  return false;
+}
+
+void addBinding(std::vector<ArgBinding> &out, const Expr *arg, QualType paramType) {
+  if (!arg || paramType.isNull() || paramType->isDependentType() || arg->isTypeDependent() || hasUndecidableStep(arg))
+    return;
+  bool mut = false;
+  const Expr *source = arg;
+  if (paramType->isLValueReferenceType()) {
+    mut = !paramType.getNonReferenceType().isConstQualified();
+  } else if (paramType->isPointerType()) {
+    const Expr *s = strip(arg);
+    const auto *uo = llvm::dyn_cast<UnaryOperator>(s);
+    if (!uo || uo->getOpcode() != UO_AddrOf)
+      return; // only an explicit '&place' names the pointee
+    mut = !paramType->getPointeeType().isConstQualified();
+    source = uo;
+  } else {
+    return; // by value (copy) or rvalue reference (move): no aliasing borrow
+  }
+  if (Place p = placeOf(source))
+    out.push_back({arg, mut, std::move(p)});
+}
+
+class AliasVisitor : public RecursiveASTVisitor<AliasVisitor> {
+public:
+  explicit AliasVisitor(std::vector<std::vector<ArgBinding>> &calls) : calls_(calls) {}
+
+  bool VisitCallExpr(CallExpr *call) {
+    const FunctionDecl *fd = call->getDirectCallee();
+    if (!fd)
+      return true;
+    std::vector<ArgBinding> args;
+    unsigned firstArg = 0;
+    const auto *md = llvm::dyn_cast<CXXMethodDecl>(fd);
+    if (const auto *mc = llvm::dyn_cast<CXXMemberCallExpr>(call)) {
+      if (md && !md->isStatic())
+        if (const Expr *obj = mc->getImplicitObjectArgument(); obj && !obj->isTypeDependent())
+          // An implicit 'this' receiver would conflict with every member argument: 'g(x_)' is idiomatic.
+          if (!hasUndecidableStep(obj) && !llvm::isa<CXXThisExpr>(strip(obj)))
+            if (Place p = placeOf(obj))
+              args.push_back({obj, !md->isConst(), std::move(p)});
+    } else if (llvm::isa<CXXOperatorCallExpr>(call) && md && !md->isStatic() && call->getNumArgs() > 0) {
+      const Expr *obj = call->getArg(0);
+      if (!obj->isTypeDependent() && !hasUndecidableStep(obj))
+        if (Place p = placeOf(obj))
+          args.push_back({obj, !md->isConst(), std::move(p)});
+      firstArg = 1;
+    }
+    for (unsigned i = firstArg; i < call->getNumArgs(); ++i) {
+      const unsigned pi = i - firstArg;
+      if (pi < fd->getNumParams())
+        addBinding(args, call->getArg(i), fd->getParamDecl(pi)->getType());
+    }
+    calls_.push_back(std::move(args));
+    return true;
+  }
+
+  bool VisitCXXConstructExpr(CXXConstructExpr *ce) {
+    const CXXConstructorDecl *ctor = ce->getConstructor();
+    std::vector<ArgBinding> args;
+    for (unsigned i = 0; i < ce->getNumArgs() && i < ctor->getNumParams(); ++i)
+      addBinding(args, ce->getArg(i), ctor->getParamDecl(i)->getType());
+    calls_.push_back(std::move(args));
+    return true;
+  }
+
+private:
+  std::vector<std::vector<ArgBinding>> &calls_;
+};
+
+// --- reloco-escaping-local ------------------------------------------------------
+
+bool thisBound(const CXXMethodDecl *md, const ASTContext &ctx) {
+  if (md->hasAttr<LifetimeBoundAttr>())
+    return true;
+  for (QualType t = md->getType();;) {
+    if (const auto *at = llvm::dyn_cast<AttributedType>(t.getTypePtr()); at && at->getAttrKind() == attr::LifetimeBound)
+      return true;
+    const QualType next = t.getSingleStepDesugaredType(ctx);
+    if (next == t)
+      return false;
+    t = next;
+  }
+}
+
+// The automatic variable that owns the storage `e` designates, or null when it may point elsewhere
+// (references, pointers, views, dereferences, statics).
+const VarDecl *localObjectRoot(const Expr *e) {
+  e = strip(e);
+  if (!e)
+    return nullptr;
+  if (const auto *dre = llvm::dyn_cast<DeclRefExpr>(e)) {
+    const auto *v = llvm::dyn_cast<VarDecl>(dre->getDecl());
+    if (!v || !v->hasLocalStorage() || v->isStaticLocal() || v->isImplicit())
+      return nullptr;
+    const QualType t = v->getType();
+    return t->isDependentType() || isAliasingType(t) ? nullptr : v;
+  }
+  if (const auto *me = llvm::dyn_cast<MemberExpr>(e))
+    return me->isArrow() ? nullptr : localObjectRoot(me->getBase());
+  if (const auto *as = llvm::dyn_cast<ArraySubscriptExpr>(e))
+    return strip(as->getBase())->getType()->isArrayType() ? localObjectRoot(as->getBase()) : nullptr;
+  return nullptr;
+}
+
+// The local whose storage the value of `e` points into, when `e` is a pointer/view derived from it.
+const VarDecl *borrowedLocal(const Expr *e, const ASTContext &ctx) {
+  e = strip(e);
+  if (!e || e->getType().isNull() || e->getType()->isDependentType())
+    return nullptr;
+  if (const auto *uo = llvm::dyn_cast<UnaryOperator>(e))
+    return uo->getOpcode() == UO_AddrOf ? localObjectRoot(uo->getSubExpr()) : nullptr;
+  if (e->getType()->isArrayType()) // decays to a pointer to the first element
+    return localObjectRoot(e);
+  if (const auto *ce = llvm::dyn_cast<CXXConstructExpr>(e))
+    return ce->getNumArgs() > 0 && isAliasingType(ce->getType()) ? borrowedLocal(ce->getArg(0), ctx) : nullptr;
+  if (const auto *call = llvm::dyn_cast<CallExpr>(e)) {
+    const FunctionDecl *fd = call->getDirectCallee();
+    if (!fd || !isAliasingType(fd->getReturnType()))
+      return nullptr;
+    if (const auto *mc = llvm::dyn_cast<CXXMemberCallExpr>(call)) {
+      const auto *md = llvm::dyn_cast<CXXMethodDecl>(fd);
+      if (md && thisBound(md, ctx))
+        if (const VarDecl *v = localObjectRoot(mc->getImplicitObjectArgument()))
+          return v;
+    }
+    const unsigned skip = llvm::isa<CXXOperatorCallExpr>(call) && llvm::isa<CXXMethodDecl>(fd) ? 1u : 0u;
+    for (unsigned i = skip; i < call->getNumArgs() && i - skip < fd->getNumParams(); ++i)
+      if (fd->getParamDecl(i - skip)->hasAttr<LifetimeBoundAttr>())
+        if (const VarDecl *v = localObjectRoot(call->getArg(i)))
+          return v;
+  }
+  return nullptr;
+}
+
+// The parameter through which an assignment target reaches caller-owned storage, or null.
+const ParmVarDecl *callerStorageParam(const Expr *e, bool indirect) {
+  e = strip(e);
+  if (!e)
+    return nullptr;
+  if (const auto *dre = llvm::dyn_cast<DeclRefExpr>(e)) {
+    const auto *p = llvm::dyn_cast<ParmVarDecl>(dre->getDecl());
+    if (!p)
+      return nullptr;
+    const QualType t = p->getType();
+    if (t->isLValueReferenceType() && !t.getNonReferenceType().isConstQualified())
+      return p; // a non-const reference parameter is caller storage itself
+    return indirect && t->isPointerType() ? p : nullptr;
+  }
+  if (const auto *me = llvm::dyn_cast<MemberExpr>(e))
+    return callerStorageParam(me->getBase(), indirect || me->isArrow());
+  if (const auto *uo = llvm::dyn_cast<UnaryOperator>(e))
+    return uo->getOpcode() == UO_Deref ? callerStorageParam(uo->getSubExpr(), true) : nullptr;
+  if (const auto *as = llvm::dyn_cast<ArraySubscriptExpr>(e))
+    return callerStorageParam(as->getBase(), true);
+  return nullptr;
+}
+
+class EscapeVisitor : public RecursiveASTVisitor<EscapeVisitor> {
+public:
+  struct Hit {
+    const Expr *rhs;
+    const VarDecl *local;
+    const ParmVarDecl *param;
+  };
+
+  explicit EscapeVisitor(ASTContext &ctx) : ctx_(ctx) {}
+  bool shouldVisitTemplateInstantiations() const { return false; }
+
+  bool VisitBinaryOperator(BinaryOperator *bo) {
+    if (bo->getOpcode() == BO_Assign)
+      consider(bo->getLHS(), bo->getRHS());
+    return true;
+  }
+
+  bool VisitCXXOperatorCallExpr(CXXOperatorCallExpr *oc) {
+    if (oc->getOperator() == OO_Equal && oc->getNumArgs() == 2)
+      consider(oc->getArg(0), oc->getArg(1));
+    return true;
+  }
+
+  std::vector<Hit> hits;
+
+private:
+  void consider(const Expr *lhs, const Expr *rhs) {
+    const QualType lt = lhs->getType();
+    if (lt.isNull() || lt->isDependentType() || lt->isReferenceType() || !isAliasingType(lt))
+      return;
+    const ParmVarDecl *param = callerStorageParam(lhs, false);
+    if (!param)
+      return;
+    if (const VarDecl *local = borrowedLocal(rhs, ctx_))
+      hits.push_back({rhs, local, param});
+  }
+
+  ASTContext &ctx_;
 };
 
 bool hasExemptAnnotation(const Decl *d) {
@@ -417,16 +666,18 @@ void BorrowCheck::check(const MatchFinder::MatchResult &result) {
     return; // analysed as part of the enclosing function
 
   Analyzer an(*result.Context);
+  const auto *method = llvm::dyn_cast<CXXMethodDecl>(fn);
+  g_thisRoot = method && !method->isStatic() ? method : nullptr;
   an.TraverseStmt(fn->getBody());
 
   const SourceManager &sm = *result.SourceManager;
-  an.finish([&](const DeclRefExpr *use, const Borrow &b, Access a) {
+  an.finish([&](const Expr *use, llvm::StringRef name, const Borrow &b, Access a) {
     if (exempt(sm, use->getBeginLoc()) || exempt(sm, b.declLoc))
       return;
     const llvm::StringRef what = a == Access::read ? "use" : a == Access::mutate ? "mutation" : "mutable borrow";
     const std::string borrower = b.var ? "'" + b.var->getName().str() + "'" : "the enclosing range-for loop";
     diag(use->getBeginLoc(), "%0 of '%1' while it is %2 borrowed by %3")
-        << what << use->getDecl()->getName() << (b.mut ? "mutably" : "shared") << borrower;
+        << what << name << (b.mut ? "mutably" : "shared") << borrower;
     diag(b.declLoc, "borrow created here", DiagnosticIDs::Note);
     if (b.var)
       diag(b.lastUse, "borrow is still used here", DiagnosticIDs::Note);
@@ -434,6 +685,74 @@ void BorrowCheck::check(const MatchFinder::MatchResult &result) {
                                  "last use of the borrow comes before this access, or borrow disjoint fields. If the "
                                  "aliasing is sound, mark the function RELOCO_BORROW_EXEMPT with a comment");
   });
+  g_thisRoot = nullptr;
+}
+
+void AliasedArgumentsCheck::registerMatchers(MatchFinder *finder) {
+  finder->addMatcher(functionDecl(isDefinition(), unless(isImplicit()), unless(isTemplateInstantiation())).bind("fn"),
+                     this);
+}
+
+void AliasedArgumentsCheck::check(const MatchFinder::MatchResult &result) {
+  const auto *fn = result.Nodes.getNodeAs<FunctionDecl>("fn");
+  if (!fn || !fn->hasBody() || fn->isTemplateInstantiation() || hasExemptAnnotation(fn) || inUnsafeTier(fn) ||
+      exempt(*result.SourceManager, fn->getLocation()))
+    return;
+  if (const auto *md = llvm::dyn_cast<CXXMethodDecl>(fn); md && md->getParent()->isLambda())
+    return;
+
+  const auto *method = llvm::dyn_cast<CXXMethodDecl>(fn);
+  g_thisRoot = method && !method->isStatic() ? method : nullptr;
+  std::vector<std::vector<ArgBinding>> calls;
+  AliasVisitor visitor(calls);
+  visitor.TraverseStmt(fn->getBody());
+
+  const SourceManager &sm = *result.SourceManager;
+  for (const auto &args : calls) {
+    for (size_t j = 1; j < args.size(); ++j) {
+      for (size_t i = 0; i < j; ++i) {
+        if ((!args[i].mut && !args[j].mut) || !args[i].place.overlaps(args[j].place))
+          continue;
+        if (exempt(sm, args[j].expr->getBeginLoc()))
+          continue;
+        diag(args[j].expr->getBeginLoc(), "argument aliases another argument of the same call that is passed as a "
+                                          "mutable reference/pointer (%0 vs %1)")
+            << (args[j].mut ? "mutable" : "shared") << (args[i].mut ? "mutable" : "shared");
+        diag(args[i].expr->getBeginLoc(), "the other argument is here", DiagnosticIDs::Note);
+        howToFix(args[j].expr->getBeginLoc(),
+                 "pass a copy for the read-only argument ('int v = x.a; f(x, v);'), split the call, or use a "
+                 "single parameter; if the callee supports aliasing, mark the function RELOCO_BORROW_EXEMPT with a "
+                 "comment");
+        break;
+      }
+    }
+  }
+  g_thisRoot = nullptr;
+}
+
+void EscapingLocalCheck::registerMatchers(MatchFinder *finder) {
+  finder->addMatcher(functionDecl(isDefinition(), unless(isImplicit()), unless(isTemplateInstantiation())).bind("fn"),
+                     this);
+}
+
+void EscapingLocalCheck::check(const MatchFinder::MatchResult &result) {
+  const auto *fn = result.Nodes.getNodeAs<FunctionDecl>("fn");
+  if (!fn || !fn->hasBody() || fn->isTemplateInstantiation() || hasExemptAnnotation(fn) || inUnsafeTier(fn) ||
+      exempt(*result.SourceManager, fn->getLocation()))
+    return;
+  EscapeVisitor visitor(*result.Context);
+  visitor.TraverseStmt(fn->getBody());
+  for (const auto &h : visitor.hits) {
+    if (exempt(*result.SourceManager, h.rhs->getBeginLoc()))
+      continue;
+    diag(h.rhs->getBeginLoc(), "pointer into local '%0' is stored through parameter '%1' and dangles when the "
+                               "function returns")
+        << h.local << h.param;
+    diag(h.local->getLocation(), "local declared here", DiagnosticIDs::Note);
+    howToFix(h.rhs->getBeginLoc(), "return the value instead, let the caller provide the storage (take it as a "
+                                   "parameter), or allocate it with an allocator the caller owns; if the pointee "
+                                   "really outlives the call, mark the function RELOCO_BORROW_EXEMPT with a comment");
+  }
 }
 
 } // namespace reloco::tidy

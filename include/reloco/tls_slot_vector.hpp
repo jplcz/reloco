@@ -224,11 +224,13 @@ public:
   }
 
 private:
+  RELOCO_BEGIN_ALLOW_USE_AFTER_DESTROY
   static void destroy(void *ptr, allocator_ref alloc) noexcept {
     auto *p = static_cast<T *>(ptr);
     p->~T();
     alloc.deallocate(p, sizeof(T));
   }
+  RELOCO_END_ALLOW_USE_AFTER_DESTROY
 
   static inline once_lock<std::size_t> slot_{};
 };
@@ -492,10 +494,12 @@ private:
     return ::new (block->ptr) T(std::move(value));
   }
 
+  RELOCO_BEGIN_ALLOW_USE_AFTER_DESTROY
   template <typename T> void destroy_value(T *p) noexcept {
     p->~T();
     alloc_.deallocate(p, sizeof(T));
   }
+  RELOCO_END_ALLOW_USE_AFTER_DESTROY
 
   allocator_ref alloc_;
   RELOCO_NO_UNIQUE_ADDRESS Lock lock_{};

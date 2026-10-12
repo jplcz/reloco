@@ -50,6 +50,8 @@ CHECKS = [
     "reloco-banned-std-type",
     "reloco-banned-construct",
     "reloco-borrow-check",
+    "reloco-aliased-arguments",
+    "reloco-escaping-local",
     "reloco-use-after-move",
     "reloco-early-static",
     "reloco-ns-pointer",

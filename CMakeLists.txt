@@ -132,6 +132,8 @@ if(JPLCZ_RELOCO_ENABLE_STRICT_WARNINGS OR JPLCZ_RELOCO_ENABLE_UNSAFE_BUFFER_USAG
             JPLCZ_RELOCO_COMPILER_SUPPORTS_WUNSAFE_BUFFER_USAGE)
         check_cxx_compiler_flag("-Wconsumed"
             JPLCZ_RELOCO_COMPILER_SUPPORTS_WCONSUMED)
+        check_cxx_compiler_flag("-Wlifetime-safety"
+            JPLCZ_RELOCO_COMPILER_SUPPORTS_WLIFETIME_SAFETY)
     endif()
 endif()
 
@@ -327,6 +329,7 @@ if(JPLCZ_RELOCO_ENABLE_STRICT_WARNINGS)
             $<$<BOOL:${JPLCZ_RELOCO_COMPILER_SUPPORTS_WDANGLING_FIELD}>:-Wdangling-field>
             $<$<BOOL:${JPLCZ_RELOCO_COMPILER_SUPPORTS_WRETURN_STACK_ADDRESS}>:-Wreturn-stack-address>
             $<$<BOOL:${JPLCZ_RELOCO_COMPILER_SUPPORTS_WCONSUMED}>:-Wconsumed>
+            $<$<BOOL:${JPLCZ_RELOCO_COMPILER_SUPPORTS_WLIFETIME_SAFETY}>:-Wlifetime-safety>
             $<$<BOOL:${JPLCZ_RELOCO_ENABLE_WERROR}>:-Werror>
         >
     )

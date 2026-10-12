@@ -70,6 +70,28 @@ public:
   bool honorsUnsafeBufferUsage() const override { return true; }
 };
 
+// A call may not receive overlapping places when one argument is a mutable reference/pointer/this
+// (Rust's "cannot borrow as mutable more than once"): f(x, x), x.m(x.field), f(&x, x).
+class AliasedArgumentsCheck : public RelocoCheck {
+public:
+  using RelocoCheck::RelocoCheck;
+  void registerMatchers(MatchFinder *finder) override;
+  void check(const MatchFinder::MatchResult &result) override;
+  bool isLanguageVersionSupported(const LangOptions &lo) const override { return lo.CPlusPlus; }
+  bool honorsUnsafeBufferUsage() const override { return true; }
+};
+
+// Storing a pointer/view into a local through a pointer or reference parameter ('*out = &x;',
+// 'out->p = buf;') leaves the caller with a dangling pointer once the function returns.
+class EscapingLocalCheck : public RelocoCheck {
+public:
+  using RelocoCheck::RelocoCheck;
+  void registerMatchers(MatchFinder *finder) override;
+  void check(const MatchFinder::MatchResult &result) override;
+  bool isLanguageVersionSupported(const LangOptions &lo) const override { return lo.CPlusPlus; }
+  bool honorsUnsafeBufferUsage() const override { return true; }
+};
+
 // Parameters marked RELOCO_OUT must be written on every path that returns, and not read before.
 RELOCO_TIDY_CHECK(OutParamCheck);
 // Locals must be initialised at declaration (no indeterminate scalars/arrays/trivial aggregates).

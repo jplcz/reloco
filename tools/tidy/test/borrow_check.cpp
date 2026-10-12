@@ -96,6 +96,57 @@ void range_for_const_ok() noexcept {
     take_const(x);
 }
 
+// --- borrows of members through `this` --------------------------------------
+struct holder {
+  int a_ = 0;
+  int b_ = 0;
+  int v_[4] = {};
+  int &first() & noexcept RELOCO_LIFETIMEBOUND { return v_[0]; }
+  void push(int x) & noexcept { a_ = x; }
+  int get() const & noexcept { return a_; }
+
+  int member_shared_then_mutate() & noexcept {
+    const int &r = a_;
+    a_ = 5;  // expect: reloco-borrow-check
+    return r;
+  }
+  int member_shared_then_method() & noexcept {
+    const int &r = a_;
+    push(1);  // expect: reloco-borrow-check
+    return r;
+  }
+  int member_via_arrow() & noexcept {
+    const int &r = this->a_;
+    this->a_ = 2;  // expect: reloco-borrow-check
+    return r;
+  }
+  int member_method_result() & noexcept {
+    int &f = first();
+    push(3);  // expect: reloco-borrow-check
+    return f;
+  }
+  int member_nll_ok() & noexcept {
+    const int &r = a_;
+    int copy = r;
+    a_ = copy + 1;  // r is dead: fine
+    return copy;
+  }
+  int member_disjoint_ok() & noexcept {
+    int &ra = a_;
+    b_ = 1;
+    return ra;
+  }
+  int member_read_ok() & noexcept {
+    const int &r = a_;
+    return r + get() + b_;
+  }
+  holder *self_view_ok() & noexcept {
+    holder *self = this;
+    a_ = 1;
+    return self;
+  }
+};
+
 // --- exemptions -----------------------------------------------------------
 RELOCO_BORROW_EXEMPT void swap_like(buf &a, buf &b) noexcept {
   int &ra = a.a;

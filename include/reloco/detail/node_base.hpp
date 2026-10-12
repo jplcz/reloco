@@ -168,12 +168,14 @@ public:
    * `type_operations::destroy_one` at `payload_of(node, type)`) before
    * calling this.
    */
+  RELOCO_BEGIN_ALLOW_USE_AFTER_DESTROY
   static void deallocate_node(allocator_ref alloc, header *node, const type_metadata &type) noexcept {
     node->~header();
     RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
     alloc.deallocate(node, node_size(type));
     RELOCO_END_UNSAFE_BUFFER_USAGE
   }
+  RELOCO_END_ALLOW_USE_AFTER_DESTROY
 };
 
 } // namespace reloco::detail

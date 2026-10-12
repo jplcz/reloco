@@ -343,12 +343,14 @@ private:
     return static_cast<void *>(rec);
   }
 
+  RELOCO_BEGIN_ALLOW_USE_AFTER_DESTROY
   static void deleter(void *p) noexcept {
     auto *rec = static_cast<record *>(p);
     allocator_ref alloc = rec->alloc;
     rec->~record();
     alloc.deallocate(rec, sizeof(record));
   }
+  RELOCO_END_ALLOW_USE_AFTER_DESTROY
 };
 
 /// Specialization for small trivial values: bit-packed directly into the key's `void *` slot, no heap allocation.
