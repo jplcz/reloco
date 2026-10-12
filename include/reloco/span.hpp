@@ -266,10 +266,11 @@ public:
   /**
    * @brief Constructs a span from a compatible reloco span.
    * @tparam U Source element type.
-   * @param other Source span.
+   * @param other Source span. Not lifetimebound: the result borrows what `other` views, not `other` itself,
+   *              so converting a temporary span (e.g. `span<const T>(s.subspan(a, n))`) is safe.
    */
   template <typename U, std::enable_if_t<std::is_convertible_v<U (*)[], T (*)[]>, int> = 0>
-  constexpr span(const span<U> &other RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
+  constexpr span(const span<U> &other) noexcept
       : m_ptr(other.data()), m_size(other.size()) {}
 
   template <typename Container, typename = std::enable_if_t<

@@ -23,14 +23,14 @@
 #define RELOCO_LIFETIMEBOUND
 #endif
 
-#if RELOCO_HAS_CPP_ATTRIBUTE(gsl::owner)
-#define RELOCO_OWNER [[gsl::owner]]
+#if RELOCO_HAS_CPP_ATTRIBUTE(gsl::Owner)
+#define RELOCO_OWNER [[gsl::Owner]]
 #else
 #define RELOCO_OWNER
 #endif
 
-#if RELOCO_HAS_CPP_ATTRIBUTE(gsl::pointer)
-#define RELOCO_POINTER [[gsl::pointer]]
+#if RELOCO_HAS_CPP_ATTRIBUTE(gsl::Pointer)
+#define RELOCO_POINTER [[gsl::Pointer]]
 #else
 #define RELOCO_POINTER
 #endif
@@ -97,6 +97,91 @@
 #define RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 #define RELOCO_END_UNSAFE_BUFFER_USAGE
 #endif
+
+// ============================================================================
+// reloco-tidy Borrow Checker Exemption
+// ============================================================================
+
+/**
+ * @def RELOCO_BORROW_EXEMPT
+ * @brief Exempts one function (or every member of a class) from reloco-tidy's
+ * `reloco-borrow-check`, for code that deliberately aliases, e.g. swap/exchange primitives,
+ * self-referential containers or split-borrow helpers. Place it before the declaration:
+ * `RELOCO_BORROW_EXEMPT void swap(T &a, T &b) noexcept;`. Compiles to nothing for GCC/MSVC.
+ * Every use should carry a comment saying why the aliasing is sound.
+ */
+#if RELOCO_HAS_CPP_ATTRIBUTE(clang::annotate)
+#define RELOCO_BORROW_EXEMPT [[clang::annotate("reloco_borrow_exempt")]]
+#else
+#define RELOCO_BORROW_EXEMPT
+#endif
+
+/**
+ * @def RELOCO_COPYABLE
+ * @brief Marks a class/struct as implicitly copyable, like Rust's `Copy` trait. reloco-tidy's
+ * `reloco-implicit-copy` warns whenever a class without this marker is copied implicitly
+ * (copy-initialisation, by-value argument, copy assignment) instead of moved. Place it after
+ * the class key: `struct RELOCO_COPYABLE point { int x, y; };`. Views (`RELOCO_POINTER`) are
+ * always copyable. An explicit copy, `T(x)`, `T y(x)` or `static_cast<T>(x)`, is the
+ * equivalent of Rust's `.clone()` and is allowed for any type. Compiles to nothing for GCC/MSVC.
+ */
+#if RELOCO_HAS_CPP_ATTRIBUTE(clang::annotate)
+#define RELOCO_COPYABLE [[clang::annotate("reloco_copyable")]]
+#else
+#define RELOCO_COPYABLE
+#endif
+
+/**
+ * @def RELOCO_OUT
+ * @brief Marks a pointer or non-const reference parameter as an out-parameter: the function
+ * must write it (`*x = v;` for `T *x`, `x = v;` for `T &x`, or hand it to a callee that takes a
+ * non-const pointer/reference) on every path that returns, and must not read it before
+ * the first write. reloco-tidy's `reloco-out-param` enforces this. Place it after the
+ * parameter name: `void get(int *x RELOCO_OUT) noexcept;`. Compiles to nothing for GCC/MSVC.
+ */
+#if RELOCO_HAS_CPP_ATTRIBUTE(clang::annotate)
+#define RELOCO_OUT [[clang::annotate("reloco_out")]]
+#else
+#define RELOCO_OUT
+#endif
+
+// ============================================================================
+// reloco-tidy Safety Check Regions
+// ============================================================================
+
+/**
+ * @def RELOCO_BEGIN_SAFE_CODE
+ * @brief Opts a block of code in to the reloco-tidy safety checks.
+ *
+ * Projects that merely use reloco can run reloco-tidy with `SafeCodeMode: opt-in`
+ * (see docs/safety-checker.md): only code between RELOCO_BEGIN_SAFE_CODE and
+ * RELOCO_END_SAFE_CODE is checked, so third-party sources are never reported.
+ * In the default `all` mode (reloco, microfmt, structo) the block is checked like
+ * everything else.
+ *
+ * The macros expand to `#pragma region` / `#pragma endregion`, which every
+ * supported compiler (GCC, Clang, MSVC) accepts silently, including under
+ * -Wall -Wextra -Wpedantic -Wunknown-pragmas; they have no effect on compilation.
+ * Regions do not nest: the innermost most-recent marker wins.
+ */
+/**
+ * @def RELOCO_END_SAFE_CODE
+ * @brief Closes a block opened by RELOCO_BEGIN_SAFE_CODE.
+ */
+/**
+ * @def RELOCO_BEGIN_UNSAFE_CODE
+ * @brief Opts a block out of the reloco-tidy safety checks (for deliberate low-level code
+ * or vendored code inside an otherwise checked file). Prefer the unsafe_* tier and
+ * RELOCO_UNSAFE_BUFFER_USAGE where possible; every use should carry a reason comment.
+ */
+/**
+ * @def RELOCO_END_UNSAFE_CODE
+ * @brief Closes a block opened by RELOCO_BEGIN_UNSAFE_CODE.
+ */
+#define RELOCO_BEGIN_SAFE_CODE RELOCO_PRAGMA(region reloco_safe_begin)
+#define RELOCO_END_SAFE_CODE RELOCO_PRAGMA(endregion reloco_safe_end)
+#define RELOCO_BEGIN_UNSAFE_CODE RELOCO_PRAGMA(region reloco_unsafe_begin)
+#define RELOCO_END_UNSAFE_CODE RELOCO_PRAGMA(endregion reloco_unsafe_end)
 
 // ============================================================================
 // GCC False-Positive Bounds-Checking Pragma Control Blocks

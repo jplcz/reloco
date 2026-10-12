@@ -24,12 +24,19 @@ call site where allocation-free, exception-free, and predictably-sized
 containers matter — but as a general-purpose safety layer, not tied to
 formatting.
 
+> **Safety checker.** Reloco ships `reloco-tidy`, a clang-tidy plugin that enforces its
+> safe-coding rules (no raw pointers or C arrays, `noexcept` everywhere, move-by-default,
+> `RELOCO_OUT` parameters, initialised locals, a Rust-style borrow check) in your own code
+> too, with opt-in regions and explicit exemptions. See the
+> **[safety checker documentation](docs/safety-checker.md)**.
+
 ## Guides
 
 Start with the guide that matches what you are building:
 
 | Guide | Covers |
 |---|---|
+| [Safety checker](docs/safety-checker.md) | `reloco-tidy`: the clang-tidy plugin, its full rule set, exemptions, opt-in regions and the `RELOCO_*` annotation macros |
 | [Hardened containers](docs/hardened-containers.md) | Checked views and results, non-trapping access, assertion handling, and explicit security opt-out |
 | [Fallible construction](docs/fallible-construction.md) | The `try_create`/`try_allocate`/`try_construct`/`try_clone`/`try_clone_at` protocol and its `has_try_*` detection traits/concepts |
 | [Trivial relocation](docs/relocatable.md) | `is_trivially_relocatable<T>`: which types may be moved by copying bytes and abandoning the source, and why |
@@ -307,6 +314,12 @@ ratcheted diagnostic baseline:
 
 ```bash
 ./scripts/check-unsafe-buffer-usage.sh
+```
+
+The safety checker plugin is built separately (see [docs/safety-checker.md](docs/safety-checker.md)):
+
+```bash
+cmake -S tools/tidy -B build-tidy -G Ninja -DCMAKE_BUILD_TYPE=Release && ninja -C build-tidy
 ```
 
 ## License
