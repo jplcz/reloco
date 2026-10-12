@@ -26,7 +26,7 @@ namespace reloco {
 
 template <typename T> class RELOCO_POINTER span;
 
-template <typename T, std::size_t N> struct RELOCO_OWNER array {
+template <typename T, std::size_t N> struct RELOCO_OWNER RELOCO_COPYABLE array {
   static_assert(N > 0, "use the zero-size array specialization");
 
   alignas(effective_alignment_v<T>) T data_[N];
@@ -195,7 +195,7 @@ template <typename T, std::size_t N> struct RELOCO_OWNER array {
   auto iter() const && noexcept = delete;
 };
 
-template <typename T> struct array<T, 0> {
+template <typename T> struct RELOCO_COPYABLE array<T, 0> {
   using value_type = T;
   using size_type = std::size_t;
   using difference_type = std::ptrdiff_t;

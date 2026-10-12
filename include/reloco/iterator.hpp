@@ -199,7 +199,7 @@ public:
 
   /** @brief Sentinel type `end()` returns; compares equal to a `cursor`
    * that has been exhausted. Carries no state. */
-  class sentinel {};
+  class RELOCO_COPYABLE sentinel {};
 
   /** @brief Single-pass `std::input_iterator_tag` cursor driving `Derived`
    * through repeated `next()` calls; caches the current item so

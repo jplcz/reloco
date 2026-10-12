@@ -304,7 +304,7 @@ namespace reloco {
  * @brief An opaque, monotonically non-decreasing point in time, matching
  * Rust's `std::time::Instant`. See the file-level documentation above.
  */
-class instant {
+class RELOCO_COPYABLE instant {
 public:
   /** @brief The default-constructed "zero" instant -- not `now()`, and
    * meaningful only as a base to compare/measure other `instant` values
