@@ -183,7 +183,7 @@ CLion runs clang-tidy itself, so use its external-tool path for the plugin:
 | `reloco-safe-math` | **Opt-in.** Inside a function or class marked `RELOCO_SAFE_MATH`, raw integer `+ - * / % << >>`, `++`, `--`, unary `-` on non-constant operands are rejected; use `checked.hpp`, `saturating.hpp` or `wrapping.hpp`. Unmarked code is never checked. | Overflow is explicit where it matters. |
 | `reloco-member-init` | Every field has a default member initializer (self-initialising class types excepted). | No indeterminate members. |
 | `reloco-rule-of-five` | Declaring any of destructor, copy/move constructor, copy/move assignment means declaring all five (`= default`/`= delete`). A lone defaulted destructor is allowed. | Explicit ownership semantics. |
-| `reloco-use-after-move` | A local or parameter passed to `std::move` may not be read again on any path (loops included) until it is reassigned or reinitialised (`x = ...`, `x.clear()`, `reset`, `assign`, `emplace`). Trivially copyable types are exempt (a move is a copy). Emits a note at the move. | Rust's "borrow of moved value". |
+| `reloco-use-after-move` | A local or parameter passed to `std::move` may not be read again on any path (loops included) until it is reassigned or reinitialised (`x = ...`, `x.clear()`, `reset`, `assign`, `emplace`). Trivially copyable types are exempt (a move is a copy). Moves are tracked per field: after `std::move(p.first)` the field, its sub-fields and the whole `p` are moved-from, while `p.second` stays valid; `p.first = ...` or `p.first.clear()` revives it, and assigning `p` revives everything. The same applies to members of `this` (`std::move(name_)` then `name_.size()`); a bare `this`/`*this` is not treated as a use. Emits a note at the move. | Rust's "borrow of moved value". |
 | `reloco-iterator-invalidation` | Inside a range-for, the iterated container may not be modified (non-const member other than `at`/`front`/`back`/`begin`/`end`/`find`/`size`..., assignment, or passing it to a mutable-reference parameter), unless the change is immediately followed by `break`/`return`. Iterators bound to variables are covered by `reloco-borrow-check`. | Hidden iterators dangle after reallocation. |
 | `reloco-leak` | **Opt-in by type.** A local or by-value parameter of a `RELOCO_MUST_CONSUME` class must be consumed on every path that leaves the function: `std::move(x)`, `return x`, `&x` (escape) or a `RELOCO_CONSUMES` member. Reported at the exit, with a note at the declaration. | Linear resources (transactions, tokens) cannot be dropped silently. |
 | `reloco-lock-guard` | In a class that owns a mutex (a `RELOCO_CAPABILITY` member), every other mutable member must be `RELOCO_GUARDED_BY(mutex)`, `RELOCO_UNGUARDED`, const, a reference, atomic or a synchronisation primitive. Fix-it appends `RELOCO_GUARDED_BY(mu)` when there is exactly one mutex. Enable `-Wthread-safety` so access to guarded members is then enforced by Clang. | Every shared field names its lock. |
@@ -196,6 +196,7 @@ CLion runs clang-tidy itself, so use its external-tool path for the plugin:
 | `reloco-borrow-check` | Best-effort Rust-style borrow checking inside one function. See below. | Aliasing XOR mutability. |
 | `reloco-aliased-arguments` | A call may not receive overlapping places when one of them is bound as a mutable reference, mutable pointer (`&x`) or non-const `this`: `f(x, x)`, `x.m(x)`, `x.m(x.field)`. See below. | Rust's "cannot borrow as mutable more than once" across call arguments. |
 | `reloco-escaping-local` | A pointer, array decay, view or `RELOCO_LIFETIMEBOUND` result derived from a local may not be stored through a pointer or non-const reference parameter (`*out = &x;`, `out->p = buf;`). See below. | The caller is left with a dangling pointer; Clang's `-Wlifetime-safety` does not see stores through parameters. |
+| `reloco-member-order` | A member may not be initialised from a member declared after it, and a pointer/view member into a sibling member makes a copyable class unsafe. See below. | Members are constructed in declaration order and destroyed in reverse; self-pointers dangle after copy or relocation. |
 
 ### `RELOCO_OUT`
 
@@ -293,6 +294,39 @@ caller memory. Stores into globals, members of `this` and return values are left
 (`-Wlifetime-safety`). For code that destroys an object and then frees its storage, wrap the
 function in `RELOCO_BEGIN_ALLOW_USE_AFTER_DESTROY` / `RELOCO_END_ALLOW_USE_AFTER_DESTROY`
 (see `lifetime.hpp`) to silence its `-Wlifetime-safety-invalidation` false positive.
+
+### `reloco-member-order`
+
+```cpp
+struct bad {
+  guard g_;   // constructed first, destroyed last
+  mutex mu_;  // constructed second: g_(mu_) uses an object that does not exist yet
+  bad() noexcept : g_(mu_) {}  // flagged
+};
+struct good {
+  mutex mu_;  // declare what is used before what uses it
+  guard g_;
+  good() noexcept : g_(mu_) {}
+};
+struct self_ref {
+  char buf_[16] = {};
+  char *cur_ = buf_;  // flagged: points into itself, but copy/move are still generated
+};
+struct self_ref_ok {
+  char buf_[16] = {};
+  char *cur_ = buf_;
+  self_ref_ok() = default;
+  self_ref_ok(const self_ref_ok &) = delete;             // copy and move deleted
+  self_ref_ok &operator=(const self_ref_ok &) = delete;  // so cur_ can never dangle
+};
+```
+
+Flagged: a constructor initialiser or default member initialiser that uses a member declared later;
+taking only its address is fine unless the member has a non-trivial destructor (it would run after
+the target is gone). Also flagged: a pointer, reference or `RELOCO_POINTER` member bound to another
+member of the same object (`&m`, array decay, direct reference, `RELOCO_LIFETIMEBOUND` call) when
+the class still has a generated or defaulted copy/move constructor. `RELOCO_BORROW_EXEMPT`, unsafe
+regions and `NOLINT` suppress it.
 
 ### `RELOCO_NS` poison pointers
 

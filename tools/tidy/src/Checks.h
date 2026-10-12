@@ -92,6 +92,18 @@ public:
   bool honorsUnsafeBufferUsage() const override { return true; }
 };
 
+// Member initialisation/destruction order and self-referential objects: a member may not use a member declared
+// after it (not yet constructed, destroyed first), and a pointer/view into a sibling member makes the class
+// unsafe to copy or move.
+class MemberOrderCheck : public RelocoCheck {
+public:
+  using RelocoCheck::RelocoCheck;
+  void registerMatchers(MatchFinder *finder) override;
+  void check(const MatchFinder::MatchResult &result) override;
+  bool isLanguageVersionSupported(const LangOptions &lo) const override { return lo.CPlusPlus; }
+  bool honorsUnsafeBufferUsage() const override { return true; }
+};
+
 // Parameters marked RELOCO_OUT must be written on every path that returns, and not read before.
 RELOCO_TIDY_CHECK(OutParamCheck);
 // Locals must be initialised at declaration (no indeterminate scalars/arrays/trivial aggregates).

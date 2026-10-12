@@ -42,6 +42,7 @@ public:
     f.registerCheck<BorrowCheck>("reloco-borrow-check");
     f.registerCheck<AliasedArgumentsCheck>("reloco-aliased-arguments");
     f.registerCheck<EscapingLocalCheck>("reloco-escaping-local");
+    f.registerCheck<MemberOrderCheck>("reloco-member-order");
     f.registerCheck<LeakCheck>("reloco-leak");
     f.registerCheck<LockGuardCheck>("reloco-lock-guard");
     f.registerCheck<NarrowingFlowCheck>("reloco-narrowing-flow");
