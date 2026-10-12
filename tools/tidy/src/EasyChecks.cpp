@@ -285,6 +285,13 @@ void ConstLocalCheck::check(const MatchFinder::MatchResult &result) {
   const auto *dre_probe = vd;
   if (analyzer.isMutated(dre_probe))
     return;
+  // The analyzer does not see inline-asm output operands as writes.
+  for (const auto &m : match(findAll(asmStmt().bind("asm")), *fn->getBody(), *result.Context)) {
+    const auto *as = m.getNodeAs<GCCAsmStmt>("asm");
+    for (unsigned i = 0; as && i < as->getNumOutputs(); ++i)
+      if (const auto *dre = llvm::dyn_cast<DeclRefExpr>(as->getOutputExpr(i)->IgnoreParenImpCasts()); dre && dre->getDecl() == vd)
+        return;
+  }
   auto d = diag(vd->getLocation(), "local %0 is never modified; declare it const") << vd;
   // `int a = 1, b = 2;` shares one specifier: only offer the fix when the declaration stands alone.
   bool alone = false;

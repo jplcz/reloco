@@ -15,3 +15,9 @@ void f() noexcept {
   take(c);
   (void)a; (void)b; (void)d;
 }
+
+void asm_output() {
+  int out = 0; // written by the asm output operand: not const
+  asm volatile("" : "=r"(out));
+  (void)out;
+}

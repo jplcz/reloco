@@ -91,7 +91,7 @@ void RefQualifiedMemberCheck::check(const MatchFinder::MatchResult &result) {
       const LangOptions &lo = result.Context->getLangOpts();
       const SourceLocation refEnd = functionQualifierEnd(md, sm, lo, true);
       const SourceLocation begin = md->getInnerLocStart();
-      const SourceLocation bodyEnd = md->hasBody() ? md->getEndLoc() : SourceLocation();
+      const SourceLocation bodyEnd = md->isThisDeclarationADefinition() ? md->getEndLoc() : SourceLocation();
       if (refEnd.isValid() && begin.isValid() && bodyEnd.isValid() && !begin.isMacroID() && !bodyEnd.isMacroID() &&
           !md->getDescribedFunctionTemplate() && sm.isWrittenInSameFile(begin, refEnd)) {
         const std::string head = Lexer::getSourceText(CharSourceRange::getCharRange(begin, refEnd), sm, lo).str();
