@@ -30,6 +30,14 @@ formatting.
 > too, with opt-in regions and explicit exemptions. See the
 > **[safety checker documentation](docs/safety-checker.md)**.
 
+### Why this exists
+
+The author got fed up with how trivially easy it is to write undefined behavior or
+otherwise unsafe code in C and C++: a dangling view, an uninitialized local, an
+out-of-bounds index or a silent copy of a resource, all of which compile without a
+complaint. Reloco makes the safe form the default one, and `reloco-tidy` makes the unsafe
+form an explicit, reviewable decision.
+
 ## Guides
 
 Start with the guide that matches what you are building:

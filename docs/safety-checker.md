@@ -11,6 +11,14 @@ rules on the AST, so derived projects (`structo`, `microfmt`, your own firmware)
 same guarantees reloco's own headers are written to. It complements, and does not replace,
 Clang's `-Wlifetime-safety*`, `-Wdangling-gsl` and `-Wunsafe-buffer-usage`.
 
+## Motivation
+
+The author got fed up with how trivially easy it is to write undefined behavior or otherwise
+unsafe code in C and C++: dangling views, uninitialized locals, raw pointers and C arrays that
+lose their bounds, silent copies, aliasing mutation. None of it needs a warning to compile. The
+checker turns those habits into diagnostics, and every opt-out into a visible, greppable marker
+(`NOLINT`, `RELOCO_BEGIN_UNSAFE_CODE`, `RELOCO_BORROW_EXEMPT`) that a reviewer can question.
+
 Tests, examples, demos, benchmarks, build trees and third-party code are exempt by default;
 library headers and implementations must pass.
 
