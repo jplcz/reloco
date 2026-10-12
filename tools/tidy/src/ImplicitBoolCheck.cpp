@@ -33,18 +33,42 @@ void ImplicitBoolCheck::check(const MatchFinder::MatchResult &result) {
   const SourceManager &sm = *result.SourceManager;
   const SourceLocation end = Lexer::getLocForEndOfToken(sub->getEndLoc(), 0, sm, result.Context->getLangOpts());
   // Only a simple operand is rewritten; a compound expression would need parentheses.
-  // `!p` is rewritten by hand (`p == nullptr`): appending a comparison would bind to the negation.
-  bool negated = false;
+  const UnaryOperator *notOp = nullptr;
   for (const auto &p : result.Context->getParents(*ce))
     if (const auto *uo = p.get<UnaryOperator>(); uo && uo->getOpcode() == UO_LNot)
-      negated = true;
+      notOp = uo;
+  const bool simple = end.isValid() && !end.isMacroID() && !sub->getEndLoc().isMacroID() &&
+                      llvm::isa<DeclRefExpr, MemberExpr, CallExpr>(sub->IgnoreParenImpCasts());
   // `if (T *p = f())`: the operand is the condition variable itself, spelled at its declaration; no rewrite is possible.
-  if (const auto *dre = llvm::dyn_cast<DeclRefExpr>(sub->IgnoreParenImpCasts());
-      dre && dre->getDecl()->getLocation() == dre->getLocation())
-    negated = true;
-  if (!negated && end.isValid() && !end.isMacroID() && !sub->getEndLoc().isMacroID() &&
-      llvm::isa<DeclRefExpr, MemberExpr, CallExpr>(sub->IgnoreParenImpCasts()))
+  const auto *dre = llvm::dyn_cast<DeclRefExpr>(sub->IgnoreParenImpCasts());
+  if (dre && dre->getDecl()->getLocation() == dre->getLocation())
+    return;
+  if (!simple)
+    return;
+  if (!notOp) {
     d << FixItHint::CreateInsertion(end, std::string(" ") + cmp);
+    return;
+  }
+  // `!p` becomes `p == nullptr`; parenthesised unless the parent is a logical operator or a condition, where the
+  // lower precedence of `==` cannot change the meaning.
+  if (notOp->getBeginLoc().isMacroID() || notOp->getBeginLoc().isInvalid())
+    return;
+  bool bare = false;
+  for (const auto &p : result.Context->getParents(*notOp)) {
+    if (const auto *bo = p.get<BinaryOperator>(); bo && bo->isLogicalOp())
+      bare = true;
+    else if (p.get<IfStmt>() || p.get<WhileStmt>() || p.get<ReturnStmt>() || p.get<ForStmt>())
+      bare = true;
+    else if (const auto *pe = p.get<ParenExpr>(); pe && !pe->getBeginLoc().isMacroID())
+      bare = true;
+  }
+  const StringRef text = Lexer::getSourceText(CharSourceRange::getTokenRange(sub->getSourceRange()), sm,
+                                              result.Context->getLangOpts());
+  std::string eq = text.str();
+  eq += t->isPointerType() || t->isMemberPointerType() ? " == nullptr" : t->isFloatingType() ? " == 0.0" : " == 0";
+  if (!bare)
+    eq = "(" + eq + ")";
+  d << FixItHint::CreateReplacement(CharSourceRange::getCharRange(notOp->getBeginLoc(), end), eq);
 }
 
 } // namespace reloco::tidy
@@ -63,16 +87,52 @@ void LambdaDefaultCaptureCheck::check(const MatchFinder::MatchResult &result) {
     return;
   const bool byRef = le->getCaptureDefault() == LCD_ByRef;
   std::string names;
+  std::string list; // the explicit replacement for the default capture
+  bool canFix = true;
+  bool hasExplicit = false;
   for (const LambdaCapture &c : le->captures()) {
-    if (!c.isImplicit())
+    if (!c.isImplicit()) {
+      hasExplicit = true;
       continue;
-    if (!names.empty())
-      names += ", ";
-    names += c.capturesThis() ? "this" : c.getCapturedVar()->getName().str();
+    }
+    if (c.capturesThis()) {
+      if (!names.empty()) { names += ", "; list += ", "; }
+      names += "this";
+      list += "this";
+      continue;
+    }
+    if (!c.capturesVariable()) {
+      canFix = false;
+      continue;
+    }
+    const std::string n = c.getCapturedVar()->getName().str();
+    if (n.empty())
+      canFix = false;
+    if (!names.empty()) { names += ", "; list += ", "; }
+    names += n;
+    list += (byRef && c.getCaptureKind() == LCK_ByRef ? "&" : "") + n;
   }
-  diag(le->getCaptureDefaultLoc(), "lambda uses the '%select{=|&}0' default capture, which hides what it captures%1")
-      << byRef << (names.empty() ? std::string() : "; implicitly captured: " + names);
-  howToFix(le->getCaptureDefaultLoc(), "list every capture explicitly ('[x, &y]'), and use an init-capture "
+  auto d = diag(le->getCaptureDefaultLoc(), "lambda uses the '%select{=|&}0' default capture, which hides what it captures%1")
+           << byRef << (names.empty() ? std::string() : "; implicitly captured: " + names);
+  const SourceManager &sm = *result.SourceManager;
+  const SourceLocation defLoc = le->getCaptureDefaultLoc();
+  if (canFix && !defLoc.isMacroID()) {
+    SourceLocation end = Lexer::getLocForEndOfToken(defLoc, 0, sm, result.Context->getLangOpts());
+    if (hasExplicit) {
+      // `[&, x]`: drop the default together with its comma.
+      if (const auto next = Lexer::findNextToken(defLoc, sm, result.Context->getLangOpts()); next && next->is(tok::comma)) {
+        end = Lexer::getLocForEndOfToken(next->getLocation(), 0, sm, result.Context->getLangOpts());
+        while (*sm.getCharacterData(end) == ' ')
+          end = end.getLocWithOffset(1);
+      } else
+        canFix = false;
+      if (!list.empty())
+        list += ", ";
+    }
+    if (canFix)
+      d << FixItHint::CreateReplacement(CharSourceRange::getCharRange(defLoc, end), list);
+  }
+  howToFix(defLoc, "list every capture explicitly ('[x, &y]'), and use an init-capture "
                                        "('[v = std::move(v)]') to move; capture '*this' by copy instead of 'this' "
                                        "when the lambda may outlive the object");
 }

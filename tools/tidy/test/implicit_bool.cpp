@@ -27,3 +27,12 @@ int use_cond_var() noexcept {
   }
   return 0;
 }
+
+// `!p` is rewritten to `p == nullptr`; parenthesised where `==` could change the meaning.
+int use_negated(int *p, int *q, int n) noexcept {
+  if (!p || !q) {  // expect: reloco-implicit-bool
+    return 0;
+  }
+  const int flag = !p;  // expect: reloco-implicit-bool
+  return flag + n;
+}

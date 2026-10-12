@@ -12,3 +12,11 @@ void run() noexcept {
   auto none = []() noexcept { return 1; };
   (void)by_copy; (void)by_ref; (void)mixed; (void)explicit_caps; (void)none;
 }
+
+struct widget {
+  int v = 0;
+  int run(int k) noexcept {
+    auto f = [&]() noexcept { return v + k; };  // expect: reloco-lambda-default-capture
+    return f();
+  }
+};

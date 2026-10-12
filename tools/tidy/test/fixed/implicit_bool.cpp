@@ -11,7 +11,7 @@ void run(int n, const int *p, double d, bool b, flag_holder h) noexcept {
   if (n != 0) {} // expect: reloco-implicit-bool
   if (p != nullptr) {} // expect: reloco-implicit-bool
   while (d != 0.0) {} // expect: reloco-implicit-bool
-  bool x = !n; // expect: reloco-implicit-bool
+  bool x = (n == 0); // expect: reloco-implicit-bool
   if (n != 0) {}
   if (p != nullptr) {}
   if (b) {}
@@ -26,4 +26,13 @@ int use_cond_var() noexcept {
     return *p;
   }
   return 0;
+}
+
+// `!p` is rewritten to `p == nullptr`; parenthesised where `==` could change the meaning.
+int use_negated(int *p, int *q, int n) noexcept {
+  if (p == nullptr || q == nullptr) {  // expect: reloco-implicit-bool
+    return 0;
+  }
+  const int flag = (p == nullptr);  // expect: reloco-implicit-bool
+  return flag + n;
 }
