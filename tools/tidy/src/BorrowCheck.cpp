@@ -135,7 +135,7 @@ Place placeOf(const Expr *e) {
   }
   if (const auto *ce = llvm::dyn_cast<CXXConstructExpr>(e)) {
     // Views are built from the storage they borrow: span(buf), string_view(s), value_ref(x).
-    if (ce->getNumArgs() > 0 && isAliasingType(ce->getType()))
+    if (ce->getNumArgs() > 0 && isAliasingType(ce->getType()) && !ce->getConstructor()->isCopyOrMoveConstructor())
       return placeOf(ce->getArg(0));
     return {};
   }
@@ -193,6 +193,10 @@ public:
       return true;
     const QualType t = vd->getType();
     if (t.isNull() || t->isDependentType() || !isAliasingType(t))
+      return true;
+    // Copying a pointer or view out of another object copies its value; it does not borrow that object.
+    if (const auto *ic = llvm::dyn_cast<ImplicitCastExpr>(vd->getInit()->IgnoreParens());
+        ic && ic->getCastKind() == CK_LValueToRValue)
       return true;
     Place p = placeOf(vd->getInit());
     if (!p || p.var == vd)
@@ -452,7 +456,7 @@ void addBinding(std::vector<ArgBinding> &out, const Expr *arg, QualType paramTyp
     mut = !paramType.getNonReferenceType().isConstQualified();
     // A const reference bound to a temporary names a fresh object: 'v = v.substr(1)' copies the view's value
     // (pointer and size), so the temporary's storage never overlaps the receiver.
-    if (!mut && llvm::isa<MaterializeTemporaryExpr>(arg->IgnoreParenImpCasts()))
+    if (!mut && llvm::isa<MaterializeTemporaryExpr>(arg->IgnoreParens()))
       return;
   } else if (paramType->isPointerType()) {
     const Expr *s = strip(arg);

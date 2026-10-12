@@ -185,3 +185,13 @@ RELOCO_UNSAFE_BUFFER_USAGE int unsafe_tier() noexcept {
   x.push(1);
   return r;
 }
+
+// --- value copies are not borrows ------------------------------------------
+struct node_holder {
+  int *head = nullptr;
+  void swap_head() & noexcept {
+    int *old = head; // copies the pointer value, it does not borrow 'head'
+    head = nullptr;
+    (void)old;
+  }
+};
