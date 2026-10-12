@@ -17,6 +17,7 @@ namespace detail {
 
 // Defines the exact memory layout of FreeBSD's LIST_ENTRY(type).
 /** @brief Describes the link layout used by a BSD-style C list. */
+// NOLINTNEXTLINE(reloco-pointer-annotation): intrusive containers link caller-owned nodes.
 template <typename T> struct c_list_hook_layout {
   T *next;
   T **prev; // address of previous next element
@@ -27,18 +28,24 @@ template <typename T> struct c_list_hook_layout {
 template <typename T, auto Hook> struct c_list_hook_access {
   [[nodiscard]] static T *&next(T *node) noexcept {
     RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+    // NOLINTNEXTLINE(reloco-banned-construct): C list/queue hook layout is ABI-compatible with the sys/queue.h macros
+    // by design.
     return reinterpret_cast<c_list_hook_layout<T> *>(&(node->*Hook))->next;
     RELOCO_END_UNSAFE_BUFFER_USAGE
   }
 
   [[nodiscard]] static T *const &next(const T *node) noexcept {
     RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+    // NOLINTNEXTLINE(reloco-banned-construct): C list/queue hook layout is ABI-compatible with the sys/queue.h macros
+    // by design.
     return reinterpret_cast<const c_list_hook_layout<T> *>(&(node->*Hook))->next;
     RELOCO_END_UNSAFE_BUFFER_USAGE
   }
 
   [[nodiscard]] static T **&prev(T *node) noexcept {
     RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+    // NOLINTNEXTLINE(reloco-banned-construct): C list/queue hook layout is ABI-compatible with the sys/queue.h macros
+    // by design.
     return reinterpret_cast<c_list_hook_layout<T> *>(&(node->*Hook))->prev;
     RELOCO_END_UNSAFE_BUFFER_USAGE
   }
@@ -51,7 +58,7 @@ template <typename T, auto Hook> struct c_list_hook_access {
  * Note: Despite being doubly-linked, standard FreeBSD LISTs are only forward-iterable
  * because `prev` points to a pointer field, not the previous node structure itself.
  */
-template <typename T, auto Hook, bool IsConst> class c_list_iterator {
+template <typename T, auto Hook, bool IsConst> class RELOCO_POINTER c_list_iterator {
 public:
   using iterator_category = std::forward_iterator_tag;
   using value_type = T;
@@ -63,6 +70,8 @@ public:
   explicit constexpr c_list_iterator(T *node) noexcept : current_(node) {}
 
   template <bool WasConst, typename = std::enable_if_t<IsConst && !WasConst>>
+  // NOLINTNEXTLINE(reloco-explicit-conversion): iterator/handle constructed from its position by the owning container
+  // or macro.
   constexpr c_list_iterator(const c_list_iterator<T, Hook, WasConst> &other) noexcept : current_(other.node()) {}
 
   RELOCO_CHECKED [[nodiscard]] reference operator*() const noexcept {
@@ -109,6 +118,7 @@ private:
  * Supports O(1) removal of any node without traversing the list, making it
  * ideal for tracking resources that might be removed out-of-order.
  */
+// NOLINTNEXTLINE(reloco-pointer-annotation): intrusive containers link caller-owned nodes.
 template <typename T, auto Hook> class c_list {
 public:
   using value_type = T;
@@ -145,8 +155,10 @@ public:
   [[nodiscard]] const_iterator cbegin() const & noexcept { return begin(); }
   [[nodiscard]] const_iterator cend() const & noexcept { return end(); }
 
+  // NOLINTNEXTLINE(reloco-lifetime-annotations): returns a caller-owned node, not storage of the list itself.
   [[nodiscard]] T *front() const & noexcept { return first_; }
 
+  // NOLINTNEXTLINE(reloco-lifetime-annotations): returns a caller-owned node, not storage of the list itself.
   [[nodiscard]] T *front() const && = delete;
 
   /** @brief LIST_INSERT_HEAD: O(1) insertion at the front. */
@@ -161,6 +173,7 @@ public:
   }
 
   /** @brief O(1) removal from the front. Returns the removed node. */
+  // NOLINTNEXTLINE(reloco-lifetime-annotations): returns a caller-owned node, not storage of the list itself.
   T *pop_front() & noexcept {
     T *node = first_;
     if (node != nullptr) {

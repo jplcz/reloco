@@ -67,8 +67,9 @@ namespace reloco::boost_intrusive {
  * on) is only ever valid in `safe_link`/`auto_unlink` mode.
  */
 template <typename... Options>
-class safe_list_hook : public ::boost::intrusive::list_base_hook<::boost::intrusive::link_mode<::boost::intrusive::safe_link>,
-                                                                 Options...> {
+class safe_list_hook
+    : public ::boost::intrusive::list_base_hook<::boost::intrusive::link_mode<::boost::intrusive::safe_link>,
+                                                Options...> {
 public:
   using base_hook_type =
       ::boost::intrusive::list_base_hook<::boost::intrusive::link_mode<::boost::intrusive::safe_link>, Options...>;
@@ -98,7 +99,7 @@ public:
 template <typename... Options>
 class safe_list_member_hook
     : public ::boost::intrusive::list_member_hook<::boost::intrusive::link_mode<::boost::intrusive::safe_link>,
-                                                   Options...> {
+                                                  Options...> {
 public:
   using member_hook_type =
       ::boost::intrusive::list_member_hook<::boost::intrusive::link_mode<::boost::intrusive::safe_link>, Options...>;

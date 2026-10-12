@@ -102,7 +102,7 @@ namespace reloco {
  * `error_checking_mutex` -- used exclusive-only here -- all satisfy this
  * too).
  */
-template <typename MutexT> class RELOCO_SCOPED_CAPABILITY unique_lock {
+template <typename MutexT> class RELOCO_POINTER RELOCO_SCOPED_CAPABILITY unique_lock {
 public:
   using mutex_type = MutexT;
 

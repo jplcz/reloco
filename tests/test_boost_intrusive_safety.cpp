@@ -56,10 +56,9 @@ struct member_task {
   int id;
   explicit member_task(int i) : id(i) {}
 };
-using member_task_list =
-    boost::intrusive::list<member_task,
-                            boost::intrusive::member_hook<member_task, reloco::boost_intrusive::safe_list_member_hook<>,
-                                                           &member_task::hook>>;
+using member_task_list = boost::intrusive::list<
+    member_task,
+    boost::intrusive::member_hook<member_task, reloco::boost_intrusive::safe_list_member_hook<>, &member_task::hook>>;
 
 struct member_ordered {
   reloco::boost_intrusive::safe_set_member_hook<> hook;
@@ -67,9 +66,10 @@ struct member_ordered {
   explicit member_ordered(int v) : value(v) {}
   friend bool operator<(const member_ordered &a, const member_ordered &b) noexcept { return a.value < b.value; }
 };
-using member_ordered_set = boost::intrusive::set<
-    member_ordered,
-    boost::intrusive::member_hook<member_ordered, reloco::boost_intrusive::safe_set_member_hook<>, &member_ordered::hook>>;
+using member_ordered_set =
+    boost::intrusive::set<member_ordered,
+                          boost::intrusive::member_hook<member_ordered, reloco::boost_intrusive::safe_set_member_hook<>,
+                                                        &member_ordered::hook>>;
 
 struct member_hashed {
   reloco::boost_intrusive::safe_unordered_set_member_hook<> hook;
@@ -79,8 +79,8 @@ struct member_hashed {
   friend std::size_t hash_value(const member_hashed &h) noexcept { return static_cast<std::size_t>(h.key); }
 };
 using member_hashed_set = boost::intrusive::unordered_set<
-    member_hashed, boost::intrusive::member_hook<member_hashed, reloco::boost_intrusive::safe_unordered_set_member_hook<>,
-                                                  &member_hashed::hook>>;
+    member_hashed, boost::intrusive::member_hook<
+                       member_hashed, reloco::boost_intrusive::safe_unordered_set_member_hook<>, &member_hashed::hook>>;
 using member_hashed_bucket_array = std::array<member_hashed_set::bucket_type, 16>;
 
 struct bs_node : public reloco::boost_intrusive::safe_bs_set_hook<> {
@@ -97,9 +97,8 @@ struct member_bs_node {
   friend bool operator<(const member_bs_node &a, const member_bs_node &b) noexcept { return a.value < b.value; }
 };
 using member_bs_splay_set = boost::intrusive::splay_set<
-    member_bs_node,
-    boost::intrusive::member_hook<member_bs_node, reloco::boost_intrusive::safe_bs_set_member_hook<>,
-                                   &member_bs_node::hook>>;
+    member_bs_node, boost::intrusive::member_hook<member_bs_node, reloco::boost_intrusive::safe_bs_set_member_hook<>,
+                                                  &member_bs_node::hook>>;
 
 struct avl_node : public reloco::boost_intrusive::safe_avl_set_hook<> {
   int value;
@@ -115,9 +114,8 @@ struct member_avl_node {
   friend bool operator<(const member_avl_node &a, const member_avl_node &b) noexcept { return a.value < b.value; }
 };
 using member_avl_node_set = boost::intrusive::avl_set<
-    member_avl_node,
-    boost::intrusive::member_hook<member_avl_node, reloco::boost_intrusive::safe_avl_set_member_hook<>,
-                                   &member_avl_node::hook>>;
+    member_avl_node, boost::intrusive::member_hook<member_avl_node, reloco::boost_intrusive::safe_avl_set_member_hook<>,
+                                                   &member_avl_node::hook>>;
 
 } // namespace
 

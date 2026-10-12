@@ -43,10 +43,10 @@
 #include "error.hpp"
 #include "expected.hpp"
 
+#include "lifetime.hpp"
 #include <coroutine>
 #include <cstddef>
 #include <new>
-#include "lifetime.hpp"
 #include <type_traits>
 #include <utility>
 
@@ -93,9 +93,7 @@ public:
   void set_continuation(std::coroutine_handle<> cont) noexcept { cont_ = cont; }
 
 protected:
-  [[nodiscard]] std::coroutine_handle<> continuation() const noexcept {
-    return cont_ ? cont_ : std::noop_coroutine();
-  }
+  [[nodiscard]] std::coroutine_handle<> continuation() const noexcept { return cont_ ? cont_ : std::noop_coroutine(); }
 
 private:
   std::coroutine_handle<> cont_{};
@@ -180,7 +178,6 @@ protected:
   void emplace_error(error e) noexcept { emplace_result(unexpected(e)); }
 
 private:
-
   // Finishes the coroutine early from a suspension point with `e` and hands
   // control to whoever awaits it; the frame is destroyed by the owning task.
   std::coroutine_handle<> abandon(error e) noexcept {

@@ -164,7 +164,8 @@
  * @def RELOCO_CONSUMES
  * @brief Marks a member function of a RELOCO_MUST_CONSUME class as consuming its object: after
  * the call the object counts as released for `reloco-leak`. Place it first in the declaration
- * (an attribute after `noexcept` would apply to the function type): `RELOCO_CONSUMES void commit() noexcept;`. Compiles to nothing for GCC/MSVC.
+ * (an attribute after `noexcept` would apply to the function type): `RELOCO_CONSUMES void commit() noexcept;`. Compiles
+ * to nothing for GCC/MSVC.
  */
 #if RELOCO_HAS_CPP_ATTRIBUTE(clang::annotate)
 #define RELOCO_CONSUMES [[clang::annotate("reloco_consumes")]]

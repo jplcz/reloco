@@ -327,12 +327,13 @@ TEST(IntrusiveSplayTreeTest, ExtractIfIteratorIntegration) {
   ASSERT_TRUE(tree.try_insert(c).has_value());
 
   std::vector<int> extracted;
-  reloco::extract_if_iterator<tree_type, bool (*)(const node &)>(tree, [](const node &n) { return n.key != 2; })
-      .for_each([&](auto &&tx_obj) {
-        auto &tx = tx_obj.as_known();
-        extracted.push_back(tx.get().key);
-        tx.release_to([](node *) {});
-      });
+  reloco::extract_if_iterator<tree_type, bool (*)(const node &)>(tree, [](const node &n) {
+    return n.key != 2;
+  }).for_each([&](auto &&tx_obj) {
+    auto &tx = tx_obj.as_known();
+    extracted.push_back(tx.get().key);
+    tx.release_to([](node *) {});
+  });
 
   std::sort(extracted.begin(), extracted.end());
   EXPECT_EQ(extracted, (std::vector<int>{1, 3}));
@@ -609,8 +610,8 @@ TEST(IntrusiveSplayTreeTest, SpliceReplaceEvictsConflictingTargetNode) {
     ASSERT_TRUE(target.try_insert(n).has_value());
 
   std::vector<std::string> disposed;
-  auto moved = target.splice_replace(source, source.begin(), source.end(),
-                                      [&](node &n) { disposed.push_back(n.value); });
+  auto moved =
+      target.splice_replace(source, source.begin(), source.end(), [&](node &n) { disposed.push_back(n.value); });
   EXPECT_EQ(moved, 2); // every source node moves, none left behind
   EXPECT_TRUE(source.empty());
   EXPECT_EQ(disposed, (std::vector<std::string>{"t20"})); // the evicted target node
@@ -636,8 +637,8 @@ TEST(IntrusiveSplayTreeTest, SpliceDiscardKeepsExistingTargetNode) {
     ASSERT_TRUE(target.try_insert(n).has_value());
 
   std::vector<std::string> disposed;
-  auto moved = target.splice_discard(source, source.begin(), source.end(),
-                                      [&](node &n) { disposed.push_back(n.value); });
+  auto moved =
+      target.splice_discard(source, source.begin(), source.end(), [&](node &n) { disposed.push_back(n.value); });
   EXPECT_EQ(moved, 1); // only 10 moves; 20 is discarded
   EXPECT_TRUE(source.empty());
   EXPECT_EQ(disposed, (std::vector<std::string>{"s20"})); // the discarded source node

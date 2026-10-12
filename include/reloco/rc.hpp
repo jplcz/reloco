@@ -111,6 +111,7 @@ struct RELOCO_EXPORT rc_control_block {
 // Object and control block live in two separate allocator blocks: the
 // object's storage is freed as soon as the last `rc` releases it,
 // independently of any surviving `weak_rc`.
+// NOLINTNEXTLINE(reloco-pointer-annotation): control blocks reference their object/allocator by design.
 template <typename T> struct rc_control_block_separate final : rc_control_block {
   T *ptr_;
   allocator_ref alloc_;
@@ -132,14 +133,17 @@ template <typename T> struct rc_control_block_separate final : rc_control_block 
 // Object storage is embedded directly in the control block: a single
 // allocation, but the whole block (object bytes included) stays alive until
 // the last `weak_rc` also releases it.
+// NOLINTNEXTLINE(reloco-pointer-annotation): control blocks reference their object/allocator by design.
 template <typename T> struct rc_control_block_combined final : rc_control_block {
+  // NOLINTNEXTLINE(reloco-no-c-array): raw aligned storage for in-place construction of T.
   alignas(T) std::byte storage_[sizeof(T)];
   allocator_ref alloc_;
 
   // ReSharper disable once CppPossiblyUninitializedMember
   explicit rc_control_block_combined(allocator_ref alloc) noexcept : alloc_(alloc) {} // NOLINT(*-pro-type-member-init)
 
-  T *object() & noexcept { return reinterpret_cast<T *>(static_cast<void *>(storage_)); }
+  // NOLINTNEXTLINE(reloco-banned-construct): aliasing/in-place storage cast required by the control-block design.
+  T *object() & noexcept RELOCO_LIFETIMEBOUND { return reinterpret_cast<T *>(static_cast<void *>(storage_)); }
 
   void destroy_object() noexcept override { object()->~T(); }
 
@@ -168,6 +172,8 @@ public:
   RELOCO_BLOCK_RVALUE_ACCESS(T);
 
   constexpr rc() noexcept = default;
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors the std smart pointers: implicit from nullptr_t and from
+  // convertible pointer types.
   constexpr rc(std::nullptr_t) noexcept {}
 
   rc(const rc &other) noexcept : ptr_(other.ptr_), block_(other.block_) {
@@ -177,6 +183,8 @@ public:
 
   /** @brief Converting copy from a compatible `rc<U>`. */
   template <typename U, typename = std::enable_if_t<std::is_convertible_v<U *, T *>>>
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors the std smart pointers: implicit from nullptr_t and from
+  // convertible pointer types.
   rc(const rc<U> &other) noexcept : ptr_(other.ptr_), block_(other.block_) {
     if (block_)
       ++block_->shared_count_;
@@ -195,6 +203,8 @@ public:
   }
 
   template <typename U, typename = std::enable_if_t<std::is_convertible_v<U *, T *>>>
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors the std smart pointers: implicit from nullptr_t and from
+  // convertible pointer types.
   constexpr rc(rc<U> &&other) noexcept : ptr_(other.ptr_), block_(other.block_) {
     other.ptr_ = nullptr;
     other.block_ = nullptr;
@@ -352,6 +362,8 @@ template <typename T> class RELOCO_POINTER weak_rc : private detail::requires_ex
 public:
   constexpr weak_rc() noexcept = default;
 
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors the std smart pointers: implicit from nullptr_t and from
+  // convertible pointer types.
   weak_rc(const rc<T> &other) noexcept : ptr_(other.ptr_), block_(other.block_) {
     if (block_)
       ++block_->weak_count_;
@@ -363,6 +375,8 @@ public:
   }
 
   template <typename U, typename = std::enable_if_t<std::is_convertible_v<U *, T *>>>
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors the std smart pointers: implicit from nullptr_t and from
+  // convertible pointer types.
   weak_rc(const weak_rc<U> &other) noexcept : ptr_(other.ptr_), block_(other.block_) {
     if (block_)
       ++block_->weak_count_;
@@ -476,6 +490,8 @@ protected:
   constexpr enable_rc_from_this() noexcept = default;
   constexpr enable_rc_from_this(const enable_rc_from_this &) noexcept {}
   enable_rc_from_this &operator=(const enable_rc_from_this &) noexcept { return *this; }
+  enable_rc_from_this(enable_rc_from_this &&) noexcept {}
+  enable_rc_from_this &operator=(enable_rc_from_this &&) noexcept { return *this; }
   ~enable_rc_from_this() = default;
 
 private:
@@ -580,16 +596,19 @@ template <typename T, typename U> rc<T> static_pointer_cast(const rc<U> &other) 
 }
 
 template <typename T, typename U> rc<T> dynamic_pointer_cast(const rc<U> &other) noexcept {
+  // NOLINTNEXTLINE(reloco-banned-construct): explicit dynamic_pointer_cast, the caller asked for it.
   if (auto *ptr = dynamic_cast<T *>(other.get()))
     return rc<T>(other, ptr);
   return rc<T>();
 }
 
 template <typename T, typename U> rc<T> const_pointer_cast(const rc<U> &other) noexcept {
+  // NOLINTNEXTLINE(reloco-banned-construct): explicit const_pointer_cast, the caller asked for it.
   return rc<T>(other, const_cast<T *>(other.get()));
 }
 
 template <typename T, typename U> rc<T> reinterpret_pointer_cast(const rc<U> &other) noexcept {
+  // NOLINTNEXTLINE(reloco-banned-construct): aliasing/in-place storage cast required by the control-block design.
   return rc<T>(other, reinterpret_cast<T *>(other.get()));
 }
 

@@ -59,7 +59,7 @@ public:
    * releases the lock automatically on destruction, matching Rust's
    * `MutexGuard<'a, T>`.
    */
-  class RELOCO_SCOPED_CAPABILITY guard {
+  class RELOCO_POINTER RELOCO_SCOPED_CAPABILITY guard {
   public:
     guard(guard &&other) noexcept : cell_(other.cell_) { other.cell_ = nullptr; }
     guard(const guard &) = delete;
@@ -81,13 +81,14 @@ public:
       return &cell_->value_;
     }
 
-    /** @brief Read-only access to the protected value; equivalent to `*this` with `const` emphasized at the call site. */
+    /** @brief Read-only access to the protected value; equivalent to `*this` with `const` emphasized at the call site.
+     */
     [[nodiscard]] const T &get() const & noexcept RELOCO_LIFETIMEBOUND {
       RELOCO_ASSERT(cell_ != nullptr, "guard used after being moved from");
       return cell_->value_;
     }
 
-  [[nodiscard]] const T &get() const && = delete;
+    [[nodiscard]] const T &get() const && = delete;
 
     /** @brief Mutable access to the protected value; equivalent to `*this`, spelled out for parity with `get()`. */
     [[nodiscard]] T &get_mut() const & noexcept RELOCO_LIFETIMEBOUND {
@@ -95,7 +96,7 @@ public:
       return cell_->value_;
     }
 
-  [[nodiscard]] T &get_mut() const && = delete;
+    [[nodiscard]] T &get_mut() const && = delete;
 
   private:
     friend class guarded_mutex;

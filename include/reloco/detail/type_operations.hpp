@@ -57,9 +57,9 @@
 #include <type_traits>
 #include <utility>
 
-// Unsafe by design: runtime type-operation tables call construct/relocate/destroy through type-erased pointers; callers use typed wrappers.
-// Exempt from reloco-tidy memory-safety rules; everything here is reached only
-// through the checked public API.
+// Unsafe by design: runtime type-operation tables call construct/relocate/destroy through type-erased pointers; callers
+// use typed wrappers. Exempt from reloco-tidy memory-safety rules; everything here is reached only through the checked
+// public API.
 RELOCO_BEGIN_UNSAFE_CODE
 
 namespace reloco::detail {

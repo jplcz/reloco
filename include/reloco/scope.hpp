@@ -174,11 +174,13 @@ public:
 
     data_->running_count.fetch_add(1, std::memory_order_relaxed);
 
-    auto data = data_; // shared_ptr copy: keeps scope_data alive for the wrapped closure below.
-    auto wrapped = [captured_f = std::forward<F>(f), data]() noexcept -> R {
+    auto data = shared_ptr<detail::scope_data>(
+        data_); // explicit shared_ptr copy: keeps scope_data alive for the wrapped closure below.
+    auto wrapped = [captured_f = std::forward<F>(f), keep_alive = std::move(data)]() noexcept -> R {
       // Runs on the spawned thread, right after captured_f() returns (in
       // either branch below): decrements the shared completion counter
       // and wakes up a `~thread_scope()` blocked waiting on it.
+      // NOLINTNEXTLINE(reloco-rule-of-five): local aggregate initialised in place; never copied or moved.
       struct completion_guard {
         shared_ptr<detail::scope_data> shared_data;
 
@@ -186,7 +188,7 @@ public:
           if (shared_data->running_count.fetch_sub(1, std::memory_order_acq_rel) == 1)
             futex_wake_all(shared_data->running_count);
         }
-      } guard{data};
+      } guard{keep_alive};
 
       return captured_f();
     };

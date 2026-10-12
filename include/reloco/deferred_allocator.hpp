@@ -148,8 +148,8 @@ template <> struct allocator_traits<deferred_allocator_tag> {
       real->deallocate(ptr, bytes);
   }
 
-  [[nodiscard]] static result<std::size_t> expand_in_place(value_ref<context_type> ctx, void *ptr,
-                                                           std::size_t old_size, std::size_t new_size) noexcept {
+  [[nodiscard]] static result<std::size_t> expand_in_place(value_ref<context_type> ctx, void *ptr, std::size_t old_size,
+                                                           std::size_t new_size) noexcept {
     const allocator_ref *real = ctx->bound();
     if (!real)
       return unexpected(error::unsupported_operation);

@@ -169,6 +169,7 @@ namespace detail {
  * spawned through `thread_builder::spawn` (see `try_spawn_named` below);
  * either way it costs nothing beyond a few stack-sized inline bytes since
  * `inline_string` never allocates. */
+// NOLINTNEXTLINE(reloco-pointer-annotation): allocator handle is borrowed by design.
 struct thread_entry_box {
   function<void()> entry;
   allocator_ref alloc;
@@ -609,7 +610,7 @@ public:
     if (!created) {
       name_error_ = true;
     } else {
-      name_ = *created;
+      name_ = inline_string<15>(*created);
     }
     return std::move(*this);
   }

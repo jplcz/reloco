@@ -115,6 +115,8 @@ template <typename T, typename Compare> struct container_ref_traits<flat_set<T, 
       return nullptr;
     }
     // Unconsting the reference safely since the container ref allows value mutation
+    // NOLINTNEXTLINE(reloco-banned-construct): elements are stored const to protect the key; the mapped value is
+    // mutable by the API contract.
     return const_cast<element_type *>(&found_res->get());
   }
 
@@ -124,6 +126,8 @@ template <typename T, typename Compare> struct container_ref_traits<flat_set<T, 
     // Traverse the flat_set and visit each element (where key == value)
     c.for_each([visitor_ctx, visit](const T &val) noexcept {
       // flat_set elements are sorted keys, so key and value point to `val`
+      // NOLINTNEXTLINE(reloco-banned-construct): elements are stored const to protect the key; the mapped value is
+      // mutable by the API contract.
       visit(visitor_ctx, val, const_cast<T &>(val));
     });
   }

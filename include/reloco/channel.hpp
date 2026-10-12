@@ -146,19 +146,21 @@ template <typename T> struct channel_node {
  * an ordinary `channel<T>` leaves `bounded` `false` and never waits on
  * `not_full`, so the extra bookkeeping costs a few bytes and a couple of
  * always-cheap increments/decrements per operation, nothing more. */
+// NOLINTNEXTLINE(reloco-pointer-annotation): shared channel state is reached through raw links by design.
 template <typename T> struct channel_shared {
   mutex guard;
   condition_variable not_empty;
   condition_variable not_full;
-  unique_ptr<channel_node<T>> head;
-  channel_node<T> *tail = nullptr;
-  std::size_t sender_count = 1;
-  bool receiver_alive = true;
-  bool bounded = false;
-  std::size_t capacity = 0; // Meaningful only when bounded; 0 means a rendezvous channel.
-  std::size_t queue_len = 0;
-  std::size_t waiting_receivers = 0; // Meaningful only for a bounded, 0-capacity (rendezvous) channel.
-  allocator_ref alloc;
+  unique_ptr<channel_node<T>> head RELOCO_GUARDED_BY(guard);
+  channel_node<T> *tail RELOCO_GUARDED_BY(guard) = nullptr;
+  std::size_t sender_count RELOCO_GUARDED_BY(guard) = 1;
+  bool receiver_alive RELOCO_GUARDED_BY(guard) = true;
+  bool bounded RELOCO_GUARDED_BY(guard) = false;
+  std::size_t capacity RELOCO_GUARDED_BY(guard) = 0; // Meaningful only when bounded; 0 means a rendezvous channel.
+  std::size_t queue_len RELOCO_GUARDED_BY(guard) = 0;
+  std::size_t
+      waiting_receivers RELOCO_GUARDED_BY(guard) = 0; // Meaningful only for a bounded, 0-capacity (rendezvous) channel.
+  allocator_ref alloc RELOCO_GUARDED_BY(guard);
 
   explicit channel_shared(allocator_ref a) noexcept : alloc(a) {}
 };
@@ -247,7 +249,7 @@ private:
   void drop_ref() noexcept {
     if (!shared_)
       return;
-    bool last;
+    bool last = false;
     {
       unique_lock<mutex> lock(shared_->guard);
       last = (--shared_->sender_count == 0);
@@ -365,7 +367,7 @@ public:
    * -- for the non-blocking flavor -- the queue is momentarily empty).
    * Matches Rust's `impl Iterator for Receiver<T>`/`Receiver::try_iter()`.
    */
-  class iterator {
+  class RELOCO_POINTER iterator {
   public:
     using iterator_category = std::input_iterator_tag;
     using value_type = T;
@@ -426,7 +428,7 @@ public:
    * rx.try_iter()) { ... }` drains whatever is already queued via
    * `try_recv()`, stopping (without blocking) once the queue is
    * momentarily empty -- matching Rust's `Receiver::try_iter()`. */
-  struct try_iter_view {
+  struct RELOCO_POINTER try_iter_view {
     receiver *rx;
     [[nodiscard]] iterator begin() const noexcept { return iterator(rx, /*blocking=*/false); }
     [[nodiscard]] iterator end() const noexcept { return iterator(); }
@@ -576,7 +578,7 @@ private:
   void drop_ref() noexcept {
     if (!shared_)
       return;
-    bool last;
+    bool last = false;
     {
       unique_lock<mutex> lock(shared_->guard);
       last = (--shared_->sender_count == 0);

@@ -110,6 +110,8 @@ public:
     // of the pair must stay immutable so the tree's ordering invariant
     // holds). Mutating just the mapped half cannot break that invariant,
     // exactly like flat_map::try_at's identical const_cast.
+    // NOLINTNEXTLINE(reloco-banned-construct): elements are stored const to protect the key; the mapped value is
+    // mutable by the API contract.
     auto &mutable_pair = const_cast<value_type &>(found->get());
     return std::ref(mutable_pair.second);
   }
@@ -234,6 +236,8 @@ public:
    */
   template <typename Pred> void retain(Pred &&pred) & noexcept {
     base::retain([&pred](const value_type &entry) noexcept {
+      // NOLINTNEXTLINE(reloco-banned-construct): elements are stored const to protect the key; the mapped value is
+      // mutable by the API contract.
       return pred(entry.first, const_cast<mapped_type &>(entry.second));
     });
   }
@@ -282,6 +286,8 @@ template <typename Key, typename Mapped, typename Compare> struct container_ref_
   static void for_each(container_type &c, void *visitor_ctx,
                        void (*visit)(void *, const key_type &, element_type &) noexcept) noexcept {
     c.for_each([visitor_ctx, visit](const typename container_type::value_type &entry) noexcept {
+      // NOLINTNEXTLINE(reloco-banned-construct): elements are stored const to protect the key; the mapped value is
+      // mutable by the API contract.
       visit(visitor_ctx, entry.first, const_cast<element_type &>(entry.second));
     });
   }

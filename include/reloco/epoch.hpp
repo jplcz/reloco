@@ -97,7 +97,7 @@ public:
   void bump_epoch() noexcept {
     // Read the current state
     epoch_t expected = m_epoch.load(std::memory_order_relaxed);
-    epoch_t next;
+    epoch_t next = {};
 
     // Loop until we successfully swap expected with next
     do {

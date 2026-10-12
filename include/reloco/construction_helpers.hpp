@@ -163,6 +163,7 @@ construction_helpers::try_construct(allocator_ref alloc, T *storage, Args &&...a
     return {};
   } else {
 #if RELOCO_HAS_EXCEPTIONS
+    // NOLINTNEXTLINE(reloco-banned-construct): boundary adapter: converts std/user exceptions into reloco::error.
     try {
       new (storage) T(std::forward<Args>(args)...);
       return {};
@@ -212,6 +213,7 @@ construction_helpers::try_allocate(allocator_ref alloc, Args &&...args) noexcept
     return result<T>(std::move(shell));
   } else {
 #if RELOCO_HAS_EXCEPTIONS
+    // NOLINTNEXTLINE(reloco-banned-construct): boundary adapter: converts std/user exceptions into reloco::error.
     try {
       return result<T>(T(std::forward<Args>(args)...));
     } catch (std::bad_alloc &) { // std-interop-ok: translate libstdc++'s thrown bad_alloc at the one exception boundary
@@ -252,6 +254,7 @@ result<T> construction_helpers::try_clone(allocator_ref alloc, const T &source) 
     static_assert(std::is_copy_constructible_v<T>,
                   "reloco::try_clone requires T to be copy constructible or implement a custom clone protocol.");
 #if RELOCO_HAS_EXCEPTIONS
+    // NOLINTNEXTLINE(reloco-banned-construct): boundary adapter: converts std/user exceptions into reloco::error.
     try {
       return result<T>(T(source));
     } catch (std::bad_alloc &) { // std-interop-ok: translate libstdc++'s thrown bad_alloc at the one exception boundary
@@ -288,6 +291,7 @@ result<void> construction_helpers::try_clone_at(allocator_ref alloc, T *storage,
     if (!res)
       return unexpected(res.error());
 #if RELOCO_HAS_EXCEPTIONS
+    // NOLINTNEXTLINE(reloco-banned-construct): boundary adapter: converts std/user exceptions into reloco::error.
     try {
       new (storage) T(std::move(*res));
       return {};

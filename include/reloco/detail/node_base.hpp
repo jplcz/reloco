@@ -52,9 +52,9 @@
 #include <cstddef>
 #include <new>
 
-// Unsafe by design: node allocation hands out raw storage that the typed containers wrap; pointers never escape the public API.
-// Exempt from reloco-tidy memory-safety rules; everything here is reached only
-// through the checked public API.
+// Unsafe by design: node allocation hands out raw storage that the typed containers wrap; pointers never escape the
+// public API. Exempt from reloco-tidy memory-safety rules; everything here is reached only through the checked public
+// API.
 RELOCO_BEGIN_UNSAFE_CODE
 
 namespace reloco::detail {

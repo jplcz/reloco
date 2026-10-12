@@ -58,6 +58,7 @@ template <typename T> struct container_ref_traits<std::vector<T>> {
 
   static result<void> try_push_back(std::vector<T> &c, T value) noexcept {
 #if RELOCO_HAS_EXCEPTIONS
+    // NOLINTNEXTLINE(reloco-banned-construct): boundary adapter: converts std/user exceptions into reloco::error.
     try {
       c.push_back(std::move(value));
       return {};
@@ -72,6 +73,7 @@ template <typename T> struct container_ref_traits<std::vector<T>> {
 
   static result<void> try_push_front(std::vector<T> &c, T value) noexcept {
 #if RELOCO_HAS_EXCEPTIONS
+    // NOLINTNEXTLINE(reloco-banned-construct): boundary adapter: converts std/user exceptions into reloco::error.
     try {
       c.insert(c.begin(), std::move(value));
       return {};
@@ -88,6 +90,7 @@ template <typename T> struct container_ref_traits<std::vector<T>> {
     if (index > c.size())
       return unexpected(error::out_of_bounds);
 #if RELOCO_HAS_EXCEPTIONS
+    // NOLINTNEXTLINE(reloco-banned-construct): boundary adapter: converts std/user exceptions into reloco::error.
     try {
       c.insert(c.begin() + static_cast<typename std::vector<T>::difference_type>(index), std::move(value));
       return {};
@@ -139,6 +142,7 @@ template <typename Key, typename Value> struct container_ref_traits<std::map<Key
 
   static result<void> try_insert_at(std::map<Key, Value> &c, Key key, Value value) noexcept {
 #if RELOCO_HAS_EXCEPTIONS
+    // NOLINTNEXTLINE(reloco-banned-construct): boundary adapter: converts std/user exceptions into reloco::error.
     try {
       auto [it, inserted] = c.emplace(std::move(key), std::move(value));
       (void)it;

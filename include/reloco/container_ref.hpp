@@ -337,7 +337,7 @@ public:
    * like" containers, so an index-based traversal is always meaningful.
    * @tparam Fn Callable invocable as `Fn(T &)`.
    */
-  template <typename Fn> void for_each(Fn &&fn) const {
+  template <typename Fn> void for_each(Fn &&fn) const noexcept {
     if (!vtbl_)
       return;
     const size_type n = vtbl_->size(ctx_);
@@ -542,7 +542,7 @@ public:
    * each mapped value.
    * @tparam Fn Callable invocable as `Fn(const key_type &, T &)`.
    */
-  template <typename Fn> void for_each(Fn &&fn) {
+  template <typename Fn> void for_each(Fn &&fn) noexcept {
     if (!vtbl_)
       return;
     using decayed_fn = std::remove_reference_t<Fn>;

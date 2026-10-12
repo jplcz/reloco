@@ -132,6 +132,8 @@ public:
     base::for_each([&](const value_type &entry) noexcept {
       if (failed)
         return;
+      // NOLINTNEXTLINE(reloco-banned-construct): elements are stored const to protect the key; the mapped value is
+      // mutable by the API contract.
       auto &mutable_entry = const_cast<value_type &>(entry);
       auto ins_res = map.try_insert(std::move(mutable_entry.first), std::move(mutable_entry.second));
       if (!ins_res) {
@@ -176,6 +178,8 @@ public:
     auto found = base::try_find(key);
     if (!found)
       return unexpected(found.error());
+    // NOLINTNEXTLINE(reloco-banned-construct): elements are stored const to protect the key; the mapped value is
+    // mutable by the API contract.
     auto &mutable_pair = const_cast<value_type &>(found->get());
     return std::ref(mutable_pair.second);
   }
@@ -287,6 +291,8 @@ struct container_ref_traits<inline_flat_map<Key, Mapped, Capacity, Compare>> {
   static void for_each(container_type &c, void *visitor_ctx,
                        void (*visit)(void *, const key_type &, element_type &) noexcept) noexcept {
     c.for_each([visitor_ctx, visit](const typename container_type::value_type &entry) noexcept {
+      // NOLINTNEXTLINE(reloco-banned-construct): elements are stored const to protect the key; the mapped value is
+      // mutable by the API contract.
       visit(visitor_ctx, entry.first, const_cast<element_type &>(entry.second));
     });
   }

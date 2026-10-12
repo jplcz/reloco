@@ -18,7 +18,7 @@ void NoexceptCheck::registerMatchers(MatchFinder *finder) {
 void NoexceptCheck::check(const MatchFinder::MatchResult &result) {
   const auto *fn = result.Nodes.getNodeAs<FunctionDecl>("fn");
   if (!fn || fn->getCanonicalDecl() != fn || fn->isTemplateInstantiation() || fn->isExternC() ||
-      exempt(*result.SourceManager, fn->getLocation()))
+      fn->getDeclName().getNameKind() == DeclarationName::CXXDeductionGuideName || exempt(*result.SourceManager, fn->getLocation()))
     return;
   if (const auto *md = llvm::dyn_cast<CXXMethodDecl>(fn); md && (md->getParent()->isLambda() || md->isLambdaStaticInvoker()))
     return;

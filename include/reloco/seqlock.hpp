@@ -27,7 +27,7 @@ public:
   // WRITER API (Hardware Exclusion + Sequence Signaling)
   // ==========================================================================
   /** @brief Exclusive writer guard for a guarded seqlock. */
-  class RELOCO_SCOPED_CAPABILITY write_guard {
+  class RELOCO_POINTER RELOCO_SCOPED_CAPABILITY write_guard {
   public:
     write_guard(write_guard &&other) noexcept RELOCO_NO_THREAD_SAFETY_ANALYSIS : cell_(other.cell_) {
       other.cell_ = nullptr;
@@ -85,7 +85,7 @@ public:
   // READER API (Lock-Free Typestate Transactions)
   // ==========================================================================
   /** @brief Lock-free reader transaction for a guarded seqlock snapshot. */
-  class RELOCO_CONSUMABLE(unconsumed) read_tx {
+  class RELOCO_POINTER RELOCO_CONSUMABLE(unconsumed) read_tx {
   public:
     // TSA is explicitly disabled here because readers mathematically bypass the mutex.
     explicit read_tx(const guarded_seqlock &lock) noexcept
@@ -99,6 +99,7 @@ public:
         // static_assert above) can't overrun either object; safe despite
         // Clang's blanket "libc call" flag.
         RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+        // NOLINTNEXTLINE(reloco-banned-construct): trivially-copyable payload copied as raw bytes by design.
         std::memcpy(&snapshot_, &cell_->payload_, sizeof(T));
         RELOCO_END_UNSAFE_BUFFER_USAGE
       }

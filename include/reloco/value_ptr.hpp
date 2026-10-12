@@ -24,12 +24,18 @@ namespace reloco {
 template <typename T> class RELOCO_POINTER value_ptr {
 public:
   constexpr value_ptr() noexcept = default;
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors the std smart pointers: implicit from nullptr_t and from
+  // convertible pointer types.
   constexpr value_ptr(std::nullptr_t) noexcept {}
 
   template <typename U, typename = std::enable_if_t<std::is_convertible_v<U *, T *>>>
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors the std smart pointers: implicit from nullptr_t and from
+  // convertible pointer types.
   constexpr value_ptr(U *ptr RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept : ptr_(ptr) {}
 
   template <typename U, typename = std::enable_if_t<std::is_convertible_v<U *, T *>>>
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors the std smart pointers: implicit from nullptr_t and from
+  // convertible pointer types.
   constexpr value_ptr(value_ptr<U> other) noexcept : ptr_(other.ptr_) {}
 
   [[nodiscard]] constexpr T *get() const noexcept RELOCO_LIFETIMEBOUND { return ptr_; }

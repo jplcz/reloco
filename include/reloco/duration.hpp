@@ -76,7 +76,7 @@ namespace reloco {
  * `std::time::Duration`. See the file-level documentation above for why
  * `std::chrono::duration` is not used instead.
  */
-class duration {
+class RELOCO_COPYABLE duration {
 public:
   static constexpr std::uint64_t nanos_per_sec = 1'000'000'000ULL;
 
@@ -191,9 +191,9 @@ public:
     if (rhs == 0)
       return unexpected(error::division_by_zero);
     std::uint64_t secs_q = secs_ / rhs;
-    std::uint64_t secs_r = secs_ % rhs;
+    const std::uint64_t secs_r = secs_ % rhs;
     std::uint64_t nanos_q = static_cast<std::uint64_t>(nanos_) / rhs;
-    std::uint64_t nanos_r = static_cast<std::uint64_t>(nanos_) % rhs;
+    const std::uint64_t nanos_r = static_cast<std::uint64_t>(nanos_) % rhs;
     // Fold the leftover whole seconds (secs_r seconds, too few to divide evenly by rhs on their own) into the
     // sub-second remainder before dividing again, so e.g. (1 sec / 2) correctly yields 0.5 sec, not 0.
     nanos_q += (secs_r * nanos_per_sec + nanos_r) / rhs;
@@ -201,6 +201,8 @@ public:
       secs_q += nanos_q / nanos_per_sec;
       nanos_q %= nanos_per_sec;
     }
+    // NOLINTNEXTLINE(reloco-narrowing-flow): time conversion: the value range is bounded by the surrounding
+    // normalisation (nanoseconds < 1e9, saturating seconds).
     return duration(secs_q, static_cast<std::uint32_t>(nanos_q));
   }
 
@@ -234,6 +236,8 @@ template <typename T> [[nodiscard]] constexpr T duration_cast(duration d) noexce
 template <> struct duration_converter<struct timespec> {
   [[nodiscard]] static constexpr struct timespec convert(duration d) noexcept {
     struct timespec ts{};
+    // NOLINTNEXTLINE(reloco-narrowing-flow): time conversion: the value range is bounded by the surrounding
+    // normalisation (nanoseconds < 1e9, saturating seconds).
     ts.tv_sec = static_cast<decltype(ts.tv_sec)>(d.as_secs());
     ts.tv_nsec = static_cast<decltype(ts.tv_nsec)>(d.subsec_nanos());
     return ts;
@@ -250,6 +254,8 @@ template <> struct duration_converter<struct timespec> {
 template <> struct duration_converter<struct timeval> {
   [[nodiscard]] static constexpr struct timeval convert(duration d) noexcept {
     struct timeval tv{};
+    // NOLINTNEXTLINE(reloco-narrowing-flow): time conversion: the value range is bounded by the surrounding
+    // normalisation (nanoseconds < 1e9, saturating seconds).
     tv.tv_sec = static_cast<decltype(tv.tv_sec)>(d.as_secs());
     tv.tv_usec = static_cast<decltype(tv.tv_usec)>(d.subsec_micros());
     return tv;

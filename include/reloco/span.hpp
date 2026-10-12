@@ -72,7 +72,7 @@ template <typename U> constexpr inline bool is_span_v = is_span<std::decay_t<U>>
  */
 template <typename T> class RELOCO_POINTER span_chunks {
 public:
-  class iterator {
+  class RELOCO_POINTER iterator {
   public:
     using value_type = span<T>;
     using difference_type = std::ptrdiff_t;
@@ -148,7 +148,7 @@ private:
  */
 template <typename T> class RELOCO_POINTER span_windows {
 public:
-  class iterator {
+  class RELOCO_POINTER iterator {
   public:
     using value_type = span<T>;
     using difference_type = std::ptrdiff_t;
@@ -261,6 +261,8 @@ public:
    * @param arr Reference to the array.
    */
   template <std::size_t N>
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::span: implicit from arrays, containers and std::span, and
+  // to std::span.
   constexpr span(T (&arr RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS)[N]) noexcept : m_ptr(arr), m_size(N) {}
 
   /**
@@ -270,8 +272,9 @@ public:
    *              so converting a temporary span (e.g. `span<const T>(s.subspan(a, n))`) is safe.
    */
   template <typename U, std::enable_if_t<std::is_convertible_v<U (*)[], T (*)[]>, int> = 0>
-  constexpr span(const span<U> &other) noexcept
-      : m_ptr(other.data()), m_size(other.size()) {}
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::span: implicit from arrays, containers and std::span, and
+  // to std::span.
+  constexpr span(const span<U> &other) noexcept : m_ptr(other.data()), m_size(other.size()) {}
 
   template <typename Container, typename = std::enable_if_t<
                                     // Prevent hijacking the copy/move constructors, and defer to the
@@ -282,6 +285,8 @@ public:
                                     std::is_convertible_v<decltype(std::declval<Container &>().data()), T *> &&
                                     // Ensure the container has a .size() that returns an integer
                                     std::is_integral_v<decltype(std::declval<Container &>().size())>>>
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::span: implicit from arrays, containers and std::span, and
+  // to std::span.
   constexpr span(Container &cont RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
       : m_ptr(cont.data()), m_size(cont.size()) {}
 
@@ -289,6 +294,8 @@ public:
                                     !std::is_same_v<std::decay_t<Container>, span> && !detail::is_span_v<Container> &&
                                     std::is_convertible_v<decltype(std::declval<const Container &>().data()), T *> &&
                                     std::is_integral_v<decltype(std::declval<const Container &>().size())>>>
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::span: implicit from arrays, containers and std::span, and
+  // to std::span.
   constexpr span(const Container &cont RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
       : m_ptr(cont.data()), m_size(cont.size()) {}
 
@@ -310,6 +317,8 @@ public:
    */
   template <typename U, std::size_t Extent>
     requires(std::is_convertible_v<U (*)[], T (*)[]>)
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::span: implicit from arrays, containers and std::span, and
+  // to std::span.
   constexpr span(std::span<U, Extent> s) noexcept : m_ptr(s.data()), m_size(s.size()) {}
 
   /**
@@ -317,6 +326,8 @@ public:
    * @return An equivalent dynamic-extent `std::span<T>` covering the same
    * buffer.
    */
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::span: implicit from arrays, containers and std::span, and
+  // to std::span.
   [[nodiscard]] constexpr operator std::span<T>() const & noexcept { return std::span<T>(m_ptr, m_size); }
 
   operator std::span<T>() const && = delete;
@@ -633,6 +644,7 @@ public:
    * @brief Returns a read-only byte view of the represented range.
    */
   [[nodiscard]] span<const std::byte> as_bytes() const & noexcept RELOCO_LIFETIMEBOUND {
+    // NOLINTNEXTLINE(reloco-banned-construct): byte view of the elements, within the span bounds.
     return span<const std::byte>(reinterpret_cast<const std::byte *>(m_ptr), size_bytes());
   }
 

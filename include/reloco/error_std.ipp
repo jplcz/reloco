@@ -21,7 +21,7 @@
 
 namespace detail {
 
-RELOCO_API std::string error_category_impl::message(int ev) const {
+RELOCO_API std::string error_category_impl::message(int ev) const noexcept {
   switch (static_cast<error>(ev)) {
   case error::allocation_failed:
     return "the allocator failed to provide/grow/shrink a memory block";

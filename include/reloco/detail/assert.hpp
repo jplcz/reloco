@@ -16,9 +16,9 @@
 #include <cstdio>
 #endif
 
-// Unsafe by design: assertion plumbing must work in freestanding/kernel builds and uses raw C-string/varargs interfaces.
-// Exempt from reloco-tidy memory-safety rules; everything here is reached only
-// through the checked public API.
+// Unsafe by design: assertion plumbing must work in freestanding/kernel builds and uses raw C-string/varargs
+// interfaces. Exempt from reloco-tidy memory-safety rules; everything here is reached only through the checked public
+// API.
 RELOCO_BEGIN_UNSAFE_CODE
 
 namespace reloco {

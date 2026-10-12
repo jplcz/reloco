@@ -65,7 +65,7 @@ public:
    * releases its half of the lock automatically on destruction, matching
    * Rust's `RwLockReadGuard<'a, T>`.
    */
-  class RELOCO_SCOPED_CAPABILITY read_guard {
+  class RELOCO_POINTER RELOCO_SCOPED_CAPABILITY read_guard {
   public:
     read_guard(read_guard &&other) noexcept : cell_(other.cell_) { other.cell_ = nullptr; }
     read_guard(const read_guard &) = delete;
@@ -96,13 +96,14 @@ public:
       return &cell_->value_;
     }
 
-    /** @brief Read-only access to the protected value; equivalent to `*this` with `const` emphasized at the call site. */
+    /** @brief Read-only access to the protected value; equivalent to `*this` with `const` emphasized at the call site.
+     */
     [[nodiscard]] const T &get() const & noexcept RELOCO_LIFETIMEBOUND {
       RELOCO_ASSERT(cell_ != nullptr, "read_guard used after being moved from");
       return cell_->value_;
     }
 
-  [[nodiscard]] const T &get() const && = delete;
+    [[nodiscard]] const T &get() const && = delete;
 
   private:
     friend class rw_lock;
@@ -115,7 +116,7 @@ public:
    * Move-only; releases the lock automatically on destruction, matching
    * Rust's `RwLockWriteGuard<'a, T>`.
    */
-  class RELOCO_SCOPED_CAPABILITY write_guard {
+  class RELOCO_POINTER RELOCO_SCOPED_CAPABILITY write_guard {
   public:
     write_guard(write_guard &&other) noexcept : cell_(other.cell_) { other.cell_ = nullptr; }
     write_guard(const write_guard &) = delete;
@@ -137,13 +138,14 @@ public:
       return &cell_->value_;
     }
 
-    /** @brief Read-only access to the protected value; equivalent to `*this` with `const` emphasized at the call site. */
+    /** @brief Read-only access to the protected value; equivalent to `*this` with `const` emphasized at the call site.
+     */
     [[nodiscard]] const T &get() const & noexcept RELOCO_LIFETIMEBOUND {
       RELOCO_ASSERT(cell_ != nullptr, "write_guard used after being moved from");
       return cell_->value_;
     }
 
-  [[nodiscard]] const T &get() const && = delete;
+    [[nodiscard]] const T &get() const && = delete;
 
     /** @brief Mutable access to the protected value; equivalent to `*this`, spelled out for parity with `get()`. */
     [[nodiscard]] T &get_mut() const & noexcept RELOCO_LIFETIMEBOUND {
@@ -151,7 +153,7 @@ public:
       return cell_->value_;
     }
 
-  [[nodiscard]] T &get_mut() const && = delete;
+    [[nodiscard]] T &get_mut() const && = delete;
 
   private:
     friend class rw_lock;

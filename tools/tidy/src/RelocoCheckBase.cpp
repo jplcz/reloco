@@ -198,7 +198,8 @@ bool RelocoCheck::inUnsafeTier(const Decl *d) {
     if (c->hasAttr<UnsafeBufferUsageAttr>())
       return true;
     if (const auto *nd = llvm::dyn_cast<NamedDecl>(c))
-      if (nd->getIdentifier() && nd->getName().starts_with("unsafe_"))
+      if (nd->getIdentifier() && (nd->getName().starts_with("unsafe_") ||
+                                  (llvm::isa<NamespaceDecl>(nd) && nd->getName() == "unsafe")))
         return true;
   }
   return false;

@@ -98,7 +98,7 @@ namespace reloco::bucket_growth {
 namespace detail {
 
 [[nodiscard]] constexpr std::size_t ceil_div(std::size_t numerator, std::size_t denominator) noexcept {
-  return numerator / denominator + (numerator % denominator != 0 ? 1 : 0);
+  return numerator / denominator + (numerator % denominator != 0 ? std::size_t{1} : std::size_t{0});
 }
 
 [[nodiscard]] constexpr std::size_t clamp_bucket_count(std::size_t target, std::size_t min_buckets,
@@ -138,7 +138,7 @@ namespace detail {
     return 1;
   std::size_t p = 1;
   while (p < n) {
-    std::size_t next = p << 1;
+    const std::size_t next = p << 1;
     if (next <= p) // overflowed past the top bit
       break;
     p = next;
@@ -159,7 +159,7 @@ namespace detail {
     return n == 2;
   if (n % 3 == 0)
     return n == 3;
-  std::size_t limit = isqrt(n);
+  const std::size_t limit = isqrt(n);
   for (std::size_t i = 5; i <= limit; i += 6) {
     if (n % i == 0 || n % (i + 2) == 0)
       return false;
@@ -260,12 +260,12 @@ struct doubling_then_ratio {
     RELOCO_ASSERT(ratio_numerator > ratio_denominator,
                   "reloco::bucket_growth::doubling_then_ratio: ratio_numerator must be > ratio_denominator");
 
-    std::size_t target = detail::ceil_div(projected_elements, elements_per_bucket);
+    const std::size_t target = detail::ceil_div(projected_elements, elements_per_bucket);
     std::size_t buckets = current_buckets == 0 ? 1 : current_buckets;
     while (buckets < target) {
-      std::size_t next = buckets < knee_buckets
-                             ? saturating_mul(buckets, std::size_t{2})
-                             : detail::ceil_div(saturating_mul(buckets, ratio_numerator), ratio_denominator);
+      const std::size_t next = buckets < knee_buckets
+                                   ? saturating_mul(buckets, std::size_t{2})
+                                   : detail::ceil_div(saturating_mul(buckets, ratio_numerator), ratio_denominator);
       if (next <= buckets) // saturated at SIZE_MAX -- fall back to the plain linear target below
         break;
       buckets = next;
@@ -310,10 +310,10 @@ struct fixed_ratio {
     RELOCO_ASSERT(ratio_numerator > ratio_denominator,
                   "reloco::bucket_growth::fixed_ratio: ratio_numerator must be > ratio_denominator");
 
-    std::size_t target = detail::ceil_div(projected_elements, elements_per_bucket);
+    const std::size_t target = detail::ceil_div(projected_elements, elements_per_bucket);
     std::size_t buckets = current_buckets == 0 ? 1 : current_buckets;
     while (buckets < target) {
-      std::size_t next = detail::ceil_div(saturating_mul(buckets, ratio_numerator), ratio_denominator);
+      const std::size_t next = detail::ceil_div(saturating_mul(buckets, ratio_numerator), ratio_denominator);
       if (next <= buckets) // saturated at SIZE_MAX -- fall back to the plain linear target below
         break;
       buckets = next;
@@ -351,7 +351,7 @@ struct power_of_two {
     RELOCO_ASSERT(elements_per_bucket >= 1, "reloco::bucket_growth::power_of_two: elements_per_bucket must be >= 1");
     RELOCO_ASSERT(min_buckets >= 1 && min_buckets <= max_buckets,
                   "reloco::bucket_growth::power_of_two: min_buckets must be >= 1 and <= max_buckets");
-    std::size_t target = detail::ceil_div(projected_elements, elements_per_bucket);
+    const std::size_t target = detail::ceil_div(projected_elements, elements_per_bucket);
     return detail::clamp_bucket_count(detail::next_pow2(target), min_buckets, max_buckets);
   }
 };
@@ -391,7 +391,7 @@ struct prime_growth {
     RELOCO_ASSERT(elements_per_bucket >= 1, "reloco::bucket_growth::prime_growth: elements_per_bucket must be >= 1");
     RELOCO_ASSERT(min_buckets >= 1 && min_buckets <= max_buckets,
                   "reloco::bucket_growth::prime_growth: min_buckets must be >= 1 and <= max_buckets");
-    std::size_t target = detail::ceil_div(projected_elements, elements_per_bucket);
+    const std::size_t target = detail::ceil_div(projected_elements, elements_per_bucket);
     return detail::clamp_bucket_count(detail::next_prime(target), min_buckets, max_buckets);
   }
 };
@@ -431,8 +431,8 @@ struct chunked {
     RELOCO_ASSERT(elements_per_bucket >= 1, "reloco::bucket_growth::chunked: elements_per_bucket must be >= 1");
     RELOCO_ASSERT(min_buckets >= 1 && min_buckets <= max_buckets,
                   "reloco::bucket_growth::chunked: min_buckets must be >= 1 and <= max_buckets");
-    std::size_t target = detail::ceil_div(projected_elements, elements_per_bucket);
-    std::size_t rounded = detail::ceil_div(target, chunk_size) * chunk_size;
+    const std::size_t target = detail::ceil_div(projected_elements, elements_per_bucket);
+    const std::size_t rounded = detail::ceil_div(target, chunk_size) * chunk_size;
     return detail::clamp_bucket_count(rounded, min_buckets, max_buckets);
   }
 };
@@ -468,7 +468,7 @@ struct sqrt_curve {
     RELOCO_ASSERT(elements_per_bucket >= 1, "reloco::bucket_growth::sqrt_curve: elements_per_bucket must be >= 1");
     RELOCO_ASSERT(min_buckets >= 1 && min_buckets <= max_buckets,
                   "reloco::bucket_growth::sqrt_curve: min_buckets must be >= 1 and <= max_buckets");
-    std::size_t target = detail::ceil_div(projected_elements, elements_per_bucket);
+    const std::size_t target = detail::ceil_div(projected_elements, elements_per_bucket);
     return detail::clamp_bucket_count(detail::isqrt(target), min_buckets, max_buckets);
   }
 };

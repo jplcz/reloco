@@ -8,6 +8,9 @@
  * reloco/detail/compat.hpp). Never included directly.
  */
 
+// Unsafe by design: raw allocator block management behind the bounds-checked bytes/bytes_mut API.
+RELOCO_BEGIN_UNSAFE_CODE
+
 RELOCO_API result<bytes> bytes::try_copy_from(span<const std::byte> data, allocator_ref alloc) noexcept {
   if (data.empty())
     return bytes();
@@ -16,6 +19,7 @@ RELOCO_API result<bytes> bytes::try_copy_from(span<const std::byte> data, alloca
   if (!block)
     return unexpected(block.error());
   auto *raw = static_cast<std::byte *>(block->ptr);
+  // NOLINTNEXTLINE(reloco-banned-construct): raw byte copy into storage sized just above; bounds are established by the surrounding allocation.
   std::memcpy(raw, data.data(), data.size());
 
   auto storage = try_allocate_combined_rc<detail::bytes_storage>(alloc, raw, block->size, alloc);
@@ -32,7 +36,7 @@ RELOCO_API result<bytes> bytes::try_copy_from(span<const std::byte> data, alloca
 }
 
 RELOCO_API result<void> bytes_mut::try_reserve(std::size_t additional) noexcept {
-  std::size_t required = len_ + additional;
+  const std::size_t required = len_ + additional;
   if (required < len_) // overflow
     return unexpected(error::integer_overflow);
   if (required <= capacity_)
@@ -40,7 +44,7 @@ RELOCO_API result<void> bytes_mut::try_reserve(std::size_t additional) noexcept 
 
   std::size_t new_cap = capacity_ == 0 ? 64 : capacity_;
   while (new_cap < required) {
-    std::size_t doubled = new_cap * 2;
+    const std::size_t doubled = new_cap * 2;
     if (doubled < new_cap) { // overflow: clamp to exactly what's required
       new_cap = required;
       break;
@@ -55,6 +59,7 @@ RELOCO_API result<void> bytes_mut::try_put_slice(span<const std::byte> data) noe
     return {};
   if (auto res = try_reserve(data.size()); !res)
     return unexpected(res.error());
+  // NOLINTNEXTLINE(reloco-banned-construct): raw byte copy into storage sized just above; bounds are established by the surrounding allocation.
   std::memcpy(data_ + len_, data.data(), data.size());
   len_ += data.size();
   return {};
@@ -103,6 +108,7 @@ RELOCO_API result<void> bytes_mut::grow_to(std::size_t new_cap) noexcept {
   if (!block)
     return unexpected(block.error());
   if (data_) {
+    // NOLINTNEXTLINE(reloco-banned-construct): raw byte copy into storage sized just above; bounds are established by the surrounding allocation.
     std::memcpy(block->ptr, data_, len_);
     alloc_.deallocate(data_, capacity_);
   }
@@ -110,3 +116,5 @@ RELOCO_API result<void> bytes_mut::grow_to(std::size_t new_cap) noexcept {
   capacity_ = block->size;
   return {};
 }
+
+RELOCO_END_UNSAFE_CODE

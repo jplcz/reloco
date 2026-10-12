@@ -138,6 +138,10 @@ void NarrowingFlowCheck::check(const MatchFinder::MatchResult &result) {
   if (isCharType(src) && ctx.getIntWidth(src) == ctx.getIntWidth(dst))
     return;
 
+  // static_cast<unsigned>(-1) is the all-ones sentinel ("npos"): a constant, deliberate wrap.
+  if (Expr::EvalResult er; dst->isUnsignedIntegerType() && sub->EvaluateAsInt(er, ctx) && er.Val.getInt().isAllOnes())
+    return;
+
   const Range dr = typeRange(dst, ctx);
   const Range sr = rangeOf(sub, ctx);
   if (fits(sr, dr))

@@ -123,8 +123,10 @@ namespace detail {
  * above for exactly what this is (and is not) a defense against.
  */
 [[nodiscard]] inline uintptr_t generate_weak_process_cookie() noexcept {
+  // NOLINTNEXTLINE(reloco-banned-construct): pointer <-> integer conversion is the purpose of this type.
   uintptr_t stack_addr = reinterpret_cast<uintptr_t>(&stack_addr);
-  uintptr_t code_addr = reinterpret_cast<uintptr_t>(&generate_weak_process_cookie);
+  // NOLINTNEXTLINE(reloco-banned-construct): pointer <-> integer conversion is the purpose of this type.
+  const uintptr_t code_addr = reinterpret_cast<uintptr_t>(&generate_weak_process_cookie);
   return avalanche_mix(stack_addr ^ avalanche_mix(code_addr));
 }
 
@@ -146,10 +148,12 @@ struct sw_cookie_traits {
   using internal_type = uintptr_t;
 
   template <typename T> [[nodiscard]] static internal_type sign(T *ptr) noexcept {
+    // NOLINTNEXTLINE(reloco-banned-construct): pointer <-> integer conversion is the purpose of this type.
     return reinterpret_cast<uintptr_t>(ptr) ^ cookie();
   }
 
   template <typename T> [[nodiscard]] static T *auth(internal_type val) noexcept {
+    // NOLINTNEXTLINE(reloco-banned-construct): pointer <-> integer conversion is the purpose of this type.
     return reinterpret_cast<T *>(val ^ cookie());
   }
 
@@ -179,7 +183,8 @@ private:
  */
 struct sw_signed_cookie_traits {
   struct internal_type {
-    uintptr_t x[2];
+    // NOLINTNEXTLINE(reloco-no-c-array): fixed two-word cookie layout, POD by design.
+    uintptr_t x[2] = {};
 
     [[nodiscard]] bool operator==(const internal_type &other) const noexcept {
       return x[0] == other.x[0] && x[1] == other.x[1];
@@ -188,6 +193,7 @@ struct sw_signed_cookie_traits {
   };
 
   template <typename T> [[nodiscard]] static internal_type sign(T *ptr) noexcept {
+    // NOLINTNEXTLINE(reloco-banned-construct): pointer <-> integer conversion is the purpose of this type.
     uintptr_t raw = reinterpret_cast<uintptr_t>(ptr);
     return {raw ^ obfuscation_cookie(), raw ^ sign_cookie()};
   }
@@ -203,6 +209,7 @@ struct sw_signed_cookie_traits {
                                           "check failed -- possible memory corruption or tampering");
         RELOCO_TRAP();
       }
+    // NOLINTNEXTLINE(reloco-banned-construct): pointer <-> integer conversion is the purpose of this type.
     return reinterpret_cast<T *>(val.x[0] ^ obfuscation_cookie());
   }
 
@@ -215,6 +222,7 @@ private:
   [[nodiscard]] static uintptr_t sign_cookie() noexcept {
     return g_sign_cookie_.get_or_init([]() noexcept {
       return detail::avalanche_mix(
+          // NOLINTNEXTLINE(reloco-narrowing-flow): intentional low-limb/bit extraction: wrap-around is the operation.
           static_cast<uint32_t>(detail::generate_weak_process_cookie() ^ UINT64_C(0x5c5c5c5c5c5c5c5c)));
     });
   }
@@ -288,6 +296,8 @@ public:
 
   masked_pointer() noexcept : encoded_val_(AuthPolicy::template sign<T>(nullptr)) {}
 
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors the std smart pointers: implicit from nullptr_t and from
+  // convertible pointer types.
   masked_pointer(std::nullptr_t) noexcept : encoded_val_(AuthPolicy::template sign<T>(nullptr)) {}
 
   explicit masked_pointer(T *ptr) noexcept : encoded_val_(AuthPolicy::template sign<T>(ptr)) {}
@@ -306,6 +316,8 @@ public:
     other.reset();
     return *this;
   }
+
+  ~masked_pointer() = default;
 
   // ---- Core Accessors ----
 
@@ -351,6 +363,7 @@ public:
    * @brief Matches Rust's `Option::take`: returns the current raw
    * pointer and resets `*this` to null, in one step.
    */
+  // NOLINTNEXTLINE(reloco-lifetime-annotations): returns the stored caller-owned pointer by value.
   [[nodiscard]] T *take() & noexcept {
     T *old = get();
     reset();
@@ -361,6 +374,7 @@ public:
    * @brief Matches Rust's `Option::replace`/`std::mem::replace`: stores
    * @p ptr and returns the raw pointer it replaced.
    */
+  // NOLINTNEXTLINE(reloco-lifetime-annotations): returns the stored caller-owned pointer by value.
   T *replace(T *ptr) & noexcept {
     T *old = get();
     reset(ptr);

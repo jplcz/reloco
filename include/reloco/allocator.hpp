@@ -44,8 +44,8 @@
 // so it is treated as a single checked boundary, like span.hpp/array.hpp.
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
-// Unsafe by design: the allocator vtable ABI passes raw addresses (void* context/pointer) across a C-style function table.
-// Exempt from reloco-tidy memory-safety rules; callers see the typed, checked API.
+// Unsafe by design: the allocator vtable ABI passes raw addresses (void* context/pointer) across a C-style function
+// table. Exempt from reloco-tidy memory-safety rules; callers see the typed, checked API.
 RELOCO_BEGIN_UNSAFE_CODE
 
 namespace reloco {

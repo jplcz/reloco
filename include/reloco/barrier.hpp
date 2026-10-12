@@ -69,7 +69,7 @@ public:
    * other thread in the same wave observes `false`.
    */
   [[nodiscard]] bool wait() & noexcept {
-    std::uint32_t generation = generation_.load(std::memory_order_acquire);
+    const std::uint32_t generation = generation_.load(std::memory_order_acquire);
     if (arrived_.fetch_add(1, std::memory_order_acq_rel) + 1 == threshold_) {
       // Last arrival in this wave: become the leader, reset for the next
       // wave, and wake everyone else waiting on the generation we just
@@ -87,7 +87,7 @@ public:
   }
 
 private:
-  std::size_t threshold_;
+  std::size_t threshold_ = 0;
   std::atomic<std::size_t> arrived_ = 0;
   futex_word generation_ = 0;
 };

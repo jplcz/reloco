@@ -128,7 +128,9 @@ TEST_F(CallLocationTest, ReleaseCallLocationRefIsAlwaysEmpty) {
   EXPECT_FALSE(release_call_location_ref::current().has_value());
 }
 
-TEST_F(CallLocationTest, ReleaseCallLocationRefIsAnEmptyType) { EXPECT_TRUE(std::is_empty<release_call_location_ref>::value); }
+TEST_F(CallLocationTest, ReleaseCallLocationRefIsAnEmptyType) {
+  EXPECT_TRUE(std::is_empty<release_call_location_ref>::value);
+}
 
 namespace {
 

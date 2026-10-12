@@ -55,14 +55,13 @@ struct has_location_lock_shared<
 template <typename T, typename = void> struct has_location_try_lock_shared : std::false_type {};
 template <typename T>
 struct has_location_try_lock_shared<
-    T, std::void_t<decltype(std::declval<T &>().try_lock_shared(std::declval<call_location_ref>()))>>
-    : std::true_type {};
+    T, std::void_t<decltype(std::declval<T &>().try_lock_shared(std::declval<call_location_ref>()))>> : std::true_type {
+};
 
 template <typename T, typename = void> struct has_location_unlock_shared : std::false_type {};
 template <typename T>
 struct has_location_unlock_shared<
-    T, std::void_t<decltype(std::declval<T &>().unlock_shared(std::declval<call_location_ref>()))>> : std::true_type {
-};
+    T, std::void_t<decltype(std::declval<T &>().unlock_shared(std::declval<call_location_ref>()))>> : std::true_type {};
 
 } // namespace detail
 } // namespace reloco

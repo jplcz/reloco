@@ -748,7 +748,7 @@ public:
     if (!good) {
       // Running out of input with a short buffer means "wait for more"; anything else is garbage.
       return (reader.underflow() && !reader.invalid() && got < Codec::max_header_size) ? packed_probe::incomplete
-                                                                                         : packed_probe::corrupt;
+                                                                                       : packed_probe::corrupt;
     }
 
     header_bytes = reader.size();

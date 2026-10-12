@@ -161,7 +161,7 @@ CLion runs clang-tidy itself, so use its external-tool path for the plugin:
 | `reloco-noexcept` | Every function and lambda is `noexcept` (a conditional `noexcept(expr)` counts as explicit). | Failure is a `result<T>`, never an exception. |
 | `reloco-lifetime-annotations` | Accessors returning aliases need `RELOCO_LIFETIMEBOUND`; handle constructors need lifetimebound or capture annotations on borrowed parameters. | Lets Clang diagnose dangling views at the call site. |
 | `reloco-pointer-annotation` | Classes holding borrowed storage must be `RELOCO_POINTER`; owners `RELOCO_OWNER`. | Without them Clang's lifetime analysis does not track the type. |
-| `reloco-banned-std-type` | `std::` facilities with a reloco/microfmt/structo equivalent (containers, `string`, `span`, `optional`, `variant`, `function`, smart pointers, `source_location`, exception types, iostreams) are banned. The message names the replacement. | Decided on the AST, so aliases are caught too. Complements `scripts/check-no-std-types.py`. |
+| `reloco-banned-std-type` | `std::` facilities with a reloco/microfmt/structo equivalent (containers, `string`, `span`, `optional`, `variant`, `function`, smart pointers, `source_location`, exception types, iostreams) are banned. The message names the replacement. | Decided on the AST, so aliases are caught too. Complements `scripts/check-no-std-types.py`. Deliberate interop is accepted with the same comment markers as the script: `// std-interop-ok[: reason]` (line), `// std-interop-begin` / `// std-interop-end` (block), `// std-interop-file` (whole file). |
 | `reloco-banned-construct` | `throw`/`try`/`catch`, `new`/`delete`, `const_cast`, `reinterpret_cast`, `dynamic_cast`, C-style casts, and C string/memory/stdlib functions (`memcpy`, `strlen`, `malloc`, ...). | Each defeats a static guarantee. |
 | `reloco-implicit-copy` | Classes are move-only unless marked `RELOCO_COPYABLE` (Rust's `Copy`). Implicit copies (`T y = x`, by-value arguments, by-value range-for, copy assignment) are flagged. Explicit copies (`T(x)`, `T y(x)`, `T y{x}`, `static_cast<T>(x)`, member initialisers) are the equivalent of `.clone()` and always allowed. `RELOCO_POINTER` views are always copyable. | Makes every duplicate of a resource visible in the source. |
 | `reloco-uninit-local` | Locals are always initialised at declaration. Classes with a non-trivial default constructor, and static locals, are fine. | No indeterminate values. |
@@ -344,9 +344,15 @@ Results of the first pass (about 2300 findings, now about 755) and what they led
 | `reloco-checked-operator`: 80 library operators lacked `RELOCO_CHECKED` | They assert, delegate to an asserting accessor, or are non-null by construction, so they are now annotated; the iterator operators without a check gained an assertion. 207 findings down to 0. |
 | `detail/` type-erased bases and the allocator and OS shims address raw memory by design | Wrapped in `RELOCO_BEGIN_UNSAFE_CODE` / `RELOCO_END_UNSAFE_CODE` with a comment saying why. |
 
-Known remaining findings are real work items, not tool bugs: raw pointers in iterator/handle types that
-should carry `RELOCO_POINTER`, `const char *` message parameters, `explicit` conversions and `noexcept`
-gaps, and `std::` types in public signatures.
+| `reloco::unsafe` namespace | Treated as the unsafe tier by `reloco-banned-construct`. |
+| `reloco-rule-of-five` with both copy operations deleted | Satisfied; move operations need not be spelled out. |
+| `reloco-narrowing-flow` with `static_cast<unsigned>(-1)` | Exempt: an all-ones constant is not a narrowing. |
+| `reloco-noexcept` on deduction guides | Exempt: guides cannot carry an exception specification. |
+| `reloco-lifetime-annotations` with `RELOCO_CALLABLE_WHEN` after `RELOCO_LIFETIMEBOUND` | The check now walks every sugar layer, so the attribute is found. |
+
+With these refinements, real fixes (annotations, `noexcept`, initialisers, `RELOCO_GUARDED_BY`,
+`RELOCO_COPYABLE` on value types) and reasoned `NOLINT`s, `tests/compile_all_headers.cpp` reports
+0 findings for every `reloco-*` check. Keep it at 0: new findings are either bugs or need a reasoned suppression.
 
 ## Fix-its and "how to fix" notes
 

@@ -6,13 +6,14 @@
 
 #include "detail/assert.hpp"
 #include "detail/compat.hpp"
+#include "lifetime.hpp"
 #include <cstddef>
 #include <iterator>
-#include "lifetime.hpp"
 #include <type_traits>
 #include <utility>
 
-// Unsafe by design: intrusive list links are raw node pointers embedded in the owners; the checked list API is the public surface.
+// Unsafe by design: intrusive list links are raw node pointers embedded in the owners; the checked list API is the
+// public surface.
 RELOCO_BEGIN_UNSAFE_CODE
 
 namespace reloco {

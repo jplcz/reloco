@@ -91,8 +91,7 @@ using container_of_member_t = typename detail::member_pointer_traits<decltype(Me
  * kernel macro it mirrors.
  */
 template <auto Member>
-[[nodiscard]] constexpr container_of_class_t<Member> *
-container_of(container_of_member_t<Member> *member) noexcept {
+[[nodiscard]] constexpr container_of_class_t<Member> *container_of(container_of_member_t<Member> *member) noexcept {
   using class_type = container_of_class_t<Member>;
 
   RELOCO_BEGIN_UNSAFE_BUFFER_USAGE

@@ -64,7 +64,7 @@ namespace reloco::boost_intrusive {
 template <typename... Options>
 class safe_bs_set_hook
     : public ::boost::intrusive::bs_set_base_hook<::boost::intrusive::link_mode<::boost::intrusive::safe_link>,
-                                                   Options...> {
+                                                  Options...> {
 public:
   using base_hook_type =
       ::boost::intrusive::bs_set_base_hook<::boost::intrusive::link_mode<::boost::intrusive::safe_link>, Options...>;
@@ -93,10 +93,10 @@ public:
 template <typename... Options>
 class safe_bs_set_member_hook
     : public ::boost::intrusive::bs_set_member_hook<::boost::intrusive::link_mode<::boost::intrusive::safe_link>,
-                                                     Options...> {
+                                                    Options...> {
 public:
-  using member_hook_type = ::boost::intrusive::bs_set_member_hook<::boost::intrusive::link_mode<::boost::intrusive::safe_link>,
-                                                                   Options...>;
+  using member_hook_type =
+      ::boost::intrusive::bs_set_member_hook<::boost::intrusive::link_mode<::boost::intrusive::safe_link>, Options...>;
 
   safe_bs_set_member_hook() noexcept = default;
   safe_bs_set_member_hook(const safe_bs_set_member_hook &) noexcept = default;

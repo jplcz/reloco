@@ -191,9 +191,12 @@ public:
 
   /** @brief Sign/zero-extends (per `std::is_signed_v<T>`, not this `wide_int`'s own `Signed`) a native integral or
    * `__int128`/`unsigned __int128` value into this `wide_int`'s width. */
-  template <typename T, typename = std::enable_if_t<(std::is_integral_v<T> && !std::is_same_v<T, bool>) ||
-                                                      is_builtin_int128_v<T>>>
-  constexpr wide_int(T value) noexcept { // NOLINT(*-explicit-constructor) -- deliberately implicit, matching native integer promotion
+  template <typename T,
+            typename = std::enable_if_t<(std::is_integral_v<T> && !std::is_same_v<T, bool>) || is_builtin_int128_v<T>>>
+  // NOLINTNEXTLINE(reloco-explicit-conversion): arithmetic type: implicit conversion from integers, like the built-in
+  // types.
+  constexpr wide_int(
+      T value) noexcept { // NOLINT(*-explicit-constructor) -- deliberately implicit, matching native integer promotion
     if constexpr (sizeof(T) < sizeof(std::int32_t)) {
       // Widen anything narrower than a limb via ordinary (correctly sign-extending) conversion first, so the
       // limb-filling loop below only ever has to deal with whole 32-bit-or-wider chunks.
@@ -206,6 +209,8 @@ public:
 
   /** @brief Sign/zero-extends (per @p S) a narrower-or-equal-width `wide_int<M, S>` into this `wide_int`'s width. */
   template <std::size_t M, bool S, typename = std::enable_if_t<(M <= N)>>
+  // NOLINTNEXTLINE(reloco-explicit-conversion): arithmetic type: implicit conversion from integers, like the built-in
+  // types.
   constexpr wide_int(const wide_int<M, S> &other) noexcept { // NOLINT(*-explicit-constructor)
     constexpr std::size_t other_limbs = M / 32;
     const std::uint32_t fill = (S && other.is_negative()) ? 0xFFFFFFFFU : 0U;
@@ -222,8 +227,8 @@ public:
   [[nodiscard]] constexpr bool is_negative() const noexcept { return Signed && (limbs_[limb_count - 1] >> 31) != 0; }
 
   /** @brief Truncating, explicit conversion to a native integral or `__int128`/`unsigned __int128` type. */
-  template <typename T, typename = std::enable_if_t<(std::is_integral_v<T> && !std::is_same_v<T, bool>) ||
-                                                      is_builtin_int128_v<T>>>
+  template <typename T,
+            typename = std::enable_if_t<(std::is_integral_v<T> && !std::is_same_v<T, bool>) || is_builtin_int128_v<T>>>
   explicit constexpr operator T() const noexcept {
     if constexpr (sizeof(T) < sizeof(std::int32_t)) {
       return static_cast<T>(limbs_[0]);
@@ -256,6 +261,7 @@ public:
     std::uint64_t carry = 0;
     for (std::size_t i = 0; i < limb_count; ++i) {
       std::uint64_t sum = static_cast<std::uint64_t>(a.limbs_[i]) + b.limbs_[i] + carry;
+      // NOLINTNEXTLINE(reloco-narrowing-flow): intentional low-limb/bit extraction: wrap-around is the operation.
       result.limbs_[i] = static_cast<std::uint32_t>(sum);
       carry = sum >> 32;
     }
@@ -277,6 +283,7 @@ public:
       std::uint64_t carry = 0;
       for (std::size_t j = 0; j + i < limb_count; ++j) {
         std::uint64_t prod = static_cast<std::uint64_t>(a.limbs_[i]) * b.limbs_[j] + result.limbs_[i + j] + carry;
+        // NOLINTNEXTLINE(reloco-narrowing-flow): intentional low-limb/bit extraction: wrap-around is the operation.
         result.limbs_[i + j] = static_cast<std::uint32_t>(prod);
         carry = prod >> 32;
       }
@@ -348,13 +355,18 @@ public:
     auto limb_shift = static_cast<std::ptrdiff_t>(shift / 32);
     unsigned bit_shift = shift % 32;
     for (std::size_t i = 0; i < limb_count; ++i) {
+      // NOLINTNEXTLINE(reloco-narrowing-flow): intentional low-limb/bit extraction: wrap-around is the operation.
       auto src_idx = static_cast<std::ptrdiff_t>(i) - limb_shift;
+      // NOLINTNEXTLINE(reloco-narrowing-flow): intentional low-limb/bit extraction: wrap-around is the operation.
       std::uint32_t cur = (src_idx >= 0) ? v.limbs_[static_cast<std::size_t>(src_idx)] : 0U;
+      // NOLINTNEXTLINE(reloco-narrowing-flow): intentional low-limb/bit extraction: wrap-around is the operation.
       std::uint32_t prev = (src_idx - 1 >= 0) ? v.limbs_[static_cast<std::size_t>(src_idx - 1)] : 0U;
-      result.limbs_[i] =
-          (bit_shift == 0) ? cur
-                           : static_cast<std::uint32_t>((static_cast<std::uint64_t>(cur) << bit_shift) |
-                                                         (static_cast<std::uint64_t>(prev) >> (32 - bit_shift)));
+      result.limbs_[i] = (bit_shift == 0)
+                             ? cur
+                             // NOLINTNEXTLINE(reloco-narrowing-flow): intentional low-limb/bit extraction: wrap-around
+                             // is the operation.
+                             : static_cast<std::uint32_t>((static_cast<std::uint64_t>(cur) << bit_shift) |
+                                                          (static_cast<std::uint64_t>(prev) >> (32 - bit_shift)));
     }
     return result;
   }
@@ -374,9 +386,11 @@ public:
       std::uint32_t cur = (src_idx < limb_count) ? v.limbs_[src_idx] : fill;
       std::uint32_t next = (src_idx + 1 < limb_count) ? v.limbs_[src_idx + 1] : fill;
       result.limbs_[i] =
-          (bit_shift == 0) ? cur
-                           : static_cast<std::uint32_t>((cur >> bit_shift) |
-                                                         (static_cast<std::uint64_t>(next) << (32 - bit_shift)));
+          (bit_shift == 0)
+              ? cur
+              // NOLINTNEXTLINE(reloco-narrowing-flow): intentional low-limb/bit extraction: wrap-around is the
+              // operation.
+              : static_cast<std::uint32_t>((cur >> bit_shift) | (static_cast<std::uint64_t>(next) << (32 - bit_shift)));
     }
     return result;
   }
@@ -446,7 +460,7 @@ private:
    * iterations, each `O(limb_count)`. Dividing by zero yields an unspecified (not undefined, not trapping) result:
    * a software division has no hardware trap to defer to, unlike a native integer's own division-by-zero UB. */
   static constexpr void unsigned_divmod(const wide_int &dividend, const wide_int &divisor, wide_int &quotient,
-                                         wide_int &remainder) noexcept {
+                                        wide_int &remainder) noexcept {
     quotient = wide_int();
     remainder = wide_int();
     for (std::size_t i = N; i-- > 0;) {

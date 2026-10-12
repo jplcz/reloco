@@ -69,6 +69,10 @@ constexpr std::memory_order to_cas_failure_order(std::memory_order order) noexce
     return std::memory_order_relaxed;
   case std::memory_order_acq_rel:
     return std::memory_order_acquire;
+  case std::memory_order_relaxed:
+  case std::memory_order_consume:
+  case std::memory_order_acquire:
+  case std::memory_order_seq_cst:
   default:
     return order;
   }

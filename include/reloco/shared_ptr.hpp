@@ -119,6 +119,7 @@ struct RELOCO_EXPORT sp_control_block {
 // Object and control block live in two separate allocator blocks: the
 // object's storage is freed as soon as the last `shared_ptr` releases it,
 // independently of any surviving `weak_ptr`.
+// NOLINTNEXTLINE(reloco-pointer-annotation): control blocks reference their object/allocator by design.
 template <typename T> struct sp_control_block_separate final : sp_control_block {
   T *ptr_;
   allocator_ref alloc_;
@@ -140,13 +141,16 @@ template <typename T> struct sp_control_block_separate final : sp_control_block 
 // Object storage is embedded directly in the control block: a single
 // allocation, but the whole block (object bytes included) stays alive until
 // the last `weak_ptr` also releases it.
+// NOLINTNEXTLINE(reloco-pointer-annotation): control blocks reference their object/allocator by design.
 template <typename T> struct sp_control_block_combined final : sp_control_block {
+  // NOLINTNEXTLINE(reloco-no-c-array): raw aligned storage for in-place construction of T.
   alignas(T) std::byte storage_[sizeof(T)];
   allocator_ref alloc_;
 
   explicit sp_control_block_combined(allocator_ref alloc) noexcept : alloc_(alloc) {}
 
-  T *object() & noexcept { return reinterpret_cast<T *>(static_cast<void *>(storage_)); }
+  // NOLINTNEXTLINE(reloco-banned-construct): aliasing/in-place storage cast required by the control-block design.
+  T *object() & noexcept RELOCO_LIFETIMEBOUND { return reinterpret_cast<T *>(static_cast<void *>(storage_)); }
 
   void destroy_object() noexcept override { object()->~T(); }
 
@@ -174,6 +178,8 @@ public:
   RELOCO_BLOCK_RVALUE_ACCESS(T);
 
   constexpr shared_ptr() noexcept = default;
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors the std smart pointers: implicit from nullptr_t and from
+  // convertible pointer types.
   constexpr shared_ptr(std::nullptr_t) noexcept {}
 
   shared_ptr(const shared_ptr &other) noexcept : ptr_(other.ptr_), block_(other.block_) {
@@ -183,6 +189,8 @@ public:
 
   /** @brief Converting copy from a compatible `shared_ptr<U>`. */
   template <typename U, typename = std::enable_if_t<std::is_convertible_v<U *, T *>>>
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors the std smart pointers: implicit from nullptr_t and from
+  // convertible pointer types.
   shared_ptr(const shared_ptr<U> &other) noexcept : ptr_(other.ptr_), block_(other.block_) {
     if (block_)
       block_->shared_count_.fetch_add(1, std::memory_order_relaxed);
@@ -201,6 +209,8 @@ public:
   }
 
   template <typename U, typename = std::enable_if_t<std::is_convertible_v<U *, T *>>>
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors the std smart pointers: implicit from nullptr_t and from
+  // convertible pointer types.
   constexpr shared_ptr(shared_ptr<U> &&other) noexcept : ptr_(other.ptr_), block_(other.block_) {
     other.ptr_ = nullptr;
     other.block_ = nullptr;
@@ -355,6 +365,8 @@ template <typename T> class RELOCO_POINTER weak_ptr : private detail::requires_e
 public:
   constexpr weak_ptr() noexcept = default;
 
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors the std smart pointers: implicit from nullptr_t and from
+  // convertible pointer types.
   weak_ptr(const shared_ptr<T> &other) noexcept : ptr_(other.ptr_), block_(other.block_) {
     if (block_)
       block_->weak_count_.fetch_add(1, std::memory_order_relaxed);
@@ -366,6 +378,8 @@ public:
   }
 
   template <typename U, typename = std::enable_if_t<std::is_convertible_v<U *, T *>>>
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors the std smart pointers: implicit from nullptr_t and from
+  // convertible pointer types.
   weak_ptr(const weak_ptr<U> &other) noexcept : ptr_(other.ptr_), block_(other.block_) {
     if (block_)
       block_->weak_count_.fetch_add(1, std::memory_order_relaxed);
@@ -482,6 +496,8 @@ protected:
   constexpr enable_shared_from_this() noexcept = default;
   constexpr enable_shared_from_this(const enable_shared_from_this &) noexcept {}
   enable_shared_from_this &operator=(const enable_shared_from_this &) noexcept { return *this; }
+  enable_shared_from_this(enable_shared_from_this &&) noexcept {}
+  enable_shared_from_this &operator=(enable_shared_from_this &&) noexcept { return *this; }
   ~enable_shared_from_this() = default;
 
 private:
@@ -587,16 +603,19 @@ template <typename T, typename U> shared_ptr<T> static_pointer_cast(const shared
 }
 
 template <typename T, typename U> shared_ptr<T> dynamic_pointer_cast(const shared_ptr<U> &other) noexcept {
+  // NOLINTNEXTLINE(reloco-banned-construct): explicit dynamic_pointer_cast, the caller asked for it.
   if (auto *ptr = dynamic_cast<T *>(other.get()))
     return shared_ptr<T>(other, ptr);
   return shared_ptr<T>();
 }
 
 template <typename T, typename U> shared_ptr<T> const_pointer_cast(const shared_ptr<U> &other) noexcept {
+  // NOLINTNEXTLINE(reloco-banned-construct): explicit const_pointer_cast, the caller asked for it.
   return shared_ptr<T>(other, const_cast<T *>(other.get()));
 }
 
 template <typename T, typename U> shared_ptr<T> reinterpret_pointer_cast(const shared_ptr<U> &other) noexcept {
+  // NOLINTNEXTLINE(reloco-banned-construct): aliasing/in-place storage cast required by the control-block design.
   return shared_ptr<T>(other, reinterpret_cast<T *>(other.get()));
 }
 

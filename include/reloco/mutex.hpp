@@ -209,10 +209,10 @@ public:
   [[nodiscard]] RELOCO_API bool try_lock() & noexcept RELOCO_TRY_ACQUIRE(true);
 
   // NOLINTNEXTLINE(reloco-no-raw-pointer): native handle of the OS primitive, for interop with platform APIs.
-  [[nodiscard]] native_handle_type native_handle() & noexcept { return &handle_; }
+  [[nodiscard]] native_handle_type native_handle() & noexcept RELOCO_LIFETIMEBOUND { return &handle_; }
 
 private:
-  pthread_mutex_t handle_;
+  pthread_mutex_t handle_ = {};
 };
 
 /**
@@ -238,10 +238,10 @@ public:
   [[nodiscard]] RELOCO_API bool try_lock() & noexcept RELOCO_TRY_ACQUIRE(true);
 
   // NOLINTNEXTLINE(reloco-no-raw-pointer): native handle of the OS primitive, for interop with platform APIs.
-  [[nodiscard]] native_handle_type native_handle() & noexcept { return &handle_; }
+  [[nodiscard]] native_handle_type native_handle() & noexcept RELOCO_LIFETIMEBOUND { return &handle_; }
 
 private:
-  pthread_mutex_t handle_;
+  pthread_mutex_t handle_ = {};
 };
 
 /**
@@ -271,7 +271,7 @@ public:
   [[nodiscard]] RELOCO_API bool try_lock_shared() & noexcept RELOCO_TRY_ACQUIRE_SHARED(true);
 
   // NOLINTNEXTLINE(reloco-no-raw-pointer): native handle of the OS primitive, for interop with platform APIs.
-  [[nodiscard]] native_handle_type native_handle() & noexcept { return &handle_; }
+  [[nodiscard]] native_handle_type native_handle() & noexcept RELOCO_LIFETIMEBOUND { return &handle_; }
 
 private:
   pthread_rwlock_t handle_ = PTHREAD_RWLOCK_INITIALIZER;
@@ -301,7 +301,7 @@ public:
 
   [[nodiscard]] RELOCO_API result<void> wait(unique_lock<mutex> &locker) & noexcept;
 
-  template <typename Predicate> result<void> wait(unique_lock<mutex> &locker, Predicate pred) & {
+  template <typename Predicate> result<void> wait(unique_lock<mutex> &locker, Predicate pred) & noexcept {
     if (!locker.owns_lock())
       return unexpected(error::not_locked);
     while (!pred())
@@ -318,7 +318,7 @@ public:
    * which clock the underlying deadline is measured against.
    */
   template <typename Predicate>
-  [[nodiscard]] result<bool> wait_for(unique_lock<mutex> &locker, duration timeout, Predicate pred) & {
+  [[nodiscard]] result<bool> wait_for(unique_lock<mutex> &locker, duration timeout, Predicate pred) & noexcept {
     if (!locker.owns_lock())
       return unexpected(error::not_locked);
 
@@ -340,7 +340,7 @@ public:
   RELOCO_API void notify_all() & noexcept;
 
   // NOLINTNEXTLINE(reloco-no-raw-pointer): native handle of the OS primitive, for interop with platform APIs.
-  [[nodiscard]] native_handle_type native_handle() & noexcept { return &cond_; }
+  [[nodiscard]] native_handle_type native_handle() & noexcept RELOCO_LIFETIMEBOUND { return &cond_; }
 
 private:
   pthread_cond_t cond_{};
@@ -402,7 +402,7 @@ public:
 
   [[nodiscard]] bool try_lock() & noexcept RELOCO_TRY_ACQUIRE(true) { return handle_.try_lock(); }
 
-  [[nodiscard]] native_handle_type native_handle() & noexcept { return &handle_; }
+  [[nodiscard]] native_handle_type native_handle() & noexcept RELOCO_LIFETIMEBOUND { return &handle_; }
 
 private:
   std::mutex handle_;
@@ -426,7 +426,7 @@ public:
 
   [[nodiscard]] bool try_lock() & noexcept RELOCO_TRY_ACQUIRE(true) { return handle_.try_lock(); }
 
-  [[nodiscard]] native_handle_type native_handle() & noexcept { return &handle_; }
+  [[nodiscard]] native_handle_type native_handle() & noexcept RELOCO_LIFETIMEBOUND { return &handle_; }
 
 private:
   std::recursive_mutex handle_;
@@ -456,7 +456,7 @@ public:
 
   [[nodiscard]] bool try_lock_shared() & noexcept RELOCO_TRY_ACQUIRE_SHARED(true) { return handle_.try_lock_shared(); }
 
-  [[nodiscard]] native_handle_type native_handle() & noexcept { return &handle_; }
+  [[nodiscard]] native_handle_type native_handle() & noexcept RELOCO_LIFETIMEBOUND { return &handle_; }
 
 private:
   std::shared_mutex handle_;
@@ -488,7 +488,7 @@ public:
 
   [[nodiscard]] RELOCO_API result<void> wait(unique_lock<mutex> &locker) & noexcept;
 
-  template <typename Predicate> result<void> wait(unique_lock<mutex> &locker, Predicate pred) & {
+  template <typename Predicate> result<void> wait(unique_lock<mutex> &locker, Predicate pred) & noexcept {
     if (!locker.owns_lock())
       return unexpected(error::not_locked);
     // Adopts the reloco mutex's native std::mutex handle so
@@ -509,7 +509,7 @@ public:
    * @p pred() still `false`.
    */
   template <typename Predicate>
-  [[nodiscard]] result<bool> wait_for(unique_lock<mutex> &locker, duration timeout, Predicate pred) & {
+  [[nodiscard]] result<bool> wait_for(unique_lock<mutex> &locker, duration timeout, Predicate pred) & noexcept {
     if (!locker.owns_lock())
       return unexpected(error::not_locked);
     // Adopts the reloco mutex's native std::mutex handle so
@@ -532,7 +532,7 @@ public:
 
   RELOCO_API void notify_all() & noexcept;
 
-  [[nodiscard]] native_handle_type native_handle() & noexcept { return &cv_; }
+  [[nodiscard]] native_handle_type native_handle() & noexcept RELOCO_LIFETIMEBOUND { return &cv_; }
 
 private:
   std::condition_variable cv_;
@@ -580,7 +580,7 @@ public:
   [[nodiscard]] RELOCO_API bool try_lock() & noexcept RELOCO_TRY_ACQUIRE(true);
 
   // NOLINTNEXTLINE(reloco-no-raw-pointer): native handle of the OS primitive, for interop with platform APIs.
-  [[nodiscard]] native_handle_type native_handle() & noexcept { return mutex_.native_handle(); }
+  [[nodiscard]] native_handle_type native_handle() & noexcept RELOCO_LIFETIMEBOUND { return mutex_.native_handle(); }
 
 private:
   mutex mutex_;

@@ -429,7 +429,8 @@ namespace std {
 
 template <typename CharT, typename TraitsT> struct hash<reloco::basic_string_view<CharT, TraitsT>> {
   [[nodiscard]] size_t operator()(reloco::basic_string_view<CharT, TraitsT> value) const noexcept {
-    return hash<std::basic_string_view<CharT, TraitsT>>{}(value.to_std());
+    return hash<std::basic_string_view<CharT, TraitsT>>{}(
+        value.to_std()); // std-interop-ok: std::hash is delegated to std::string_view
   }
 };
 

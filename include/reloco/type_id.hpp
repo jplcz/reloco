@@ -171,14 +171,15 @@ template <typename T> struct RELOCO_EXPORT type_id_tag {
 #define RELOCO_TYPE_ID_NAME(T, name_str)                                                                               \
   template <> struct reloco::type_id_tag<T> {                                                                          \
     static constexpr char tag = 0;                                                                                     \
-    static constexpr const char *RELOCO_STATIC_STR name() noexcept { return name_str; }                                                  \
+    static constexpr const char *RELOCO_STATIC_STR name() noexcept { return name_str; }                                \
   }
 
 /**
  * @brief Opaque, process-wide type identity established without RTTI,
  * matching Rust's `std::any::TypeId`. See the file-level docs for details.
  */
-class RELOCO_EXPORT type_id {
+// NOLINTNEXTLINE(reloco-pointer-annotation): identity token compared by address, never dereferenced.
+class RELOCO_EXPORT RELOCO_COPYABLE type_id {
 public:
   /** @brief The "no type" sentinel: `operator bool()` is `false`, and it
    * never compares equal to `type_id::of<T>()` for any `T`. */

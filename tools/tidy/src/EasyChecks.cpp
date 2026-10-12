@@ -613,6 +613,18 @@ void RuleOfFiveCheck::check(const MatchFinder::MatchResult &result) {
     if (const CXXDestructorDecl *dd = rd->getDestructor(); dd && dd->isExplicitlyDefaulted())
       return;
   }
+  // Deleting both copy operations makes the type non-copyable and (implicitly) non-movable on purpose; the
+  // remaining members then need no declaration.
+  const auto isDeletedCopy = [&](bool copyCtor) {
+    for (const CXXMethodDecl *m : rd->methods()) {
+      if (copyCtor ? (llvm::isa<CXXConstructorDecl>(m) && llvm::cast<CXXConstructorDecl>(m)->isCopyConstructor())
+                   : m->isCopyAssignmentOperator())
+        return m->isDeleted();
+    }
+    return false;
+  };
+  if (cctor && cassign && isDeletedCopy(true) && isDeletedCopy(false))
+    return;
   std::string missing;
   const auto add = [&](bool have, const char *name) {
     if (!have)

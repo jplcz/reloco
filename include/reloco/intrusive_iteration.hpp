@@ -8,7 +8,7 @@ namespace reloco {
  * @tparam Container Intrusive container type.
  * @tparam T Node type.
  */
-template <typename Container, typename T> class RELOCO_CONSUMABLE(unconsumed) isolated_node_tx {
+template <typename Container, typename T> class RELOCO_POINTER RELOCO_CONSUMABLE(unconsumed) isolated_node_tx {
 public:
   // Takes ownership of the statically allocated node
   explicit constexpr isolated_node_tx(T &node, Container &container) noexcept RELOCO_RETURN_TYPESTATE(unconsumed)
@@ -93,8 +93,9 @@ private:
  * @tparam Pred Selection predicate.
  */
 template <typename Container, typename Pred>
-class extract_if_iterator : public iterator_adaptor<extract_if_iterator<Container, Pred>,
-                                                    isolated_node_tx<Container, typename Container::value_type>> {
+class RELOCO_POINTER extract_if_iterator
+    : public iterator_adaptor<extract_if_iterator<Container, Pred>,
+                              isolated_node_tx<Container, typename Container::value_type>> {
   Container *m_container;
   typename Container::iterator m_curr;
   Pred m_pred;

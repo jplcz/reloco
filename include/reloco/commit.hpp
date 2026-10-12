@@ -86,13 +86,13 @@ public:
    * @brief Grants mutable access to the payload during the transaction.
    * @return A mutable reference to the payload.
    */
-  constexpr T &get() & noexcept { return m_payload; }
+  constexpr T &get() & noexcept RELOCO_LIFETIMEBOUND { return m_payload; }
 
   /**
    * @brief Grants read-only access to the payload.
    * @return A const reference to the payload.
    */
-  constexpr const T &get() const & noexcept { return m_payload; }
+  constexpr const T &get() const & noexcept RELOCO_LIFETIMEBOUND { return m_payload; }
 
   constexpr const T &get() const && = delete;
 
@@ -145,7 +145,7 @@ template <typename T, typename RollbackFn> tx_guard(T, RollbackFn) -> tx_guard<T
  *
  * @tparam T The trivially copyable type being shadowed.
  */
-template <typename T> class shadow_tx {
+template <typename T> class RELOCO_POINTER shadow_tx {
   static_assert(std::is_trivially_copyable_v<T>, "Shadow targets must be trivially copyable");
 
 public:
@@ -199,7 +199,7 @@ template <typename T> shadow_tx(T &) -> shadow_tx<T>;
  *
  * @tparam T The trivially copyable type being checkpointed.
  */
-template <typename T> class checkpoint_guard {
+template <typename T> class RELOCO_POINTER checkpoint_guard {
   static_assert(std::is_trivially_copyable_v<T>, "Checkpoints require trivially copyable types");
 
 public:
@@ -214,6 +214,10 @@ public:
       : m_target(other.m_target), m_backup(other.m_backup), m_active(other.m_active) {
     other.m_active = false;
   }
+
+  checkpoint_guard(const checkpoint_guard &) = delete;
+  checkpoint_guard &operator=(const checkpoint_guard &) = delete;
+  checkpoint_guard &operator=(checkpoint_guard &&) = delete;
 
   /**
    * @brief Destructor restores the live target to the backup state if not committed.

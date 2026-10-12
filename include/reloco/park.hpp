@@ -115,9 +115,9 @@ public:
     // thread stay parked far longer than timeout -- re-deriving the
     // remaining time from a fixed deadline instead bounds the total wait
     // correctly.
-    auto deadline = instant::now() + timeout;
+    const auto deadline = instant::now() + timeout;
     for (;;) {
-      auto now = instant::now();
+      const auto now = instant::now();
       if (now >= deadline)
         return available_.exchange(0, std::memory_order_acquire) == 1;
       futex_wait_timeout(available_, 0, deadline - now);
@@ -151,12 +151,12 @@ using current_thread_parker_slot = tls_provider<shared_ptr<parker>, current_thre
   RELOCO_ASSERT(slot.has_value(), "this_thread: parker TLS slot allocation failed");
   shared_ptr<parker> &existing = slot->get();
   if (existing)
-    return existing;
+    return shared_ptr<parker>(existing);
   auto created = try_create_combined_shared<parker>();
   RELOCO_ASSERT(created.has_value(), "this_thread: parker allocation failed");
-  auto set_result = current_thread_parker_slot::set(*created);
+  const auto set_result = current_thread_parker_slot::set(shared_ptr<parker>(*created));
   RELOCO_ASSERT(set_result.has_value(), "this_thread: parker TLS slot allocation failed");
-  return *created;
+  return shared_ptr<parker>(*created);
 }
 
 } // namespace detail
@@ -175,6 +175,7 @@ public:
   thread_handle &operator=(const thread_handle &) noexcept = default;
   thread_handle(thread_handle &&) noexcept = default;
   thread_handle &operator=(thread_handle &&) noexcept = default;
+  ~thread_handle() = default;
 
   /**
    * @brief Makes a single unpark token available for the thread this
@@ -203,7 +204,7 @@ namespace this_thread {
  * token) if one is already available -- matching Rust's
  * `std::thread::park()`. */
 inline void park() noexcept {
-  auto parker = detail::current_thread_parker();
+  const auto parker = detail::current_thread_parker();
   parker->park();
 }
 
@@ -212,7 +213,7 @@ inline void park() noexcept {
  * and this file's own doc comment for how this return value relates to
  * Rust's `void`-returning `std::thread::park_timeout`. */
 [[nodiscard]] inline bool park_timeout(duration timeout) noexcept {
-  auto parker = detail::current_thread_parker();
+  const auto parker = detail::current_thread_parker();
   return parker->park_timeout(timeout);
 }
 
@@ -225,10 +226,10 @@ inline void park() noexcept {
  * own deadline loop -- so the "at least `timeout`" guarantee holds even
  * if `futex_wait_timeout` returns early. */
 inline void sleep_for(duration timeout) noexcept {
-  futex_word never_woken{0};
-  auto deadline = instant::now() + timeout;
+  const futex_word never_woken{0};
+  const auto deadline = instant::now() + timeout;
   for (;;) {
-    auto now = instant::now();
+    const auto now = instant::now();
     if (now >= deadline)
       return;
     futex_wait_timeout(never_woken, 0, deadline - now);

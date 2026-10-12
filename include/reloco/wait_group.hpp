@@ -145,16 +145,16 @@ public:
     // Keep the shared state alive locally for the duration of the wait,
     // independent of this handle's own lifetime (which ends -- logically
     // -- the moment its own outstanding unit is released just below).
-    shared_ptr<detail::wait_group_state> state = std::exchange(state_, shared_ptr<detail::wait_group_state>());
+    const shared_ptr<detail::wait_group_state> state = std::exchange(state_, shared_ptr<detail::wait_group_state>());
 
-    auto remaining = state->count.fetch_sub(1, std::memory_order_acq_rel) - 1;
+    const auto remaining = state->count.fetch_sub(1, std::memory_order_acq_rel) - 1;
     if (remaining == 0) {
       futex_wake_all(state->count);
       return;
     }
 
     for (;;) {
-      auto current = state->count.load(std::memory_order_acquire);
+      const auto current = state->count.load(std::memory_order_acquire);
       if (current == 0)
         return;
       futex_wait(state->count, current);
@@ -167,7 +167,7 @@ private:
   void drop() noexcept {
     if (!state_)
       return;
-    auto remaining = state_->count.fetch_sub(1, std::memory_order_acq_rel) - 1;
+    const auto remaining = state_->count.fetch_sub(1, std::memory_order_acq_rel) - 1;
     if (remaining == 0)
       futex_wake_all(state_->count);
     state_ = nullptr;

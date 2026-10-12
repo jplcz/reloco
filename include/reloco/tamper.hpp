@@ -53,6 +53,7 @@ public:
   masked_integral() noexcept { store(0); }
 
   // Implicit constructor allows: masked_integral<int> x = 5;
+  // NOLINTNEXTLINE(reloco-explicit-conversion): transparent wrapper: must be usable wherever the wrapped value is.
   masked_integral(T val) noexcept { store(val); }
 
   // Assignment
@@ -62,6 +63,7 @@ public:
   }
 
   // Transparent read (handles ==, !=, +, -, etc. implicitly)
+  // NOLINTNEXTLINE(reloco-explicit-conversion): transparent wrapper: must be usable wherever the wrapped value is.
   [[nodiscard]] operator T() const noexcept { return load(); }
 
   // ---- Compound Arithmetic ----
@@ -156,16 +158,21 @@ public:
   tamper_proof_state() noexcept { set(EnumT{}); }
 
   // Allows direct initialization: tamper_proof_state<MyEnum> state = MyEnum::Start;
+  // NOLINTNEXTLINE(reloco-explicit-conversion): transparent wrapper: must be usable wherever the wrapped value is.
   tamper_proof_state(EnumT initial_state) noexcept { set(initial_state); }
 
   void set(EnumT state) noexcept {
     uint32_t raw = static_cast<uint32_t>(state);
+    // NOLINTNEXTLINE(reloco-narrowing-flow): intentional low-limb/bit extraction: wrap-around is the operation.
     val_mask1_ = raw ^ static_cast<uint32_t>(security::os_integer_region_cookie::integer_region_cookie1());
+    // NOLINTNEXTLINE(reloco-narrowing-flow): intentional low-limb/bit extraction: wrap-around is the operation.
     val_mask2_ = ~raw ^ static_cast<uint32_t>(security::os_integer_region_cookie::integer_region_cookie2());
   }
 
   [[nodiscard]] EnumT get() const noexcept {
+    // NOLINTNEXTLINE(reloco-narrowing-flow): intentional low-limb/bit extraction: wrap-around is the operation.
     uint32_t raw1 = val_mask1_ ^ static_cast<uint32_t>(security::os_integer_region_cookie::integer_region_cookie1());
+    // NOLINTNEXTLINE(reloco-narrowing-flow): intentional low-limb/bit extraction: wrap-around is the operation.
     uint32_t raw2 = ~(val_mask2_ ^ static_cast<uint32_t>(security::os_integer_region_cookie::integer_region_cookie2()));
 
     // SECURITY: If an attacker flips a bit in mask1, they must flip the
@@ -182,6 +189,7 @@ public:
     return *this;
   }
 
+  // NOLINTNEXTLINE(reloco-explicit-conversion): transparent wrapper: must be usable wherever the wrapped value is.
   [[nodiscard]] operator EnumT() const noexcept { return get(); }
 };
 
@@ -199,12 +207,16 @@ template <typename Dummy = void> class tamper_bool_impl {
   struct from_raw_tag {};
 
   inline tamper_bool_impl(uint32_t raw, from_raw_tag) noexcept {
+    // NOLINTNEXTLINE(reloco-narrowing-flow): intentional low-limb/bit extraction: wrap-around is the operation.
     val_mask1_ = raw ^ static_cast<uint32_t>(security::os_integer_region_cookie::integer_region_cookie1());
+    // NOLINTNEXTLINE(reloco-narrowing-flow): intentional low-limb/bit extraction: wrap-around is the operation.
     val_mask2_ = ~raw ^ static_cast<uint32_t>(security::os_integer_region_cookie::integer_region_cookie2());
   }
 
   [[nodiscard]] inline uint32_t get_raw() const noexcept {
+    // NOLINTNEXTLINE(reloco-narrowing-flow): intentional low-limb/bit extraction: wrap-around is the operation.
     uint32_t raw1 = val_mask1_ ^ static_cast<uint32_t>(security::os_integer_region_cookie::integer_region_cookie1());
+    // NOLINTNEXTLINE(reloco-narrowing-flow): intentional low-limb/bit extraction: wrap-around is the operation.
     uint32_t raw2 = ~(val_mask2_ ^ static_cast<uint32_t>(security::os_integer_region_cookie::integer_region_cookie2()));
 
     // SECURITY: Ensures dual-mask integrity AND enforces exact boolean boundaries.
@@ -219,6 +231,7 @@ template <typename Dummy = void> class tamper_bool_impl {
 public:
   tamper_bool_impl() noexcept : tamper_bool_impl(FALSE_VAL, from_raw_tag{}) {}
 
+  // NOLINTNEXTLINE(reloco-explicit-conversion): transparent wrapper: must be usable wherever the wrapped value is.
   tamper_bool_impl(bool b) noexcept : tamper_bool_impl(b ? TRUE_VAL : FALSE_VAL, from_raw_tag{}) {}
 
   // ---- Transparent Native Interaction ----
@@ -229,6 +242,7 @@ public:
   }
 
   // Implicit conversion to bool allows natural `if (a)` or `if (a && b)`
+  // NOLINTNEXTLINE(reloco-explicit-conversion): transparent wrapper: must be usable wherever the wrapped value is.
   [[nodiscard]] operator bool() const noexcept { return get_raw() == TRUE_VAL; }
 
   // ---- Blind Bitwise Combinations (No Branches) ----

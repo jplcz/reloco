@@ -5,11 +5,11 @@
 #pragma once
 
 #include "allocator.hpp"
-#include "lifetime.hpp"
 #include "detail/compat.hpp"
 #include "detail/sanitizer.hpp"
 #include "error.hpp"
 #include "expected.hpp"
+#include "lifetime.hpp"
 #include <cstddef>
 #include <memory>
 

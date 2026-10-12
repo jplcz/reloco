@@ -11,3 +11,9 @@ std::optional<int> a;  // expect: reloco-banned-std-type
 std::string_view b;  // expect: reloco-banned-std-type
 std::vector<int> c;  // expect: reloco-banned-std-type
 using ok_alias = int;
+
+std::vector<int> bridged;  // std-interop-ok: deliberate interop
+// std-interop-begin: block of bridges
+std::optional<int> bridged_block;
+// std-interop-end
+std::optional<int> after_block;  // expect: reloco-banned-std-type

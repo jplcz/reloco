@@ -60,9 +60,7 @@ task<int> chain(int v) {
 
 task<int> sum(int a, int b) { co_return a + b; }
 
-task<int> direct_error() {
-  co_return unexpected(error::busy);
-}
+task<int> direct_error() { co_return unexpected(error::busy); }
 
 task<void> void_fail() {
   co_await unexpected(error::io_error);

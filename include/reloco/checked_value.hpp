@@ -134,15 +134,21 @@ public:
     return std::move(value_);
   }
 
-  RELOCO_CHECKED constexpr T *operator->() & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") { return &get(); }
-
-  RELOCO_CHECKED constexpr const T *operator->() const & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+  RELOCO_CHECKED constexpr T *operator->() & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
     return &get();
   }
 
-  RELOCO_CHECKED constexpr T &operator*() & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") { return get(); }
+  RELOCO_CHECKED constexpr const T *operator->() const & noexcept RELOCO_LIFETIMEBOUND
+      RELOCO_CALLABLE_WHEN("unconsumed") {
+    return &get();
+  }
 
-  RELOCO_CHECKED constexpr const T &operator*() const & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+  RELOCO_CHECKED constexpr T &operator*() & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN("unconsumed") {
+    return get();
+  }
+
+  RELOCO_CHECKED constexpr const T &operator*() const & noexcept RELOCO_LIFETIMEBOUND
+      RELOCO_CALLABLE_WHEN("unconsumed") {
     return get();
   }
 
@@ -219,6 +225,7 @@ template <typename T> struct is_trivially_relocatable<checked_value<T>> : is_tri
  * so a bypassed (disabled) assert still fails safely with a null dereference
  * rather than reading stale/dangling memory.
  */
+// NOLINTNEXTLINE(reloco-pointer-annotation): specialisation for raw pointers; the pointee is not owned.
 template <typename T> class RELOCO_CONSUMABLE(unconsumed) checked_value<T *> {
 public:
   /** @brief Wraps @p value (possibly null) in a fresh, unconsumed wrapper. */
@@ -250,6 +257,8 @@ public:
    * use @ref is_null or `operator bool` to check before dereferencing
    * manually, or prefer `operator*`/`operator->`, which check for you.
    */
+  // NOLINTNEXTLINE(reloco-lifetime-annotations): returns the held raw pointer by value; the pointee is not owned by
+  // this object.
   [[nodiscard]] constexpr T *get() const & noexcept RELOCO_CALLABLE_WHEN("unconsumed") {
     RELOCO_ASSERT(!moved_from_, "checked_value: access after move");
     return value_;
@@ -269,6 +278,8 @@ public:
    * @brief Moves the held pointer out, nulls the source, and poisons this
    * wrapper's typestate.
    */
+  // NOLINTNEXTLINE(reloco-lifetime-annotations): returns the held raw pointer by value; the pointee is not owned by
+  // this object.
   [[nodiscard]] constexpr T *take() && noexcept RELOCO_CALLABLE_WHEN("unconsumed") RELOCO_SET_TYPESTATE(consumed) {
     RELOCO_ASSERT(!moved_from_, "checked_value: take() after move");
     moved_from_ = true;

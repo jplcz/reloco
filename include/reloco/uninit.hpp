@@ -58,8 +58,8 @@ public:
    * @pre The memory must be uninitialized ('consumed').
    * @post The memory is now considered initialized ('unconsumed').
    */
-  RELOCO_UNSAFE_BUFFER_USAGE [[nodiscard]] T *assume_init() & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(consumed)
-      RELOCO_SET_TYPESTATE(unconsumed) {
+  RELOCO_UNSAFE_BUFFER_USAGE [[nodiscard]] T *assume_init() & noexcept RELOCO_LIFETIMEBOUND
+      RELOCO_CALLABLE_WHEN(consumed) RELOCO_SET_TYPESTATE(unconsumed) {
     return std::launder(reinterpret_cast<T *>(&m_storage));
   }
 
@@ -87,7 +87,8 @@ public:
    * @brief Safe mutable access to the initialized memory.
    * @pre The memory MUST be initialized ('unconsumed').
    */
-  RELOCO_UNSAFE_BUFFER_USAGE [[nodiscard]] T &get_mut() & noexcept RELOCO_LIFETIMEBOUND RELOCO_CALLABLE_WHEN(unconsumed) {
+  RELOCO_UNSAFE_BUFFER_USAGE [[nodiscard]] T &get_mut() & noexcept RELOCO_LIFETIMEBOUND
+      RELOCO_CALLABLE_WHEN(unconsumed) {
     return *std::launder(reinterpret_cast<T *>(&m_storage));
   }
 

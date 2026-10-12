@@ -243,9 +243,9 @@ private:
         : pools{pool_allocator_context<Lock>(bucket_sizes[Is], alignment, upstream, slab_bytes)...} {}
 
     RELOCO_CHECKED [[nodiscard]] constexpr pool_allocator_context<Lock> &operator[](std::size_t idx) noexcept {
-    RELOCO_ASSERT(idx < bucket_count, "bucket_allocator: bucket index out of range");
-    return pools[idx];
-  }
+      RELOCO_ASSERT(idx < bucket_count, "bucket_allocator: bucket index out of range");
+      return pools[idx];
+    }
 
     array<pool_allocator_context<Lock>, bucket_count> pools;
   };

@@ -173,6 +173,7 @@ public:
    * `rehash`; nothing about its layout is otherwise meant to be touched
    * directly.
    */
+  // NOLINTNEXTLINE(reloco-pointer-annotation): the allocator handle is a borrowed allocator_ref by design.
   struct node {
     intrusive_hash_hook<node> hook;
     OwnerKey owner;
@@ -388,7 +389,9 @@ public:
 private:
   /** @brief Extracts the owner key from a registry node. */
   struct owner_of {
-    const OwnerKey &operator()(const node &n) const & noexcept { return n.owner; }
+    // NOLINTNEXTLINE(reloco-lifetime-annotations): the result aliases the node parameter (annotated), not the stateless
+    // functor object.
+    const OwnerKey &operator()(const node &n RELOCO_LIFETIMEBOUND) const & noexcept { return n.owner; }
   };
 
   using table_type = intrusive_hash_table<node, &node::hook, owner_of, Hash, KeyEqual>;

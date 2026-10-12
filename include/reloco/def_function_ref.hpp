@@ -93,7 +93,7 @@ public:
    * @brief Invokes the bound function, substituting a freshly-generated first
    * argument ahead of @p args.
    */
-  R operator()(Args... args) { return fn_(generator_(), std::forward<Args>(args)...); }
+  R operator()(Args... args) noexcept { return fn_(generator_(), std::forward<Args>(args)...); }
 
   /**
    * @brief Explicit adapter to `function_ref<R(Args...)>`, for call sites

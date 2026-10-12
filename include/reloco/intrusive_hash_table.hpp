@@ -124,6 +124,7 @@ namespace reloco {
  * (see `intrusive_hash_table::remove`) rewrite that one pointer directly
  * instead of having to walk the chain to find this node's predecessor.
  */
+// NOLINTNEXTLINE(reloco-pointer-annotation): hook link into a caller-owned node.
 template <typename T> struct intrusive_hash_hook {
   T *next = nullptr;
   T **pprev = nullptr;
@@ -147,7 +148,7 @@ template <typename T> struct intrusive_hash_hook {
  * (mirroring `flat_hash_const_iterator`'s own public raw-pointer
  * constructor) -- it is not meant to be called directly by other code.
  */
-template <typename T, intrusive_hash_hook<T> T::*Hook, bool IsConst> class intrusive_hash_iterator {
+template <typename T, intrusive_hash_hook<T> T::*Hook, bool IsConst> class RELOCO_POINTER intrusive_hash_iterator {
 public:
   using iterator_category = std::forward_iterator_tag;
   using value_type = T;
@@ -164,6 +165,8 @@ public:
   // Mutable -> const conversion only, same direction every other reloco
   // iterator/const_iterator pair allows.
   template <bool WasConst, typename = std::enable_if_t<IsConst && !WasConst>>
+  // NOLINTNEXTLINE(reloco-explicit-conversion): iterator/handle constructed from its position by the owning container
+  // or macro.
   constexpr intrusive_hash_iterator(const intrusive_hash_iterator<T, Hook, WasConst> &other) noexcept
       : m_buckets(other.buckets()), m_index(other.index()), m_cur(other.node()) {}
 
@@ -379,9 +382,13 @@ public:
   }
 
   [[nodiscard]] const_iterator iterator_to(const T &node) const & noexcept RELOCO_LIFETIMEBOUND {
+    // NOLINTNEXTLINE(reloco-banned-construct): const node API forwards to the non-const hook accessor; no mutation of
+    // the node payload.
     RELOCO_ASSERT(hook_of(const_cast<T &>(node)).is_linked(),
                   "reloco::intrusive_hash_table::iterator_to: node is not linked");
     const KeyOf keyOf{};
+    // NOLINTNEXTLINE(reloco-banned-construct): const node API forwards to the non-const hook accessor; no mutation of
+    // the node payload.
     return const_iterator(buckets_, index_for(keyOf(node)), const_cast<T *>(&node));
   }
 

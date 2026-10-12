@@ -58,8 +58,9 @@ namespace reloco::boost_intrusive {
  * on) is only ever valid in `safe_link`/`auto_unlink` mode.
  */
 template <typename... Options>
-class safe_set_hook : public ::boost::intrusive::set_base_hook<::boost::intrusive::link_mode<::boost::intrusive::safe_link>,
-                                                                Options...> {
+class safe_set_hook
+    : public ::boost::intrusive::set_base_hook<::boost::intrusive::link_mode<::boost::intrusive::safe_link>,
+                                               Options...> {
 public:
   using base_hook_type =
       ::boost::intrusive::set_base_hook<::boost::intrusive::link_mode<::boost::intrusive::safe_link>, Options...>;
@@ -69,11 +70,10 @@ public:
   safe_set_hook &operator=(const safe_set_hook &) noexcept = default;
 
   ~safe_set_hook() {
-    RELOCO_ASSERT(!this->is_linked(),
-                  "reloco::boost_intrusive::safe_set_hook destroyed while still linked into a "
-                  "boost::intrusive ordered container (set/multiset) -- unlink it "
-                  "(or route it through isolated_node_tx::relink_to/release_to, see "
-                  "intrusive_iteration.hpp) before destruction");
+    RELOCO_ASSERT(!this->is_linked(), "reloco::boost_intrusive::safe_set_hook destroyed while still linked into a "
+                                      "boost::intrusive ordered container (set/multiset) -- unlink it "
+                                      "(or route it through isolated_node_tx::relink_to/release_to, see "
+                                      "intrusive_iteration.hpp) before destruction");
   }
 };
 
@@ -88,7 +88,7 @@ public:
 template <typename... Options>
 class safe_set_member_hook
     : public ::boost::intrusive::set_member_hook<::boost::intrusive::link_mode<::boost::intrusive::safe_link>,
-                                                  Options...> {
+                                                 Options...> {
 public:
   using member_hook_type =
       ::boost::intrusive::set_member_hook<::boost::intrusive::link_mode<::boost::intrusive::safe_link>, Options...>;

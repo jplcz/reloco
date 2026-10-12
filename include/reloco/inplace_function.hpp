@@ -40,6 +40,7 @@ namespace reloco {
 template <typename Signature, size_t Capacity = 32> class inplace_function; // Primary template undefined
 
 template <typename R, typename... Args, size_t Capacity>
+// NOLINTNEXTLINE(reloco-pointer-annotation): vptr_ points at a static vtable.
 class RELOCO_CONSUMABLE(unconsumed) inplace_function<R(Args...), Capacity> {
 private:
   struct vtable {
@@ -62,6 +63,8 @@ private:
                                           // If the underlying type supports trivial relocation, we can skip the
                                           // move-constructor and destructor overhead entirely.
                                           if constexpr (is_trivially_relocatable<Functor>::value) {
+                                            // NOLINTNEXTLINE(reloco-banned-construct): trivially-copyable payload
+                                            // copied as raw bytes by design.
                                             memcpy(dest, src, sizeof(Functor));
                                           } else {
                                             new (dest) Functor(std::move(*src_ptr));
@@ -83,11 +86,13 @@ public:
   using result_type = R;
 
   constexpr inplace_function() noexcept RELOCO_RETURN_TYPESTATE(consumed) = default;
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::function: implicit from any callable.
   constexpr inplace_function(std::nullptr_t) noexcept RELOCO_RETURN_TYPESTATE(consumed) {}
 
   template <typename F, typename Decayed = std::decay_t<F>,
             typename =
                 std::enable_if_t<!std::is_same_v<Decayed, inplace_function> && std::is_invocable_r_v<R, F &&, Args...>>>
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::function: implicit from any callable.
   inplace_function(F &&f) noexcept(std::is_nothrow_constructible_v<Decayed, F &&>) RELOCO_RETURN_TYPESTATE(unconsumed) {
 
     static_assert(sizeof(Decayed) <= Capacity, "Functor size exceeds inplace_function Capacity. "
@@ -157,7 +162,7 @@ public:
   /**
    * @brief Checked tier: Safely traps if the function is empty.
    */
-  R operator()(Args... args) RELOCO_CALLABLE_WHEN("unconsumed") {
+  R operator()(Args... args) noexcept RELOCO_CALLABLE_WHEN("unconsumed") {
     RELOCO_ASSERT(vptr_ != nullptr, "inplace_function: invoked while empty");
     return vptr_->invoke(storage_, std::forward<Args>(args)...);
   }
@@ -165,7 +170,7 @@ public:
   /**
    * @brief Unsafe tier: Bypasses the empty check for hot paths.
    */
-  RELOCO_UNSAFE_BUFFER_USAGE R unsafe_invoke(Args... args) RELOCO_CALLABLE_WHEN("unconsumed") {
+  RELOCO_UNSAFE_BUFFER_USAGE R unsafe_invoke(Args... args) noexcept RELOCO_CALLABLE_WHEN("unconsumed") {
     RELOCO_DEBUG_ASSERT(vptr_ != nullptr, "inplace_function: unsafe_invoke while empty");
     return vptr_->invoke(storage_, std::forward<Args>(args)...);
   }

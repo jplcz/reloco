@@ -30,10 +30,14 @@ template <typename E> unexpected(E) -> unexpected<E>;
 
 struct RELOCO_EXPORT expected_tag_t {};
 
+// NOLINTNEXTLINE(reloco-rule-of-five): reloco types are trivially relocatable: copy/move are the implicit, bitwise
+// ones.
 template <typename T, typename E> class [[nodiscard]] expected : expected_tag_t {
   static_assert(std::is_nothrow_move_constructible_v<T>, "T must be nothrow move constructible");
   static_assert(std::is_nothrow_move_constructible_v<E>, "E must be nothrow move constructible");
 
+  // NOLINTNEXTLINE(reloco-banned-low-level): discriminated by has_value_; storage for the active alternative only,
+  // never type-punned.
   union {
     T m_value;
     E m_error;
@@ -49,9 +53,13 @@ public:
     new (&m_value) T();
   }
 
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::expected/std::optional: implicit construction from a value
+  // or error is the API.
   constexpr expected(T &&val) noexcept : m_value(std::move(val)), m_has_value(true) {}
 
   template <typename U, std::enable_if_t<std::is_constructible_v<T, U &&>, int> = 0>
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::expected/std::optional: implicit construction from a value
+  // or error is the API.
   constexpr expected(U &&val) noexcept : m_has_value(true) {
     new (&m_value) T(std::forward<U>(val));
   }
@@ -59,6 +67,8 @@ public:
   template <
       typename U, typename G,
       std::enable_if_t<std::is_nothrow_constructible_v<T, U &&> && std::is_nothrow_constructible_v<E, G &&>, int> = 0>
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::expected/std::optional: implicit construction from a value
+  // or error is the API.
   constexpr expected(expected<U, G> &&other) noexcept : m_has_value(other.has_value()) {
     if (m_has_value) {
       new (&m_value) T(std::move(other.value()));
@@ -68,11 +78,17 @@ public:
   }
 
   template <typename G, std::enable_if_t<std::is_constructible_v<E, G &&>, int> = 0>
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::expected/std::optional: implicit construction from a value
+  // or error is the API.
   constexpr expected(unexpected<G> &&err) noexcept : m_has_value(false) {
     new (&m_error) E(std::move(err.value()));
   }
 
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::expected/std::optional: implicit construction from a value
+  // or error is the API.
   constexpr expected(unexpected<E> &&err) noexcept : m_error(std::move(err.value())), m_has_value(false) {}
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::expected/std::optional: implicit construction from a value
+  // or error is the API.
   constexpr expected(const unexpected<E> &err) noexcept : m_error(err.value()), m_has_value(false) {}
 
   RELOCO_CONSTEXPR20 ~expected() noexcept {
@@ -344,9 +360,13 @@ public:
   constexpr bool operator!=(const expected &other) const noexcept { return !(*this == other); }
 };
 
+// NOLINTNEXTLINE(reloco-rule-of-five): reloco types are trivially relocatable: copy/move are the implicit, bitwise
+// ones.
 template <typename E> class [[nodiscard]] expected<void, E> {
   static_assert(std::is_nothrow_move_constructible_v<E>, "E must be nothrow move constructible");
 
+  // NOLINTNEXTLINE(reloco-banned-low-level): discriminated by has_value_; storage for the active alternative only,
+  // never type-punned.
   union {
     E m_error;
   };
@@ -357,6 +377,8 @@ public:
   using error_type = E;
 
   constexpr expected() noexcept : m_has_value(true) {}
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::expected/std::optional: implicit construction from a value
+  // or error is the API.
   constexpr expected(unexpected<E> &&err) noexcept : m_error(std::move(err.value())), m_has_value(false) {}
 
   RELOCO_CONSTEXPR20 ~expected() noexcept {

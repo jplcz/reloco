@@ -88,9 +88,9 @@
 #include <type_traits>
 #include <utility>
 
-// Unsafe by design: type-erased storage: elements are addressed as raw bytes through void*/byte* plus runtime type metadata; the safe, typed facade is vector<T>.
-// Exempt from reloco-tidy memory-safety rules; everything here is reached only
-// through the checked public API.
+// Unsafe by design: type-erased storage: elements are addressed as raw bytes through void*/byte* plus runtime type
+// metadata; the safe, typed facade is vector<T>. Exempt from reloco-tidy memory-safety rules; everything here is
+// reached only through the checked public API.
 RELOCO_BEGIN_UNSAFE_CODE
 
 namespace reloco {

@@ -16,14 +16,18 @@ bool refersToOwnClass(QualType t, const CXXRecordDecl *rd) {
 }
 
 // `T &f() const & noexcept RELOCO_LIFETIMEBOUND` is a type attribute on the method's function type.
-bool thisIsLifetimeBound(const CXXMethodDecl *md) {
+bool thisIsLifetimeBound(const CXXMethodDecl *md, const ASTContext &ctx) {
   if (md->hasAttr<LifetimeBoundAttr>())
     return true;
-  for (QualType t = md->getType(); const auto *at = llvm::dyn_cast<AttributedType>(t.getTypePtr());
-       t = at->getModifiedType())
-    if (at->getAttrKind() == attr::LifetimeBound)
+  // Walk every sugar layer: other type attributes (RELOCO_CALLABLE_WHEN) can wrap the lifetimebound one.
+  for (QualType t = md->getType();;) {
+    if (const auto *at = llvm::dyn_cast<AttributedType>(t.getTypePtr()); at && at->getAttrKind() == attr::LifetimeBound)
       return true;
-  return false;
+    const QualType next = t.getSingleStepDesugaredType(ctx);
+    if (next == t)
+      return false;
+    t = next;
+  }
 }
 
 bool hasBorrowAnnotation(const ParmVarDecl *p) {
@@ -53,7 +57,7 @@ void LifetimeAnnotationsCheck::check(const MatchFinder::MatchResult &result) {
         inUnsafeTier(md))
       return;
     const QualType ret = md->getReturnType();
-    if (!isAliasing(ret) || refersToOwnClass(ret, rd) || thisIsLifetimeBound(md))
+    if (!isAliasing(ret) || isStaticStrType(ret, *result.Context) || refersToOwnClass(ret, rd) || thisIsLifetimeBound(md, *result.Context))
       return;
     diag(md->getLocation(), "member %0 returns an alias of its object; annotate it with RELOCO_LIFETIMEBOUND") << md;
     howToFix(md->getLocation(), "append the macro after the qualifiers: 'int &first() & noexcept RELOCO_LIFETIMEBOUND;' so Clang "

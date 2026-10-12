@@ -1,11 +1,11 @@
-#include <string>
-#include <vector>
 #include <array>
 #include <gtest/gtest.h>
 #include <reloco/array.hpp>
 #include <reloco/ring_buffer.hpp>
 #include <reloco/span.hpp>
 #include <reloco/string_view.hpp>
+#include <string>
+#include <vector>
 
 using namespace reloco;
 

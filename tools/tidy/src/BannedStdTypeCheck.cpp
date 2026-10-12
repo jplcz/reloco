@@ -5,6 +5,7 @@
 #include "Checks.h"
 
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSet.h"
 
 namespace reloco::tidy {
@@ -115,6 +116,36 @@ const NamedDecl *declOf(QualType t) {
 
 } // namespace
 
+// Honours the same `// std-interop-ok|begin|end|file` comment markers as scripts/check-no-std-types.py, so a
+// deliberate libstdc++/libc++ interop point is marked once and accepted by both tools.
+static bool markedStdInterop(const SourceManager &sm, SourceLocation loc) {
+  loc = sm.getExpansionLoc(loc);
+  const auto [fid, offset] = sm.getDecomposedLoc(loc);
+  bool invalid = false;
+  const llvm::StringRef buf = sm.getBufferData(fid, &invalid);
+  if (invalid)
+    return false;
+  if (buf.contains("std-interop-file"))
+    return true;
+  const unsigned line = sm.getLineNumber(fid, offset);
+  unsigned n = 0;
+  bool inBlock = false;
+  for (llvm::StringRef text : llvm::split(buf, '\n')) {
+    ++n;
+    const size_t c = text.find("//");
+    const llvm::StringRef comment = c == llvm::StringRef::npos ? llvm::StringRef() : text.substr(c);
+    if (comment.contains("std-interop-begin"))
+      inBlock = true;
+    else if (comment.contains("std-interop-end"))
+      inBlock = false;
+    if (n == line)
+      return inBlock || comment.contains("std-interop-ok");
+    if (n > line)
+      break;
+  }
+  return false;
+}
+
 void BannedStdTypeCheck::registerMatchers(MatchFinder *finder) {
   finder->addMatcher(typeLoc().bind("type"), this);
   finder->addMatcher(declRefExpr(to(namedDecl(isInStdNamespace()))).bind("ref"), this);
@@ -131,7 +162,8 @@ void BannedStdTypeCheck::check(const MatchFinder::MatchResult &result) {
     nd = dre->getDecl();
     loc = dre->getBeginLoc();
   }
-  if (!nd || !nd->isInStdNamespace() || !nd->getIdentifier() || exempt(*result.SourceManager, loc))
+  if (!nd || !nd->isInStdNamespace() || !nd->getIdentifier() || exempt(*result.SourceManager, loc) ||
+      markedStdInterop(*result.SourceManager, loc))
     return;
   const auto it = banTable().find(nd->getName());
   if (it == banTable().end())

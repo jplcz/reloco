@@ -12,7 +12,7 @@ namespace reloco {
  * @brief Policy for static-capacity or external containers (span, array, external_vector).
  * Caches the exact memory boundaries at iterator creation.
  */
-template <typename T> class static_bounds_policy {
+template <typename T> class RELOCO_POINTER static_bounds_policy {
 public:
   constexpr static_bounds_policy() noexcept = default;
   constexpr static_bounds_policy(T *b, T *e) noexcept : begin_(b), end_(e) {
@@ -20,6 +20,8 @@ public:
   }
 
   template <typename U, std::enable_if_t<std::is_same_v<const U, T>, int> = 0>
+  // NOLINTNEXTLINE(reloco-explicit-conversion): iterator/handle constructed from its position by the owning container
+  // or macro.
   constexpr static_bounds_policy(const static_bounds_policy<U> &other) noexcept
       : begin_(other.begin_), end_(other.end_) {}
 
@@ -49,12 +51,14 @@ private:
  * @brief Policy for dynamic containers (vector, string).
  * Queries the container live to instantly catch iterator invalidation (reallocations).
  */
-template <typename Container, typename T> class dynamic_bounds_policy {
+template <typename Container, typename T> class RELOCO_POINTER dynamic_bounds_policy {
 public:
   constexpr dynamic_bounds_policy() noexcept = default;
   constexpr explicit dynamic_bounds_policy(const Container *c) noexcept : container_(c) {}
 
   template <typename UContainer, typename U, std::enable_if_t<std::is_same_v<const U, T>, int> = 0>
+  // NOLINTNEXTLINE(reloco-explicit-conversion): iterator/handle constructed from its position by the owning container
+  // or macro.
   constexpr dynamic_bounds_policy(const dynamic_bounds_policy<UContainer, U> &other) noexcept
       : container_(other.container_) {}
 
@@ -93,7 +97,7 @@ private:
  * @tparam T Element type.
  * @tparam BoundsPolicy Policy used to validate iterator bounds.
  */
-template <typename T, typename BoundsPolicy> class contiguous_iterator {
+template <typename T, typename BoundsPolicy> class RELOCO_POINTER contiguous_iterator {
 public:
   using iterator_category = std::random_access_iterator_tag;
   using value_type = std::remove_cv_t<T>;
@@ -111,6 +115,8 @@ public:
 
   // Implicit conversion to const_iterator (requires the policy to support it)
   template <typename U, typename UPolicy, std::enable_if_t<std::is_same_v<const U, T>, int> = 0>
+  // NOLINTNEXTLINE(reloco-explicit-conversion): iterator/handle constructed from its position by the owning container
+  // or macro.
   constexpr contiguous_iterator(const contiguous_iterator<U, UPolicy> &other) noexcept
       : current_(other.unsafe_current()), policy_(other.policy()) {}
 
@@ -140,6 +146,8 @@ public:
   // NOLINTNEXTLINE(reloco-ref-qualified-member): an iterator is a handle; the element outlives it.
   RELOCO_CHECKED [[nodiscard]] constexpr reference operator[](difference_type n) const & noexcept {
     policy_.assert_deref(current_ + n);
+    // NOLINTNEXTLINE(reloco-signed-index): assert_deref(current_ + n) above validates the offset against the policy
+    // bounds.
     return current_[n];
   }
 

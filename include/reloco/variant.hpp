@@ -208,17 +208,17 @@ public:
    * "no match" case, matching Rust's requirement that a `match` be
    * exhaustive.
    */
-  template <typename... Fs> decltype(auto) match(Fs &&...fs) & {
+  template <typename... Fs> decltype(auto) match(Fs &&...fs) & noexcept {
     return std::visit(overloaded{std::forward<Fs>(fs)...}, static_cast<std::variant<Ts...> &>(*this));
   }
 
   /** @copydoc match(Fs &&...) & */
-  template <typename... Fs> decltype(auto) match(Fs &&...fs) const & {
+  template <typename... Fs> decltype(auto) match(Fs &&...fs) const & noexcept {
     return std::visit(overloaded{std::forward<Fs>(fs)...}, static_cast<const std::variant<Ts...> &>(*this));
   }
 
   /** @copydoc match(Fs &&...) & */
-  template <typename... Fs> decltype(auto) match(Fs &&...fs) && {
+  template <typename... Fs> decltype(auto) match(Fs &&...fs) && noexcept {
     return std::visit(overloaded{std::forward<Fs>(fs)...}, static_cast<std::variant<Ts...> &&>(*this));
   }
 };

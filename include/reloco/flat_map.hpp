@@ -106,6 +106,8 @@ public:
     // *key* half of the pair must stay immutable to preserve sort order).
     // Mutating just the mapped half cannot break that invariant, so this
     // narrowly re-adds mutability the same way container_ref_traits does.
+    // NOLINTNEXTLINE(reloco-banned-construct): elements are stored const to protect the key; the mapped value is
+    // mutable by the API contract.
     auto &mutable_pair = const_cast<value_type &>(found->get());
     return std::ref(mutable_pair.second);
   }
@@ -219,6 +221,8 @@ template <typename Key, typename Mapped, typename Compare> struct container_ref_
   static void for_each(container_type &c, void *visitor_ctx,
                        void (*visit)(void *, const key_type &, element_type &) noexcept) noexcept {
     c.for_each([visitor_ctx, visit](const typename container_type::value_type &entry) noexcept {
+      // NOLINTNEXTLINE(reloco-banned-construct): elements are stored const to protect the key; the mapped value is
+      // mutable by the API contract.
       visit(visitor_ctx, entry.first, const_cast<element_type &>(entry.second));
     });
   }

@@ -57,10 +57,11 @@ namespace reloco::boost_intrusive {
 template <typename... Options>
 class safe_unordered_set_hook
     : public ::boost::intrusive::unordered_set_base_hook<::boost::intrusive::link_mode<::boost::intrusive::safe_link>,
-                                                          Options...> {
+                                                         Options...> {
 public:
-  using base_hook_type = ::boost::intrusive::unordered_set_base_hook<
-      ::boost::intrusive::link_mode<::boost::intrusive::safe_link>, Options...>;
+  using base_hook_type =
+      ::boost::intrusive::unordered_set_base_hook<::boost::intrusive::link_mode<::boost::intrusive::safe_link>,
+                                                  Options...>;
 
   safe_unordered_set_hook() noexcept = default;
   safe_unordered_set_hook(const safe_unordered_set_hook &) noexcept = default;
@@ -87,21 +88,21 @@ public:
 template <typename... Options>
 class safe_unordered_set_member_hook
     : public ::boost::intrusive::unordered_set_member_hook<::boost::intrusive::link_mode<::boost::intrusive::safe_link>,
-                                                            Options...> {
+                                                           Options...> {
 public:
-  using member_hook_type = ::boost::intrusive::unordered_set_member_hook<
-      ::boost::intrusive::link_mode<::boost::intrusive::safe_link>, Options...>;
+  using member_hook_type =
+      ::boost::intrusive::unordered_set_member_hook<::boost::intrusive::link_mode<::boost::intrusive::safe_link>,
+                                                    Options...>;
 
   safe_unordered_set_member_hook() noexcept = default;
   safe_unordered_set_member_hook(const safe_unordered_set_member_hook &) noexcept = default;
   safe_unordered_set_member_hook &operator=(const safe_unordered_set_member_hook &) noexcept = default;
 
   ~safe_unordered_set_member_hook() {
-    RELOCO_ASSERT(!this->is_linked(),
-                  "reloco::boost_intrusive::safe_unordered_set_member_hook destroyed while still "
-                  "linked into a boost::intrusive::unordered_set -- unlink it (or route it through "
-                  "isolated_node_tx::relink_to/release_to, see intrusive_iteration.hpp) before "
-                  "destruction");
+    RELOCO_ASSERT(!this->is_linked(), "reloco::boost_intrusive::safe_unordered_set_member_hook destroyed while still "
+                                      "linked into a boost::intrusive::unordered_set -- unlink it (or route it through "
+                                      "isolated_node_tx::relink_to/release_to, see intrusive_iteration.hpp) before "
+                                      "destruction");
   }
 };
 

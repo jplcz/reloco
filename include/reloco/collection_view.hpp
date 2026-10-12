@@ -200,6 +200,8 @@ public:
    */
   template <typename Container, std::enable_if_t<detail::is_collection_view_source<Container, T>::value, int> = 0>
   constexpr explicit collection_view(Container &c RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
+      // NOLINTNEXTLINE(reloco-banned-construct): type-erased context carries const-ness separately; restored before
+      // use.
       : ctx_(const_cast<void *>(static_cast<const void *>(std::addressof(c)))), vtbl_(&s_vtbl<Container>) {}
 
   /**
@@ -235,7 +237,7 @@ public:
    * @brief Visits every element of the bound container in order.
    * @tparam Fn Callable invocable as `Fn(const T &)`.
    */
-  template <typename Fn> void for_each(Fn &&fn) const {
+  template <typename Fn> void for_each(Fn &&fn) const noexcept {
     if (!vtbl_)
       return;
     using decayed_fn = std::remove_reference_t<Fn>;
@@ -412,7 +414,7 @@ public:
    * mutation.
    * @tparam Fn Callable invocable as `Fn(T &)`.
    */
-  template <typename Fn> void for_each(Fn &&fn) {
+  template <typename Fn> void for_each(Fn &&fn) noexcept {
     if (!mvtbl_)
       return;
     using decayed_fn = std::remove_reference_t<Fn>;
@@ -487,6 +489,7 @@ private:
   template <typename Container>
   static void mutable_for_each_entry(const void *ctx, void *visitor_ctx, mutable_visit_fn visit) noexcept {
     using traits = collection_view_traits<std::remove_const_t<Container>>;
+    // NOLINTNEXTLINE(reloco-banned-construct): type-erased context carries const-ness separately; restored before use.
     auto &container = *static_cast<Container *>(const_cast<void *>(ctx));
     const size_type n = traits::size(container);
     for (size_type i = 0; i < n; ++i)
@@ -495,6 +498,7 @@ private:
 
   template <typename Container> static T &mutable_at_entry(const void *ctx, size_type index) noexcept {
     using traits = collection_view_traits<std::remove_const_t<Container>>;
+    // NOLINTNEXTLINE(reloco-banned-construct): type-erased context carries const-ness separately; restored before use.
     auto &container = *static_cast<Container *>(const_cast<void *>(ctx));
     return traits::at(container, index);
   }
@@ -503,6 +507,8 @@ private:
     using traits = collection_view_traits<std::remove_const_t<Container>>;
     if constexpr (traits::has_data) {
       return +[](const void *ctx) noexcept -> T * {
+        // NOLINTNEXTLINE(reloco-banned-construct): type-erased context carries const-ness separately; restored before
+        // use.
         auto &container = *static_cast<Container *>(const_cast<void *>(ctx));
         return traits::data(container);
       };

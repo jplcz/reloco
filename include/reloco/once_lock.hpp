@@ -203,7 +203,8 @@ public:
    * Returns a reference to the stored value (already-initialized, or
    * freshly initialized by this call).
    */
-  template <typename F> [[nodiscard]] T &get_or_init(F &&f) & noexcept(std::is_nothrow_invocable_v<F &>) {
+  template <typename F>
+  [[nodiscard]] T &get_or_init(F &&f) & noexcept(std::is_nothrow_invocable_v<F &>) RELOCO_LIFETIMEBOUND {
     auto init_result = get_or_try_init(
         [&f]() noexcept(std::is_nothrow_invocable_v<F &>) -> result<T> { return result<T>(std::forward<F>(f)()); });
     RELOCO_ASSERT(init_result.has_value(), "once_lock::get_or_init: unreachable -- wrapped closure never fails");
@@ -245,11 +246,11 @@ private:
     return s;
   }
 
-  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) T *ptr() & noexcept {
+  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) T *ptr() & noexcept RELOCO_LIFETIMEBOUND {
     return std::addressof(storage_.value_);
   }
 
-  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) const T *ptr() const & noexcept {
+  [[nodiscard]] RELOCO_ASSUME_ALIGNED(effective_alignment_v<T>) const T *ptr() const & noexcept RELOCO_LIFETIMEBOUND {
     return std::addressof(storage_.value_);
   }
 
@@ -261,6 +262,8 @@ private:
   // *some* user-provided destructor to remain usable as a data member at
   // all. `once_lock<T>`'s own destructor destroys `value_` explicitly
   // when `state_` is `ready`, so this destructor stays a deliberate no-op.
+  // NOLINTNEXTLINE(reloco-banned-low-level): discriminated by state_; storage for in-place construction only, never
+  // type-punned.
   union storage_type {
     constexpr storage_type() noexcept : dummy_('\0') {}
     ~storage_type() noexcept {}

@@ -96,6 +96,8 @@ public:
   }
 
   constexpr unique_ptr() noexcept = default;
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors the std smart pointers: implicit from nullptr_t and from
+  // convertible pointer types.
   constexpr unique_ptr(std::nullptr_t) noexcept {}
 
   unique_ptr(const unique_ptr &) = delete;

@@ -11,7 +11,7 @@
 RELOCO_API mutex::~mutex() noexcept { pthread_mutex_destroy(&handle_); }
 
 RELOCO_API void mutex::lock() & noexcept {
-  int r = pthread_mutex_lock(&handle_);
+  const int r = pthread_mutex_lock(&handle_);
   RELOCO_ASSERT(r == 0, "pthread_mutex_lock failed");
 }
 
@@ -20,7 +20,7 @@ RELOCO_API void mutex::unlock() & noexcept { RELOCO_ASSERT(pthread_mutex_unlock(
 RELOCO_API bool mutex::try_lock() & noexcept { return pthread_mutex_trylock(&handle_) == 0; }
 
 RELOCO_API recursive_mutex::recursive_mutex() noexcept {
-  pthread_mutexattr_t attr;
+  pthread_mutexattr_t attr = {};
   pthread_mutexattr_init(&attr);
   pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
   pthread_mutex_init(&handle_, &attr);
@@ -30,12 +30,12 @@ RELOCO_API recursive_mutex::recursive_mutex() noexcept {
 RELOCO_API recursive_mutex::~recursive_mutex() noexcept { pthread_mutex_destroy(&handle_); }
 
 RELOCO_API void recursive_mutex::lock() & noexcept {
-  int r = pthread_mutex_lock(&handle_);
+  const int r = pthread_mutex_lock(&handle_);
   RELOCO_ASSERT(r == 0, "pthread_mutex_lock failed");
 }
 
 RELOCO_API void recursive_mutex::unlock() & noexcept {
-  int r = pthread_mutex_unlock(&handle_);
+  const int r = pthread_mutex_unlock(&handle_);
   RELOCO_ASSERT(r == 0, "pthread_mutex_unlock failed");
 }
 
@@ -44,24 +44,24 @@ RELOCO_API bool recursive_mutex::try_lock() & noexcept { return pthread_mutex_tr
 RELOCO_API shared_mutex::~shared_mutex() noexcept { pthread_rwlock_destroy(&handle_); }
 
 RELOCO_API void shared_mutex::lock() & noexcept {
-  int r = pthread_rwlock_wrlock(&handle_);
+  const int r = pthread_rwlock_wrlock(&handle_);
   RELOCO_ASSERT(r == 0, "pthread_rwlock_wrlock failed");
 }
 
 RELOCO_API void shared_mutex::unlock() & noexcept {
-  int r = pthread_rwlock_unlock(&handle_);
+  const int r = pthread_rwlock_unlock(&handle_);
   RELOCO_ASSERT(r == 0, "pthread_rwlock_unlock failed");
 }
 
 RELOCO_API bool shared_mutex::try_lock() & noexcept { return pthread_rwlock_trywrlock(&handle_) == 0; }
 
 RELOCO_API void shared_mutex::lock_shared() & noexcept {
-  int r = pthread_rwlock_rdlock(&handle_);
+  const int r = pthread_rwlock_rdlock(&handle_);
   RELOCO_ASSERT(r == 0, "pthread_rwlock_rdlock failed");
 }
 
 RELOCO_API void shared_mutex::unlock_shared() & noexcept {
-  int r = pthread_rwlock_unlock(&handle_);
+  const int r = pthread_rwlock_unlock(&handle_);
   RELOCO_ASSERT(r == 0, "pthread_rwlock_unlock failed");
 }
 
@@ -69,7 +69,7 @@ RELOCO_API bool shared_mutex::try_lock_shared() & noexcept { return pthread_rwlo
 
 RELOCO_API condition_variable::condition_variable() noexcept {
 #if RELOCO_DETAIL_MUTEX_MONOTONIC_CLOCK
-  pthread_condattr_t attr;
+  pthread_condattr_t attr = {};
   pthread_condattr_init(&attr);
   pthread_condattr_setclock(&attr, RELOCO_DETAIL_MUTEX_COND_CLOCKID);
   pthread_cond_init(&cond_, &attr);

@@ -12,7 +12,7 @@
  * reloco/detail/compat.hpp). Never included directly. */
 
 RELOCO_API result<void> error_checking_mutex::lock() & noexcept {
-  auto self = std::this_thread::get_id();
+  const auto self = std::this_thread::get_id();
   if (owner_.load(std::memory_order_relaxed) == self)
     return unexpected(error::deadlock);
   mutex_.lock();
@@ -29,7 +29,7 @@ RELOCO_API result<void> error_checking_mutex::unlock() & noexcept {
 }
 
 RELOCO_API bool error_checking_mutex::try_lock() & noexcept {
-  auto self = std::this_thread::get_id();
+  const auto self = std::this_thread::get_id();
   if (owner_.load(std::memory_order_relaxed) == self)
     return false;
   if (!mutex_.try_lock())

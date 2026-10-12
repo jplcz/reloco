@@ -386,8 +386,7 @@ public:
   template <typename K> [[nodiscard]] iterator lower_bound(const K &key) & noexcept RELOCO_LIFETIMEBOUND {
     return iterator(lower_bound_ptr(key), root_);
   }
-  template <typename K>
-  [[nodiscard]] const_iterator lower_bound(const K &key) const & noexcept RELOCO_LIFETIMEBOUND {
+  template <typename K> [[nodiscard]] const_iterator lower_bound(const K &key) const & noexcept RELOCO_LIFETIMEBOUND {
     return const_iterator(lower_bound_ptr(key), root_);
   }
   template <typename K> iterator lower_bound(const K &key) && = delete;
@@ -402,8 +401,7 @@ public:
   template <typename K> [[nodiscard]] iterator upper_bound(const K &key) & noexcept RELOCO_LIFETIMEBOUND {
     return iterator(upper_bound_ptr(key), root_);
   }
-  template <typename K>
-  [[nodiscard]] const_iterator upper_bound(const K &key) const & noexcept RELOCO_LIFETIMEBOUND {
+  template <typename K> [[nodiscard]] const_iterator upper_bound(const K &key) const & noexcept RELOCO_LIFETIMEBOUND {
     return const_iterator(upper_bound_ptr(key), root_);
   }
   template <typename K> iterator upper_bound(const K &key) && = delete;
@@ -422,7 +420,7 @@ public:
    */
   template <typename K>
   [[nodiscard]] std::pair<iterator, iterator> bounded_range(const K &lo, const K &hi, bool left_closed = true,
-                                                             bool right_closed = false) & noexcept {
+                                                            bool right_closed = false) & noexcept {
     const Compare less{};
     if (less(hi, lo))
       return {end(), end()};
@@ -431,9 +429,8 @@ public:
     return {iterator(first, root_), iterator(last, root_)};
   }
   template <typename K>
-  [[nodiscard]] std::pair<const_iterator, const_iterator> bounded_range(const K &lo, const K &hi,
-                                                                         bool left_closed = true,
-                                                                         bool right_closed = false) const & noexcept {
+  [[nodiscard]] std::pair<const_iterator, const_iterator>
+  bounded_range(const K &lo, const K &hi, bool left_closed = true, bool right_closed = false) const & noexcept {
     const Compare less{};
     if (less(hi, lo))
       return {end(), end()};
@@ -442,11 +439,11 @@ public:
     return {const_iterator(first, root_), const_iterator(last, root_)};
   }
   template <typename K>
-  std::pair<iterator, iterator> bounded_range(const K &lo, const K &hi, bool left_closed, bool right_closed) && =
-      delete;
+  std::pair<iterator, iterator> bounded_range(const K &lo, const K &hi, bool left_closed,
+                                              bool right_closed) && = delete;
   template <typename K>
   std::pair<const_iterator, const_iterator> bounded_range(const K &lo, const K &hi, bool left_closed,
-                                                            bool right_closed) const && = delete;
+                                                          bool right_closed) const && = delete;
 
   /**
    * @brief Unlinks the node at @p pos, then invokes @p disposer on it,
@@ -473,8 +470,7 @@ public:
    * comment for why re-walking one node at a time (rather than capturing
    * the whole range up front) is required here.
    */
-  template <typename Disposer>
-  iterator erase_and_dispose(iterator first, iterator last, Disposer disposer) & noexcept {
+  template <typename Disposer> iterator erase_and_dispose(iterator first, iterator last, Disposer disposer) & noexcept {
     while (first != last) {
       T &node = *first;
       ++first;
@@ -483,8 +479,7 @@ public:
     }
     return iterator(last.node(), root_);
   }
-  template <typename Disposer> iterator erase_and_dispose(iterator first, iterator last, Disposer disposer) && =
-      delete;
+  template <typename Disposer> iterator erase_and_dispose(iterator first, iterator last, Disposer disposer) && = delete;
 
   /**
    * @brief Removes @p node, already known to be linked into *this* tree,
@@ -611,9 +606,8 @@ public:
    */
   template <typename Disposer>
   size_type splice_replace(Derived &source, iterator first, iterator last, Disposer disposer) & noexcept {
-    RELOCO_ASSERT(
-        &source != static_cast<Derived *>(this),
-        "reloco::detail::intrusive_bst_base::splice_replace: source is the same tree as the splice target");
+    RELOCO_ASSERT(&source != static_cast<Derived *>(this),
+                  "reloco::detail::intrusive_bst_base::splice_replace: source is the same tree as the splice target");
     const KeyOf keyOf{};
     size_type moved = 0;
     while (first != last) {
@@ -627,7 +621,7 @@ public:
       source.derived().unlink(node);
       [[maybe_unused]] result<void> inserted = derived().try_insert(node);
       RELOCO_ASSERT(inserted.has_value(), "reloco::detail::intrusive_bst_base::splice_replace: spurious "
-                                           "try_insert failure after evicting any conflicting node");
+                                          "try_insert failure after evicting any conflicting node");
       ++moved;
     }
     return moved;
@@ -652,9 +646,8 @@ public:
    */
   template <typename Disposer>
   size_type splice_discard(Derived &source, iterator first, iterator last, Disposer disposer) & noexcept {
-    RELOCO_ASSERT(
-        &source != static_cast<Derived *>(this),
-        "reloco::detail::intrusive_bst_base::splice_discard: source is the same tree as the splice target");
+    RELOCO_ASSERT(&source != static_cast<Derived *>(this),
+                  "reloco::detail::intrusive_bst_base::splice_discard: source is the same tree as the splice target");
     const KeyOf keyOf{};
     size_type moved = 0;
     while (first != last) {
@@ -668,7 +661,7 @@ public:
       source.derived().unlink(node);
       [[maybe_unused]] result<void> inserted = derived().try_insert(node);
       RELOCO_ASSERT(inserted.has_value(), "reloco::detail::intrusive_bst_base::splice_discard: spurious "
-                                           "try_insert failure after a successful find_ptr-based conflict check");
+                                          "try_insert failure after a successful find_ptr-based conflict check");
       ++moved;
     }
     return moved;
@@ -727,8 +720,8 @@ public:
     return iterator(find_overlap_ptr(lo, hi, end_of), root_);
   }
   template <typename K, typename EndOf>
-  [[nodiscard]] const_iterator find_overlap(const K &lo, const K &hi, EndOf end_of) const & noexcept
-      RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] const_iterator find_overlap(const K &lo, const K &hi,
+                                            EndOf end_of) const & noexcept RELOCO_LIFETIMEBOUND {
     return const_iterator(find_overlap_ptr(lo, hi, end_of), root_);
   }
   template <typename K, typename EndOf> iterator find_overlap(const K &lo, const K &hi, EndOf end_of) && = delete;

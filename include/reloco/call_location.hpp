@@ -133,8 +133,8 @@
  * @endcode
  */
 
-#include <reloco/reloco_config.hpp>
 #include <reloco/lifetime.hpp>
+#include <reloco/reloco_config.hpp>
 
 // RELOCO_CALL_LOCATION_HAS_BUILTINS
 //     1 when __builtin_FILE()/__builtin_LINE() are available (GCC/Clang
@@ -190,9 +190,9 @@ namespace reloco {
 struct call_location {
   /** @brief Source file path at the captured call site. Never null when obtained from a `call_location_ref` whose
      `has_value()` is true. */
-  const char *RELOCO_STATIC_STR file;
+  const char *RELOCO_STATIC_STR file = nullptr;
   /** @brief Source line number at the captured call site. */
-  int line;
+  int line = 0;
 };
 
 /**
@@ -202,13 +202,15 @@ struct call_location {
  * immediate caller's own location) or `none()`/the default constructor
  * (no location), and read it back via `has_value()`/`value()`.
  */
-class call_location_ref {
+class RELOCO_COPYABLE call_location_ref {
 public:
   /** @brief Wraps "no location is available". Same as `none()`. */
   constexpr call_location_ref() noexcept : file_(nullptr), line_(0) {}
 
   /** @brief Wraps the given `location`'s `file`/`line` by value. @p location.file may be null, in which case this
      behaves exactly like `none()` regardless of @p location.line. */
+  // NOLINTNEXTLINE(reloco-explicit-conversion): iterator/handle constructed from its position by the owning container
+  // or macro.
   constexpr call_location_ref(const call_location &location) noexcept : file_(location.file), line_(location.line) {}
 
   /** @brief Explicit "no location is available", for call sites that prefer a named factory over the default
@@ -236,8 +238,8 @@ public:
   constexpr call_location value() const noexcept { return call_location{file_, line_}; }
 
 private:
-  const char *RELOCO_STATIC_STR file_;
-  int line_;
+  const char *RELOCO_STATIC_STR file_ = nullptr;
+  int line_ = 0;
 };
 
 /**

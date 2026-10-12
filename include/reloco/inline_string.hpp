@@ -59,6 +59,7 @@ public:
   constexpr basic_inline_string &operator=(const basic_inline_string &) noexcept = default;
   constexpr basic_inline_string(basic_inline_string &&) noexcept = default;
   constexpr basic_inline_string &operator=(basic_inline_string &&) noexcept = default;
+  ~basic_inline_string() = default;
 
   /**
    * @brief Initializes a `basic_inline_string` from @p sv.
@@ -333,15 +334,18 @@ public:
 
   [[nodiscard]] view_type view() const & noexcept RELOCO_LIFETIMEBOUND { return view_type(data_, size_); }
 
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::string: implicit conversion to a string view.
   [[nodiscard]] operator view_type() const & noexcept RELOCO_LIFETIMEBOUND { return view(); }
 
-  [[nodiscard]] operator std::basic_string_view<CharT, TraitsT>() const & noexcept RELOCO_LIFETIMEBOUND {
-    return std::basic_string_view<CharT, TraitsT>(data_, size_);
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::string: implicit conversion to a string view.
+  [[nodiscard]] operator std::basic_string_view<CharT, TraitsT>() const & noexcept
+      RELOCO_LIFETIMEBOUND {                                     // std-interop-ok: bridge to std::string_view
+    return std::basic_string_view<CharT, TraitsT>(data_, size_); // std-interop-ok: bridge to std::string_view
   }
 
   // std-interop-begin: opt-in conversion to std::basic_string for interop
   // with APIs that already speak std::string; never used internally.
-  explicit operator std::basic_string<CharT, TraitsT>() const {
+  explicit operator std::basic_string<CharT, TraitsT>() const noexcept {
     return std::basic_string<CharT, TraitsT>(data_, size_);
   }
   // std-interop-end
@@ -401,6 +405,7 @@ private:
     return !sv.empty() && sv.data() >= data_ && sv.data() < data_ + size_;
   }
 
+  // NOLINTNEXTLINE(reloco-no-c-array): inline_string is the primitive fixed-capacity buffer itself.
   CharT data_[Capacity + 1]{};
   size_type size_{0};
 };

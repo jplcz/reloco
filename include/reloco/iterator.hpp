@@ -204,7 +204,7 @@ public:
   /** @brief Single-pass `std::input_iterator_tag` cursor driving `Derived`
    * through repeated `next()` calls; caches the current item so
    * `operator*` can be called more than once between increments. */
-  class cursor {
+  class RELOCO_POINTER cursor {
   public:
     using iterator_category = std::input_iterator_tag;
     using value_type = std::remove_reference_t<decltype(detail::unwrap_item(std::declval<item_type &>()))>;
@@ -214,7 +214,9 @@ public:
 
     constexpr cursor() noexcept = default;
 
-    RELOCO_CHECKED [[nodiscard]] reference operator*() noexcept RELOCO_LIFETIMEBOUND { return detail::unwrap_item(*current_); }
+    RELOCO_CHECKED [[nodiscard]] reference operator*() noexcept RELOCO_LIFETIMEBOUND {
+      return detail::unwrap_item(*current_);
+    }
 
     cursor &operator++() & noexcept {
       current_ = owner_->next();
@@ -480,7 +482,7 @@ public:
   }
 
 private:
-  [[nodiscard]] Derived &derived() & noexcept { return static_cast<Derived &>(*this); }
+  [[nodiscard]] Derived &derived() & noexcept RELOCO_LIFETIMEBOUND { return static_cast<Derived &>(*this); }
 };
 
 /**

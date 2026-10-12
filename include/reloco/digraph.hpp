@@ -102,8 +102,10 @@ public:
 
   [[nodiscard]] result<digraph> try_clone() const noexcept { return try_clone(adjacency_.get_allocator()); }
 
+  // NOLINTNEXTLINE(reloco-lifetime-annotations): returns a copy of the allocator handle, not an alias of this object.
   [[nodiscard]] allocator_ref get_allocator() const & noexcept { return adjacency_.get_allocator(); }
 
+  // NOLINTNEXTLINE(reloco-lifetime-annotations): returns a copy of the allocator handle, not an alias of this object.
   [[nodiscard]] allocator_ref get_allocator() const && = delete;
 
   /// Number of nodes currently in the graph.
@@ -204,7 +206,7 @@ public:
     if (!has_node(from) || !has_node(to))
       return unexpected(error::out_of_bounds);
 
-    auto alloc = adjacency_.get_allocator();
+    const auto alloc = adjacency_.get_allocator();
     auto parent_res = vector<size_type>::try_allocate(alloc, adjacency_.size());
     if (!parent_res)
       return unexpected(parent_res.error());
@@ -251,7 +253,7 @@ public:
     }
     // `path` was built backwards (to -> ... -> from); reverse it in place.
     for (size_type i = 0, j = path.size() - 1; i < j; ++i, --j) {
-      size_type tmp = path[i];
+      const size_type tmp = path[i];
       path[i] = path[j];
       path[j] = tmp;
     }

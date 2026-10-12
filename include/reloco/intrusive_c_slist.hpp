@@ -18,12 +18,16 @@ namespace detail {
 template <typename T, auto Hook> struct c_slist_hook_access {
   [[nodiscard]] static T *&next(T *node) noexcept {
     RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+    // NOLINTNEXTLINE(reloco-banned-construct): C list/queue hook layout is ABI-compatible with the sys/queue.h macros
+    // by design.
     return *reinterpret_cast<T **>(&(node->*Hook));
     RELOCO_END_UNSAFE_BUFFER_USAGE
   }
 
   [[nodiscard]] static T *const &next(const T *node) noexcept {
     RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+    // NOLINTNEXTLINE(reloco-banned-construct): C list/queue hook layout is ABI-compatible with the sys/queue.h macros
+    // by design.
     return *reinterpret_cast<T *const *>(&(node->*Hook));
     RELOCO_END_UNSAFE_BUFFER_USAGE
   }
@@ -32,7 +36,7 @@ template <typename T, auto Hook> struct c_slist_hook_access {
 } // namespace detail
 
 /** @brief Forward iterator over an intrusive singly-linked list. */
-template <typename T, auto Hook, bool IsConst> class c_slist_iterator {
+template <typename T, auto Hook, bool IsConst> class RELOCO_POINTER c_slist_iterator {
 public:
   using iterator_category = std::forward_iterator_tag;
   using value_type = T;
@@ -44,6 +48,8 @@ public:
   explicit constexpr c_slist_iterator(T *node) noexcept : current_(node) {}
 
   template <bool WasConst, typename = std::enable_if_t<IsConst && !WasConst>>
+  // NOLINTNEXTLINE(reloco-explicit-conversion): iterator/handle constructed from its position by the owning container
+  // or macro.
   constexpr c_slist_iterator(const c_slist_iterator<T, Hook, WasConst> &other) noexcept : current_(other.node()) {}
 
   RELOCO_CHECKED [[nodiscard]] reference operator*() const noexcept {
@@ -90,6 +96,7 @@ private:
  * You can `reinterpret_cast` a raw C `SLIST_HEAD*` directly into a pointer to this
  * class to attach C++ iterators and ergonomics to existing kernel memory.
  */
+// NOLINTNEXTLINE(reloco-pointer-annotation): intrusive containers link caller-owned nodes.
 template <typename T, auto Hook> class c_slist {
 public:
   using value_type = T;
@@ -118,8 +125,10 @@ public:
   [[nodiscard]] const_iterator cbegin() const & noexcept { return begin(); }
   [[nodiscard]] const_iterator cend() const & noexcept { return end(); }
 
+  // NOLINTNEXTLINE(reloco-lifetime-annotations): returns a caller-owned node, not storage of the list itself.
   [[nodiscard]] T *front() const & noexcept { return first_; }
 
+  // NOLINTNEXTLINE(reloco-lifetime-annotations): returns a caller-owned node, not storage of the list itself.
   [[nodiscard]] T *front() const && = delete;
 
   void push_front(T &node) & noexcept {
@@ -127,6 +136,7 @@ public:
     first_ = &node;
   }
 
+  // NOLINTNEXTLINE(reloco-lifetime-annotations): returns a caller-owned node, not storage of the list itself.
   T *pop_front() & noexcept {
     T *node = first_;
     if (node != nullptr) {
@@ -141,6 +151,7 @@ public:
     detail::c_slist_hook_access<T, Hook>::next(&pos) = &node;
   }
 
+  // NOLINTNEXTLINE(reloco-lifetime-annotations): returns a caller-owned node, not storage of the list itself.
   T *remove_after(T &pos) & noexcept {
     T *node = detail::c_slist_hook_access<T, Hook>::next(&pos);
     if (node != nullptr) {

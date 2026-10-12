@@ -92,7 +92,7 @@ template <typename Rep, unsigned FracBits> class fixed_point;
  */
 template <typename Rep, unsigned FracBits>
 [[nodiscard]] constexpr fixed_point<Rep, FracBits> taylor_eval(span<const fixed_point<Rep, FracBits>> coefficients,
-                                                                fixed_point<Rep, FracBits> x) noexcept;
+                                                               fixed_point<Rep, FracBits> x) noexcept;
 
 namespace detail {
 
@@ -137,7 +137,8 @@ template <typename Rep, unsigned FracBits> class fixed_point {
   static_assert(detail::is_fixed_point_rep_v<Rep>,
                 "fixed_point<Rep, FracBits> requires Rep to be a non-bool integral type, the __int128/unsigned "
                 "__int128 compiler extension, or a fixed_int<N, Signed> (see fixed_int.hpp)");
-  static_assert(FracBits < sizeof(Rep) * 8, "fixed_point<Rep, FracBits>: FracBits must leave at least one integer bit in Rep");
+  static_assert(FracBits < sizeof(Rep) * 8,
+                "fixed_point<Rep, FracBits>: FracBits must leave at least one integer bit in Rep");
 
   using wide = detail::next_wider_t<Rep>;
 
@@ -297,6 +298,7 @@ public:
     array<fixed_point, taylor_terms> coefficients;
     coefficients[0] = from_int(1);
     for (std::size_t n = 1; n < taylor_terms; ++n)
+      // NOLINTNEXTLINE(reloco-narrowing-flow): intentional low-limb/bit extraction: wrap-around is the operation.
       coefficients[n] = coefficients[n - 1] / from_int(static_cast<unsigned>(n));
 
     fixed_point result = taylor_eval(span<const fixed_point>(coefficients.data(), taylor_terms), reduced);
@@ -316,7 +318,7 @@ private:
  */
 template <typename Rep, unsigned FracBits>
 [[nodiscard]] constexpr fixed_point<Rep, FracBits> taylor_eval(span<const fixed_point<Rep, FracBits>> coefficients,
-                                                                fixed_point<Rep, FracBits> x) noexcept {
+                                                               fixed_point<Rep, FracBits> x) noexcept {
   using fp = fixed_point<Rep, FracBits>;
   if (coefficients.empty())
     return fp();

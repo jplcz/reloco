@@ -164,6 +164,7 @@ template <typename T, typename Tag> struct tls_provider {
   }
 
 private:
+  // NOLINTNEXTLINE(reloco-mutable-global): per-thread storage is the purpose of this provider; no cross-thread sharing.
   static inline thread_local T instance_ = {};
 };
 

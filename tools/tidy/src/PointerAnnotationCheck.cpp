@@ -21,7 +21,7 @@ void PointerAnnotationCheck::check(const MatchFinder::MatchResult &result) {
 
   for (const FieldDecl *fd : rd->fields()) {
     const QualType t = fd->getType();
-    if (t.isNull())
+    if (t.isNull() || isStaticStrType(t, *result.Context))
       continue;
     const bool borrowsRaw = (t->isPointerType() && !t->isFunctionPointerType() && !t->isMemberPointerType()) ||
                             t->isReferenceType();

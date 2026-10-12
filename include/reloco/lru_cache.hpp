@@ -149,7 +149,7 @@ public:
    * least-recently-used, matching `LruCache::iter()`. Never promotes
    * anything, same as `try_peek`.
    */
-  class const_iterator {
+  class RELOCO_POINTER const_iterator {
   public:
     using iterator_category = std::forward_iterator_tag;
     using value_type = std::pair<const Key &, const Mapped &>;
@@ -261,8 +261,10 @@ public:
 
   [[nodiscard]] result<lru_cache> try_clone() const noexcept { return try_clone(nodes_.get_allocator()); }
 
+  // NOLINTNEXTLINE(reloco-lifetime-annotations): returns a copy of the allocator handle, not an alias of this object.
   [[nodiscard]] allocator_ref get_allocator() const & noexcept { return nodes_.get_allocator(); }
 
+  // NOLINTNEXTLINE(reloco-lifetime-annotations): returns a copy of the allocator handle, not an alias of this object.
   [[nodiscard]] allocator_ref get_allocator() const && = delete;
 
   [[nodiscard]] size_type size() const noexcept { return index_.size(); }
@@ -286,7 +288,7 @@ public:
       return {};
     }
 
-    size_type idx;
+    size_type idx = 0;
     if (!free_.empty()) {
       idx = free_.back();
       std::ignore = free_.try_pop_back();

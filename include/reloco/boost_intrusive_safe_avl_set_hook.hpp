@@ -63,7 +63,7 @@ namespace reloco::boost_intrusive {
 template <typename... Options>
 class safe_avl_set_hook
     : public ::boost::intrusive::avl_set_base_hook<::boost::intrusive::link_mode<::boost::intrusive::safe_link>,
-                                                    Options...> {
+                                                   Options...> {
 public:
   using base_hook_type =
       ::boost::intrusive::avl_set_base_hook<::boost::intrusive::link_mode<::boost::intrusive::safe_link>, Options...>;
@@ -92,7 +92,7 @@ public:
 template <typename... Options>
 class safe_avl_set_member_hook
     : public ::boost::intrusive::avl_set_member_hook<::boost::intrusive::link_mode<::boost::intrusive::safe_link>,
-                                                      Options...> {
+                                                     Options...> {
 public:
   using member_hook_type =
       ::boost::intrusive::avl_set_member_hook<::boost::intrusive::link_mode<::boost::intrusive::safe_link>, Options...>;
@@ -102,11 +102,10 @@ public:
   safe_avl_set_member_hook &operator=(const safe_avl_set_member_hook &) noexcept = default;
 
   ~safe_avl_set_member_hook() {
-    RELOCO_ASSERT(!this->is_linked(),
-                  "reloco::boost_intrusive::safe_avl_set_member_hook destroyed while still linked "
-                  "into a boost::intrusive::avl_set/avl_multiset -- unlink it (or route it through "
-                  "isolated_node_tx::relink_to/release_to, see intrusive_iteration.hpp) before "
-                  "destruction");
+    RELOCO_ASSERT(!this->is_linked(), "reloco::boost_intrusive::safe_avl_set_member_hook destroyed while still linked "
+                                      "into a boost::intrusive::avl_set/avl_multiset -- unlink it (or route it through "
+                                      "isolated_node_tx::relink_to/release_to, see intrusive_iteration.hpp) before "
+                                      "destruction");
   }
 };
 

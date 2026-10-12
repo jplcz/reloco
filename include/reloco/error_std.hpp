@@ -95,7 +95,7 @@ class RELOCO_EXPORT error_category_impl final : public std::error_category {
 public:
   [[nodiscard]] const char *RELOCO_STATIC_STR name() const noexcept override { return "reloco"; }
 
-  [[nodiscard]] RELOCO_API std::string message(int ev) const override;
+  [[nodiscard]] RELOCO_API std::string message(int ev) const noexcept override;
 
   /**
    * @brief Maps @p ev onto the closest matching portable POSIX condition.

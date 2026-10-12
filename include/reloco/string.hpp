@@ -179,8 +179,10 @@ public:
   [[nodiscard]] constexpr size_type length() const noexcept { return size_; }
   [[nodiscard]] constexpr size_type capacity() const noexcept { return cap_; }
   [[nodiscard]] constexpr bool empty() const noexcept { return size_ == 0; }
+  // NOLINTNEXTLINE(reloco-lifetime-annotations): returns a copy of the allocator handle, not an alias of this object.
   [[nodiscard]] constexpr allocator_ref get_allocator() const & noexcept { return alloc_; }
 
+  // NOLINTNEXTLINE(reloco-lifetime-annotations): returns a copy of the allocator handle, not an alias of this object.
   [[nodiscard]] constexpr allocator_ref get_allocator() const && = delete;
 
   /**
@@ -486,15 +488,18 @@ public:
 
   [[nodiscard]] view_type view() const & noexcept RELOCO_LIFETIMEBOUND { return view_type(data(), size_); }
 
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::string: implicit conversion to a string view.
   [[nodiscard]] operator view_type() const & noexcept RELOCO_LIFETIMEBOUND { return view(); }
 
-  [[nodiscard]] operator std::basic_string_view<CharT, TraitsT>() const & noexcept RELOCO_LIFETIMEBOUND {
-    return std::basic_string_view<CharT, TraitsT>(data(), size_);
+  // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::string: implicit conversion to a string view.
+  [[nodiscard]] operator std::basic_string_view<CharT, TraitsT>() const & noexcept
+      RELOCO_LIFETIMEBOUND {                                      // std-interop-ok: bridge to std::string_view
+    return std::basic_string_view<CharT, TraitsT>(data(), size_); // std-interop-ok: bridge to std::string_view
   }
 
   // std-interop-begin: opt-in conversion to std::basic_string for interop
   // with APIs that already speak std::string; never used internally.
-  explicit operator std::basic_string<CharT, TraitsT>() const {
+  explicit operator std::basic_string<CharT, TraitsT>() const noexcept {
     return std::basic_string<CharT, TraitsT>(data(), size_);
   }
   // std-interop-end
@@ -615,7 +620,7 @@ namespace std {
 
 template <typename CharT, typename TraitsT> struct hash<reloco::basic_string<CharT, TraitsT>> {
   [[nodiscard]] size_t operator()(const reloco::basic_string<CharT, TraitsT> &value) const noexcept {
-    return hash<basic_string_view<CharT, TraitsT>>{}(value);
+    return hash<basic_string_view<CharT, TraitsT>>{}(value); // std-interop-ok: bridge to std::string_view
   }
 };
 
