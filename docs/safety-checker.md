@@ -186,6 +186,9 @@ CLion runs clang-tidy itself, so use its external-tool path for the plugin:
 | `reloco-lock-guard` | In a class that owns a mutex (a `RELOCO_CAPABILITY` member), every other mutable member must be `RELOCO_GUARDED_BY(mutex)`, `RELOCO_UNGUARDED`, const, a reference, atomic or a synchronisation primitive. Fix-it appends `RELOCO_GUARDED_BY(mu)` when there is exactly one mutex. Enable `-Wthread-safety` so access to guarded members is then enforced by Clang. | Every shared field names its lock. |
 | `reloco-narrowing-flow` | Explicit integer casts (`static_cast`, functional, C-style) must be provably lossless. A value-range analysis understands constants, `&` masks, `%`, `>>`, `/`, `+ - *` on known ranges, `?:` and small types; casts that may truncate or change sign are reported with the computed range. Same-width `char` to byte reinterpretation is allowed. Complements `reloco-implicit-conversion`, which stops at explicit casts. | Explicit casts are where truncation hides. |
 | `reloco-send-sync` | Arguments passed to a `RELOCO_REQUIRE_SEND` parameter (thread/task spawn) must be Send; arguments to a `RELOCO_REQUIRE_SYNC` parameter must be Sync. Send is structural: scalars and aggregates of Send members; owners (`RELOCO_OWNER`) iff their template arguments are; raw pointers, references, views (`RELOCO_POINTER`), `RELOCO_NOT_SEND` types and lambdas capturing by reference or `this` are not. `RELOCO_SEND` overrides after an audit. Sync: `RELOCO_SYNC`, atomics, mutexes, all-const types, or a mutex owner. | Rust's `Send`/`Sync`. |
+| `reloco-signed-index` | `[]`, `at()` and `try_at()` indices of signed integer type are rejected unless the value-range analysis (shared with `reloco-narrowing-flow`) proves them non-negative (constants, masks, `unsigned` casts). A negative index becomes a huge unsigned value or an out-of-bounds read. Fix: use `std::size_t`, a range-for, or check `i >= 0` first. | Signed indexing is a classic source of out-of-bounds bugs. |
+| `reloco-ns-pointer` | **Opt-in by type.** Pointers tagged `RELOCO_NS(tag)` (system-call arguments, VM guest memory) are numbers in a foreign address space: they may not be dereferenced (`*p`, `p[i]`, `p->m`), assigned, initialised, passed, returned or cast to a normal pointer or a pointer with another tag. Integers may be cast *to* them (that is how they are created) and pointer arithmetic keeps the tag. Only a `RELOCO_NS_TRANSLATOR` function (or the unsafe tier) may convert. | Confused-deputy and guest/user pointer bugs. |
+| `reloco-early-static` | **Opt-in by type.** A `RELOCO_EARLY_STATIC` class (or variable) must be usable before the C++ runtime starts: every user constructor is `constexpr`, the destructor is trivial (no `atexit` registration), the type is literal, and each static/global object of it is constant-initialised (`constexpr`, `constinit` or a provably constant initialiser). Fix-it inserts `constinit ` (C++20). | Bare-metal startup, no static-init-order fiasco. |
 | `reloco-borrow-check` | Best-effort Rust-style borrow checking inside one function. See below. | Aliasing XOR mutability. |
 
 ### `RELOCO_OUT`
@@ -225,6 +228,45 @@ Limits: no inter-procedural reasoning, no aliasing through containers or heap, n
 tracking. Use Clang's `-Wlifetime-safety` for use-after-return/scope. It is a bug finder, not a proof.
 
 Slicing is deliberately not a separate rule: polymorphic bases are already a red flag.
+
+### `RELOCO_NS` poison pointers
+
+```cpp
+#include <reloco/lifetime.hpp>
+
+// A pointer that came from user space: only a number here, never dereferenceable.
+// 'user' is the address-space tag; pointers with different tags never mix.
+using user_ptr = char *RELOCO_NS(user);
+
+// The only way out: a translator validates the range and returns a real pointer
+// (or copies the data). Inside it, dereferences and casts are allowed.
+RELOCO_NS_TRANSLATOR char *translate(user_ptr p, unsigned long size) noexcept;
+
+long sys_write(int fd, user_ptr buf, unsigned long n) noexcept {
+  char *real = translate(buf, n);   // ok: translator
+  // buf[0] = 0;                    // error: dereference of RELOCO_NS(user) pointer
+  // takes_plain(buf);              // error: user pointer where a normal pointer is expected
+  return real ? 0 : -1;
+}
+```
+
+### `RELOCO_EARLY_STATIC`
+
+```cpp
+#include <reloco/lifetime.hpp>
+
+// A device-state block the startup code touches before any constructor has run.
+// RELOCO_EARLY_STATIC makes the checker enforce: constexpr constructors only, trivial destructor,
+// and constant initialisation of every static object of this type.
+struct RELOCO_EARLY_STATIC boot_state {
+  unsigned stage;
+  constexpr boot_state() noexcept : stage(0) {}  // constexpr: no code runs before main
+};
+
+// constinit: compile error if the initialiser is not a constant expression, so the
+// object lands in .data and needs no dynamic initialiser (or atexit registration).
+constinit boot_state g_boot;
+```
 
 ### Annotations used by the flow checks
 
@@ -320,6 +362,6 @@ The macros expand to `_Pragma("region ...")`, which GCC, Clang and MSVC accept s
 `RELOCO_POINTER`, `RELOCO_OWNER`, `RELOCO_LIFETIMEBOUND`, `RELOCO_COPYABLE`, `RELOCO_OUT`,
 `RELOCO_BORROW_EXEMPT`, `RELOCO_CHECKED`, `RELOCO_SAFE_MATH`,
 `RELOCO_MUST_CONSUME`, `RELOCO_CONSUMES`, `RELOCO_UNGUARDED`, `RELOCO_SEND`, `RELOCO_NOT_SEND`, `RELOCO_SYNC`,
-`RELOCO_REQUIRE_SEND`, `RELOCO_REQUIRE_SYNC`, `RELOCO_UNSAFE_BUFFER_USAGE`, `RELOCO_BEGIN/END_SAFE_CODE`,
+`RELOCO_REQUIRE_SEND`, `RELOCO_REQUIRE_SYNC`, `RELOCO_NS(tag)`, `RELOCO_NS_TRANSLATOR`, `RELOCO_EARLY_STATIC`, `RELOCO_UNSAFE_BUFFER_USAGE`, `RELOCO_BEGIN/END_SAFE_CODE`,
 `RELOCO_BEGIN/END_UNSAFE_CODE`, `RELOCO_BEGIN/END_UNSAFE_BUFFER_USAGE`. All compile to nothing
 where the compiler lacks the attribute. See also [lifetime safety](lifetime-safety.md).

@@ -248,6 +248,51 @@
 #endif
 
 /**
+ * @def RELOCO_NS
+ * @brief Poisons a pointer type with an address-space tag, e.g. `RELOCO_NS(user)` for system-call arguments or
+ * `RELOCO_NS(guest)` for memory coming from a VM. Such a pointer is only a number in a foreign address space: it
+ * may not be dereferenced, subscripted, passed where a normal pointer (or a pointer of another tag) is expected,
+ * assigned across tags or cast between tags. Only a function marked `RELOCO_NS_TRANSLATOR` may turn it into a real
+ * pointer. Enforced by `reloco-ns-pointer`. Place it after the `*` it qualifies:
+ * `long sys_read(int fd, char *RELOCO_NS(user) buf, size_t n);` or in an alias
+ * `using user_ptr = char *RELOCO_NS(user);`. Compiles to nothing for GCC/MSVC.
+ */
+#if RELOCO_HAS_CPP_ATTRIBUTE(clang::annotate_type)
+#define RELOCO_NS(tag) [[clang::annotate_type("reloco_ns", #tag)]]
+#else
+#define RELOCO_NS(tag)
+#endif
+
+/**
+ * @def RELOCO_NS_TRANSLATOR
+ * @brief Marks a function allowed to convert `RELOCO_NS` pointers: its body may dereference and cast them, and it
+ * hands back a real pointer or copies the data out. Place it first in the declaration:
+ * `RELOCO_NS_TRANSLATOR const char *translate(const char *RELOCO_NS(user) p, size_t n) noexcept;`.
+ * Compiles to nothing for GCC/MSVC.
+ */
+#if RELOCO_HAS_CPP_ATTRIBUTE(clang::annotate)
+#define RELOCO_NS_TRANSLATOR [[clang::annotate("reloco_ns_translator")]]
+#else
+#define RELOCO_NS_TRANSLATOR
+#endif
+
+/**
+ * @def RELOCO_EARLY_STATIC
+ * @brief Marks a class (or a single static-storage variable) that must work during bare-metal startup, before
+ * the C++ runtime has run constructors or registered destructors. `reloco-early-static` requires the class to be a
+ * literal type with only constexpr constructors and a trivial destructor, and every static/global object of it to
+ * be constant-initialised (`constexpr` or `constinit`), so the compiler emits it into `.data`/`.rodata` and no
+ * dynamic initialiser or `atexit` registration is generated. Place it after the class key:
+ * `struct RELOCO_EARLY_STATIC uart_regs { constexpr uart_regs() noexcept = default; };`.
+ * Compiles to nothing for GCC/MSVC.
+ */
+#if RELOCO_HAS_CPP_ATTRIBUTE(clang::annotate)
+#define RELOCO_EARLY_STATIC [[clang::annotate("reloco_early_static")]]
+#else
+#define RELOCO_EARLY_STATIC
+#endif
+
+/**
  * @def RELOCO_CHECKED
  * @brief Declares that a class's `operator[]`, unary `operator*` and `operator->` perform bounds
  * or null checking (e.g. return a `result`, assert, or clamp). reloco-tidy's `reloco-checked-operator`

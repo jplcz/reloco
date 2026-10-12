@@ -87,6 +87,14 @@ RELOCO_TIDY_CHECK(SendSyncCheck);
 // Indexing ([] and at) with a signed type whose value range may be negative.
 RELOCO_TIDY_CHECK(SignedIndexCheck);
 
+// Pointers tagged RELOCO_NS(tag) (foreign address spaces) cannot be dereferenced, mixed or cast outside a
+// RELOCO_NS_TRANSLATOR function.
+RELOCO_TIDY_CHECK(NsPointerCheck);
+
+// RELOCO_EARLY_STATIC types need constexpr construction and trivial destruction, and their static objects must be
+// constant-initialised (bare-metal startup, before the C++ runtime runs).
+RELOCO_TIDY_CHECK(EarlyStaticCheck);
+
 // Implicit narrowing / sign-changing / lossy float conversions need an explicit cast.
 RELOCO_TIDY_CHECK(ImplicitConversionCheck);
 // Single-argument constructors and conversion operators must be explicit.

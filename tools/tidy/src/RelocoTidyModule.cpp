@@ -44,6 +44,8 @@ public:
     f.registerCheck<NarrowingFlowCheck>("reloco-narrowing-flow");
     f.registerCheck<SendSyncCheck>("reloco-send-sync");
     f.registerCheck<SignedIndexCheck>("reloco-signed-index");
+    f.registerCheck<NsPointerCheck>("reloco-ns-pointer");
+    f.registerCheck<EarlyStaticCheck>("reloco-early-static");
     f.registerCheck<UseAfterMoveCheck>("reloco-use-after-move");
     f.registerCheck<IteratorInvalidationCheck>("reloco-iterator-invalidation");
   }

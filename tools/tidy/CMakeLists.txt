@@ -45,6 +45,8 @@ add_library(reloco-tidy MODULE
     src/NoexceptCheck.cpp
     src/EasyChecks.cpp
     src/UseAfterMoveCheck.cpp
+    src/EarlyStaticCheck.cpp
+    src/NsPointerCheck.cpp
     src/SendSyncCheck.cpp
     src/NarrowingFlowCheck.cpp
     src/LockGuardCheck.cpp

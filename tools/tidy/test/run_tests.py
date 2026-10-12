@@ -50,6 +50,8 @@ CHECKS = [
     "reloco-banned-construct",
     "reloco-borrow-check",
     "reloco-use-after-move",
+    "reloco-early-static",
+    "reloco-ns-pointer",
     "reloco-signed-index",
     "reloco-send-sync",
     "reloco-narrowing-flow",
