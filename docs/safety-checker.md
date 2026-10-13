@@ -587,6 +587,7 @@ Results of the first pass (about 2300 findings, now about 755) and what they led
 | `detail/` type-erased bases and the allocator and OS shims address raw memory by design | Wrapped in `RELOCO_BEGIN_UNSAFE_CODE` / `RELOCO_END_UNSAFE_CODE` with a comment saying why. |
 
 | `reloco::unsafe` namespace | Treated as the unsafe tier by `reloco-banned-construct`. |
+| `reloco-banned-construct` C-style cast in a template instantiation | Exempt: the compiler synthesises a cast for an enum-typed non-type template argument (`SubstNonTypeTemplateParmExpr`); there is no cast in the source. |
 | `reloco-rule-of-five` with both copy operations deleted | Satisfied; move operations need not be spelled out. |
 | `reloco-narrowing-flow` with `static_cast<unsigned>(-1)` | Exempt: an all-ones constant is not a narrowing. |
 | `reloco-noexcept` on deduction guides | Exempt: guides cannot carry an exception specification. |
