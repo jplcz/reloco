@@ -37,11 +37,12 @@ struct RELOCO_EXPORT stack_allocator_tag {};
  * bug instead of silently reading/writing still-mapped memory.
  */
 struct RELOCO_EXPORT RELOCO_POINTER stack_allocator_context {
-  std::byte *buffer;
+  RELOCO_LT(buffer) std::byte *buffer;
   std::size_t capacity;
   std::size_t offset = 0;
 
-  constexpr stack_allocator_context(void *ptr RELOCO_LIFETIME_CAPTURE_BY_THIS, std::size_t size) noexcept
+  constexpr stack_allocator_context(void *ptr RELOCO_LIFETIME_CAPTURE_BY_THIS RELOCO_LT(buffer),
+                                    std::size_t size) noexcept
       : buffer(static_cast<std::byte *>(ptr)), capacity(size) {
     detail::poison_memory_region(buffer, capacity);
   }

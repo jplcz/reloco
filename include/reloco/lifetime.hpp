@@ -147,6 +147,40 @@
 #endif
 
 /**
+ * @def RELOCO_LT
+ * @brief Rust-style named lifetime on a parameter, field or variable: `RELOCO_LT(a)` says the
+ * object it refers to lives for lifetime `a`. Place it after the name. On a field it means every
+ * value stored into the field must carry `a`; `RELOCO_LT(static)` means only static-duration values. Pair it with
+ * RELOCO_LT_RETURN(a) on the function to say the result borrows from every parameter tagged `a`:
+ * @code
+ * RELOCO_LT_RETURN(a) const T &pick(const T &x RELOCO_LT(a), const T &y RELOCO_LT(a),
+ *                                   const T &z) noexcept;  // result borrows x and y, never z
+ * @endcode
+ * Checked by reloco-tidy only (`reloco-lifetime-names`, `reloco-borrow-check`); Clang does not see
+ * it, so keep RELOCO_LIFETIMEBOUND on the parameters Clang should also warn about. Compiles to
+ * nothing for GCC/MSVC.
+ */
+/**
+ * @def RELOCO_LT_RETURN
+ * @brief Declares which named lifetime(s) the return value borrows from (see RELOCO_LT). Place it
+ * at the start of the declaration; stack several to borrow from several lifetimes.
+ */
+/**
+ * @def RELOCO_LT_THIS
+ * @brief Tags the receiver (`*this`) of a member function with lifetime `a`, so that
+ * RELOCO_LT_RETURN(a) makes the result borrow the object. Place it at the start of the declaration.
+ */
+#if RELOCO_HAS_CPP_ATTRIBUTE(clang::annotate)
+#define RELOCO_LT(name) [[clang::annotate("reloco_lt:" #name)]]
+#define RELOCO_LT_RETURN(name) [[clang::annotate("reloco_lt_return:" #name)]]
+#define RELOCO_LT_THIS(name) [[clang::annotate("reloco_lt_this:" #name)]]
+#else
+#define RELOCO_LT(name)
+#define RELOCO_LT_RETURN(name)
+#define RELOCO_LT_THIS(name)
+#endif
+
+/**
  * @def RELOCO_COPIES
  * @brief Marks a pointer or reference parameter of a handle (`RELOCO_POINTER`) constructor as
  * only *read and copied*: the handle keeps a copy of the pointee's value, not a pointer to it,

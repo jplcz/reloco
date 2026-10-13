@@ -163,3 +163,21 @@ void bad_declared_outside_loop() noexcept {
   for (int i = 0; i < 3; ++i)
     sink(std::move(s));  // expect: reloco-use-after-move
 }
+
+// static_cast<T &&> and std::forward<T> with a value type are spelled-out moves.
+void bad_static_cast() noexcept {
+  std::string s;
+  sink(static_cast<std::string &&>(s));
+  (void)s.size();  // expect: reloco-use-after-move
+}
+template <typename T> void fwd_value(T &&) noexcept;
+void bad_forward_value() noexcept {
+  std::string s;
+  fwd_value(std::forward<std::string>(s));
+  (void)s.size();  // expect: reloco-use-after-move
+}
+void ok_forward_lvalue() noexcept {
+  std::string s;
+  fwd_value(std::forward<std::string &>(s));
+  (void)s.size();
+}

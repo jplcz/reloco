@@ -17,6 +17,7 @@
 
 #include "Checks.h"
 
+#include "LifetimeNames.h"
 #include "clang/AST/Attr.h"
 #include "clang/AST/ParentMapContext.h"
 #include "clang/AST/RecursiveASTVisitor.h"
@@ -70,13 +71,35 @@ const Expr *strip(const Expr *e) {
   return e;
 }
 
+// A class with a RELOCO_LT(name) field holds a borrow: it behaves like a view for the borrow checker.
+bool isLabelledHandle(const CXXRecordDecl *rd) {
+  if (!rd || !rd->hasDefinition())
+    return false;
+  for (const FieldDecl *f : rd->fields())
+    for (const std::string &n : declLifetimes(f))
+      if (n != "static")
+        return true;
+  return false;
+}
+
+// Whether some field of `rd` carries one of the labels in `names` (the labelled result is then read out of the
+// object's stored borrow rather than out of the object itself).
+bool fieldCarries(const CXXRecordDecl *rd, const LifetimeSet &names) {
+  if (!rd || !rd->hasDefinition())
+    return false;
+  for (const FieldDecl *f : rd->fields())
+    if (sharesLifetime(declLifetimes(f), names))
+      return true;
+  return false;
+}
+
 bool isAliasingType(QualType t) {
   if (t.isNull() || t->isDependentType())
     return false;
   if (t->isReferenceType() || t->isPointerType())
     return true;
   const CXXRecordDecl *rd = t.getCanonicalType()->getAsCXXRecordDecl();
-  return rd && rd->hasDefinition() && rd->hasAttr<PointerAttr>();
+  return rd && rd->hasDefinition() && (rd->hasAttr<PointerAttr>() || isLabelledHandle(rd));
 }
 
 bool isTrackedVar(const VarDecl *v) {
@@ -143,6 +166,31 @@ Place placeOfPointerRead(const Expr *e) {
   return placeOf(e);
 }
 
+bool isMutableTarget(QualType t);
+
+// The places a labelled handle constructor call borrows: one per argument bound to a RELOCO_LT(name) parameter.
+// `mut` tells, per place, whether the argument hands out mutable access.
+std::vector<Place> ctorLabelPlaces(const CXXConstructExpr *ce, std::vector<bool> *mut = nullptr) {
+  std::vector<Place> out;
+  const CXXConstructorDecl *ctor = ce->getConstructor();
+  if (!ctor || ctor->isCopyOrMoveConstructor())
+    return out;
+  for (unsigned i = 0; i < ce->getNumArgs() && i < ctor->getNumParams(); ++i) {
+    bool labelled = false;
+    for (const std::string &n : declParamLifetimes(ctor, i))
+      labelled = labelled || n != "static";
+    if (!labelled)
+      continue;
+    Place p = placeOfPointerRead(ce->getArg(i));
+    if (!p)
+      continue;
+    out.push_back(std::move(p));
+    if (mut)
+      mut->push_back(isMutableTarget(ce->getArg(i)->getType()));
+  }
+  return out;
+}
+
 Place placeOf(const Expr *e) {
   e = strip(e);
   if (!e)
@@ -179,6 +227,17 @@ Place placeOf(const Expr *e) {
     return placeOf(as->getBase());
   if (const auto *mc = llvm::dyn_cast<CXXMemberCallExpr>(e)) {
     if (const Expr *obj = mc->getImplicitObjectArgument()) {
+      // RELOCO_LT_RETURN states exactly which arguments and which receiver the result borrows.
+      if (const FunctionDecl *fd = mc->getDirectCallee()) {
+        if (const LifetimeSet ret = declReturnLifetimes(fd); !ret.empty()) {
+          for (unsigned i = 0; i < mc->getNumArgs(); ++i)
+            if (paramFlowsToReturn(fd, i))
+              if (Place p = placeOf(mc->getArg(i)))
+                return p;
+          if (!sharesLifetime(declThisLifetimes(fd), ret))
+            return {};
+        }
+      }
       if (!isAliasingType(calleeReturn(mc)) || !receiverBorrowed(mc->getDirectCallee()))
         return {};
       Place p = placeOf(obj);
@@ -202,6 +261,10 @@ Place placeOf(const Expr *e) {
     return {};
   }
   if (const auto *ce = llvm::dyn_cast<CXXConstructExpr>(e)) {
+    if (isLabelledHandle(ce->getType().getCanonicalType()->getAsCXXRecordDecl())) {
+      const std::vector<Place> labelled = ctorLabelPlaces(ce);
+      return labelled.empty() ? Place{} : labelled.front();
+    }
     // Views are built from the storage they borrow: span(buf), string_view(s), value_ref(x).
     if (ce->getNumArgs() > 0 && isAliasingType(ce->getType()) && !ce->getConstructor()->isCopyOrMoveConstructor())
       return placeOfPointerRead(ce->getArg(0));
@@ -211,13 +274,29 @@ Place placeOf(const Expr *e) {
     const FunctionDecl *fd = call->getDirectCallee();
     if (!fd || !isAliasingType(calleeReturn(call)))
       return {};
+    if (hasStatic(declReturnLifetimes(fd)))
+      return {}; // a 'static result borrows from no caller-owned object
     for (unsigned i = 0; i < call->getNumArgs() && i < fd->getNumParams(); ++i)
-      if (fd->getParamDecl(i)->hasAttr<LifetimeBoundAttr>())
+      if (paramFlowsToReturn(fd, i))
         if (Place p = placeOf(call->getArg(i)))
           return p;
     return {};
   }
   return {};
+}
+
+// Every argument place a RELOCO_LT_RETURN call result borrows (placeOf only reports the first one).
+std::vector<Place> extraBorrowPlaces(const Expr *e) {
+  std::vector<Place> out;
+  const auto *call = llvm::dyn_cast_or_null<CallExpr>(strip(e));
+  const FunctionDecl *fd = call ? call->getDirectCallee() : nullptr;
+  if (!fd || llvm::isa<CXXOperatorCallExpr>(call) || declReturnLifetimes(fd).empty() || !isAliasingType(calleeReturn(call)))
+    return out;
+  for (unsigned i = 0; i < call->getNumArgs() && i < fd->getNumParams(); ++i)
+    if (paramFlowsToReturn(fd, i))
+      if (Place p = placeOf(call->getArg(i)))
+        out.push_back(std::move(p));
+  return out;
 }
 
 bool isMutableTarget(QualType t) {
@@ -262,23 +341,63 @@ public:
     const QualType t = vd->getType();
     if (t.isNull() || t->isDependentType() || !isAliasingType(t))
       return true;
-    // Copying a pointer or view out of another object copies its value; it does not borrow that object.
+    const Expr *init = strip(vd->getInit());
+    // Copying a pointer or view out of another variable copies its value: the copy keeps whatever the original
+    // borrows, but does not borrow the original itself.
     if (const auto *ic = llvm::dyn_cast<ImplicitCastExpr>(vd->getInit()->IgnoreParens());
-        ic && ic->getCastKind() == CK_LValueToRValue)
+        ic && ic->getCastKind() == CK_LValueToRValue) {
+      if (Place src = placeOf(ic->getSubExpr()); src && src.path.empty())
+        inheritBorrows(vd, src.var);
       return true;
-    Place p = placeOf(vd->getInit());
-    if (!p || p.var == vd)
+    }
+    if (const auto *ce = llvm::dyn_cast_or_null<CXXConstructExpr>(init);
+        ce && ce->getConstructor()->isCopyOrMoveConstructor() && ce->getNumArgs() == 1) {
+      if (Place src = placeOf(ce->getArg(0)); src && src.path.empty())
+        inheritBorrows(vd, src.var);
       return true;
-    // 'auto *self = this;' is a view of the whole object, not a borrow of one member.
-    if (isThisRoot(p.var) && p.path.empty() && llvm::isa<CXXThisExpr>(strip(vd->getInit())))
-      return true;
-    Borrow b;
-    b.var = vd;
-    b.place = std::move(p);
-    b.mut = isMutableTarget(t) && !rootIsConst(b.place.var);
-    b.declLoc = vd->getLocation();
-    b.start = vd->getInit()->getEndLoc();
-    borrows_.push_back(std::move(b));
+    }
+    // `h.get()` where get() returns a label stored in a field of `h`: the result borrows what `h` borrows, not `h`.
+    if (const auto *mc = llvm::dyn_cast_or_null<CXXMemberCallExpr>(init); mc && mc->getMethodDecl() && mc->getImplicitObjectArgument()) {
+      const LifetimeSet ret = declReturnLifetimes(mc->getMethodDecl());
+      if (!ret.empty() && !hasStatic(ret) && !sharesLifetime(declThisLifetimes(mc->getMethodDecl()), ret) &&
+          fieldCarries(mc->getMethodDecl()->getParent(), ret)) {
+        if (Place src = placeOf(mc->getImplicitObjectArgument()); src && src.path.empty())
+          inheritBorrows(vd, src.var);
+        return true;
+      }
+    }
+    std::vector<bool> argMut;
+    std::vector<Place> places;
+    if (const auto *ce = llvm::dyn_cast_or_null<CXXConstructExpr>(init); ce && isLabelledHandle(t.getCanonicalType()->getAsCXXRecordDecl())) {
+      places = ctorLabelPlaces(ce, &argMut);
+    } else {
+      Place p = placeOf(vd->getInit());
+      if (!p || p.var == vd)
+        return true;
+      // 'auto *self = this;' is a view of the whole object, not a borrow of one member.
+      if (isThisRoot(p.var) && p.path.empty() && llvm::isa<CXXThisExpr>(strip(vd->getInit())))
+        return true;
+      places.push_back(std::move(p));
+      for (Place &q : extraBorrowPlaces(vd->getInit()))
+        if (std::none_of(places.begin(), places.end(), [&](const Place &o) { return o.var == q.var && o.path == q.path && o.pointee == q.pointee; }))
+          places.push_back(std::move(q));
+    }
+    const bool viaAddress = llvm::isa_and_nonnull<UnaryOperator>(init) && llvm::cast<UnaryOperator>(init)->getOpcode() == UO_AddrOf;
+    for (size_t i = 0; i < places.size(); ++i) {
+      Place &pl = places[i];
+      if (pl.var == vd)
+        continue;
+      Borrow b;
+      b.var = vd;
+      b.place = pl;
+      b.mut = (argMut.empty() ? isMutableTarget(t) : argMut[i]) && !rootIsConst(b.place.var);
+      b.declLoc = vd->getLocation();
+      b.start = vd->getInit()->getEndLoc();
+      addBorrow(std::move(b));
+      // A view derived from another view (`span.data()`, `*ref`) keeps the original storage borrowed as well.
+      if (!viaAddress && !isThisRoot(pl.var))
+        inheritBorrows(vd, pl.var);
+    }
     return true;
   }
 
@@ -348,6 +467,34 @@ public:
 
 
 private:
+  void addBorrow(Borrow b) {
+    for (const Borrow &o : borrows_)
+      if (o.var == b.var && o.place.var == b.place.var && o.place.path == b.place.path && o.place.pointee == b.place.pointee)
+        return;
+    borrows_.push_back(std::move(b));
+  }
+
+  // `vd` is derived from the variable `src`: it keeps everything `src` borrows alive for as long as `vd` is used.
+  void inheritBorrows(const VarDecl *vd, const ValueDecl *src) {
+    if (!src || src == vd)
+      return;
+    const QualType t = vd->getType();
+    const size_t n = borrows_.size();
+    for (size_t i = 0; i < n; ++i) {
+      if (borrows_[i].var != src)
+        continue;
+      Borrow b;
+      b.var = vd;
+      b.place = borrows_[i].place;
+      // A labelled handle holds exactly the access it was built with.
+      const bool handle = isLabelledHandle(t.getCanonicalType()->getAsCXXRecordDecl());
+      b.mut = (handle || isMutableTarget(t)) && borrows_[i].mut;
+      b.declLoc = vd->getLocation();
+      b.start = vd->getInit()->getEndLoc();
+      addBorrow(std::move(b));
+    }
+  }
+
   // A write that is directly followed by `return`/`co_return` (or by `break`/`continue` leaving the loop that
   // the borrow lives in) can never be observed through the borrow, so it is not a conflict.
   bool leavesAfter(const Expr *use, const Borrow &b) {
@@ -718,17 +865,17 @@ const VarDecl *borrowedLocal(const Expr *e, const ASTContext &ctx) {
     return ce->getNumArgs() > 0 && isAliasingType(ce->getType()) ? borrowedLocal(ce->getArg(0), ctx) : nullptr;
   if (const auto *call = llvm::dyn_cast<CallExpr>(e)) {
     const FunctionDecl *fd = call->getDirectCallee();
-    if (!fd || !isAliasingType(fd->getReturnType()))
+    if (!fd || !isAliasingType(fd->getReturnType()) || hasStatic(declReturnLifetimes(fd)))
       return nullptr;
     if (const auto *mc = llvm::dyn_cast<CXXMemberCallExpr>(call)) {
       const auto *md = llvm::dyn_cast<CXXMethodDecl>(fd);
-      if (md && thisBound(md, ctx))
+      if (md && (thisBound(md, ctx) || sharesLifetime(declThisLifetimes(md), declReturnLifetimes(md))))
         if (const VarDecl *v = localObjectRoot(mc->getImplicitObjectArgument()))
           return v;
     }
     const unsigned skip = llvm::isa<CXXOperatorCallExpr>(call) && llvm::isa<CXXMethodDecl>(fd) ? 1u : 0u;
     for (unsigned i = skip; i < call->getNumArgs() && i - skip < fd->getNumParams(); ++i)
-      if (fd->getParamDecl(i - skip)->hasAttr<LifetimeBoundAttr>())
+      if (paramFlowsToReturn(fd, i - skip))
         if (const VarDecl *v = localObjectRoot(call->getArg(i)))
           return v;
   }
@@ -796,6 +943,145 @@ private:
   }
 
   ASTContext &ctx_;
+};
+
+// --- reloco-lifetime-names ------------------------------------------------------
+
+// The caller-owned or local object `e` borrows from when it is not of static duration, or null when `e` is static
+// (string literal, global, function, `RELOCO_LT(static)` parameter) or its origin is unknown.
+const NamedDecl *nonStaticOrigin(const Expr *e, bool byRef, const ASTContext &ctx) {
+  e = strip(e);
+  if (!e || e->isTypeDependent() || e->getType().isNull())
+    return nullptr;
+  if (const VarDecl *v = borrowedLocal(e, ctx))
+    return v;
+  if (byRef)
+    if (const VarDecl *v = localObjectRoot(e))
+      return v;
+  if (const auto *dre = llvm::dyn_cast<DeclRefExpr>(e))
+    if (const auto *p = llvm::dyn_cast<ParmVarDecl>(dre->getDecl()))
+      if (isAliasingType(p->getType()) && !hasStatic(paramLifetimes(p)))
+        return p;
+  return nullptr;
+}
+
+class NamesVisitor : public RecursiveASTVisitor<NamesVisitor> {
+public:
+  struct Finding {
+    const Expr *expr;
+    const NamedDecl *origin;
+    const FunctionDecl *callee; // null for a return statement or a store
+    unsigned param;
+    bool isStatic;
+    const ValueDecl *target = nullptr; // the labelled field or variable a value is stored into
+  };
+
+  NamesVisitor(const FunctionDecl *fn, ASTContext &ctx) : fn_(fn), ctx_(ctx) {
+    if (!fn)
+      return; // initialisers of fields and variables outside any function
+    ret_ = declReturnLifetimes(fn);
+    this_ = llvm::isa<CXXMethodDecl>(fn) ? declThisLifetimes(fn) : LifetimeSet{};
+  }
+
+  bool shouldVisitTemplateInstantiations() const { return false; }
+  bool TraverseLambdaExpr(LambdaExpr *) { return true; } // its returns belong to the lambda
+
+  bool VisitReturnStmt(ReturnStmt *rs) {
+    const Expr *v = rs->getRetValue();
+    const QualType rt = fn_->getReturnType();
+    if (ret_.empty() || !v || rt.isNull() || rt->isDependentType() || !isAliasingType(rt))
+      return true;
+    const bool byRef = rt->isReferenceType();
+    const bool onlyStatic = std::all_of(ret_.begin(), ret_.end(), [](const std::string &n) { return n == "static"; });
+    if (onlyStatic) {
+      if (const NamedDecl *o = nonStaticOrigin(v, byRef, ctx_))
+        findings.push_back({v, o, nullptr, 0, true});
+      return true;
+    }
+    // A field tagged with a returned lifetime hands that lifetime out: `RELOCO_LT(a) const T *p_; ... return p_;`.
+    if (const auto *me = llvm::dyn_cast<MemberExpr>(strip(v)))
+      if (const auto *fd = llvm::dyn_cast<FieldDecl>(me->getMemberDecl()); fd && sharesLifetime(declLifetimes(fd), ret_))
+        return true;
+    Place pl = placeOfPointerRead(v);
+    if (!pl)
+      return true;
+    if (const auto *p = llvm::dyn_cast<ParmVarDecl>(pl.var)) {
+      if (isAliasingType(p->getType()) && !hasStatic(paramLifetimes(p)) && !sharesLifetime(declParamLifetimes(fn_, p->getFunctionScopeIndex()), ret_))
+        findings.push_back({v, p, nullptr, 0, false});
+    } else if (isThisRoot(pl.var) && !sharesLifetime(this_, ret_)) {
+      findings.push_back({v, fn_, nullptr, 0, false});
+    }
+    return true;
+  }
+
+  bool VisitBinaryOperator(BinaryOperator *bo) {
+    if (bo->getOpcode() == BO_Assign)
+      checkStore(bo->getLHS(), bo->getRHS());
+    return true;
+  }
+
+  bool VisitCallExpr(CallExpr *call) {
+    const FunctionDecl *fd = call->getDirectCallee();
+    if (!fd)
+      return true;
+    if (const auto *oc = llvm::dyn_cast<CXXOperatorCallExpr>(call); oc && oc->getOperator() == OO_Equal && oc->getNumArgs() == 2)
+      checkStore(oc->getArg(0), oc->getArg(1));
+    checkArgs(call, fd, llvm::isa<CXXOperatorCallExpr>(call) && llvm::isa<CXXMethodDecl>(fd) ? 1u : 0u);
+    return true;
+  }
+  bool VisitCXXConstructExpr(CXXConstructExpr *ce) {
+    checkArgs(ce, ce->getConstructor(), 0);
+    return true;
+  }
+
+  std::vector<Finding> findings;
+
+  // `value` is stored into the labelled field or variable `target`.
+  void checkValueStore(const ValueDecl *target, const Expr *value) {
+    const LifetimeSet want = declLifetimes(target);
+    const QualType tt = target->getType();
+    if (want.empty() || !value || value->isTypeDependent() || tt->isDependentType())
+      return;
+    const bool byRef = tt->isReferenceType();
+    if (hasStatic(want)) {
+      if (const NamedDecl *o = nonStaticOrigin(value, byRef, ctx_))
+        findings.push_back({value, o, nullptr, 0, true, target});
+      return;
+    }
+    if (const VarDecl *local = borrowedLocal(value, ctx_)) {
+      findings.push_back({value, local, nullptr, 0, false, target});
+      return;
+    }
+    const Expr *e = strip(value);
+    if (const auto *dre = llvm::dyn_cast<DeclRefExpr>(e))
+      if (const auto *p = llvm::dyn_cast<ParmVarDecl>(dre->getDecl()); p && isAliasingType(p->getType())) {
+        const LifetimeSet have = fn_ ? declParamLifetimes(fn_, p->getFunctionScopeIndex()) : LifetimeSet{};
+        if (!hasStatic(have) && !sharesLifetime(have, want))
+          findings.push_back({value, p, nullptr, 0, false, target});
+      }
+  }
+
+private:
+  void checkStore(const Expr *lhs, const Expr *rhs) {
+    if (const auto *me = llvm::dyn_cast<MemberExpr>(strip(lhs)))
+      if (const auto *fd = llvm::dyn_cast<FieldDecl>(me->getMemberDecl()))
+        checkValueStore(fd, rhs);
+  }
+
+  template <class C> void checkArgs(C *call, const FunctionDecl *fd, unsigned skip) {
+    for (unsigned i = skip; i < call->getNumArgs() && i - skip < fd->getNumParams(); ++i) {
+      if (!hasStatic(declParamLifetimes(fd, i - skip)))
+        continue;
+      const Expr *arg = call->getArg(i);
+      const bool byRef = fd->getParamDecl(i - skip)->getType()->isReferenceType();
+      if (const NamedDecl *o = nonStaticOrigin(arg, byRef, ctx_))
+        findings.push_back({arg, o, fd, i - skip, true});
+    }
+  }
+
+  const FunctionDecl *fn_;
+  ASTContext &ctx_;
+  LifetimeSet ret_, this_;
 };
 
 bool hasExemptAnnotation(const Decl *d) {
@@ -887,6 +1173,152 @@ void AliasedArgumentsCheck::check(const MatchFinder::MatchResult &result) {
     }
   }
   g_thisRoot = nullptr;
+}
+
+void LifetimeNamesCheck::registerMatchers(MatchFinder *finder) {
+  finder->addMatcher(functionDecl(unless(isImplicit()), unless(isTemplateInstantiation())).bind("fn"), this);
+  finder->addMatcher(fieldDecl(unless(isImplicit())).bind("field"), this);
+  finder->addMatcher(varDecl(hasInitializer(expr().bind("value")), unless(parmVarDecl()), unless(isImplicit())).bind("var"),
+                     this);
+}
+
+void LifetimeNamesCheck::check(const MatchFinder::MatchResult &result) {
+  const SourceManager &sourceMgr = *result.SourceManager;
+  auto reportStore = [&](const NamesVisitor::Finding &h) {
+    if (exempt(sourceMgr, h.expr->getBeginLoc()))
+      return;
+    const char *kind = llvm::isa<ParmVarDecl>(h.origin) ? "parameter" : "local";
+    if (h.isStatic) {
+      diag(h.expr->getBeginLoc(), "'%0' is RELOCO_LT(static) but is given a borrow of %1 '%2'") << h.target << kind << h.origin;
+      howToFix(h.expr->getBeginLoc(), "store a string literal or a global/static object, or tag the source RELOCO_LT(static)");
+      return;
+    }
+    std::string names;
+    for (const std::string &n : declLifetimes(h.target))
+      names += (names.empty() ? "" : ", ") + n;
+    diag(h.expr->getBeginLoc(), "'%0' has lifetime '%1' but is given a borrow of %2 '%3' that does not carry it")
+        << h.target << names << kind << h.origin;
+    howToFix(h.expr->getBeginLoc(), "tag the parameter with the same RELOCO_LT lifetime as the field, or store something "
+                                    "that outlives it");
+  };
+  // Declarations of labelled fields, and initialisers of labelled fields and variables.
+  if (const auto *field = result.Nodes.getNodeAs<FieldDecl>("field")) {
+    const LifetimeSet want = declLifetimes(field);
+    if (want.empty() || field->getParent()->isLambda() || exempt(sourceMgr, field->getLocation()) || inUnsafeTier(field))
+      return;
+    const QualType t = field->getType();
+    if (!t->isDependentType() && !isAliasingType(t))
+      diag(field->getLocation(), "RELOCO_LT on field '%0', which is neither a reference, pointer nor view") << field;
+    if (field->hasInClassInitializer()) {
+      NamesVisitor v(nullptr, *result.Context);
+      v.checkValueStore(field, field->getInClassInitializer());
+      for (const auto &h : v.findings)
+        reportStore(h);
+    }
+    return;
+  }
+  if (const auto *var = result.Nodes.getNodeAs<VarDecl>("var")) {
+    if (declLifetimes(var).empty() || exempt(sourceMgr, var->getLocation()) || inUnsafeTier(var))
+      return;
+    NamesVisitor v(nullptr, *result.Context);
+    v.checkValueStore(var, var->getInit());
+    for (const auto &h : v.findings)
+      reportStore(h);
+    return;
+  }
+
+  const auto *fn = result.Nodes.getNodeAs<FunctionDecl>("fn");
+  if (!fn || fn->isTemplateInstantiation() || inUnsafeTier(fn) || exempt(*result.SourceManager, fn->getLocation()))
+    return;
+  if (const auto *md = llvm::dyn_cast<CXXMethodDecl>(fn); md && md->getParent()->isLambda())
+    return;
+
+  // A constructor must give every labelled field a value, otherwise the field holds a borrow nobody checked.
+  // Classes whose storage is legitimately left uninitialised opt out with RELOCO_BORROW_EXEMPT on the field, the
+  // class or the constructor.
+  if (const auto *ctor = llvm::dyn_cast<CXXConstructorDecl>(fn);
+      ctor && ctor->doesThisDeclarationHaveABody() && !ctor->isDelegatingConstructor() &&
+      !ctor->isCopyOrMoveConstructor() && !ctor->getParent()->isUnion() && !hasExemptAnnotation(ctor)) {
+    for (const FieldDecl *f : ctor->getParent()->fields()) {
+      if (declLifetimes(f).empty() || f->hasInClassInitializer() || f->isUnnamedBitField() || hasExemptAnnotation(f))
+        continue;
+      const bool set = std::any_of(ctor->init_begin(), ctor->init_end(), [&](const CXXCtorInitializer *i) {
+        return i->isWritten() && i->getMember() == f;
+      });
+      if (!set) {
+        diag(ctor->getLocation(), "constructor does not initialise the lifetime-labelled field '%0'") << f;
+        howToFix(ctor->getLocation(), "initialise it in the member initialiser list or with a default member initialiser; if "
+                                      "the storage is intentionally left uninitialised, mark the field, the class or this "
+                                      "constructor RELOCO_BORROW_EXEMPT with a comment");
+      }
+    }
+  }
+
+  // Declaration rules, reported once on the canonical declaration (annotations of all redeclarations are merged).
+  if (fn->getCanonicalDecl() == fn) {
+    const LifetimeSet ret = declReturnLifetimes(fn);
+    const LifetimeSet self = declThisLifetimes(fn);
+    const QualType rt = fn->getReturnType();
+    if (!ret.empty() && !rt->isDependentType() && !isAliasingType(rt))
+      diag(fn->getLocation(), "RELOCO_LT_RETURN on '%0', which does not return a reference, pointer or view") << fn;
+    for (const std::string &n : ret) {
+      if (n == "static")
+        continue;
+      bool carried = sharesLifetime(self, {n});
+      for (unsigned i = 0; i < fn->getNumParams() && !carried; ++i)
+        carried = sharesLifetime(declParamLifetimes(fn, i), {n});
+      if (const auto *md = llvm::dyn_cast<CXXMethodDecl>(fn); md && !md->isStatic())
+        for (const FieldDecl *f : md->getParent()->fields())
+          carried = carried || sharesLifetime(declLifetimes(f), {n});
+      if (!carried)
+        diag(fn->getLocation(), "RELOCO_LT_RETURN(%0) names a lifetime that no parameter, field or RELOCO_LT_THIS carries")
+            << n;
+    }
+    for (const ParmVarDecl *p : fn->parameters()) {
+      const QualType t = p->getType();
+      if (!paramLifetimes(p).empty() && !t->isDependentType() && !isAliasingType(t))
+        diag(p->getLocation(), "RELOCO_LT on parameter '%0', which is neither a reference, pointer nor view") << p;
+    }
+    if (!self.empty() && !llvm::isa<CXXMethodDecl>(fn))
+      diag(fn->getLocation(), "RELOCO_LT_THIS on '%0', which is not a member function") << fn;
+  }
+
+  if (!fn->isThisDeclarationADefinition() || !fn->hasBody() || hasExemptAnnotation(fn))
+    return;
+  const auto *method = llvm::dyn_cast<CXXMethodDecl>(fn);
+  g_thisRoot = method && !method->isStatic() ? method : nullptr;
+  NamesVisitor visitor(fn, *result.Context);
+  if (const auto *ctor = llvm::dyn_cast<CXXConstructorDecl>(fn))
+    for (const CXXCtorInitializer *init : ctor->inits())
+      if (init->isMemberInitializer() && !init->isInClassMemberInitializer())
+        visitor.checkValueStore(init->getMember(), init->getInit());
+  visitor.TraverseStmt(fn->getBody());
+  g_thisRoot = nullptr;
+
+  const SourceManager &sm = *result.SourceManager;
+  for (const auto &h : visitor.findings) {
+    if (exempt(sm, h.expr->getBeginLoc()))
+      continue;
+    if (h.target) {
+      reportStore(h);
+    } else if (h.callee) {
+      diag(h.expr->getBeginLoc(), "argument %0 of '%1' must be 'static (RELOCO_LT(static)) but borrows %2 '%3'")
+          << (h.param + 1) << h.callee << (llvm::isa<ParmVarDecl>(h.origin) ? "parameter" : "local") << h.origin;
+      howToFix(h.expr->getBeginLoc(), "pass a string literal, a global/static object or a function; to forward a parameter, "
+                                      "declare it RELOCO_LT(static) in this function too");
+    } else if (h.isStatic) {
+      diag(h.expr->getBeginLoc(), "'%0' is declared to return a 'static lifetime (RELOCO_LT_RETURN(static)) but returns "
+                                  "a borrow of %1 '%2'")
+          << fn << (llvm::isa<ParmVarDecl>(h.origin) ? "parameter" : "local") << h.origin;
+      howToFix(h.expr->getBeginLoc(), "return a string literal or a global/static object, or tag the parameter "
+                                      "RELOCO_LT(static)");
+    } else {
+      diag(h.expr->getBeginLoc(), "return value borrows %0, which does not carry a lifetime named by RELOCO_LT_RETURN")
+          << (llvm::isa<ParmVarDecl>(h.origin) ? "parameter '" + h.origin->getNameAsString() + "'" : std::string("'this'"));
+      howToFix(h.expr->getBeginLoc(), "tag the parameter (or the method with RELOCO_LT_THIS) with a lifetime listed in "
+                                      "RELOCO_LT_RETURN, or return something it does not borrow");
+    }
+  }
 }
 
 void EscapingLocalCheck::registerMatchers(MatchFinder *finder) {

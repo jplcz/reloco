@@ -6,6 +6,10 @@
 
 #include "RelocoCheckBase.h"
 
+#include <map>
+#include <set>
+#include <string>
+
 // AttributedType::getAttr() exists from LLVM 20; LLVM 19 cannot expose the annotate_type payload,
 // so annotation-based type matching degrades to "not annotated" there.
 #if RELOCO_TIDY_LLVM_MAJOR >= 20
@@ -89,6 +93,17 @@ public:
   bool honorsUnsafeBufferUsage() const override { return true; }
 };
 
+// Rust-style named lifetimes: RELOCO_LT(a) on parameters, RELOCO_LT_RETURN(a) on the function and RELOCO_LT_THIS(a) on
+// the receiver. Validates declarations, 'return' statements and 'static requirements at call sites.
+class LifetimeNamesCheck : public RelocoCheck {
+public:
+  using RelocoCheck::RelocoCheck;
+  void registerMatchers(MatchFinder *finder) override;
+  void check(const MatchFinder::MatchResult &result) override;
+  bool isLanguageVersionSupported(const LangOptions &lo) const override { return lo.CPlusPlus; }
+  bool honorsUnsafeBufferUsage() const override { return true; }
+};
+
 // Storing a pointer/view into a local through a pointer or reference parameter ('*out = &x;',
 // 'out->p = buf;') leaves the caller with a dangling pointer once the function returns.
 class EscapingLocalCheck : public RelocoCheck {
@@ -130,6 +145,40 @@ public:
 
 private:
   llvm::DenseSet<const FunctionDecl *> seen_;
+};
+
+// Functions that might sleep must not be called in atomic context (RAII guards, enter/leave calls, tokens, atomic
+// callbacks); RELOCO_ATOMIC_ONLY functions (per-CPU data) must only be called inside it. Flow-sensitive, with
+// transitive "might sleep" inference over function bodies visible in the translation unit.
+class AtomicContextCheck : public RelocoCheck {
+public:
+  using RelocoCheck::RelocoCheck;
+  void registerMatchers(MatchFinder *finder) override;
+  void check(const MatchFinder::MatchResult &result) override;
+  bool isLanguageVersionSupported(const LangOptions &lo) const override { return lo.CPlusPlus; }
+
+private:
+  class Analysis;
+  std::set<unsigned> reported_;
+  std::map<const FunctionDecl *, std::string> sleepMemo_;
+  std::set<const FunctionDecl *> sleepBusy_;
+};
+
+// Pointers to, and addresses of, locks are banned: they alias a lock where lock tracking cannot follow.
+RELOCO_TIDY_CHECK(LockAliasCheck);
+
+// Every lock()/lock_shared()/write_lock() must be unlocked on all paths out of the function (try_lock resolved on
+// branch edges); only lock implementations may leave a lock held.
+class LockBalanceCheck : public RelocoCheck {
+public:
+  using RelocoCheck::RelocoCheck;
+  void registerMatchers(MatchFinder *finder) override;
+  void check(const MatchFinder::MatchResult &result) override;
+  bool isLanguageVersionSupported(const LangOptions &lo) const override { return lo.CPlusPlus; }
+
+private:
+  class Analysis;
+  std::set<unsigned> reported_;
 };
 
 // Structural modification of a container inside a range-for over it (hidden iterators invalidated).

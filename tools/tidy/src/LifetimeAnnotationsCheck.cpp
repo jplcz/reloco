@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 #include "Checks.h"
+#include "LifetimeNames.h"
 
 #include "clang/Lex/Lexer.h"
 
@@ -20,7 +21,7 @@ bool refersToOwnClass(QualType t, const CXXRecordDecl *rd) {
 
 // `T &f() const & noexcept RELOCO_LIFETIMEBOUND` is a type attribute on the method's function type.
 bool thisIsLifetimeBound(const CXXMethodDecl *md, const ASTContext &ctx) {
-  if (md->hasAttr<LifetimeBoundAttr>())
+  if (md->hasAttr<LifetimeBoundAttr>() || sharesLifetime(declThisLifetimes(md), declReturnLifetimes(md)))
     return true;
   // Walk every sugar layer: other type attributes (RELOCO_CALLABLE_WHEN) can wrap the lifetimebound one.
   for (QualType t = md->getType();;) {
@@ -41,6 +42,8 @@ bool hasCopiesAnnotation(const ParmVarDecl *p) {
 }
 
 bool hasBorrowAnnotation(const ParmVarDecl *p) {
+  if (!paramLifetimes(p).empty())
+    return true;
 #if RELOCO_TIDY_LLVM_MAJOR >= 20
   return p->hasAttr<LifetimeBoundAttr>() || p->hasAttr<LifetimeCaptureByAttr>();
 #else

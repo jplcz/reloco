@@ -101,7 +101,8 @@ namespace reloco::detail {
  */
 template <typename Hook, typename... Args> class RELOCO_POINTER fire_n_times_hook {
 public:
-  fire_n_times_hook(Hook &hook RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS, std::size_t max_fires) noexcept
+  fire_n_times_hook(Hook &hook RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS RELOCO_LT(hook),
+                    std::size_t max_fires) noexcept
       : hook_(hook), remaining_(max_fires) {}
 
   void operator()(Args &...args) noexcept {
@@ -115,7 +116,7 @@ public:
   [[nodiscard]] std::size_t remaining() const noexcept { return remaining_; }
 
 private:
-  Hook &hook_;
+  RELOCO_LT(hook) Hook &hook_;
   std::size_t remaining_;
 };
 
@@ -130,8 +131,8 @@ using fire_n_times_hook_for = typename fault_hook_signature<Hook>::template bind
  */
 template <typename Pred, typename Hook, typename... Args> class RELOCO_POINTER conditional_hook {
 public:
-  conditional_hook(Pred &pred RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS,
-                   Hook &hook RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
+  conditional_hook(Pred &pred RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS RELOCO_LT(predicate),
+                   Hook &hook RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS RELOCO_LT(hook)) noexcept
       : pred_(pred), hook_(hook) {}
 
   void operator()(Args &...args) noexcept {
@@ -140,8 +141,8 @@ public:
   }
 
 private:
-  Pred &pred_;
-  Hook &hook_;
+  RELOCO_LT(predicate) Pred &pred_;
+  RELOCO_LT(hook) Hook &hook_;
 };
 
 template <typename Pred, typename Hook>
@@ -155,7 +156,8 @@ using conditional_hook_for = typename fault_hook_signature<Hook>::template bind<
  */
 template <typename Hook, typename... Args> class RELOCO_POINTER skip_n_hook {
 public:
-  skip_n_hook(Hook &hook RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS, std::size_t skip_count) noexcept
+  skip_n_hook(Hook &hook RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS RELOCO_LT(hook),
+              std::size_t skip_count) noexcept
       : hook_(hook), remaining_skip_(skip_count) {}
 
   void operator()(Args &...args) noexcept {
@@ -170,7 +172,7 @@ public:
   [[nodiscard]] std::size_t remaining_skip() const noexcept { return remaining_skip_; }
 
 private:
-  Hook &hook_;
+  RELOCO_LT(hook) Hook &hook_;
   std::size_t remaining_skip_;
 };
 
@@ -183,7 +185,8 @@ template <typename Hook> using skip_n_hook_for = typename fault_hook_signature<H
  */
 template <typename Hook, typename... Args> class RELOCO_POINTER nth_call_hook {
 public:
-  nth_call_hook(Hook &hook RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS, std::size_t target) noexcept
+  nth_call_hook(Hook &hook RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS RELOCO_LT(hook),
+                std::size_t target) noexcept
       : hook_(hook), target_(target), count_(0) {}
 
   void operator()(Args &...args) noexcept {
@@ -196,7 +199,7 @@ public:
   [[nodiscard]] std::size_t call_count() const noexcept { return count_; }
 
 private:
-  Hook &hook_;
+  RELOCO_LT(hook) Hook &hook_;
   std::size_t target_;
   std::size_t count_;
 };
@@ -211,7 +214,8 @@ using nth_call_hook_for = typename fault_hook_signature<Hook>::template bind<nth
  */
 template <typename Hook, typename... Args> class RELOCO_POINTER every_n_hook {
 public:
-  every_n_hook(Hook &hook RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS, std::size_t period) noexcept
+  every_n_hook(Hook &hook RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS RELOCO_LT(hook),
+               std::size_t period) noexcept
       : hook_(hook), period_(period), count_(0) {}
 
   void operator()(Args &...args) noexcept {
@@ -224,7 +228,7 @@ public:
   [[nodiscard]] std::size_t call_count() const noexcept { return count_; }
 
 private:
-  Hook &hook_;
+  RELOCO_LT(hook) Hook &hook_;
   std::size_t period_;
   std::size_t count_;
 };

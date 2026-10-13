@@ -239,7 +239,8 @@ public:
             std::enable_if_t<!std::is_void_v<typename Traits::context_type> &&
                                  std::is_convertible_v<Context *, typename Traits::context_type *>,
                              int> = 0>
-  constexpr allocator_ref(Tag, Context &ctx RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
+  constexpr allocator_ref(Tag,
+                          Context &ctx RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS RELOCO_LT(context)) noexcept
       : ctx_(&ctx), vtbl_(&s_vtbl<Tag>) {}
 
   template <typename Tag, typename Context, std::enable_if_t<!std::is_lvalue_reference_v<Context>, int> = 0>
@@ -409,7 +410,7 @@ private:
   static constexpr vtable s_vtbl{&allocate_entry<Tag>, expand_in_place_entry<Tag>(), reallocate_entry<Tag>(),
                                  &deallocate_entry<Tag>, advise_entry<Tag>()};
 
-  value_ptr<void> ctx_{};
+  RELOCO_LT(context) value_ptr<void> ctx_ {};
   const vtable *vtbl_{nullptr};
 };
 

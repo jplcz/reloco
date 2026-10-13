@@ -90,6 +90,7 @@
  * requirements.
  */
 
+#include "atomic_context.hpp"
 #include "detail/compat.hpp"
 #include "hint.hpp"
 #include "lifetime.hpp"
@@ -105,7 +106,7 @@ namespace reloco {
  * See this file's top-level docs for when to reach for this instead of
  * `reloco::mutex`.
  */
-class RELOCO_CAPABILITY("mutex") spin_lock {
+class RELOCO_CAPABILITY("mutex") RELOCO_ATOMIC_LOCK spin_lock {
 public:
   constexpr spin_lock() noexcept = default;
 
@@ -113,7 +114,7 @@ public:
   spin_lock &operator=(const spin_lock &) = delete;
 
   /** @brief Spins until the lock is acquired. */
-  void lock() & noexcept RELOCO_ACQUIRE() {
+  RELOCO_ENTER_ATOMIC void lock() & noexcept RELOCO_ACQUIRE() {
     // Test-and-test-and-set: retry the cheap relaxed load while contended
     // instead of hammering the exchange itself, which would otherwise
     // force the cache line to bounce between cores on every iteration
@@ -131,7 +132,7 @@ public:
   }
 
   /** @brief Releases a lock held by the calling thread. */
-  void unlock() & noexcept RELOCO_RELEASE() { locked_.store(false, std::memory_order_release); }
+  RELOCO_LEAVE_ATOMIC void unlock() & noexcept RELOCO_RELEASE() { locked_.store(false, std::memory_order_release); }
 
   /**
    * @brief Best-effort snapshot of whether the lock is currently held,

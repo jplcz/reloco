@@ -324,7 +324,8 @@ public:
    * {...};`) declared before it, not an inline temporary lambda with
    * captures, exactly like any other `function_ref`-taking reloco API.
    */
-  explicit fault_injector(hook_type hook RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept : hook_(hook) {
+  explicit fault_injector(hook_type hook RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS RELOCO_LT(hook)) noexcept
+      : hook_(hook) {
 #if defined(RELOCO_ENABLE_FAULT_INJECTION)
 #if RELOCO_FAULT_INJECTION_UNLIMITED_TLS
     auto current = detail::fault_slot<Tag>::get();
@@ -369,7 +370,7 @@ public:
   void invoke(Args &...args) const noexcept { hook_(args...); }
 
 private:
-  hook_type hook_;
+  RELOCO_LT(hook) hook_type hook_;
 #if defined(RELOCO_ENABLE_FAULT_INJECTION) && RELOCO_FAULT_INJECTION_UNLIMITED_TLS
   void *prev_{nullptr};
 #endif

@@ -49,7 +49,10 @@ add_library(reloco-tidy MODULE
     src/EarlyStaticCheck.cpp
     src/NsPointerCheck.cpp
     src/SendSyncCheck.cpp
+    src/AtomicContextCheck.cpp
     src/NarrowingFlowCheck.cpp
+    src/LockAliasCheck.cpp
+    src/LockBalanceCheck.cpp
     src/LockGuardCheck.cpp
     src/LeakCheck.cpp
     src/IteratorInvalidationCheck.cpp

@@ -41,7 +41,8 @@ public:
   /**
    * @brief Binds the vector to an uninitialized memory buffer.
    */
-  constexpr explicit external_vector(span<T> data RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept : data_(data) {}
+  constexpr explicit external_vector(span<T> data RELOCO_LIFETIME_CAPTURE_BY_THIS RELOCO_LT(storage)) noexcept
+      : data_(data) {}
 
   // Delete copy semantics to prevent unsafe constructs
   external_vector(const external_vector &) = delete;
@@ -201,7 +202,7 @@ public:
   }
 
 private:
-  span<T> data_;
+  RELOCO_LT(storage) span<T> data_;
   size_type size_{0};
 };
 

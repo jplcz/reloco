@@ -85,6 +85,7 @@
  * `MutexT` opts in by adding the overload.
  */
 
+#include "atomic_context.hpp"
 #include "detail/assert.hpp"
 #include "detail/compat.hpp"
 #include "detail/lock_location_traits.hpp"
@@ -102,7 +103,7 @@ namespace reloco {
  * `error_checking_mutex` -- used exclusive-only here -- all satisfy this
  * too).
  */
-template <typename MutexT> class RELOCO_POINTER RELOCO_SCOPED_CAPABILITY unique_lock {
+template <typename MutexT> class RELOCO_POINTER RELOCO_SCOPED_CAPABILITY RELOCO_ATOMIC_GUARD unique_lock {
 public:
   using mutex_type = MutexT;
 

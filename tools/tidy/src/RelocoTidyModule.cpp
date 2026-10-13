@@ -52,11 +52,15 @@ public:
     f.registerCheck<BorrowCheck>("reloco-borrow-check");
     f.registerCheck<AliasedArgumentsCheck>("reloco-aliased-arguments");
     f.registerCheck<EscapingLocalCheck>("reloco-escaping-local");
+    f.registerCheck<LifetimeNamesCheck>("reloco-lifetime-names");
     f.registerCheck<MemberOrderCheck>("reloco-member-order");
     f.registerCheck<LeakCheck>("reloco-leak");
+    f.registerCheck<LockAliasCheck>("reloco-lock-alias");
+    f.registerCheck<LockBalanceCheck>("reloco-lock-balance");
     f.registerCheck<LockGuardCheck>("reloco-lock-guard");
     f.registerCheck<NarrowingFlowCheck>("reloco-narrowing-flow");
     f.registerCheck<SendSyncCheck>("reloco-send-sync");
+    f.registerCheck<AtomicContextCheck>("reloco-atomic-context");
     f.registerCheck<SignedIndexCheck>("reloco-signed-index");
     f.registerCheck<NsPointerCheck>("reloco-ns-pointer");
     f.registerCheck<EarlyStaticCheck>("reloco-early-static");

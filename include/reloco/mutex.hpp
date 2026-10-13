@@ -112,6 +112,7 @@
  */
 
 #include "detail/assert.hpp"
+#include "atomic_context.hpp"
 #include "detail/compat.hpp"
 #include "duration.hpp"
 #include "error.hpp"
@@ -202,7 +203,7 @@ public:
   mutex(const mutex &) = delete;
   mutex &operator=(const mutex &) = delete;
 
-  RELOCO_API void lock() & noexcept RELOCO_ACQUIRE();
+  RELOCO_MIGHT_SLEEP RELOCO_API void lock() & noexcept RELOCO_ACQUIRE();
 
   RELOCO_API void unlock() & noexcept RELOCO_RELEASE();
 
@@ -231,7 +232,7 @@ public:
   recursive_mutex(const recursive_mutex &) = delete;
   recursive_mutex &operator=(const recursive_mutex &) = delete;
 
-  RELOCO_API void lock() & noexcept RELOCO_ACQUIRE();
+  RELOCO_MIGHT_SLEEP RELOCO_API void lock() & noexcept RELOCO_ACQUIRE();
 
   RELOCO_API void unlock() & noexcept RELOCO_RELEASE();
 
@@ -258,13 +259,13 @@ public:
   shared_mutex(const shared_mutex &) = delete;
   shared_mutex &operator=(const shared_mutex &) = delete;
 
-  RELOCO_API void lock() & noexcept RELOCO_ACQUIRE();
+  RELOCO_MIGHT_SLEEP RELOCO_API void lock() & noexcept RELOCO_ACQUIRE();
 
   RELOCO_API void unlock() & noexcept RELOCO_RELEASE();
 
   [[nodiscard]] RELOCO_API bool try_lock() & noexcept RELOCO_TRY_ACQUIRE(true);
 
-  RELOCO_API void lock_shared() & noexcept RELOCO_ACQUIRE_SHARED();
+  RELOCO_MIGHT_SLEEP RELOCO_API void lock_shared() & noexcept RELOCO_ACQUIRE_SHARED();
 
   RELOCO_API void unlock_shared() & noexcept RELOCO_RELEASE_SHARED();
 
@@ -299,9 +300,9 @@ public:
   condition_variable(const condition_variable &) = delete;
   condition_variable &operator=(const condition_variable &) = delete;
 
-  [[nodiscard]] RELOCO_API result<void> wait(unique_lock<mutex> &locker) & noexcept;
+  [[nodiscard]] RELOCO_MIGHT_SLEEP RELOCO_API result<void> wait(unique_lock<mutex> &locker) & noexcept;
 
-  template <typename Predicate> result<void> wait(unique_lock<mutex> &locker, Predicate pred) & noexcept {
+  template <typename Predicate> RELOCO_MIGHT_SLEEP result<void> wait(unique_lock<mutex> &locker, Predicate pred) & noexcept {
     if (!locker.owns_lock())
       return unexpected(error::not_locked);
     while (!pred())
@@ -318,7 +319,7 @@ public:
    * which clock the underlying deadline is measured against.
    */
   template <typename Predicate>
-  [[nodiscard]] result<bool> wait_for(unique_lock<mutex> &locker, duration timeout, Predicate pred) & noexcept {
+  [[nodiscard]] RELOCO_MIGHT_SLEEP result<bool> wait_for(unique_lock<mutex> &locker, duration timeout, Predicate pred) & noexcept {
     if (!locker.owns_lock())
       return unexpected(error::not_locked);
 
@@ -396,7 +397,7 @@ public:
   mutex(const mutex &) = delete;
   mutex &operator=(const mutex &) = delete;
 
-  RELOCO_API void lock() & noexcept RELOCO_ACQUIRE();
+  RELOCO_MIGHT_SLEEP RELOCO_API void lock() & noexcept RELOCO_ACQUIRE();
 
   void unlock() & noexcept RELOCO_RELEASE() { handle_.unlock(); }
 
@@ -420,7 +421,7 @@ public:
   recursive_mutex(const recursive_mutex &) = delete;
   recursive_mutex &operator=(const recursive_mutex &) = delete;
 
-  RELOCO_API void lock() & noexcept RELOCO_ACQUIRE();
+  RELOCO_MIGHT_SLEEP RELOCO_API void lock() & noexcept RELOCO_ACQUIRE();
 
   void unlock() & noexcept RELOCO_RELEASE() { handle_.unlock(); }
 
@@ -444,13 +445,13 @@ public:
   shared_mutex(const shared_mutex &) = delete;
   shared_mutex &operator=(const shared_mutex &) = delete;
 
-  RELOCO_API void lock() & noexcept RELOCO_ACQUIRE();
+  RELOCO_MIGHT_SLEEP RELOCO_API void lock() & noexcept RELOCO_ACQUIRE();
 
   void unlock() & noexcept RELOCO_RELEASE() { handle_.unlock(); }
 
   [[nodiscard]] bool try_lock() & noexcept RELOCO_TRY_ACQUIRE(true) { return handle_.try_lock(); }
 
-  RELOCO_API void lock_shared() & noexcept RELOCO_ACQUIRE_SHARED();
+  RELOCO_MIGHT_SLEEP RELOCO_API void lock_shared() & noexcept RELOCO_ACQUIRE_SHARED();
 
   void unlock_shared() & noexcept RELOCO_RELEASE_SHARED() { handle_.unlock_shared(); }
 
@@ -486,9 +487,9 @@ public:
   condition_variable(const condition_variable &) = delete;
   condition_variable &operator=(const condition_variable &) = delete;
 
-  [[nodiscard]] RELOCO_API result<void> wait(unique_lock<mutex> &locker) & noexcept;
+  [[nodiscard]] RELOCO_MIGHT_SLEEP RELOCO_API result<void> wait(unique_lock<mutex> &locker) & noexcept;
 
-  template <typename Predicate> result<void> wait(unique_lock<mutex> &locker, Predicate pred) & noexcept {
+  template <typename Predicate> RELOCO_MIGHT_SLEEP result<void> wait(unique_lock<mutex> &locker, Predicate pred) & noexcept {
     if (!locker.owns_lock())
       return unexpected(error::not_locked);
     // Adopts the reloco mutex's native std::mutex handle so
@@ -509,7 +510,7 @@ public:
    * @p pred() still `false`.
    */
   template <typename Predicate>
-  [[nodiscard]] result<bool> wait_for(unique_lock<mutex> &locker, duration timeout, Predicate pred) & noexcept {
+  [[nodiscard]] RELOCO_MIGHT_SLEEP result<bool> wait_for(unique_lock<mutex> &locker, duration timeout, Predicate pred) & noexcept {
     if (!locker.owns_lock())
       return unexpected(error::not_locked);
     // Adopts the reloco mutex's native std::mutex handle so
@@ -573,7 +574,7 @@ public:
   error_checking_mutex(const error_checking_mutex &) = delete;
   error_checking_mutex &operator=(const error_checking_mutex &) = delete;
 
-  [[nodiscard]] RELOCO_API result<void> lock() & noexcept RELOCO_ACQUIRE();
+  [[nodiscard]] RELOCO_MIGHT_SLEEP RELOCO_API result<void> lock() & noexcept RELOCO_ACQUIRE();
 
   [[nodiscard]] RELOCO_API result<void> unlock() & noexcept RELOCO_RELEASE();
 

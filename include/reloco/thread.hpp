@@ -98,6 +98,7 @@
 
 #include "default_allocator.hpp"
 #include "detail/assert.hpp"
+#include "atomic_context.hpp"
 #include "detail/compat.hpp"
 #include "error.hpp"
 #include "expected.hpp"
@@ -235,7 +236,7 @@ public:
 
   [[nodiscard]] bool joinable() const noexcept { return joinable_; }
 
-  RELOCO_API void join() & noexcept;
+  RELOCO_MIGHT_SLEEP RELOCO_API void join() & noexcept;
 
   RELOCO_API void detach() & noexcept;
 
@@ -355,7 +356,7 @@ public:
 
   [[nodiscard]] bool joinable() const noexcept { return handle_.joinable(); }
 
-  void join() & noexcept {
+  RELOCO_MIGHT_SLEEP void join() & noexcept {
     RELOCO_ASSERT(handle_.joinable(), "thread: join() called on a non-joinable thread");
     handle_.join();
   }
@@ -495,7 +496,7 @@ public:
   [[nodiscard]] thread_id get_id() const noexcept { return thread_.get_id(); }
 
   /** @brief Blocks until the thread finishes. Consumes `*this`. */
-  void join() && noexcept {
+  RELOCO_MIGHT_SLEEP void join() && noexcept {
     RELOCO_ASSERT(thread_.joinable(), "join_handle: already joined/detached");
     thread_.join();
   }

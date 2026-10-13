@@ -92,14 +92,15 @@ public:
    * any later clone (`to_mut()`/`into_owned()`). The referenced object
    * must outlive this `cow`.
    */
-  explicit constexpr cow(const T &value RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
+  explicit constexpr cow(const T &value RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS RELOCO_LT(value)) noexcept
       : ptr_(std::addressof(value)), alloc_(default_allocator()) {}
 
   /**
    * @brief Borrows @p value, using @p alloc explicitly for any later
    * clone. The referenced object must outlive this `cow`.
    */
-  constexpr cow(const T &value RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS, allocator_ref alloc) noexcept
+  constexpr cow(const T &value RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS RELOCO_LT(value),
+                allocator_ref alloc RELOCO_LT(allocator)) noexcept
       : ptr_(std::addressof(value)), alloc_(alloc) {}
 
   /**
@@ -223,9 +224,9 @@ private:
   }
 
   alignas(T) std::byte storage_[sizeof(T)];
-  const T *ptr_{nullptr};
+  RELOCO_LT(value) const T *ptr_ { nullptr };
   bool owned_{false};
-  allocator_ref alloc_{};
+  RELOCO_LT(allocator) allocator_ref alloc_ {};
 };
 RELOCO_END_UNSAFE_CODE
 

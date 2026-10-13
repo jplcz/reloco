@@ -82,11 +82,25 @@ std::optional<MovedKey> placeOfExpr(const Expr *e) {
   return std::nullopt;
 }
 
+// `std::forward<T>(x)` with a non-reference T is an unconditional move (its result is an xvalue).
+bool isStdForwardMove(const CallExpr *call) {
+  const FunctionDecl *fd = call->getDirectCallee();
+  if (!fd || !fd->getIdentifier() || fd->getName() != "forward" || call->getNumArgs() != 1 || !call->isXValue())
+    return false;
+  const auto *ns = llvm::dyn_cast<NamespaceDecl>(fd->getDeclContext()->getRedeclContext());
+  return ns && ns->getIdentifier() && ns->getName() == "std";
+}
+
+// `static_cast<T &&>(x)`: the spelled-out form of std::move.
+bool isRvalueCast(const Stmt *s) {
+  const auto *sc = llvm::dyn_cast<CXXStaticCastExpr>(s);
+  return sc && sc->getTypeAsWritten()->isRValueReferenceType() && sc->getSubExpr()->isLValue();
+}
+
 // The place moved by `std::move(place)`, or nullopt when the move cannot leave it in a moved-from state.
-std::optional<MovedKey> movedPlace(const CallExpr *call) {
-  const Expr *arg = call->getArg(0);
+std::optional<MovedKey> movedPlace(const Expr *arg, ASTContext &ctx) {
   const QualType t = arg->getType().getNonReferenceType();
-  if (t.isNull() || t->isDependentType() || t->isScalarType() || t.isTriviallyCopyableType(call->getCalleeDecl()->getASTContext()))
+  if (t.isNull() || t->isDependentType() || t->isScalarType() || t.isTriviallyCopyableType(ctx))
     return std::nullopt;
   auto key = placeOfExpr(arg);
   if (key && key->isThis() && key->path.empty())
@@ -176,9 +190,15 @@ public:
         }
       return;
     }
-    if (const auto *call = llvm::dyn_cast<CallExpr>(s); call && isStdMove(call)) {
-      if (auto key = movedPlace(call))
+    if (const auto *call = llvm::dyn_cast<CallExpr>(s); call && (isStdMove(call) || isStdForwardMove(call))) {
+      if (auto key = movedPlace(call->getArg(0), ctx_))
         moved[*key] = call->getBeginLoc();
+      return;
+    }
+    if (isRvalueCast(s)) {
+      const auto *sc = llvm::cast<CXXStaticCastExpr>(s);
+      if (auto key = movedPlace(sc->getSubExpr(), ctx_))
+        moved[*key] = sc->getBeginLoc();
       return;
     }
     // A declaration creates a new object: whatever an earlier loop iteration moved from is a different variable.
@@ -223,7 +243,8 @@ private:
 
 void UseAfterMoveCheck::registerMatchers(MatchFinder *finder) {
   finder->addMatcher(functionDecl(isDefinition(), unless(isImplicit()), unless(isTemplateInstantiation()),
-                                  forEachDescendant(callExpr(callee(functionDecl(hasName("::std::move"))))))
+                                  forEachDescendant(expr(anyOf(callExpr(callee(functionDecl(hasAnyName("::std::move", "::std::forward")))),
+                                                               cxxStaticCastExpr(hasDestinationType(rValueReferenceType()))))))
                          .bind("fn"),
                      this);
 }

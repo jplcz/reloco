@@ -191,7 +191,10 @@ CLion runs clang-tidy itself, so use its external-tool path for the plugin:
 | `reloco-safe-math` | **Opt-in.** Inside a function or class marked `RELOCO_SAFE_MATH`, raw integer `+ - * / % << >>`, `++`, `--`, unary `-` on non-constant operands are rejected; use `checked.hpp`, `saturating.hpp` or `wrapping.hpp`. Unmarked code is never checked. | Overflow is explicit where it matters. |
 | `reloco-member-init` | Every field has a default member initializer (self-initialising class types excepted). | No indeterminate members. |
 | `reloco-rule-of-five` | Declaring any of destructor, copy/move constructor, copy/move assignment means declaring all five (`= default`/`= delete`). A lone defaulted destructor is allowed. | Explicit ownership semantics. |
-| `reloco-use-after-move` | A local or parameter passed to `std::move` may not be read again on any path (loops included) until it is reassigned or reinitialised (`x = ...`, `x.clear()`, `reset`, `assign`, `emplace`). Trivially copyable types are exempt (a move is a copy). Moves are tracked per field: after `std::move(p.first)` the field, its sub-fields and the whole `p` are moved-from, while `p.second` stays valid; `p.first = ...` or `p.first.clear()` revives it, and assigning `p` revives everything. The same applies to members of `this` (`std::move(name_)` then `name_.size()`); a bare `this`/`*this` is not treated as a use. Emits a note at the move. | Rust's "borrow of moved value". |
+| `reloco-atomic-context` | Sleeping (`RELOCO_MIGHT_SLEEP`, or inferred transitively) while inside an atomic scope (irq/preemption/spinlock guards, `RELOCO_ENTER_ATOMIC`), and calls to `RELOCO_ATOMIC_ONLY` functions outside one. Full rules, macros and limits: [atomic-context.md](atomic-context.md). | Linux's `might_sleep()` / sparse context checking. |
+| `reloco-lock-balance` | Every `lock`/`lock_shared`/`write_lock`/`read_lock` is released on all paths; double lock/unlock reported. `RELOCO_LOCK_IMPL` opts out. Full rules: [lock-discipline.md](lock-discipline.md); applying annotations to derived, wrapped and legacy locks: [lock-annotations.md](lock-annotations.md). | Linux sparse `__must_hold`, clang `-Wthread-safety`. |
+| `reloco-lock-alias` | No pointers to locks or `&lock` (references are fine) so lock tracking stays sound. See [lock-discipline.md](lock-discipline.md). | Rust's exclusive borrow of a lock. |
+| `reloco-use-after-move` | A local or parameter passed to `std::move` may not be read again on any path (loops included) until it is reassigned or reinitialised (`x = ...`, `x.clear()`, `reset`, `assign`, `emplace`). A move is `std::move(x)`, `static_cast<T &&>(x)` or `std::forward<T>(x)` with a non-reference `T` (`std::forward<T &>` is not a move). Trivially copyable types are exempt (a move is a copy). Moves are tracked per field: after `std::move(p.first)` the field, its sub-fields and the whole `p` are moved-from, while `p.second` stays valid; `p.first = ...` or `p.first.clear()` revives it, and assigning `p` revives everything. The same applies to members of `this` (`std::move(name_)` then `name_.size()`); a bare `this`/`*this` is not treated as a use. Emits a note at the move. | Rust's "borrow of moved value". |
 | `reloco-iterator-invalidation` | Inside a range-for, the iterated container may not be modified (non-const member other than `at`/`front`/`back`/`begin`/`end`/`find`/`size`..., assignment, or passing it to a mutable-reference parameter), unless the change is immediately followed by `break`/`return`. Iterators bound to variables are covered by `reloco-borrow-check`. | Hidden iterators dangle after reallocation. |
 | `reloco-leak` | **Opt-in by type.** A local or by-value parameter of a `RELOCO_MUST_CONSUME` class must be consumed on every path that leaves the function: `std::move(x)`, `return x`, `&x` (escape) or a `RELOCO_CONSUMES` member. Reported at the exit, with a note at the declaration. | Linear resources (transactions, tokens) cannot be dropped silently. |
 | `reloco-lock-guard` | In a class that owns a mutex (a `RELOCO_CAPABILITY` member), every other mutable member must be `RELOCO_GUARDED_BY(mutex)`, `RELOCO_UNGUARDED`, const, a reference, atomic or a synchronisation primitive. Fix-it appends `RELOCO_GUARDED_BY(mu)` when there is exactly one mutex. Enable `-Wthread-safety` so access to guarded members is then enforced by Clang. | Every shared field names its lock. |
@@ -204,6 +207,7 @@ CLion runs clang-tidy itself, so use its external-tool path for the plugin:
 | `reloco-borrow-check` | Best-effort Rust-style borrow checking inside one function. See below. | Aliasing XOR mutability. |
 | `reloco-aliased-arguments` | A call may not receive overlapping places when one of them is bound as a mutable reference, mutable pointer (`&x`) or non-const `this`: `f(x, x)`, `x.m(x)`, `x.m(x.field)`. See below. | Rust's "cannot borrow as mutable more than once" across call arguments. |
 | `reloco-escaping-local` | A pointer, array decay, view or `RELOCO_LIFETIMEBOUND` result derived from a local may not be stored through a pointer or non-const reference parameter (`*out = &x;`, `out->p = buf;`). See below. | The caller is left with a dangling pointer; Clang's `-Wlifetime-safety` does not see stores through parameters. |
+| `reloco-lifetime-names` | **Opt-in by annotation.** Rust-style named lifetimes: `RELOCO_LT(a)` on parameters, `RELOCO_LT_RETURN(a)` on the function, `RELOCO_LT_THIS(a)` on the receiver, and `static` for a lifetime that never ends. Validates declarations, `return` statements and `static` arguments. See below. | Says exactly which arguments a result borrows, which Clang's all-or-nothing `lifetimebound` cannot. |
 | `reloco-member-order` | A member may not be initialised from a member declared after it, and a pointer/view member into a sibling member makes a copyable class unsafe. See below. | Members are constructed in declaration order and destroyed in reverse; self-pointers dangle after copy or relocation. |
 | `reloco-mutable-member` | A `mutable` member must be an atomic, lock, `once_flag` or reloco cell, or be `RELOCO_GUARDED_BY` a lock. See below. | `mutable` hides mutation behind a const interface (Rust's interior mutability needs `Cell`/`Mutex`); `const_cast` is already banned. |
 | `reloco-virtual-call-in-ctor` | No unqualified virtual call on `this` from a constructor or destructor (unless the class or method is `final`). See below. | The call dispatches to the class under construction/destruction, never to a derived override. |
@@ -249,6 +253,16 @@ Intra-procedural and flow-sensitive (NLL-style):
 - A *mutable* borrow excludes every use of an overlapping place.
 - A range-for borrows its range for the whole body, mutably if the loop variable is a non-const reference.
 - Disjoint fields do not overlap.
+- **Derived borrows**: a variable initialised from another borrowing variable keeps everything that variable borrows
+  alive for as long as it is used itself. `int *q = p;` (copy), `auto it = view.begin();` and `int &r = *view;` borrow
+  the storage `p`/`view` borrows, not only `p`/`view`. Taking the address of a handle (`&h`) is not derived. The derived
+  borrow is mutable only when both the original borrow and the new variable's type are mutable.
+- **Labelled handles**: a class with a `RELOCO_LT(name)` field is treated as a view. Constructing one borrows every
+  argument bound to a `RELOCO_LT(name)` constructor parameter (`holder h(&x);` keeps `x` borrowed while `h` is used), and
+  the handle holds exactly the access it was built with (`&x` of a non-const `x` is a mutable borrow). A copy
+  (`holder h2 = h;`) inherits the borrows. A method declared `RELOCO_LT_RETURN(a)` where `a` is carried by a field
+  (and not by `RELOCO_LT_THIS`) hands out what the handle borrows, not the handle itself: `int *p = h.get();` keeps `x`
+  borrowed, but `h.reset(&y);` is still allowed while `p` is live.
 - A *pointee* is a different object from the pointer that stores it: `*p`, `p->m()`, `view->m()`, `*view`, and a view
   built from a pointer value (`string_view(argv_[0])`) borrow what the pointer points at. A pointee only conflicts
   with a pointee of the same pointer, so rewriting `argv_` does not invalidate a view of its strings.
@@ -263,8 +277,8 @@ Intra-procedural and flow-sensitive (NLL-style):
 - Exemptions: `RELOCO_BORROW_EXEMPT` on the function (put the reason in a comment above it) or a `NOLINT` on the line.
   Method calls are field-insensitive (a non-const call mutates every member), which is the usual reason for exemption.
 
-Limits: no inter-procedural reasoning, no aliasing through containers or heap, no use-after-move
-tracking. Use Clang's `-Wlifetime-safety` for use-after-return/scope. It is a bug finder, not a proof.
+Limits: no inter-procedural reasoning, no aliasing through containers or heap (use-after-move is a separate
+check, `reloco-use-after-move`). Use Clang's `-Wlifetime-safety` for use-after-return/scope. It is a bug finder, not a proof.
 
 Slicing is deliberately not a separate rule: polymorphic bases are already a red flag.
 
@@ -294,6 +308,97 @@ parameter, a non-const pointer parameter given `&place`, or the implicit object 
 method. By-value and rvalue-reference parameters are copies or moves and never conflict, so
 `v.set(v.get())` is fine. Array subscripts and arbitrary pointers are skipped because overlap cannot be
 decided. `RELOCO_BORROW_EXEMPT`, unsafe regions and `NOLINT` suppress it.
+
+### `reloco-lifetime-names`
+
+Named lifetimes in the style of Rust's `'a`, written as attributes. Nothing is checked until a
+function carries a label, so existing code is unaffected.
+
+| Macro | Where | Meaning |
+|---|---|---|
+| `RELOCO_LT(a)` | after a parameter name | The object the parameter refers to lives for lifetime `a`. |
+| `RELOCO_LT_RETURN(a)` | start of the declaration | The result borrows from everything tagged `a`. Stack several for several lifetimes. |
+| `RELOCO_LT_THIS(a)` | start of a member declaration | The receiver (`*this`) lives for lifetime `a`. |
+| `RELOCO_LT(a)` | after a field or variable name | The pointer, reference or view the field/variable holds refers to something living for lifetime `a`. Every value stored into it must carry `a`. |
+| `RELOCO_LT(static)` | after a parameter, field or variable name | The argument, or every value stored into the field/variable, must have static duration (string literal, global or `static` object, function, or another `static` parameter). |
+| `RELOCO_LT_RETURN(static)` | start of the declaration | The result has static duration. It borrows from no parameter. |
+
+```cpp
+// The result borrows x and y (lifetime 'a'); z is unrelated, so it may be mutated while the result lives.
+RELOCO_LT_RETURN(a) const item &pick(const item &x RELOCO_LT(a), const item &y RELOCO_LT(a),
+                                     const item &z) noexcept;
+
+struct holder {
+  item it;
+  // The pointer refers to something living for 'a; the constructor parameter must carry 'a too.
+  RELOCO_LT(a) const item *link = nullptr;
+  holder(const item *l RELOCO_LT(a)) noexcept : link(l) {}  // fine: 'l' carries 'a
+  // RELOCO_LT(static) const char *name = nullptr; would accept only literals, statics and static parameters.
+  // The result borrows the receiver: 'h.set(1)' while the result is live is a borrow-check error.
+  RELOCO_LT_THIS(a) RELOCO_LT_RETURN(a) const item &get() const & noexcept { return it; }
+};
+
+// 'name' is stored for the lifetime of the program, so only literals and statics may be passed.
+void register_name(const char *name RELOCO_LT(static)) noexcept;
+// The result is static: the body may return only literals, statics or RELOCO_LT(static) parameters.
+RELOCO_LT_RETURN(static) const char *name_of(int k) noexcept;
+
+void use(const char *param, const char *fwd RELOCO_LT(static)) noexcept {
+  register_name("literal");  // fine
+  register_name(fwd);        // fine: forwarded 'static parameter
+  register_name(param);      // flagged: 'param' is not known to be 'static
+  char local[4] = {};
+  register_name(local);      // flagged: borrows a local
+}
+```
+
+Rules:
+
+- **Declarations** (reported once per function, annotations on all redeclarations are merged):
+  `RELOCO_LT_RETURN` on a function that does not return a reference, pointer or view;
+  `RELOCO_LT_RETURN(a)` where no parameter or `RELOCO_LT_THIS` carries `a`; `RELOCO_LT` on a parameter
+  that is not a reference, pointer or view; `RELOCO_LT_THIS` on a non-member.
+- **`return` statements** in a function with `RELOCO_LT_RETURN`: a value borrowed from a parameter (or `this`) that does not
+  carry a returned lifetime is flagged. A `RELOCO_LT(static)` parameter is always acceptable. With
+  `RELOCO_LT_RETURN(static)` the value must instead be static; a borrow of a local or of a parameter not tagged
+  `static` is flagged.
+- **Fields and variables**: `RELOCO_LT(a)` or `RELOCO_LT(static)` after a field or variable name (a field of a non-reference,
+  non-pointer, non-view type is flagged). Every store into it is checked: constructor member initialisers,
+  in-class initialisers, `field = value` and `operator=` in a body, and variable initialisers.
+  `static` fields accept literals, `nullptr`, globals/statics and `RELOCO_LT(static)` parameters, and reject a local or a
+  parameter not tagged `static`. A field tagged `a` accepts a parameter tagged `a` (or `static`) and rejects a local or a
+  parameter that does not carry `a`. A method whose `return` hands out such a field satisfies
+  `RELOCO_LT_RETURN` with the field's lifetime, and `RELOCO_LT_RETURN(a)` counts a field tagged `a` as carrying `a`.
+- **Constructor coverage**: every user-written constructor (not copy/move, not delegating) of a class with a labelled
+  field must initialise that field in its member initialiser list, or the field needs a default member initialiser.
+  Otherwise it is reported as `constructor does not initialise the lifetime-labelled field 'p_'`. Where uninitialised
+  storage is valid (pool slots, placement storage filled in later), opt out with `RELOCO_BORROW_EXEMPT` on the field,
+  the class or the constructor (with a comment giving the reason), or `NOLINT(reloco-lifetime-names)`.
+  ```cpp
+  class RELOCO_BORROW_EXEMPT slot {  // class-wide opt-out: the pointer is set by emplace() before any read
+  public:
+    slot() noexcept {}                // not reported
+  private:
+    RELOCO_LT(a) int *p_;
+  };
+  ```
+- **Calls and constructors**: an argument for a `RELOCO_LT(static)` parameter is flagged when it borrows a local (`&local`,
+  a local array, a view of a local, a local passed by reference) or is a parameter not tagged `static`.
+  Values of unknown origin (call results, pointers read from locals) are accepted.
+- **Borrow tracking**: `reloco-borrow-check` treats a result as borrowing exactly the arguments whose lifetime
+  is listed in `RELOCO_LT_RETURN` (all of them, not only the first), and the receiver only when `RELOCO_LT_THIS`
+  shares a label. A `RELOCO_LT_RETURN(static)` result borrows nothing. `reloco-escaping-local` and `reloco-lifetime-annotations`
+  honour the labels too, so a labelled accessor needs no extra `RELOCO_LIFETIMEBOUND` to satisfy them.
+- **Scope of the analysis**: labels are matched by name within one function signature; there is no lifetime
+  subtyping (`'a: 'b`), no labels on types, and a local that borrows a parameter and is then returned is
+  not followed. A handle's borrows are tracked through its local variable (construction, copies, accessors that
+  return a field's label) but not through members of other objects or containers, Clang does not see the labels, so keep `RELOCO_LIFETIMEBOUND` where Clang's `-Wdangling` should also fire.
+- **Exempting**: `RELOCO_BORROW_EXEMPT`, unsafe regions and `NOLINT(reloco-lifetime-names)` suppress the body checks.
+- **In reloco itself**: the classes that borrow more than one thing, or that are easy to misuse because they keep a raw
+  reference, are labelled so the checker verifies their constructors: `cow` (`value` and `allocator` are separate
+  lifetimes), `allocator_ref` (`context`), `stack_allocator_context` (`buffer`), `external_vector` (`storage`),
+  `fault_injector` (`hook`) and the fault-injection hooks (`hook`, and `predicate` plus `hook` for `conditional_hook`).
+  Single-pointer handles such as `value_ptr` and `value_ref` are left to Clang's `lifetimebound`, which already describes them fully.
 
 ### `reloco-escaping-local`
 
@@ -666,7 +771,7 @@ The macros expand to `_Pragma("region ...")`, which GCC, Clang and MSVC accept s
 
 ## Macro reference (`reloco/lifetime.hpp`)
 
-`RELOCO_POINTER`, `RELOCO_OWNER`, `RELOCO_LIFETIMEBOUND`, `RELOCO_COPIES`, `RELOCO_COPYABLE`, `RELOCO_OUT`,
+`RELOCO_POINTER`, `RELOCO_OWNER`, `RELOCO_LIFETIMEBOUND`, `RELOCO_LT`, `RELOCO_LT_RETURN`, `RELOCO_LT_THIS`, `RELOCO_COPIES`, `RELOCO_COPYABLE`, `RELOCO_OUT`,
 `RELOCO_BORROW_EXEMPT`, `RELOCO_CHECKED`, `RELOCO_SAFE_MATH`,
 `RELOCO_MUST_CONSUME`, `RELOCO_CONSUMES`, `RELOCO_UNGUARDED`, `RELOCO_SEND`, `RELOCO_NOT_SEND`, `RELOCO_SYNC`,
 `RELOCO_REQUIRE_SEND`, `RELOCO_REQUIRE_SYNC`, `RELOCO_NS(tag)`, `RELOCO_NS_TRANSLATOR`, `RELOCO_EARLY_STATIC`, `RELOCO_UNSAFE_BUFFER_USAGE`, `RELOCO_BEGIN/END_SAFE_CODE`,
