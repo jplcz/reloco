@@ -21,6 +21,8 @@ lose their bounds, silent copies, aliasing mutation. None of it needs a warning 
 checker turns those habits into diagnostics, and every opt-out into a visible, greppable marker
 (`NOLINT`, `RELOCO_BEGIN_UNSAFE_CODE`, `RELOCO_BORROW_EXEMPT`) that a reviewer can question.
 
+<img src="trollface.png" alt="Trollface" width="128">
+
 Tests, examples, demos, benchmarks, build trees and third-party code are exempt by default;
 library headers and implementations must pass.
 
