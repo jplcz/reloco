@@ -71,14 +71,18 @@ void LockGuardCheck::check(const MatchFinder::MatchResult &result) {
         hasAnnotation(f, "reloco_unguarded") || t.isConstQualified() || t->isReferenceType() || f->isBitField() ||
         selfSynchronised(t.getNonReferenceType()) || exempt(*result.SourceManager, f->getLocation()))
       continue;
-    auto d = diag(f->getLocation(), "member %0 shares class %1 with mutex %2 but is not declared RELOCO_GUARDED_BY(...)")
-             << f << rd << mutexes.front();
+    // Scoped: LLVM 19 allows only one live DiagnosticBuilder, so the note is emitted after it is destroyed.
+    {
+      auto d =
+          diag(f->getLocation(), "member %0 shares class %1 with mutex %2 but is not declared RELOCO_GUARDED_BY(...)")
+          << f << rd << mutexes.front();
+      const SourceLocation end = Lexer::getLocForEndOfToken(f->getLocation(), 0, *result.SourceManager, getLangOpts());
+      if (mutexes.size() == 1 && end.isValid() && !f->getLocation().isMacroID() && !t->isArrayType())
+        d << FixItHint::CreateInsertion(end, " RELOCO_GUARDED_BY(" + mutexes.front()->getName().str() + ")");
+    }
     howToFix(f->getLocation(), "annotate what the mutex protects ('int count_ RELOCO_GUARDED_BY(mu_);') and enable "
                                "-Wthread-safety so unlocked access is an error; if the member is immutable or "
                                "single-threaded, say so with RELOCO_UNGUARDED or make it const");
-    const SourceLocation end = Lexer::getLocForEndOfToken(f->getLocation(), 0, *result.SourceManager, getLangOpts());
-    if (mutexes.size() == 1 && end.isValid() && !f->getLocation().isMacroID() && !t->isArrayType())
-      d << FixItHint::CreateInsertion(end, " RELOCO_GUARDED_BY(" + mutexes.front()->getName().str() + ")");
   }
 }
 

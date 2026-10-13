@@ -110,7 +110,12 @@ def main() -> int:
                "--quiet", str(fx), "--", "-std=c++20", "-fno-exceptions"]
         if args.include:
             cmd.append(f"-I{args.include}")
-        proc = subprocess.run(cmd, capture_output=True, text=True)
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        except subprocess.TimeoutExpired:
+            failed += 1
+            print(f"FAIL {fx.name}\n  clang-tidy timed out (crashed or hung)")
+            continue
         actual = set()
         for line in proc.stdout.splitlines():
             m = DIAG.match(line)

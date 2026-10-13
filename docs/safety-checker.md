@@ -25,7 +25,7 @@ library headers and implementations must pass.
 ## Building and running
 
 ```bash
-# The newest /usr/lib/llvm-N with clang-tidy headers is chosen automatically (30 down to 18).
+# The newest /usr/lib/llvm-N with clang-tidy headers is chosen automatically (30 down to 19).
 # Override with -DRELOCO_TIDY_LLVM_VERSION=24 or -DRELOCO_TIDY_LLVM_ROOT=/path/to/llvm.
 cmake -S tools/tidy -B build-tidy -G Ninja -DCMAKE_BUILD_TYPE=Release
 ninja -C build-tidy
@@ -34,6 +34,12 @@ ninja -C build-tidy
 clang-tidy-24 --load=build-tidy/libreloco-tidy.so --checks='-*,reloco-*' \
     -p build src/foo.cpp
 ```
+
+**Supported LLVM versions.** Verified (plugin builds and every fixture passes): 20, 21, 22, 24.
+LLVM 19 builds and passes all fixtures except `reloco-ns-pointer` and `reloco-static-string`:
+those read `annotate_type` payloads from types, which the LLVM 19 API does not expose, so on 19
+they treat every type as unannotated (and `reloco-no-raw-pointer` may report extra findings for
+`RELOCO_STATIC_STR`-style types). Use 20 or newer for full coverage. LLVM 18 and older are not supported.
 
 Fixture tests: `ctest` target `reloco_tidy_fixtures`, or directly
 `python3 tools/tidy/test/run_tests.py --clang-tidy <exe> --plugin <so> --include include`.

@@ -5,6 +5,9 @@
 #include "Checks.h"
 
 #include "clang-tidy/ClangTidyModule.h"
+#if __has_include("clang-tidy/ClangTidyModuleRegistry.h")
+#include "clang-tidy/ClangTidyModuleRegistry.h"
+#endif
 
 namespace reloco::tidy {
 

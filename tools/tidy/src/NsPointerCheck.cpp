@@ -29,7 +29,7 @@ bool hasAnnotation(const Decl *d, llvm::StringRef name) {
 std::string tagOf(QualType t, const ASTContext &ctx) {
   for (int guard = 0; guard < 32 && !t.isNull(); ++guard) {
     if (const auto *at = llvm::dyn_cast<AttributedType>(t.getTypePtr())) {
-      if (const auto *an = llvm::dyn_cast_or_null<AnnotateTypeAttr>(at->getAttr()); an && an->getAnnotation() == "reloco_ns" &&
+      if (const auto *an = llvm::dyn_cast_or_null<AnnotateTypeAttr>(RELOCO_TYPE_ATTR(at)); an && an->getAnnotation() == "reloco_ns" &&
                                                                                     an->args_size() == 1)
         if (const auto *sl = llvm::dyn_cast<StringLiteral>((*an->args_begin())->IgnoreParenImpCasts()))
           return sl->getString().str();

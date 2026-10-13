@@ -101,13 +101,8 @@ const NamedDecl *declOf(QualType t) {
     }
   }
   t = t.getCanonicalType();
-#if RELOCO_TIDY_LLVM_MAJOR == 21
-  if (const auto *tt = t->getAs<TagType>())
-    return tt->getOriginalDecl();
-#else
   if (const auto *tt = t->getAs<TagType>())
     return tt->getDecl();
-#endif
   if (const auto *tst = t->getAs<TemplateSpecializationType>())
     if (const TemplateDecl *td = tst->getTemplateName().getAsTemplateDecl())
       return td;

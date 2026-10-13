@@ -120,6 +120,8 @@ void LambdaDefaultCaptureCheck::check(const MatchFinder::MatchResult &result) {
     names += n;
     list += (byRef && c.getCaptureKind() == LCK_ByRef ? "&" : "") + n;
   }
+  // Scoped: LLVM 19 allows only one live DiagnosticBuilder, so the note is emitted after it is destroyed.
+  {
   auto d = diag(le->getCaptureDefaultLoc(), "lambda uses the '%select{=|&}0' default capture, which hides what it captures%1")
            << byRef << (names.empty() ? std::string() : "; implicitly captured: " + names);
   const SourceManager &sm = *result.SourceManager;
@@ -141,7 +143,8 @@ void LambdaDefaultCaptureCheck::check(const MatchFinder::MatchResult &result) {
     if (canFix)
       d << FixItHint::CreateReplacement(CharSourceRange::getCharRange(defLoc, end), list);
   }
-  howToFix(defLoc, "list every capture explicitly ('[x, &y]'), and use an init-capture "
+  }
+  howToFix(le->getCaptureDefaultLoc(), "list every capture explicitly ('[x, &y]'), and use an init-capture "
                                        "('[v = std::move(v)]') to move; capture '*this' by copy instead of 'this' "
                                        "when the lambda may outlive the object");
 }

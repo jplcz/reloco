@@ -6,6 +6,14 @@
 
 #include "RelocoCheckBase.h"
 
+// AttributedType::getAttr() exists from LLVM 20; LLVM 19 cannot expose the annotate_type payload,
+// so annotation-based type matching degrades to "not annotated" there.
+#if RELOCO_TIDY_LLVM_MAJOR >= 20
+#define RELOCO_TYPE_ATTR(at) ((at)->getAttr())
+#else
+#define RELOCO_TYPE_ATTR(at) (static_cast<const clang::Attr *>(nullptr))
+#endif
+
 namespace reloco::tidy {
 
 #define RELOCO_TIDY_CHECK(Name)                                                                                        \

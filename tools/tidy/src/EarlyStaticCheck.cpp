@@ -95,17 +95,25 @@ void EarlyStaticCheck::check(const MatchFinder::MatchResult &result) {
   const Expr *init = vd->getInit();
   if (init && !init->isValueDependent() && init->isConstantInitializer(ctx, vd->getType()->isReferenceType()))
     return;
+#if RELOCO_TIDY_LLVM_MAJOR < 20
+  // LLVM 19 crashes in hasConstantInitialization() unless the initializer was evaluated first.
+  if (vd->hasInit() && vd->getEvaluatedValue() == nullptr && vd->evaluateValue() != nullptr)
+    return;
+#endif
   if (vd->hasConstantInitialization())
     return;
 
-  auto d = diag(vd->getLocation(), "RELOCO_EARLY_STATIC object %0 is initialised at runtime; it must be constant-initialised")
-           << vd;
+  // The builder must be destroyed before the notes are emitted: older clang-tidy (LLVM 19) allows one live builder.
+  {
+    auto d = diag(vd->getLocation(), "RELOCO_EARLY_STATIC object %0 is initialised at runtime; it must be constant-initialised")
+             << vd;
+    if (getLangOpts().CPlusPlus20 && !vd->getBeginLoc().isMacroID() && vd->getBeginLoc().isValid())
+      d << FixItHint::CreateInsertion(vd->getBeginLoc(), "constinit ");
+  }
   diag(vd->getLocation(), "dynamic initialisation runs a constructor before main and its order across translation units "
                           "is unspecified", DiagnosticIDs::Note);
   howToFix(vd->getLocation(), "declare it 'constinit' (C++20) or 'constexpr' and give the type a constexpr constructor; "
                               "then the compiler rejects any runtime initialisation");
-  if (getLangOpts().CPlusPlus20 && !vd->getBeginLoc().isMacroID() && vd->getBeginLoc().isValid())
-    d << FixItHint::CreateInsertion(vd->getBeginLoc(), "constinit ");
 }
 
 } // namespace reloco::tidy

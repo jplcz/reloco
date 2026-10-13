@@ -15,7 +15,7 @@ set(RELOCO_TIDY_LLVM_ROOT "" CACHE PATH "Explicit LLVM install prefix (overrides
 
 # Newest first; the plugin must match the clang-tidy binary that loads it, so
 # the matching clang-tidy-N is reported to the user.
-set(_reloco_tidy_candidates ${RELOCO_TIDY_LLVM_VERSION} 30 29 28 27 26 25 24 23 22 21 20 19 18)
+set(_reloco_tidy_candidates ${RELOCO_TIDY_LLVM_VERSION} 30 29 28 27 26 25 24 23 22 21 20 19)
 set(_reloco_tidy_root "${RELOCO_TIDY_LLVM_ROOT}")
 if(NOT _reloco_tidy_root)
   foreach(_v IN LISTS _reloco_tidy_candidates)

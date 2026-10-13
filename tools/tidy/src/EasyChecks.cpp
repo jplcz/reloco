@@ -400,7 +400,11 @@ void EnumSwitchCheck::check(const MatchFinder::MatchResult &result) {
     }
     return;
   }
+#if RELOCO_TIDY_LLVM_MAJOR >= 22
   const EnumDecl *ed = et->getDecl()->getDefinitionOrSelf();
+#else
+  const EnumDecl *ed = et->getDecl()->getDefinition();
+#endif
   if (!ed)
     return;
   llvm::SmallVector<llvm::APSInt, 8> covered;
