@@ -36,3 +36,16 @@ void range_for_mutates() {
   for (int x : r)
     (void)x;
 }
+
+#include <utility>
+
+// Moving from a local counts as modifying it: `const` would turn the move into a copy.
+struct move_only {
+  move_only() noexcept = default;
+  move_only(move_only &&) noexcept = default;
+};
+void consume_move_only(move_only m) noexcept;
+void moved_from_local() noexcept {
+  move_only m = move_only();
+  consume_move_only(std::move(m));
+}

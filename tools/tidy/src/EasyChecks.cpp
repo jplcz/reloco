@@ -299,6 +299,12 @@ void ConstLocalCheck::check(const MatchFinder::MatchResult &result) {
                              *fn->getBody(), *result.Context))
     if (!m.getNodeAs<ReturnStmt>("ret")->getRetValue()->getType()->isReferenceType() && !vd->getType().isTriviallyCopyableType(*result.Context))
       return;
+  // Moving from a local leaves it modified, but the analyzer only counts non-const-reference bindings as mutations.
+  if (!match(findAll(callExpr(callee(functionDecl(hasAnyName("::std::move", "::reloco::move"))),
+                              hasArgument(0, ignoringParenImpCasts(declRefExpr(to(equalsNode(vd))))))),
+             *fn->getBody(), *result.Context)
+           .empty())
+    return;
   // The analyzer does not see inline-asm output operands as writes.
   for (const auto &m : match(findAll(asmStmt().bind("asm")), *fn->getBody(), *result.Context)) {
     const auto *as = m.getNodeAs<GCCAsmStmt>("asm");

@@ -150,3 +150,16 @@ public:
     return *this;  // a bare 'this' is not a use of the moved member
   }
 };
+
+// --- a variable declared in a loop body is a new object each iteration --------------------------------
+void ok_declared_per_iteration() noexcept {
+  for (int i = 0; i < 3; ++i) {
+    std::string s = "x";
+    sink(std::move(s));
+  }
+}
+void bad_declared_outside_loop() noexcept {
+  std::string s = "x";
+  for (int i = 0; i < 3; ++i)
+    sink(std::move(s));  // expect: reloco-use-after-move
+}

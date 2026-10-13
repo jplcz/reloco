@@ -181,6 +181,13 @@ public:
         moved[*key] = call->getBeginLoc();
       return;
     }
+    // A declaration creates a new object: whatever an earlier loop iteration moved from is a different variable.
+    if (const auto *ds = llvm::dyn_cast<DeclStmt>(s)) {
+      for (const Decl *d : ds->decls())
+        if (const auto *vd = llvm::dyn_cast<VarDecl>(d))
+          std::erase_if(moved, [&](const auto &kv) { return kv.first.root == vd; });
+      return;
+    }
     std::optional<MovedKey> revived = assignedPlace(s);
     if (!revived)
       revived = reinitPlace(s);
