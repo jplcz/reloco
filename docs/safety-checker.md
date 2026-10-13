@@ -6,6 +6,8 @@ SPDX-License-Identifier: BSD-2-Clause
 
 # reloco-tidy: the safety checker
 
+<img src="trollface.png" alt="Trollface" width="128">
+
 `reloco-tidy` is a clang-tidy plugin (`tools/tidy`) that enforces reloco's safe-coding
 rules on the AST, so derived projects (`structo`, `microfmt`, your own firmware) get the
 same guarantees reloco's own headers are written to. It complements, and does not replace,
