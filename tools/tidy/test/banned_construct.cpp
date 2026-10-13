@@ -23,3 +23,8 @@ RELOCO_UNSAFE_BUFFER_USAGE void unsafe_copy(char *d, const void *q) noexcept {
 namespace reloco::unsafe {
 inline const char *punned(const void *q) noexcept { return reinterpret_cast<const char *>(q); }
 }  // namespace reloco::unsafe
+
+// A non-type template argument of enum type is converted by a cast the compiler synthesises in the instantiation.
+enum class rdx : unsigned { two = 2, ten = 10 };
+template <rdx R> int pick() noexcept { return R == rdx::two ? 1 : 2; }
+inline int use_pick() noexcept { return pick<rdx::ten>(); }

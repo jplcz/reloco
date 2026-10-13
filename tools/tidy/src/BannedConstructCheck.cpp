@@ -33,7 +33,7 @@ void BannedConstructCheck::registerMatchers(MatchFinder *finder) {
   finder->addMatcher(cxxConstCastExpr(optionally(enclosing)).bind("const_cast"), this);
   finder->addMatcher(cxxReinterpretCastExpr(optionally(enclosing)).bind("reinterpret_cast"), this);
   finder->addMatcher(cxxDynamicCastExpr(optionally(enclosing)).bind("dynamic_cast"), this);
-  finder->addMatcher(cStyleCastExpr(unless(hasCastKind(CK_ToVoid)), optionally(enclosing)).bind("c_cast"), this);
+  finder->addMatcher(cStyleCastExpr(unless(hasCastKind(CK_ToVoid)), unless(hasParent(substNonTypeTemplateParmExpr())), optionally(enclosing)).bind("c_cast"), this);
   finder->addMatcher(callExpr(callee(functionDecl(unless(cxxMethodDecl())).bind("callee")), optionally(enclosing)).bind("cfn"),
                      this);
 }
