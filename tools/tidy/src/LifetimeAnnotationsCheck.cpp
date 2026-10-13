@@ -101,8 +101,8 @@ bool flows(const Expr *e, const ParmVarDecl *p) {
     return false;
   }
   if (const auto *pl = llvm::dyn_cast<ParenListExpr>(e)) {
-    for (const Expr *a : pl->exprs())
-      if (flows(a, p))
+    for (unsigned i = 0; i < pl->getNumExprs(); ++i) // exprs() is non-const before LLVM 23
+      if (flows(pl->getExpr(i), p))
         return true;
     return false;
   }

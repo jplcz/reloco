@@ -249,6 +249,19 @@ Intra-procedural and flow-sensitive (NLL-style):
 - A *mutable* borrow excludes every use of an overlapping place.
 - A range-for borrows its range for the whole body, mutably if the loop variable is a non-const reference.
 - Disjoint fields do not overlap.
+- A *pointee* is a different object from the pointer that stores it: `*p`, `p->m()`, `view->m()`, `*view`, and a view
+  built from a pointer value (`string_view(argv_[0])`) borrow what the pointer points at. A pointee only conflicts
+  with a pointee of the same pointer, so rewriting `argv_` does not invalidate a view of its strings.
+- A bare `T *` returned by a non-standard-library method that is **not** `RELOCO_LIFETIMEBOUND` does not borrow its
+  receiver (intrusive-list `pop_front()`, lookup tables handing out linked nodes). `RELOCO_LIFETIMEBOUND` and
+  standard-library calls (`vector::data()`) keep borrowing. Views, references and iterators always borrow.
+- A conflicting access is not reported when it is followed, in the same block, by `return`/`co_return` (whose value does
+  not read through the borrow), or by `break`/`continue` leaving the loop the borrow lives in. Statements between the
+  access and the exit must not mention the borrow. Example: `queue_.insert_before(existing, e); ++size_; return;`.
+- Reading an element through a non-const `operator[]`/`->` counts as a mutation; read through a `const` handle or the
+  borrowing span instead (`b[13]`, not `(*sec)[13]`), or make the local `const`.
+- Exemptions: `RELOCO_BORROW_EXEMPT` on the function (put the reason in a comment above it) or a `NOLINT` on the line.
+  Method calls are field-insensitive (a non-const call mutates every member), which is the usual reason for exemption.
 
 Limits: no inter-procedural reasoning, no aliasing through containers or heap, no use-after-move
 tracking. Use Clang's `-Wlifetime-safety` for use-after-return/scope. It is a bug finder, not a proof.
@@ -695,6 +708,18 @@ void log_msg(const char *RELOCO_STATIC_STR msg) noexcept;
   value, the temporary never overlaps the receiver.
 - `reloco-borrow-check` treats copying a pointer or view out of another object (lvalue-to-rvalue, or a copy/move
   constructor) as a value copy, not a borrow: `int *old = head_;` does not borrow `head_`.
+- `reloco-enum-switch` skips a switch whose case labels are value-dependent (member enums of class templates, where
+  the pattern cannot list enumerators); the instantiation is not analysed.
+- `reloco-aliased-arguments` compares pointees separately from the pointers storing them: `owner_->remove(*this)` and
+  `a_->swap_with(*b_)` are different objects; `peer_->swap_with(*peer_)` is reported.
+- `reloco-unused-result`/`reloco-must-use-result` skip glvalue calls (`a.at(i)` used as an lvalue) and lambda
+  `operator()`; `reloco-use-after-move` treats `std::move` as a mutation only of the moved path and a `DeclStmt`
+  re-initialisation as reviving the variable.
+- `reloco-lifetime-annotations` on handle constructors only reports a pointer/reference parameter that flows into an
+  aliasing member (pointer, reference or `RELOCO_POINTER`); parameters that are copied or only read are not borrows.
+  `RELOCO_COPIES` after a parameter name declares an intentional copy and silences the report
+  (`explicit cfg_view(const config &c RELOCO_COPIES)`). Annotating a copied parameter with `RELOCO_LIFETIMEBOUND`
+  is wrong: it makes callers that pass temporaries fail with `-Wdangling`.
 - `reloco-const-local` does not flag: variables written by inline-asm output operands; non-trivially-copyable locals
   that are `return`ed by name (const would turn the move into a copy); variables used as a range-for range (the
   analysis cannot see the non-const `begin()`/`end()` call).

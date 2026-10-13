@@ -101,6 +101,48 @@ bool rootIsConst(const ValueDecl *v) {
   return v && v->getType().getNonReferenceType().isConstQualified();
 }
 
+// Whether a pointer/view returned by `fd` keeps borrowing the receiver. A library method that returns a bare
+// `T *` without RELOCO_LIFETIMEBOUND hands out a handle to an object the receiver merely links to
+// (intrusive-list `pop_front()`, lookup tables), not to the receiver's own storage. Standard-library and
+// non-pointer results keep the conservative answer.
+bool receiverBorrowed(const FunctionDecl *fd) {
+  if (!fd || !fd->getReturnType()->isPointerType() || fd->hasAttr<LifetimeBoundAttr>())
+    return true;
+  const auto *md = llvm::dyn_cast<CXXMethodDecl>(fd);
+  if (md) {
+    for (QualType t = md->getType();;) {
+      if (const auto *at = llvm::dyn_cast<AttributedType>(t.getTypePtr()); at && at->getAttrKind() == attr::LifetimeBound)
+        return true;
+      const QualType next = t.getSingleStepDesugaredType(md->getASTContext());
+      if (next == t)
+        break;
+      t = next;
+    }
+  }
+  const DeclContext *dc = fd->getDeclContext()->getEnclosingNamespaceContext();
+  while (dc && dc->getParent() && !dc->getParent()->isTranslationUnit())
+    dc = dc->getParent()->getEnclosingNamespaceContext();
+  const auto *ns = llvm::dyn_cast_or_null<NamespaceDecl>(dc);
+  return ns && (ns->getName() == "std" || ns->getName() == "__gnu_cxx" || ns->getName() == "__cxx11");
+}
+
+Place placeOf(const Expr *e);
+
+// A pointer value read out of a place (`string_view(argv[0])`, `span(p.data_)`) designates what that pointer
+// points at, not the place that stores the pointer.
+Place placeOfPointerRead(const Expr *e) {
+  for (const Expr *cur = e->IgnoreParens(); const auto *ic = llvm::dyn_cast<ImplicitCastExpr>(cur);
+       cur = ic->getSubExpr()->IgnoreParens()) {
+    if (ic->getCastKind() == CK_LValueToRValue && ic->getType()->isPointerType()) {
+      Place p = placeOf(ic->getSubExpr());
+      if (p)
+        p.pointee = !p.pointee;
+      return p;
+    }
+  }
+  return placeOf(e);
+}
+
 Place placeOf(const Expr *e) {
   e = strip(e);
   if (!e)
@@ -136,19 +178,33 @@ Place placeOf(const Expr *e) {
   if (const auto *as = llvm::dyn_cast<ArraySubscriptExpr>(e))
     return placeOf(as->getBase());
   if (const auto *mc = llvm::dyn_cast<CXXMemberCallExpr>(e)) {
-    if (const Expr *obj = mc->getImplicitObjectArgument())
-      return isAliasingType(calleeReturn(mc)) ? placeOf(obj) : Place{};
+    if (const Expr *obj = mc->getImplicitObjectArgument()) {
+      if (!isAliasingType(calleeReturn(mc)) || !receiverBorrowed(mc->getDirectCallee()))
+        return {};
+      Place p = placeOf(obj);
+      // `p->m()`: the receiver is the pointee, not the pointer's own storage.
+      const auto *callee = llvm::dyn_cast<MemberExpr>(mc->getCallee());
+      if (p && callee && callee->isArrow() && !llvm::isa<CXXThisExpr>(strip(obj)))
+        p.pointee = !p.pointee;
+      return p;
+    }
     return {};
   }
   if (const auto *oc = llvm::dyn_cast<CXXOperatorCallExpr>(e)) {
-    if (oc->getNumArgs() > 0 && isAliasingType(calleeReturn(oc)))
-      return placeOf(oc->getArg(0));
+    if (oc->getNumArgs() > 0 && isAliasingType(calleeReturn(oc)) && receiverBorrowed(oc->getDirectCallee())) {
+      Place p = placeOf(oc->getArg(0));
+      // `view->m` / `*view` reach the object the view points at, not the view's own storage.
+      const bool deref = oc->getOperator() == OO_Arrow || (oc->getOperator() == OO_Star && oc->getNumArgs() == 1);
+      if (p && deref && isAliasingType(oc->getArg(0)->getType()))
+        p.pointee = !p.pointee;
+      return p;
+    }
     return {};
   }
   if (const auto *ce = llvm::dyn_cast<CXXConstructExpr>(e)) {
     // Views are built from the storage they borrow: span(buf), string_view(s), value_ref(x).
     if (ce->getNumArgs() > 0 && isAliasingType(ce->getType()) && !ce->getConstructor()->isCopyOrMoveConstructor())
-      return placeOf(ce->getArg(0));
+      return placeOfPointerRead(ce->getArg(0));
     return {};
   }
   if (const auto *call = llvm::dyn_cast<CallExpr>(e)) {
@@ -249,6 +305,17 @@ public:
     return true;
   }
 
+  bool VisitCompoundStmt(CompoundStmt *cs) {
+    blocks_.push_back(cs);
+    return true;
+  }
+
+  bool VisitStmt(Stmt *st) {
+    if (llvm::isa<ForStmt>(st) || llvm::isa<WhileStmt>(st) || llvm::isa<DoStmt>(st) || llvm::isa<CXXForRangeStmt>(st))
+      loops_.push_back(st);
+    return true;
+  }
+
   bool VisitCXXThisExpr(CXXThisExpr *te) {
     if (g_thisRoot)
       refs_.push_back(te);
@@ -273,12 +340,78 @@ public:
           continue;
         const std::string name = isThisRoot(q.var) ? (q.path.empty() ? "this" : q.path.front()->getName().str())
                                                     : q.var->getName().str();
+        if (leavesAfter(root, b))
+          continue;
         report(root, name, b, a);
       }
   }
 
 
 private:
+  // A write that is directly followed by `return`/`co_return` (or by `break`/`continue` leaving the loop that
+  // the borrow lives in) can never be observed through the borrow, so it is not a conflict.
+  bool leavesAfter(const Expr *use, const Borrow &b) {
+    // Located by source position: an implicit `this` in a dependent member access has no parent node.
+    const SourceLocation at = use->getBeginLoc();
+    auto contains = [&](const Stmt *s) {
+      return !sm_.isBeforeInTranslationUnit(at, s->getBeginLoc()) && !sm_.isBeforeInTranslationUnit(s->getEndLoc(), at);
+    };
+    const Stmt *stmt = nullptr;
+    const CompoundStmt *block = nullptr;
+    const Stmt *loop = nullptr;
+    for (const CompoundStmt *cs : blocks_) {
+      if (!contains(cs))
+        continue;
+      for (const Stmt *child : cs->body())
+        if (contains(child) && (!block || sm_.isBeforeInTranslationUnit(block->getBeginLoc(), cs->getBeginLoc()))) {
+          block = cs;
+          stmt = child;
+        }
+    }
+    for (const Stmt *l : loops_)
+      if (contains(l) && (!loop || sm_.isBeforeInTranslationUnit(loop->getBeginLoc(), l->getBeginLoc())))
+        loop = l;
+    if (!block || !stmt)
+      return false;
+    const ValueDecl *loopVar = nullptr;
+    if (const auto *fr = llvm::dyn_cast_or_null<CXXForRangeStmt>(loop))
+      loopVar = fr->getLoopVariable();
+    auto mentionsBorrow = [&](const Stmt *s) {
+      for (const Expr *r : refs_) {
+        const ValueDecl *v = rootDecl(r);
+        if (v && (v == b.var || v == loopVar) && !sm_.isBeforeInTranslationUnit(r->getBeginLoc(), s->getBeginLoc()) &&
+            !sm_.isBeforeInTranslationUnit(s->getEndLoc(), r->getBeginLoc()))
+          return true;
+      }
+      return false;
+    };
+    auto it = block->body_begin();
+    while (it != block->body_end() && *it != stmt)
+      ++it;
+    if (it == block->body_end())
+      return false;
+    if (llvm::isa<ReturnStmt>(stmt) || llvm::isa<CoreturnStmt>(stmt))
+      return true;
+    // Statements between the write and the exit must not read through the borrow.
+    for (++it; it != block->body_end(); ++it) {
+      const Stmt *next = *it;
+      if (llvm::isa<ReturnStmt>(next) || llvm::isa<CoreturnStmt>(next))
+        return !mentionsBorrow(next);
+      if (llvm::isa<ContinueStmt>(next) || llvm::isa<BreakStmt>(next)) {
+        if (!loop)
+          return false;
+        // The borrow must die with the iteration (declared in the body) or with the loop (the range-for itself).
+        const bool declaredInLoop = b.var && !sm_.isBeforeInTranslationUnit(b.var->getLocation(), loop->getBeginLoc()) &&
+                                    sm_.isBeforeInTranslationUnit(b.var->getLocation(), loop->getEndLoc());
+        const bool isThisRangeFor = !b.var && llvm::isa<CXXForRangeStmt>(loop) && b.declLoc == loop->getBeginLoc();
+        return llvm::isa<ContinueStmt>(next) ? declaredInLoop : (declaredInLoop || isThisRangeFor);
+      }
+      if (mentionsBorrow(next))
+        return false;
+    }
+    return false;
+  }
+
   bool later(SourceLocation a, SourceLocation b) const { return sm_.isBeforeInTranslationUnit(b, a); }
 
   static const ValueDecl *rootDecl(const Expr *root) {
@@ -435,6 +568,8 @@ private:
 public:
   std::vector<Borrow> borrows_;
   std::vector<const Expr *> refs_;
+  std::vector<const CompoundStmt *> blocks_;
+  std::vector<const Stmt *> loops_;
 };
 
 // One call argument together with how the callee binds it.

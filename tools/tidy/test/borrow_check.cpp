@@ -195,3 +195,88 @@ struct node_holder {
     (void)old;
   }
 };
+
+// --- a bare pointer from an unannotated method is a link, not a borrow -------
+struct link_list {
+  int *items_[4]{};
+  int *pop_front() & noexcept { return items_[0]; }
+  int *front_ref() & noexcept RELOCO_LIFETIMEBOUND { return items_[0]; }
+};
+void pop_then_mutate(link_list &l) noexcept {
+  int *n = l.pop_front();
+  l.pop_front(); // fine: 'n' points at a node the list only links to
+  (void)n;
+}
+void lifetimebound_still_borrows(link_list &l) noexcept {
+  int *n = l.front_ref();
+  l.pop_front(); // expect: reloco-borrow-check
+  (void)n;
+}
+
+// --- a write that is followed by leaving the borrow's scope is fine -----------
+int mutate_then_return(buf &x) noexcept {
+  const int &r = x.cfirst();
+  if (r > 3) {
+    x.push(0);
+    return 0;
+  }
+  return r;
+}
+int mutate_then_continue(buf &x, int n) noexcept {
+  int s = 0;
+  for (int i = 0; i < n; ++i) {
+    const int &r = x.cfirst(); // declared in the iteration: dies at `continue`
+    if (r > 3) {
+      x.push(0);
+      continue;
+    }
+    s += r;
+  }
+  return s;
+}
+int mutate_then_continue_outer_borrow(buf &x, int n) noexcept {
+  const int &r = x.cfirst(); // outlives the iterations
+  int s = 0;
+  for (int i = 0; i < n; ++i) {
+    if (i > 3) {
+      x.push(0); // expect: reloco-borrow-check
+      continue;
+    }
+    s += r;
+  }
+  return s;
+}
+int mutate_then_bookkeeping_then_return(buf &x) noexcept {
+  const int &r = x.cfirst();
+  if (r > 3) {
+    x.push(0);
+    take_const(x); // does not read 'r'
+    return 0;
+  }
+  return r;
+}
+int mutate_then_read_then_return(buf &x) noexcept {
+  const int &r = x.cfirst();
+  if (r > 3) {
+    x.push(0); // expect: reloco-borrow-check
+    take_const(x);
+    return r;
+  }
+  return 0;
+}
+
+// --- a view built from a pointer value points at the pointee, not at the pointer's storage ----
+struct RELOCO_POINTER cview {
+  const char *p;
+  explicit cview(const char *s RELOCO_LIFETIMEBOUND) noexcept : p(s) {}
+  int len() const noexcept { return p != nullptr; }
+};
+struct argv_holder {
+  const char *argv_[2] = {};
+  void reset() & noexcept { argv_[0] = nullptr; }
+  int run() & noexcept {
+    const cview name(argv_[0]); // views the characters, not the argv_ slot
+    reset();
+    return name.len();
+  }
+};
