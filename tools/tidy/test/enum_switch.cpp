@@ -57,3 +57,16 @@ int integer_with_default(int v) noexcept {
   default: return 0;
   }
 }
+
+// A member enum of a class template has dependent case labels: the pattern is not judged, instantiations are.
+template <typename T> struct holder {
+  enum class phase { a, b };
+  int f(phase p) noexcept {
+    switch (p) {
+    case phase::a: return 1;
+    case phase::b: return 2;
+    }
+    return 0;
+  }
+};
+int use_holder() noexcept { return holder<int>{}.f(holder<int>::phase::a); }

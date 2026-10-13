@@ -426,6 +426,10 @@ void EnumSwitchCheck::check(const MatchFinder::MatchResult &result) {
     }
     const auto *cs = llvm::cast<CaseStmt>(sc);
     Expr::EvalResult er;
+    // A label that depends on a template parameter has no value until instantiation; the instantiation is checked
+    // instead of the pattern.
+    if (cs->getLHS()->isValueDependent())
+      return;
     if (cs->getLHS()->EvaluateAsInt(er, *result.Context))
       covered.push_back(er.Val.getInt());
   }
