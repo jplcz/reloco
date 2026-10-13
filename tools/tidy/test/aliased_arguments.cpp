@@ -108,3 +108,26 @@ struct RELOCO_POINTER sv_t {
 void view_self_assign(sv_t v) noexcept {
   v = v.sub(1); // no diagnostic: the view is copied by value
 }
+
+// --- a pointer member names another object than the object owning it ---------
+struct list_t;
+struct node_t {
+  list_t *owner_ = nullptr;
+  void detach() noexcept;
+};
+struct list_t {
+  void remove(node_t &n) noexcept;
+};
+void node_t::detach() noexcept {
+  owner_->remove(*this); // owner_ points at a different object than *this
+}
+void same_pointee(list_t *l, node_t &n) noexcept {
+  l->remove(n);
+}
+struct self_ref_t {
+  self_ref_t *peer_ = nullptr;
+  void swap_with(self_ref_t &other) noexcept;
+  void bad() noexcept {
+    peer_->swap_with(*peer_); // expect: reloco-aliased-arguments
+  }
+};

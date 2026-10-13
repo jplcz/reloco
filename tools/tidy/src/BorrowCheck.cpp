@@ -35,13 +35,18 @@ namespace {
 struct Place {
   const ValueDecl *var = nullptr;
   llvm::SmallVector<const FieldDecl *, 2> path;
+  // The place is the object a pointer at `var.path` points to (reached through `*p` / `p->`), not `var.path` itself.
+  bool pointee = false;
 
   explicit operator bool() const { return var != nullptr; }
 
-  // One path is a prefix of the other: the places share storage.
+  // One path is a prefix of the other: the places share storage. A pointee is another object than the pointer's own
+  // storage, so it only compares with a pointee of the same pointer.
   [[nodiscard]] bool overlaps(const Place &o) const {
-    if (var != o.var)
+    if (var != o.var || pointee != o.pointee)
       return false;
+    if (pointee)
+      return path == o.path;
     const size_t n = std::min(path.size(), o.path.size());
     return std::equal(path.begin(), path.begin() + static_cast<std::ptrdiff_t>(n), o.path.begin());
   }
@@ -117,8 +122,15 @@ Place placeOf(const Expr *e) {
     return p;
   }
   if (const auto *uo = llvm::dyn_cast<UnaryOperator>(e)) {
-    if (uo->getOpcode() == UO_AddrOf || uo->getOpcode() == UO_Deref)
+    if (uo->getOpcode() == UO_AddrOf)
       return placeOf(uo->getSubExpr());
+    if (uo->getOpcode() == UO_Deref) {
+      Place p = placeOf(uo->getSubExpr());
+      // `*this` is the object itself; `*p` for any other pointer is the pointee.
+      if (p && !llvm::isa<CXXThisExpr>(strip(uo->getSubExpr())))
+        p.pointee = !p.pointee;
+      return p;
+    }
     return {};
   }
   if (const auto *as = llvm::dyn_cast<ArraySubscriptExpr>(e))
@@ -488,8 +500,12 @@ public:
         if (const Expr *obj = mc->getImplicitObjectArgument(); obj && !obj->isTypeDependent())
           // An implicit 'this' receiver would conflict with every member argument: 'g(x_)' is idiomatic.
           if (!hasUndecidableStep(obj) && !llvm::isa<CXXThisExpr>(strip(obj)))
-            if (Place p = placeOf(obj))
+            if (Place p = placeOf(obj)) {
+              // `ptr_->f()`: the receiver is the pointee, not the pointer member.
+              if (obj->getType()->isPointerType())
+                p.pointee = !p.pointee;
               args.push_back({obj, !md->isConst(), std::move(p)});
+            }
     } else if (llvm::isa<CXXOperatorCallExpr>(call) && md && !md->isStatic() && call->getNumArgs() > 0) {
       const Expr *obj = call->getArg(0);
       if (!obj->isTypeDependent() && !hasUndecidableStep(obj))
