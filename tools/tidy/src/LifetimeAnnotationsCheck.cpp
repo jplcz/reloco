@@ -7,6 +7,7 @@
 #include "clang/Lex/Lexer.h"
 
 #include "clang/AST/Attr.h"
+#include "clang/AST/RecursiveASTVisitor.h"
 
 namespace reloco::tidy {
 
@@ -32,12 +33,125 @@ bool thisIsLifetimeBound(const CXXMethodDecl *md, const ASTContext &ctx) {
   }
 }
 
+bool hasCopiesAnnotation(const ParmVarDecl *p) {
+  for (const auto *an : p->specific_attrs<AnnotateAttr>())
+    if (an->getAnnotation() == "reloco_copies")
+      return true;
+  return false;
+}
+
 bool hasBorrowAnnotation(const ParmVarDecl *p) {
 #if RELOCO_TIDY_LLVM_MAJOR >= 20
   return p->hasAttr<LifetimeBoundAttr>() || p->hasAttr<LifetimeCaptureByAttr>();
 #else
   return p->hasAttr<LifetimeBoundAttr>();
 #endif
+}
+
+bool aliasesStorage(QualType t) {
+  if (t.isNull() || t->isDependentType())
+    return false;
+  if (t->isReferenceType() || t->isPointerType())
+    return true;
+  const CXXRecordDecl *rd = t.getCanonicalType()->getAsCXXRecordDecl();
+  return rd && rd->hasDefinition() && rd->hasAttr<PointerAttr>();
+}
+
+bool mentions(const Stmt *s, const ParmVarDecl *p) {
+  struct V : RecursiveASTVisitor<V> {
+    const ParmVarDecl *p;
+    bool found = false;
+    bool VisitDeclRefExpr(DeclRefExpr *e) {
+      found |= e->getDecl() == p;
+      return !found;
+    }
+  } v;
+  v.p = p;
+  v.TraverseStmt(const_cast<Stmt *>(s));
+  return v.found;
+}
+
+// Whether the value of `e` can carry a borrow of `p`: scalars read out of the pointee and copy/move constructions
+// are copies; a glvalue bound to a reference, an address or a view built from it keeps the pointee alive.
+bool flows(const Expr *e, const ParmVarDecl *p) {
+  if (!e)
+    return false;
+  e = e->IgnoreParens();
+  if (const auto *ic = llvm::dyn_cast<ImplicitCastExpr>(e)) {
+    if (ic->getCastKind() == CK_LValueToRValue)
+      return false;
+    return flows(ic->getSubExpr(), p);
+  }
+  if (const auto *mt = llvm::dyn_cast<MaterializeTemporaryExpr>(e))
+    return flows(mt->getSubExpr(), p);
+  if (const auto *bt = llvm::dyn_cast<CXXBindTemporaryExpr>(e))
+    return flows(bt->getSubExpr(), p);
+  if (const auto *ce = llvm::dyn_cast<CXXConstructExpr>(e)) {
+    if (ce->getConstructor()->isCopyOrMoveConstructor())
+      return false;
+    for (const Expr *a : ce->arguments())
+      if (flows(a, p))
+        return true;
+    return false;
+  }
+  if (const auto *call = llvm::dyn_cast<CallExpr>(e)) {
+    for (const Expr *a : call->arguments())
+      if (flows(a, p))
+        return true;
+    return false;
+  }
+  if (const auto *pl = llvm::dyn_cast<ParenListExpr>(e)) {
+    for (const Expr *a : pl->exprs())
+      if (flows(a, p))
+        return true;
+    return false;
+  }
+  return (e->isGLValue() || aliasesStorage(e->getType())) && mentions(e, p);
+}
+
+// Whether the constructor stores something derived from `p` into a member that aliases (pointer, reference, view):
+// `dev_(dev)` with a by-value member copies the pointee and borrows nothing. Declarations without a body, delegating
+// and base initialisers are answered conservatively with `true`.
+bool storesIntoAliasingMember(const CXXConstructorDecl *ctor, const ParmVarDecl *p) {
+  if (!ctor->hasBody())
+    return true;
+  for (const CXXCtorInitializer *init : ctor->inits()) {
+    if (init->isDelegatingInitializer()) {
+      // The target constructor is checked on its own: the argument borrows only when it feeds an annotated parameter.
+      if (const auto *ce = llvm::dyn_cast<CXXConstructExpr>(init->getInit()->IgnoreImplicit())) {
+        const CXXConstructorDecl *target = ce->getConstructor();
+        for (unsigned i = 0; i < ce->getNumArgs() && i < target->getNumParams(); ++i)
+          if (hasBorrowAnnotation(target->getParamDecl(i)) && flows(ce->getArg(i), p))
+            return true;
+        continue;
+      }
+    }
+    if (!init->isMemberInitializer()) {
+      if (mentions(init->getInit(), p))
+        return true;
+      continue;
+    }
+    if (aliasesStorage(init->getMember()->getType()) && flows(init->getInit(), p))
+      return true;
+  }
+  struct V : RecursiveASTVisitor<V> {
+    const ParmVarDecl *p;
+    bool found = false;
+    bool VisitBinaryOperator(BinaryOperator *b) {
+      if (b->isAssignmentOp() && aliasesStorage(b->getLHS()->getType()) && flows(b->getRHS(), p))
+        found = true;
+      return !found;
+    }
+    bool VisitCXXOperatorCallExpr(CXXOperatorCallExpr *c) {
+      if (c->isAssignmentOp() && c->getNumArgs() == 2 && aliasesStorage(c->getArg(0)->getType()) &&
+          flows(c->getArg(1), p))
+        found = true;
+      return !found;
+    }
+  } v;
+  v.p = p;
+  v.TraverseStmt(ctor->getBody());
+  return v.found;
 }
 
 } // namespace
@@ -99,7 +213,7 @@ void LifetimeAnnotationsCheck::check(const MatchFinder::MatchResult &result) {
       const QualType t = p->getType();
       if (t.isNull() || t->isDependentType() || !(t->isPointerType() || t->isLValueReferenceType()))
         continue;
-      if (t->isFunctionPointerType() || isPointerLike(t) || hasBorrowAnnotation(p))
+      if (t->isFunctionPointerType() || isPointerLike(t) || hasBorrowAnnotation(p) || hasCopiesAnnotation(p) || !storesIntoAliasingMember(ctor, p))
         continue;
       diag(p->getLocation(), "handle constructor borrows parameter %0; annotate it with RELOCO_LIFETIMEBOUND or "
                              "RELOCO_LIFETIME_CAPTURE_BY_THIS")

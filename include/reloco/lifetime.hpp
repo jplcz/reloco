@@ -147,6 +147,22 @@
 #endif
 
 /**
+ * @def RELOCO_COPIES
+ * @brief Marks a pointer or reference parameter of a handle (`RELOCO_POINTER`) constructor as
+ * only *read and copied*: the handle keeps a copy of the pointee's value, not a pointer to it,
+ * so the argument may be a temporary. reloco-tidy's `reloco-lifetime-annotations` otherwise asks
+ * for `RELOCO_LIFETIMEBOUND` / `RELOCO_LIFETIME_CAPTURE_BY_THIS` on every such parameter whose
+ * flow it cannot prove is a copy. Place it after the parameter name:
+ * `view(const config &cfg RELOCO_COPIES) noexcept : limit_(cfg.limit) {}`.
+ * Compiles to nothing for GCC/MSVC.
+ */
+#if RELOCO_HAS_CPP_ATTRIBUTE(clang::annotate)
+#define RELOCO_COPIES [[clang::annotate("reloco_copies")]]
+#else
+#define RELOCO_COPIES
+#endif
+
+/**
  * @def RELOCO_COPYABLE
  * @brief Marks a class/struct as implicitly copyable, like Rust's `Copy` trait. reloco-tidy's
  * `reloco-implicit-copy` warns whenever a class without this marker is copied implicitly

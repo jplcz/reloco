@@ -170,7 +170,7 @@ CLion runs clang-tidy itself, so use its external-tool path for the plugin:
 | `reloco-no-raw-pointer` | Raw pointers only inside `RELOCO_POINTER`/`RELOCO_OWNER` types, the unsafe tier, vtables, function pointers and `extern "C"`. Use `value_ptr`, `value_ref` or `span` elsewhere. | Raw pointers carry no size, lifetime or ownership. |
 | `reloco-no-c-array` | No raw C array variables or members; use `reloco::array`, `inline_vector` or a span. | Arrays decay to pointers and lose their bounds. |
 | `reloco-noexcept` | Every function and lambda is `noexcept` (a conditional `noexcept(expr)` counts as explicit). | Failure is a `result<T>`, never an exception. |
-| `reloco-lifetime-annotations` | Accessors returning aliases need `RELOCO_LIFETIMEBOUND`; handle constructors need lifetimebound or capture annotations on borrowed parameters. | Lets Clang diagnose dangling views at the call site. |
+| `reloco-lifetime-annotations` | Accessors returning aliases need `RELOCO_LIFETIMEBOUND`; handle constructors need `RELOCO_LIFETIMEBOUND` / `RELOCO_LIFETIME_CAPTURE_BY_THIS` on every pointer or reference parameter that reaches a pointer, reference or view member (initialiser or assignment in the body; a scalar read from the pointee, a copy/move construction, or a by-value member is a copy and borrows nothing). A delegating constructor borrows only through the target's annotated parameters. Declarations without a body are always reported. `RELOCO_COPIES` after a parameter name (`view(const config &cfg RELOCO_COPIES)`) states that it is only read and copied, so the argument may be a temporary. | Lets Clang diagnose dangling views at the call site. |
 | `reloco-pointer-annotation` | Classes holding borrowed storage must be `RELOCO_POINTER`; owners `RELOCO_OWNER`. | Without them Clang's lifetime analysis does not track the type. |
 | `reloco-banned-std-type` | `std::` facilities with a reloco/microfmt/structo equivalent (containers, `string`, `span`, `optional`, `variant`, `function`, smart pointers, `source_location`, exception types, iostreams) are banned. The message names the replacement. | Decided on the AST, so aliases are caught too. Complements `scripts/check-no-std-types.py`. Deliberate interop is accepted with the same comment markers as the script: `// std-interop-ok[: reason]` (line), `// std-interop-begin` / `// std-interop-end` (block), `// std-interop-file` (whole file). |
 | `reloco-banned-construct` | `throw`/`try`/`catch`, `new`/`delete`, `const_cast`, `reinterpret_cast`, `dynamic_cast`, C-style casts, and C string/memory/stdlib functions (`memcpy`, `strlen`, `malloc`, ...). | Each defeats a static guarantee. |
@@ -652,7 +652,7 @@ The macros expand to `_Pragma("region ...")`, which GCC, Clang and MSVC accept s
 
 ## Macro reference (`reloco/lifetime.hpp`)
 
-`RELOCO_POINTER`, `RELOCO_OWNER`, `RELOCO_LIFETIMEBOUND`, `RELOCO_COPYABLE`, `RELOCO_OUT`,
+`RELOCO_POINTER`, `RELOCO_OWNER`, `RELOCO_LIFETIMEBOUND`, `RELOCO_COPIES`, `RELOCO_COPYABLE`, `RELOCO_OUT`,
 `RELOCO_BORROW_EXEMPT`, `RELOCO_CHECKED`, `RELOCO_SAFE_MATH`,
 `RELOCO_MUST_CONSUME`, `RELOCO_CONSUMES`, `RELOCO_UNGUARDED`, `RELOCO_SEND`, `RELOCO_NOT_SEND`, `RELOCO_SYNC`,
 `RELOCO_REQUIRE_SEND`, `RELOCO_REQUIRE_SYNC`, `RELOCO_NS(tag)`, `RELOCO_NS_TRANSLATOR`, `RELOCO_EARLY_STATIC`, `RELOCO_UNSAFE_BUFFER_USAGE`, `RELOCO_BEGIN/END_SAFE_CODE`,
