@@ -213,6 +213,9 @@ void MustUseResultCheck::registerMatchers(MatchFinder *finder) {
 
 void MustUseResultCheck::check(const MatchFinder::MatchResult &result) {
   const auto *fn = result.Nodes.getNodeAs<FunctionDecl>("fn");
+  // A lambda's call operator cannot portably carry [[nodiscard]] before C++23; its caller consumes the value.
+  if (const auto *method = llvm::dyn_cast<CXXMethodDecl>(fn); method && method->getParent()->isLambda())
+    return;
   if (fn->getCanonicalDecl() != fn || fn->isTemplateInstantiation() || fn->getReturnType()->isReferenceType() ||
       exempt(*result.SourceManager, fn->getLocation()))
     return;
@@ -249,7 +252,8 @@ void UnusedResultCheck::check(const MatchFinder::MatchResult &result) {
       break;
   }
   const auto *call = llvm::dyn_cast_or_null<CallExpr>(e);
-  if (!call || call->getType().isNull() || call->getType()->isReferenceType() ||
+  // A call returning a reference (e.g. a defaulted member `operator=`) has an lvalue value category, not a reference type.
+  if (!call || call->getType().isNull() || call->getType()->isReferenceType() || call->isGLValue() ||
       exempt(*result.SourceManager, call->getBeginLoc()))
     return;
   if (const auto *oc = llvm::dyn_cast<CXXOperatorCallExpr>(call); oc && oc->isAssignmentOp())

@@ -446,4 +446,31 @@ TEST(IteratorTest, RvalueHardeningIsCompileTimeRejected) {
   static_assert(!can_call_iter_on<std::vector<int>>::value, "reloco::iter() on a temporary range must be rejected");
 }
 
+namespace {
+// Forward iterator whose operator* computes and returns its element by value (no storage to reference).
+struct squares_range {
+  struct iterator {
+    int n = 0;
+    int operator*() const noexcept { return n * n; }
+    iterator &operator++() noexcept {
+      ++n;
+      return *this;
+    }
+    friend bool operator==(const iterator &a, const iterator &b) noexcept { return a.n == b.n; }
+  };
+  iterator begin() const & noexcept { return {0}; }
+  iterator end() const & noexcept { return {4}; }
+};
+} // namespace
+
+TEST(IteratorTest, PrvalueYieldingIteratorItemsAreValues) {
+  const squares_range r;
+  auto it = reloco::iter(r);
+  static_assert(std::is_same_v<decltype(it)::item_type, int>, "a prvalue element is carried by value, not by reference");
+  int sum = 0;
+  while (auto item = it.next())
+    sum += *item;
+  EXPECT_EQ(sum, 0 + 1 + 4 + 9);
+}
+
 RELOCO_END_UNSAFE_BUFFER_USAGE

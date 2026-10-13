@@ -485,20 +485,29 @@ private:
   [[nodiscard]] Derived &derived() & noexcept RELOCO_LIFETIMEBOUND { return static_cast<Derived &>(*this); }
 };
 
+namespace detail {
+/** @brief Item type of `range_iterator<It>`: a `std::reference_wrapper` when `*it` yields a reference, the value itself
+ * when `*it` yields a prvalue (a proxy-like or computed element), so no reference to a temporary is ever formed. */
+template <typename It>
+using range_item_t = std::conditional_t<std::is_reference_v<decltype(*std::declval<It &>())>,
+                                        std::reference_wrapper<std::remove_reference_t<decltype(*std::declval<It &>())>>,
+                                        std::remove_cv_t<decltype(*std::declval<It &>())>>;
+} // namespace detail
+
 /**
  * @brief Wraps any `[first, last)` iterator pair (typically a container's
  * own `begin()`/`end()`) as a Rust-style pull iterator borrowing from it:
- * `item_type` is `std::reference_wrapper<T>` (or `<const T>`), never a
- * copy. Constructed via `reloco::iter()`, never named directly.
+ * `item_type` is `std::reference_wrapper<T>` (or `<const T>`) when the
+ * iterator dereferences to a reference, never a copy. When it
+ * dereferences to a prvalue (a computed element), `item_type` is that
+ * value type. Constructed via `reloco::iter()`, never named directly.
  */
 template <typename It, typename Sentinel = It>
-class range_iterator
-    : public iterator_adaptor<range_iterator<It, Sentinel>,
-                              std::reference_wrapper<std::remove_reference_t<decltype(*std::declval<It &>())>>> {
+class range_iterator : public iterator_adaptor<range_iterator<It, Sentinel>, detail::range_item_t<It>> {
 public:
   range_iterator(It first, Sentinel last) noexcept : current_(std::move(first)), last_(std::move(last)) {}
 
-  using item_type = std::reference_wrapper<std::remove_reference_t<decltype(*std::declval<It &>())>>;
+  using item_type = detail::range_item_t<It>;
 
   [[nodiscard]] optional<item_type> next_impl() noexcept {
     if (current_ == last_)

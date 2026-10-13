@@ -12,3 +12,9 @@ struct error {};
 [[nodiscard]] expected<int> good() noexcept;
 [[nodiscard]] error bad2() noexcept;  // expect: reloco-must-use-result
 void unrelated() noexcept;
+
+// A lambda's call operator is exempt: [[nodiscard]] on it is not portable before C++23 and its caller consumes the value.
+void use_lambda() noexcept {
+  auto fn = [](int v) noexcept -> expected<int> { (void)v; return {}; };
+  (void)fn(1);
+}
