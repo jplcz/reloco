@@ -109,6 +109,13 @@
 #include <reloco/atomic_ring_buffer.hpp>
 #include <reloco/binary_heap.hpp>
 #include <reloco/boost_intrusive_adapter.hpp>
+// The boost_intrusive_safe_* overlays hard-require Boost, which is an optional dependency.
+#if defined(__has_include)
+#if __has_include(<boost/intrusive/list.hpp>)
+#define RELOCO_HEADER_CHECK_HAS_BOOST 1
+#endif
+#endif
+#ifdef RELOCO_HEADER_CHECK_HAS_BOOST
 #include <reloco/boost_intrusive_safe_avl_set_hook.hpp>
 #include <reloco/boost_intrusive_safe_bs_set_hook.hpp>
 #include <reloco/boost_intrusive_safe_interval_avl_set.hpp>
@@ -118,6 +125,7 @@
 #include <reloco/boost_intrusive_safe_list_hook.hpp>
 #include <reloco/boost_intrusive_safe_set_hook.hpp>
 #include <reloco/boost_intrusive_safe_unordered_set_hook.hpp>
+#endif // RELOCO_HEADER_CHECK_HAS_BOOST
 #include <reloco/boxed_slice.hpp>
 #include <reloco/cell.hpp>
 #include <reloco/container_of.hpp>
