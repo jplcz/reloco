@@ -91,3 +91,36 @@ TEST(ErrorErrnoTest, EveryEnumeratorMapsToANonZeroErrno) {
     EXPECT_NE(to_errno(e), 0) << "error enumerator " << static_cast<int>(e) << " mapped to errno 0";
   }
 }
+
+using reloco::from_errno;
+
+TEST(ErrorErrnoTest, FromErrnoMapsCommonValues) {
+  EXPECT_EQ(from_errno(ENOMEM), error::allocation_failed);
+  EXPECT_EQ(from_errno(EINVAL), error::invalid_argument);
+  EXPECT_EQ(from_errno(ENOENT), error::not_found);
+  EXPECT_EQ(from_errno(EEXIST), error::already_exists);
+  EXPECT_EQ(from_errno(EAGAIN), error::try_again);
+  EXPECT_EQ(from_errno(EBUSY), error::busy);
+  EXPECT_EQ(from_errno(ETIMEDOUT), error::timed_out);
+  EXPECT_EQ(from_errno(EACCES), error::permission_denied);
+  EXPECT_EQ(from_errno(EPERM), error::permission_denied);
+  EXPECT_EQ(from_errno(EIO), error::io_error);
+  EXPECT_EQ(from_errno(EFAULT), error::page_fault);
+  EXPECT_EQ(from_errno(ENOTSUP), error::unsupported_operation);
+}
+
+TEST(ErrorErrnoTest, FromErrnoUnknownBecomesIoError) {
+  EXPECT_EQ(from_errno(0), error::io_error);
+  EXPECT_EQ(from_errno(-EINVAL), error::io_error);  // callers negate first; a negative value is not an errno
+  EXPECT_EQ(from_errno(99999), error::io_error);
+}
+
+TEST(ErrorErrnoTest, FromErrnoIsConstexprAndRoundTripsOwnedMembers) {
+  static_assert(from_errno(ENOMEM) == error::allocation_failed, "from_errno must be constexpr");
+  // Lossy in general, but members that own their errno survive the round trip.
+  for (error e : {error::allocation_failed, error::invalid_argument, error::already_exists, error::timed_out,
+                  error::try_again, error::not_found, error::interrupted, error::operation_canceled,
+                  error::page_fault, error::busy, error::deadlock, error::integer_overflow}) {
+    EXPECT_EQ(from_errno(to_errno(e)), e) << static_cast<int>(e);
+  }
+}

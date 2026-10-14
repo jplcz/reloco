@@ -32,11 +32,21 @@
  * compare by category+value" fallback to defer to; the mapping for those
  * members is necessarily an approximation, called out per-member below.
  *
+ * `reloco::from_errno(int)` is the reverse, best-effort direction (an `int`
+ * errno that came back from a syscall, a C driver or a C API ->
+ * `reloco::error`). It is lossy by nature -- `errno` has far more members
+ * than `reloco::error`, and several of ours share one errno -- so every
+ * errno maps onto the closest member and anything unrecognized becomes
+ * `error::io_error` ("the operation failed for a reason this library has no
+ * name for"); `from_errno(to_errno(e))` is not always `e`. Both functions
+ * take the *positive* errno value (what `<cerrno>` defines); a caller whose
+ * convention is `-EINVAL` negates before / after the call.
+ *
  * This header does not change how any reloco function reports failure --
  * every `try_*` operation still returns `reloco::result<T>` (`expected<T,
- * error>`); this is purely an opt-in, one-way (`error` -> `errno`)
- * convenience for code that must eventually hand a plain `int` errno
- * value to something else (a syscall return value, `strerror()`, a C API).
+ * error>`); this is purely an opt-in convenience for code that must hand a
+ * plain `int` errno value to something else (a syscall return value,
+ * `strerror()`, a C API) or take one back.
  */
 
 #include "error.hpp"
@@ -149,6 +159,71 @@ namespace reloco {
     return EFAULT;
   }
   return EINVAL;
+}
+
+/**
+ * @brief Maps the positive errno value @p e onto the closest `reloco::error`.
+ *
+ * The (lossy) inverse of `to_errno`: see the file-level docs. `0` is not an
+ * error and, like every errno this header does not recognize, maps to
+ * `error::io_error`. Callers should test for success before calling.
+ */
+[[nodiscard]] constexpr error from_errno(int e) noexcept {
+  // if-chain, not a switch: several errno macros share a value on some systems (EAGAIN/EWOULDBLOCK,
+  // ENOTSUP/EOPNOTSUPP) and a few are missing on others, which a switch's duplicate/undefined labels cannot express.
+  if (e == ENOMEM)
+    return error::allocation_failed;
+  if (e == ENOTSUP)
+    return error::unsupported_operation;
+#ifdef EOPNOTSUPP
+  if (e == EOPNOTSUPP)
+    return error::unsupported_operation;
+#endif
+#ifdef ENOSYS
+  if (e == ENOSYS)
+    return error::unsupported_operation;
+#endif
+  if (e == ERANGE)
+    return error::out_of_range;
+  if (e == EINVAL || e == EBADF || e == ENOTDIR || e == EISDIR || e == ENAMETOOLONG)
+    return error::invalid_argument;
+  if (e == EEXIST)
+    return error::already_exists;
+#ifdef ESTALE
+  if (e == ESTALE)
+    return error::pointer_expired;
+#endif
+  if (e == EPERM || e == EACCES)
+    return error::permission_denied;
+  if (e == EDEADLK)
+    return error::deadlock;
+  if (e == EBUSY)
+    return error::busy;
+  if (e == ETIMEDOUT)
+    return error::timed_out;
+  if (e == EAGAIN)
+    return error::try_again;
+#ifdef EWOULDBLOCK
+  if (e == EWOULDBLOCK)
+    return error::try_again;
+#endif
+  if (e == ENOENT)
+    return error::not_found;
+  if (e == EOVERFLOW)
+    return error::integer_overflow;
+  if (e == EDOM)
+    return error::division_by_zero;
+  if (e == ENOBUFS)
+    return error::capacity_exceeded;
+  if (e == EINTR)
+    return error::interrupted;
+  if (e == EMFILE || e == ENFILE || e == ENOSPC)
+    return error::resource_exhausted;
+  if (e == ECANCELED)
+    return error::operation_canceled;
+  if (e == EFAULT)
+    return error::page_fault;
+  return error::io_error;
 }
 
 } // namespace reloco

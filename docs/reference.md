@@ -17,7 +17,7 @@ where, not a tutorial.
 | `expected.hpp` | `expected<T, E>`, `unexpected<E>` | Allocation-free value-or-error result |
 | `error.hpp` | `error`, `result<T>` | The one error enum every fallible reloco operation returns, and its `expected<T, error>` alias |
 | `error_std.hpp` | `error_category()`, `make_error_code(error)`, `make_error_condition(error)` | Opt-in `<system_error>` binding: makes `reloco::error` convert to `std::error_code`/`std::error_condition` |
-| `error_errno.hpp` | `to_errno(error)` | Opt-in, allocation-free `reloco::error` -> POSIX `errno` mapping (no `<system_error>`) |
+| `error_errno.hpp` | `to_errno(error)`, `from_errno(int)` | Opt-in, allocation-free `reloco::error` -> POSIX `errno` mapping (no `<system_error>`) |
 | `span.hpp` | `span<T>` | Non-owning, checked view over a contiguous range |
 | `array.hpp` | `array<T, N>` | Fixed-size owning array with hardened element access |
 | `string_view.hpp` | `basic_string_view<CharT, TraitsT>` (`string_view`, `wstring_view`) | Non-owning, checked view over character data |
@@ -297,7 +297,14 @@ single `constexpr`, allocation-free function mapping every
 #include <reloco/error_errno.hpp>
 
 int rc = reloco::to_errno(reloco::error::timed_out); // ETIMEDOUT
+reloco::error e = reloco::from_errno(ENOENT);         // error::not_found
 ```
+
+`from_errno(int)` is the best-effort reverse: every errno maps onto the closest
+`reloco::error` and anything unrecognized (including `0`) becomes
+`error::io_error`, so it is lossy and `from_errno(to_errno(e))` is not always
+`e`. Both take the *positive* errno value; a kernel whose convention is
+`-EINVAL` negates before/after the call.
 
 Unlike `error_std.hpp`, this header depends only on `<cerrno>` -- no
 `<system_error>`, no `<string>`, no heap allocation, and no out-of-line
