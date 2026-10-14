@@ -35,12 +35,12 @@
  * The `.debug_gdb_scripts` mechanism relies on GNU-assembler inline `asm`
  * syntax and is only meaningful to GDB, so this header is a silent no-op
  * -- it defines nothing and emits no section -- on compilers other than
- * Clang/GCC (e.g. MSVC). Guarded on `__clang__`/`__GNUC__` rather than
+ * Clang/GCC targeting ELF (e.g. MSVC, Mach-O). Guarded on `__clang__`/`__GNUC__` and `__ELF__` rather than
  * platform, so it also no-ops under `clang-cl`, which defines `_MSC_VER`
  * but not GNU inline-asm syntax in its default mode.
  */
 
-#if defined(__clang__) || defined(__GNUC__)
+#if (defined(__clang__) || defined(__GNUC__)) && defined(__ELF__)
 
 // clang-format off
 asm(
@@ -324,4 +324,4 @@ asm(
 );
 // clang-format on
 
-#endif // defined(__clang__) || defined(__GNUC__)
+#endif // (defined(__clang__) || defined(__GNUC__)) && defined(__ELF__)

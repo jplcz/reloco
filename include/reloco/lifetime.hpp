@@ -448,10 +448,19 @@
  * @def RELOCO_END_UNSAFE_CODE
  * @brief Closes a block opened by RELOCO_BEGIN_UNSAFE_CODE.
  */
+// These are pure markers for reloco-tidy. GCC rejects `#pragma` (even via _Pragma) inside expressions and template
+// bodies, where the markers are routinely placed, so they expand to nothing there.
+#if defined(__GNUC__) && !defined(__clang__)
+#define RELOCO_BEGIN_SAFE_CODE
+#define RELOCO_END_SAFE_CODE
+#define RELOCO_BEGIN_UNSAFE_CODE
+#define RELOCO_END_UNSAFE_CODE
+#else
 #define RELOCO_BEGIN_SAFE_CODE RELOCO_PRAGMA(region reloco_safe_begin)
 #define RELOCO_END_SAFE_CODE RELOCO_PRAGMA(endregion reloco_safe_end)
 #define RELOCO_BEGIN_UNSAFE_CODE RELOCO_PRAGMA(region reloco_unsafe_begin)
 #define RELOCO_END_UNSAFE_CODE RELOCO_PRAGMA(endregion reloco_unsafe_end)
+#endif
 
 // ============================================================================
 // GCC False-Positive Bounds-Checking Pragma Control Blocks

@@ -101,12 +101,12 @@ def generate(printers_source):
     lines.append(" * The `.debug_gdb_scripts` mechanism relies on GNU-assembler inline `asm`\n")
     lines.append(" * syntax and is only meaningful to GDB, so this header is a silent no-op\n")
     lines.append(" * -- it defines nothing and emits no section -- on compilers other than\n")
-    lines.append(" * Clang/GCC (e.g. MSVC). Guarded on `__clang__`/`__GNUC__` rather than\n")
+    lines.append(" * Clang/GCC targeting ELF (e.g. MSVC, Mach-O). Guarded on `__clang__`/`__GNUC__` and `__ELF__` rather than\n")
     lines.append(" * platform, so it also no-ops under `clang-cl`, which defines `_MSC_VER`\n")
     lines.append(" * but not GNU inline-asm syntax in its default mode.\n")
     lines.append(" */\n")
     lines.append("\n")
-    lines.append("#if defined(__clang__) || defined(__GNUC__)\n")
+    lines.append("#if (defined(__clang__) || defined(__GNUC__)) && defined(__ELF__)\n")
     lines.append("\n")
     lines.append("// clang-format off\n")
     lines.append("asm(\n")
@@ -118,7 +118,7 @@ def generate(printers_source):
     lines.append(");\n")
     lines.append("// clang-format on\n")
     lines.append("\n")
-    lines.append("#endif // defined(__clang__) || defined(__GNUC__)\n")
+    lines.append("#endif // (defined(__clang__) || defined(__GNUC__)) && defined(__ELF__)\n")
     return "".join(lines)
 
 
