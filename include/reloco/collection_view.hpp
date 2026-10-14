@@ -454,9 +454,17 @@ public:
     return mvtbl_->data(this->context());
   }
 
-  using base::at;
   using base::try_at;
-  using base::unsafe_at;
+
+  // Spelled out rather than `using base::at`: GCC drops the base's const overload when a `&`-qualified derived
+  // overload of the same name is also present.
+  /** @brief Read-only counterpart of the mutable @ref at, with an always-on bounds check. */
+  [[nodiscard]] const T &at(size_type index) const & noexcept RELOCO_LIFETIMEBOUND { return base::at(index); }
+
+  /** @brief Read-only counterpart of the mutable @ref unsafe_at, with a debug-only bounds check. */
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE const T &unsafe_at(size_type index) const & noexcept RELOCO_LIFETIMEBOUND {
+    return base::unsafe_at(index);
+  }
 
   /**
    * @brief Attempts to access an element without trapping.

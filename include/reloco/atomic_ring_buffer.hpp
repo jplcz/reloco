@@ -115,26 +115,16 @@ public:
   // ---- Math Helpers for Derived Classes ----
   static constexpr std::size_t round_up_power_of_2(std::size_t v) noexcept {
     v--;
-    v |= v >> 1;
-    v |= v >> 2;
-    v |= v >> 4;
-    v |= v >> 8;
-    v |= v >> 16;
-    if constexpr (sizeof(std::size_t) == 8)
-      v |= v >> 32;
+    for (unsigned shift = 1; shift < sizeof(std::size_t) * 8; shift <<= 1)
+      v |= v >> shift;
     return v + 1;
   }
 
   static constexpr std::size_t round_down_power_of_2(std::size_t v) noexcept {
     if (v == 0)
       return 0;
-    v |= v >> 1;
-    v |= v >> 2;
-    v |= v >> 4;
-    v |= v >> 8;
-    v |= v >> 16;
-    if constexpr (sizeof(std::size_t) == 8)
-      v |= v >> 32;
+    for (unsigned shift = 1; shift < sizeof(std::size_t) * 8; shift <<= 1)
+      v |= v >> shift;
     return v - (v >> 1);
   }
 
