@@ -145,6 +145,11 @@ struct is_mutable_collection_view_source<
     : std::bool_constant<is_collection_view_source<Container, T>::value && !std::is_const_v<Container> &&
                          collection_view_traits<std::remove_const_t<Container>>::is_mutable> {};
 
+/// Visitor signatures, hoisted to namespace scope: MSVC rejects the class-scoped function-pointer aliases when they
+/// are used inside the nested vtable structs of an instantiated template.
+template <typename T> using collection_visit_fn = void (*)(void *, const T &) noexcept;
+template <typename T> using collection_mutable_visit_fn = void (*)(void *, T &) noexcept;
+
 } // namespace detail
 
 /**
@@ -166,7 +171,7 @@ public:
   using element_type = T;
   using value_type = std::remove_cv_t<T>;
   using size_type = std::size_t;
-  using visit_fn = void (*)(void *, const T &) noexcept;
+  using visit_fn = detail::collection_visit_fn<T>;
 
   /**
    * @brief Fixed, per-bound-container-type dispatch table.
@@ -178,7 +183,7 @@ public:
   struct vtable {
     size_type (*size)(const void *ctx) noexcept;
     bool (*empty)(const void *ctx) noexcept;
-    void (*for_each)(const void *ctx, void *visitor_ctx, visit_fn visit) noexcept;
+    void (*for_each)(const void *ctx, void *visitor_ctx, detail::collection_visit_fn<T> visit) noexcept;
     const T &(*at)(const void *ctx, size_type index) noexcept;
     const T *(*data)(const void *ctx) noexcept;
     bool is_random_access;
@@ -319,7 +324,7 @@ private:
   }
 
   template <typename Container>
-  static void for_each_entry(const void *ctx, void *visitor_ctx, visit_fn visit) noexcept {
+  static void for_each_entry(const void *ctx, void *visitor_ctx, detail::collection_visit_fn<T> visit) noexcept {
     using traits = collection_view_traits<std::remove_const_t<Container>>;
     const auto &container = *static_cast<const Container *>(ctx);
     const size_type n = traits::size(container);
@@ -370,14 +375,14 @@ public:
   using element_type = T;
   using value_type = typename base::value_type;
   using size_type = typename base::size_type;
-  using mutable_visit_fn = void (*)(void *, T &) noexcept;
+  using mutable_visit_fn = detail::collection_mutable_visit_fn<T>;
 
   /**
    * @brief Fixed, per-bound-container-type dispatch table for the mutable
    * operations.
    */
   struct mutable_vtable {
-    void (*for_each)(const void *ctx, void *visitor_ctx, mutable_visit_fn visit) noexcept;
+    void (*for_each)(const void *ctx, void *visitor_ctx, detail::collection_mutable_visit_fn<T> visit) noexcept;
     T &(*at)(const void *ctx, size_type index) noexcept;
     T *(*data)(const void *ctx) noexcept;
   };
@@ -495,7 +500,8 @@ public:
 
 private:
   template <typename Container>
-  static void mutable_for_each_entry(const void *ctx, void *visitor_ctx, mutable_visit_fn visit) noexcept {
+  static void mutable_for_each_entry(const void *ctx, void *visitor_ctx,
+                                     detail::collection_mutable_visit_fn<T> visit) noexcept {
     using traits = collection_view_traits<std::remove_const_t<Container>>;
     // NOLINTNEXTLINE(reloco-banned-construct): type-erased context carries const-ness separately; restored before use.
     auto &container = *static_cast<Container *>(const_cast<void *>(ctx));
