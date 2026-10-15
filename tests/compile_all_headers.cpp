@@ -92,7 +92,10 @@
 #include <reloco/string_view.hpp>
 #include <reloco/tamper.hpp>
 #include <reloco/thread.hpp>
+#include <reloco/per_cpu_provider.hpp>
+#include <reloco/per_cpu_slot.hpp>
 #include <reloco/tls_provider.hpp>
+#include <reloco/tls_slot.hpp>
 #include <reloco/tls_slot_vector.hpp>
 #include <reloco/tree_map.hpp>
 #include <reloco/tree_set.hpp>

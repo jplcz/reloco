@@ -10,6 +10,7 @@ doc comment and `reloco_config.hpp` for the full rationale):
 | `RELOCO_THREAD_BACKEND_CUSTOM`      | `detail/porting/thread.hpp`           | `thread.template.hpp`          |
 | `RELOCO_SPIN_LOCK_BACKEND_CUSTOM`   | `detail/porting/spin_lock.hpp`        | `spin_lock.template.hpp`       |
 | `RELOCO_TLS_MODEL_OS`               | `detail/porting/tls_provider.hpp`     | `tls_provider.template.hpp`    |
+| `RELOCO_PER_CPU_MODEL_OS`           | `detail/porting/per_cpu_provider.hpp` | `per_cpu_provider.template.hpp` |
 | `RELOCO_FUTEX_BACKEND_CUSTOM`       | `detail/porting/futex.hpp`            | `futex.template.hpp`           |
 
 Only the `*.template.hpp` files above ship in this repository -- they are

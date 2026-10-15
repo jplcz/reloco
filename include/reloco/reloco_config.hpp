@@ -309,6 +309,14 @@
 //     std::condition_variable::wait_for, whose own clock is fixed by the
 //     standard library implementation).
 //
+// RELOCO_PER_CPU_MODEL
+//     Selects the backend of reloco/per_cpu_provider.hpp (and so of
+//     per_cpu_slot.hpp): RELOCO_PER_CPU_MODEL_SINGLE (default, one global
+//     block), _THREAD_LOCAL (a thread stands in for a CPU, for hosted
+//     tests) or _OS, which includes "detail/porting/per_cpu_provider.hpp"
+//     (scaffold: detail/porting/per_cpu_provider.template.hpp). Guide:
+//     docs/per-cpu-slot.md.
+//
 // RELOCO_TLS_MODEL
 //     Selects which backend reloco/tls_provider.hpp's public
 //     tls_provider<T, Tag> uses for genuinely per-thread storage:
