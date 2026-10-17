@@ -24,6 +24,8 @@ where, not a tutorial.
 | `string.hpp` | `basic_string<CharT, TraitsT>` (`string`, `wstring`) | Move-only, allocator-backed, growable character buffer |
 | `inline_string.hpp` | `basic_inline_string<Capacity, CharT, TraitsT>` | Fixed-capacity, trivially-copyable, allocation-free character buffer |
 | `vector.hpp` | `vector<T>` | Move-only, allocator-backed, growable dynamic array |
+| `secure_wipe.hpp` | `secure_wipe(void*, size_t)`, `secure_wipe(T&)` | Non-elidable erase of live storage; `RELOCO_SECURE_WIPE_IMPL` port hook (see [secure-wipe.md](secure-wipe.md)) |
+| `secure_vector.hpp` | `secure_vector<T>` | Move-only growable buffer of trivial `T` that wipes every block it releases (see [secure-wipe.md](secure-wipe.md)) |
 | `flat_set.hpp` | `flat_set<T, Compare>` | Sorted, unique-element set backed by `vector<T>`, with fallible insertion |
 | `flat_map.hpp` | `flat_map<Key, Mapped, Compare>` | Sorted, unique-key map backed by `vector<std::pair<Key, Mapped>>`, with fallible insertion |
 | `inline_flat_set.hpp` | `inline_flat_set<T, Capacity, Compare>` | Allocation-free counterpart of `flat_set<T, Compare>`, backed by `inline_vector<T, Capacity>` |

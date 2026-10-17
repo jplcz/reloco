@@ -490,6 +490,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_fmt.cpp
         tests/test_container_ref.cpp
         tests/test_vector.cpp
+        tests/test_secure_vector.cpp
         tests/test_inline_vector.cpp
         tests/test_sso_vector.cpp
         tests/test_outline_vector.cpp

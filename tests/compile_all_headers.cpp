@@ -105,6 +105,8 @@
 #include <reloco/value_ptr.hpp>
 #include <reloco/value_ref.hpp>
 #include <reloco/variant.hpp>
+#include <reloco/secure_vector.hpp>
+#include <reloco/secure_wipe.hpp>
 #include <reloco/vector.hpp>
 #include <reloco/wait_group.hpp>
 
