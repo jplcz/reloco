@@ -170,13 +170,13 @@ public:
   }
 
   [[nodiscard]] constexpr basic_string_view substr(size_type pos = 0,
-                                                   size_type count = npos) const noexcept RELOCO_LIFETIMEBOUND {
+                                                   size_type count = npos) const noexcept {
     RELOCO_ASSERT(pos <= size(), "substr position out of bounds");
     return basic_string_view(data_ + pos, std::min(count, size_ - pos));
   }
 
   [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr basic_string_view
-  unsafe_substr(size_type pos = 0, size_type count = npos) const noexcept RELOCO_LIFETIMEBOUND {
+  unsafe_substr(size_type pos = 0, size_type count = npos) const noexcept {
     RELOCO_DEBUG_ASSERT(pos <= size(), "substr position out of bounds");
     return basic_string_view(data_ + pos, std::min(count, size_ - pos));
   }
@@ -188,7 +188,7 @@ public:
   }
 
   [[nodiscard]] result<basic_string_view> try_substr(size_type pos,
-                                                     size_type count = npos) const noexcept RELOCO_LIFETIMEBOUND {
+                                                     size_type count = npos) const noexcept {
     if (pos > size())
       return unexpected(error::out_of_bounds);
     return basic_string_view(data_ + pos, std::min(count, size_ - pos));
@@ -321,7 +321,7 @@ public:
    * does not start with @p prefix.
    */
   [[nodiscard]] constexpr optional<basic_string_view>
-  strip_prefix(basic_string_view prefix) const noexcept RELOCO_LIFETIMEBOUND {
+  strip_prefix(basic_string_view prefix) const noexcept {
     if (!starts_with(prefix))
       return nullopt;
     return substr(prefix.size_);
@@ -333,7 +333,7 @@ public:
    * does not end with @p suffix.
    */
   [[nodiscard]] constexpr optional<basic_string_view>
-  strip_suffix(basic_string_view suffix) const noexcept RELOCO_LIFETIMEBOUND {
+  strip_suffix(basic_string_view suffix) const noexcept {
     if (!ends_with(suffix))
       return nullopt;
     return substr(0, size_ - suffix.size_);
@@ -356,7 +356,7 @@ public:
    */
   template <typename Pred = decltype(&basic_string_view::is_ascii_space)>
   [[nodiscard]] constexpr basic_string_view
-  trim_start(Pred pred = &basic_string_view::is_ascii_space) const noexcept RELOCO_LIFETIMEBOUND {
+  trim_start(Pred pred = &basic_string_view::is_ascii_space) const noexcept {
     size_type i = 0;
     while (i < size_ && pred(data_[i]))
       ++i;
@@ -370,7 +370,7 @@ public:
    */
   template <typename Pred = decltype(&basic_string_view::is_ascii_space)>
   [[nodiscard]] constexpr basic_string_view
-  trim_end(Pred pred = &basic_string_view::is_ascii_space) const noexcept RELOCO_LIFETIMEBOUND {
+  trim_end(Pred pred = &basic_string_view::is_ascii_space) const noexcept {
     size_type i = size_;
     while (i > 0 && pred(data_[i - 1]))
       --i;
@@ -383,7 +383,7 @@ public:
    */
   template <typename Pred = decltype(&basic_string_view::is_ascii_space)>
   [[nodiscard]] constexpr basic_string_view
-  trim(Pred pred = &basic_string_view::is_ascii_space) const noexcept RELOCO_LIFETIMEBOUND {
+  trim(Pred pred = &basic_string_view::is_ascii_space) const noexcept {
     return trim_start(pred).trim_end(pred);
   }
 

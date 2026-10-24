@@ -289,10 +289,11 @@ public:
                                     std::is_convertible_v<decltype(std::declval<Container &>().data()), T *> &&
                                     // Ensure the container has a .size() that returns an integer
                                     std::is_integral_v<decltype(std::declval<Container &>().size())>>>
-  // mirrors std::span: implicit from arrays, containers and std::span, and to std::span.
+  // mirrors std::span: implicit from arrays, containers and std::span, and to std::span. An empty container yields a
+  // null pointer without calling data(), which reloco containers assert on when empty.
   // NOLINTNEXTLINE(reloco-explicit-conversion)
   constexpr span(Container &cont RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
-      : m_ptr(cont.data()), m_size(cont.size()) {}
+      : m_ptr(cont.size() == 0 ? nullptr : cont.data()), m_size(cont.size()) {}
 
   template <typename Container, typename = std::enable_if_t<
                                     !std::is_same_v<std::decay_t<Container>, span> && !detail::is_span_v<Container> &&
@@ -301,7 +302,7 @@ public:
   // mirrors std::span: implicit from arrays, containers and std::span, and to std::span.
   // NOLINTNEXTLINE(reloco-explicit-conversion)
   constexpr span(const Container &cont RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS) noexcept
-      : m_ptr(cont.data()), m_size(cont.size()) {}
+      : m_ptr(cont.size() == 0 ? nullptr : cont.data()), m_size(cont.size()) {}
 
   template <typename Container, typename = std::enable_if_t<
                                     !std::is_same_v<std::decay_t<Container>, span> && !detail::is_span_v<Container> &&
@@ -347,7 +348,7 @@ public:
    * @return A new `reloco::span` view.
    */
   [[nodiscard]] constexpr span<T>
-  subspan(std::size_t offset, std::size_t count = static_cast<std::size_t>(-1)) const & noexcept RELOCO_LIFETIMEBOUND {
+  subspan(std::size_t offset, std::size_t count = static_cast<std::size_t>(-1)) const & noexcept {
     RELOCO_ASSERT(offset <= m_size, "subspan offset exceeds span size");
     const std::size_t rem = m_size - offset;
     const std::size_t actual_count = count == static_cast<std::size_t>(-1) ? rem : count;
@@ -361,7 +362,7 @@ public:
    * @param offset Zero-based index at which the subspan begins.
    */
   template <std::size_t Count>
-  [[nodiscard]] constexpr span<T> subspan(std::size_t offset) const & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] constexpr span<T> subspan(std::size_t offset) const & noexcept {
     RELOCO_ASSERT(offset <= m_size, "subspan offset exceeds span size");
     const std::size_t rem = m_size - offset;
     RELOCO_ASSERT(Count <= rem, "subspan count exceeds remaining span size");
@@ -376,7 +377,7 @@ public:
    */
   [[nodiscard]] result<span<T>>
   try_subspan(std::size_t offset,
-              std::size_t count = static_cast<std::size_t>(-1)) const & noexcept RELOCO_LIFETIMEBOUND {
+              std::size_t count = static_cast<std::size_t>(-1)) const & noexcept {
     if (offset > m_size)
       return unexpected(error::out_of_bounds);
     const std::size_t rem = m_size - offset;
@@ -391,7 +392,7 @@ public:
    */
   [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr span<T>
   unsafe_subspan(std::size_t offset,
-                 std::size_t count = static_cast<std::size_t>(-1)) const & noexcept RELOCO_LIFETIMEBOUND {
+                 std::size_t count = static_cast<std::size_t>(-1)) const & noexcept {
     RELOCO_DEBUG_ASSERT(offset <= m_size, "subspan offset exceeds span size");
     const std::size_t rem = m_size - offset;
     const std::size_t actual_count = count == static_cast<std::size_t>(-1) ? rem : count;
@@ -610,36 +611,36 @@ public:
 
   T &unsafe_back() const && = delete;
 
-  [[nodiscard]] constexpr span<T> first(std::size_t count) const & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] constexpr span<T> first(std::size_t count) const & noexcept {
     RELOCO_ASSERT(count <= m_size, "first count exceeds span size");
     return span<T>(m_ptr, count);
   }
 
-  [[nodiscard]] constexpr span<T> last(std::size_t count) const & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] constexpr span<T> last(std::size_t count) const & noexcept {
     RELOCO_ASSERT(count <= m_size, "last count exceeds span size");
     return span<T>(pointer_at(m_size - count), count);
   }
 
-  [[nodiscard]] result<span<T>> try_first(std::size_t count) const & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] result<span<T>> try_first(std::size_t count) const & noexcept {
     if (count > m_size)
       return unexpected(error::out_of_bounds);
     return span<T>(m_ptr, count);
   }
 
-  [[nodiscard]] result<span<T>> try_last(std::size_t count) const & noexcept RELOCO_LIFETIMEBOUND {
+  [[nodiscard]] result<span<T>> try_last(std::size_t count) const & noexcept {
     if (count > m_size)
       return unexpected(error::out_of_bounds);
     return span<T>(pointer_at(m_size - count), count);
   }
 
   [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr span<T>
-  unsafe_first(std::size_t count) const & noexcept RELOCO_LIFETIMEBOUND {
+  unsafe_first(std::size_t count) const & noexcept {
     RELOCO_DEBUG_ASSERT(count <= m_size, "first count exceeds span size");
     return span<T>(m_ptr, count);
   }
 
   [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr span<T>
-  unsafe_last(std::size_t count) const & noexcept RELOCO_LIFETIMEBOUND {
+  unsafe_last(std::size_t count) const & noexcept {
     RELOCO_DEBUG_ASSERT(count <= m_size, "last count exceeds span size");
     return span<T>(pointer_at(m_size - count), count);
   }

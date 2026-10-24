@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 #include <reloco/span.hpp>
+#include <reloco/vector.hpp>
 
 #include <algorithm>
 #include <cstdint>
@@ -86,6 +87,15 @@ TEST(SpanTest, UnsafeCastToNonByteUnitsAndTryCastUp) {
   EXPECT_EQ((*ints)[1], 2u);
   EXPECT_FALSE(bytes.subspan(0, 7).try_cast_to<const std::uint32_t>());  // not a multiple of 4
   EXPECT_FALSE(bytes.subspan(1, 4).try_cast_to<const std::uint32_t>());  // misaligned
+}
+
+TEST(SpanTest, FromEmptyRelocoContainerDoesNotTripDataAssert) {
+  reloco::vector<int> empty;
+  const reloco::span<int> view(empty);
+  EXPECT_TRUE(view.empty());
+  EXPECT_EQ(view.size(), 0U);
+  const reloco::vector<int> &const_empty = empty;
+  EXPECT_TRUE(reloco::span<const int>(const_empty).empty());
 }
 
 TEST(SpanTest, DefaultAndPointerConstruction) {
