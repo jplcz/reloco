@@ -213,14 +213,15 @@ void RelocoCheck::howToFix(SourceLocation loc, llvm::StringRef text) {
 }
 
 bool RelocoCheck::inUnsafeTier(const Decl *d) {
-  for (const Decl *c = d; c && !llvm::isa<TranslationUnitDecl>(c);
-       c = Decl::castFromDeclContext(c->getDeclContext())) {
+  for (const Decl *c = d; c && !llvm::isa<TranslationUnitDecl>(c);) {
     if (c->hasAttr<UnsafeBufferUsageAttr>())
       return true;
     if (const auto *nd = llvm::dyn_cast<NamedDecl>(c))
       if (nd->getIdentifier() && (nd->getName().starts_with("unsafe_") ||
                                   (llvm::isa<NamespaceDecl>(nd) && nd->getName() == "unsafe")))
         return true;
+    const DeclContext *dc = c->getDeclContext();
+    c = dc ? Decl::castFromDeclContext(dc) : nullptr;
   }
   return false;
 }

@@ -1085,12 +1085,15 @@ private:
 };
 
 bool hasExemptAnnotation(const Decl *d) {
-  for (; d; d = Decl::castFromDeclContext(d->getDeclContext())) {
+  while (d) {
     for (const auto *an : d->specific_attrs<AnnotateAttr>())
       if (an->getAnnotation() == "reloco_borrow_exempt")
         return true;
     if (llvm::isa<TranslationUnitDecl>(d))
       break;
+    // A lambda inside a variable template initialiser can have no enclosing context.
+    const DeclContext *dc = d->getDeclContext();
+    d = dc ? Decl::castFromDeclContext(dc) : nullptr;
   }
   return false;
 }
