@@ -5,6 +5,8 @@
 #include <gtest/gtest.h>
 #include <reloco/allocator.hpp>
 #include <reloco/boxed_slice.hpp>
+#include <reloco/inline_vector.hpp>
+#include <reloco/sso_vector.hpp>
 #include <reloco/vector.hpp>
 
 #include <utility>
@@ -29,6 +31,17 @@ template <> struct reloco::allocator_traits<exhausted_allocator_tag> {
 
   static void deallocate(void *, std::size_t) noexcept {}
 };
+
+TEST(BoxedSliceTest, TryCreateFromCopiesSpan) {
+  const int src[] = {7, 8, 9};
+  auto s = boxed_slice<int>::try_create_from(reloco::span<const int>(src, 3));
+  ASSERT_TRUE(s);
+  EXPECT_EQ(s->size(), 3u);
+  EXPECT_EQ((*s)[1], 8);
+  auto empty = boxed_slice<int>::try_create_from({});
+  ASSERT_TRUE(empty);
+  EXPECT_TRUE(empty->empty());
+}
 
 TEST(BoxedSliceTest, DefaultConstructedIsEmpty) {
   boxed_slice<int> bs;
@@ -93,6 +106,23 @@ TEST(BoxedSliceTest, TryFromVectorOfEmptyVectorIsEmpty) {
   auto res = boxed_slice<int>::try_from_vector(std::move(v));
   ASSERT_TRUE(res.has_value());
   EXPECT_TRUE(res->empty());
+}
+
+TEST(BoxedSliceTest, TryFromVectorAcceptsOtherVectorFlavours) {
+  reloco::sso_vector<int, 4> sv;
+  ASSERT_TRUE(sv.try_push_back(7).has_value());
+  ASSERT_TRUE(sv.try_push_back(8).has_value());
+  auto a = boxed_slice<int>::try_from_vector(std::move(sv));
+  ASSERT_TRUE(a.has_value());
+  ASSERT_EQ(a->size(), 2u);
+  EXPECT_EQ((*a)[1], 8);
+
+  reloco::inline_vector<int, 4> iv;
+  ASSERT_TRUE(iv.try_push_back(5).has_value());
+  auto b = boxed_slice<int>::try_from_vector(std::move(iv));
+  ASSERT_TRUE(b.has_value());
+  ASSERT_EQ(b->size(), 1u);
+  EXPECT_EQ((*b)[0], 5);
 }
 
 TEST(BoxedSliceTest, TryAtChecksBounds) {

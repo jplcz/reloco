@@ -60,7 +60,10 @@ public:
       ok_ = false;
       return;
     }
+    // The check above bounds `pos_`; GCC 15 loses it after unrolling the varint loops and warns at -O3.
+    RELOCO_BEGIN_SUPPRESS_GCC_BOUNDS_FALSE_POSITIVE;
     out_[pos_++] = static_cast<char>(v);
+    RELOCO_END_SUPPRESS_GCC_BOUNDS_FALSE_POSITIVE;
   }
 
   /** @brief Appends @p v as an unsigned LEB128 varint: 1 byte below 128, up to 10 bytes for 64-bit values. */

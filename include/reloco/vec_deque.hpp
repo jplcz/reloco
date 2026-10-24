@@ -56,6 +56,20 @@ public:
     return try_allocate(default_allocator(), initial_cap);
   }
 
+  /// Copies @p items into a new deque (`T` must be copy-constructible).
+  [[nodiscard]] static result<vec_deque> try_allocate_from(allocator_ref alloc, span<const T> items) noexcept {
+    auto deque = try_allocate(alloc, items.size());
+    if (!deque)
+      return deque;
+    if (auto res = deque->try_append(items); !res)
+      return unexpected(res.error());
+    return deque;
+  }
+
+  [[nodiscard]] static result<vec_deque> try_create_from(span<const T> items) noexcept {
+    return try_allocate_from(default_allocator(), items);
+  }
+
   // ---- Fallible Cloning ----
 
   [[nodiscard]] result<vec_deque> try_clone(allocator_ref alloc) const noexcept {

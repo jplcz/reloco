@@ -47,6 +47,47 @@ static_assert(!can_borrow_temporary_span_unsafe_back<reloco::span<int>>::value);
 
 } // namespace
 
+TEST(SpanTest, CastToSmallerByteLikeUnits) {
+  std::uint32_t words[] = {0x04030201u, 0x08070605u};
+  reloco::span<std::uint32_t> w(words);
+  auto u8 = w.cast_to<std::uint8_t>();
+  ASSERT_EQ(u8.size(), 8u);
+  EXPECT_EQ(u8[0], 0x01u);
+  EXPECT_EQ(u8[7], 0x08u);
+  u8[0] = 0xff; // writable, aliases the original
+  EXPECT_EQ(words[0] & 0xffu, 0xffu);
+  EXPECT_EQ(w.as_chars().size(), 8u);
+  EXPECT_EQ(w.as_writable_bytes().size(), 8u);
+
+  char text[] = {'a', 'b', 'c'};
+  reloco::span<char> chars(text, 3);
+  auto same_size = chars.as_uint8(); // char <-> uint8_t: same size and alignment
+  static_assert(std::is_same_v<decltype(same_size), reloco::span<unsigned char>>);
+  EXPECT_EQ(same_size[1], static_cast<unsigned char>('b'));
+
+  reloco::span<const std::uint32_t> cw(words);
+  static_assert(std::is_same_v<decltype(cw.as_chars()), reloco::span<const char>>);
+  static_assert(std::is_same_v<decltype(cw.cast_to<const std::byte>()), reloco::span<const std::byte>>);
+}
+
+TEST(SpanTest, UnsafeCastToNonByteUnitsAndTryCastUp) {
+  std::uint64_t big[] = {0x0000000200000001ull};
+  reloco::span<std::uint64_t> b(big);
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+  auto halves = b.unsafe_cast_to<std::uint32_t>();
+  RELOCO_END_UNSAFE_BUFFER_USAGE
+  ASSERT_EQ(halves.size(), 2u);
+
+  alignas(4) unsigned char raw[8] = {1, 0, 0, 0, 2, 0, 0, 0};
+  reloco::span<const unsigned char> bytes(raw, 8);
+  auto ints = bytes.try_cast_to<const std::uint32_t>();
+  ASSERT_TRUE(ints);
+  ASSERT_EQ(ints->size(), 2u);
+  EXPECT_EQ((*ints)[1], 2u);
+  EXPECT_FALSE(bytes.subspan(0, 7).try_cast_to<const std::uint32_t>());  // not a multiple of 4
+  EXPECT_FALSE(bytes.subspan(1, 4).try_cast_to<const std::uint32_t>());  // misaligned
+}
+
 TEST(SpanTest, DefaultAndPointerConstruction) {
   reloco::span<char> empty_span;
   EXPECT_TRUE(empty_span.empty());

@@ -1911,7 +1911,7 @@ the common cases without a hand-written class:
 | Function | Rust equivalent | Behavior |
 | --- | --- | --- |
 | `from_fn(f)` | `std::iter::from_fn()` | Calls `optional<Item> f()` on every `next()`, forwarding its result as-is -- `f` itself decides when to stop. |
-| `once(value)` | `std::iter::once()` | Yields exactly one item (a move of `value`), then stops. |
+| `once_item(value)` | `std::iter::once()` | Yields exactly one item (a move of `value`), then stops. |
 | `repeat(value)` | `std::iter::repeat()` | Infinite stream of copies of `value`; always pair with `.take(n)` or another early-stopping adaptor. |
 | `successors(first, f)` | `std::iter::successors()` | Seeded with `optional<T> first`; each next item is `f(previous)`, stopping once `first`/`f(...)` is empty. |
 | `iota(start, end)` | `std::iter::successors`/Python's `range()` | Yields the half-open integral range `[start, end)`, one value per `next()` (`T` must be integral; asserted). |

@@ -134,6 +134,37 @@ public:
     return boxed_slice(ptr, count, alloc);
   }
 
+  /**
+   * @brief Copy-constructs every element of @p items into a new `boxed_slice` using @p alloc. Empty input yields an
+   * empty (null) slice without allocating.
+   */
+  [[nodiscard]] static result<boxed_slice> try_allocate_from(allocator_ref alloc, span<const T> items) noexcept {
+    if (items.empty())
+      return boxed_slice();
+
+    auto block = alloc.allocate(items.size() * sizeof(T), alignof(T));
+    if (!block)
+      return unexpected(block.error());
+    auto *ptr = static_cast<T *>(block->ptr);
+
+    size_type constructed = 0;
+    for (; constructed < items.size(); ++constructed) {
+      auto ctor_res = construction_helpers::try_construct<T>(alloc, ptr + constructed, items[constructed]);
+      if (!ctor_res) {
+        for (size_type i = 0; i < constructed; ++i)
+          ptr[i].~T();
+        alloc.deallocate(ptr, items.size() * sizeof(T));
+        return unexpected(ctor_res.error());
+      }
+    }
+    return boxed_slice(ptr, items.size(), alloc);
+  }
+
+  /** @brief `try_allocate_from` using the default allocator. */
+  [[nodiscard]] static result<boxed_slice> try_create_from(span<const T> items) noexcept {
+    return try_allocate_from(default_allocator(), items);
+  }
+
   /** @brief `try_allocate(default_allocator(), count)`. */
   [[nodiscard]] static result<boxed_slice> try_create(size_type count) noexcept {
     return try_allocate(default_allocator(), count);
@@ -147,9 +178,11 @@ public:
   /**
    * @brief Rust `Vec::into_boxed_slice` equivalent: consumes @p v, moving
    * its elements into a freshly, exactly-sized allocation (dropping any
-   * spare capacity `v` was holding) using `v`'s own allocator.
+   * spare capacity `v` was holding) using `v`'s own allocator. Accepts any vector flavour (`vector`,
+   * `sso_vector`, `inline_vector`, `outline_vector`, ...).
    */
-  [[nodiscard]] static result<boxed_slice> try_from_vector(vector<T> &&v) noexcept {
+  template <typename Base>
+  [[nodiscard]] static result<boxed_slice> try_from_vector(detail::typed_vector_base<T, Base> &&v) noexcept {
     static_assert(std::is_move_constructible_v<T>, "try_from_vector requires T to be move-constructible");
     const size_type count = v.size();
     if (count == 0)
@@ -168,6 +201,11 @@ public:
   }
 
   [[nodiscard]] constexpr size_type size() const noexcept { return size_; }
+
+  /// Copies the elements into a new container of type @p Other (e.g. `vector<T>`) via `Other::try_create_from`.
+  template <typename Other> [[nodiscard]] result<Other> try_convert_to() const noexcept {
+    return Other::try_create_from(span<const T>(ptr_, size_));
+  }
   [[nodiscard]] constexpr bool empty() const noexcept { return size_ == 0; }
   // The allocator is externally owned, not part of this object; the handle may outlive it.
   // NOLINTNEXTLINE(reloco-ref-qualified-member,reloco-lifetime-annotations)

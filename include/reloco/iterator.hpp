@@ -8,7 +8,7 @@
  * @brief Lazy, zero-allocation iterator adaptors mirroring Rust's
  * `std::iter::Iterator` adapter chain (`Fuse`, `Zip`, `Map`, `Filter`,
  * `Enumerate`, `Take`, `Skip`, `Chain`), plus `std::iter` *source*
- * (generating) iterators (`from_fn`, `once`, `repeat`, `successors`,
+ * (generating) iterators (`from_fn`, `once_item`, `repeat`, `successors`,
  * `empty`), layered on top of ordinary C++
  * `begin()`/`end()` range-for support.
  *
@@ -74,7 +74,7 @@
  * citizen of the adaptor chain (`.map()`, `.take()`, range-for, etc. all
  * work on it for free), infinite generators included (see `repeat()`
  * below for why an infinite one must always be paired with `.take(n)` or
- * another early-stopping adaptor). `from_fn()`/`once()`/`repeat()`/
+ * another early-stopping adaptor). `from_fn()`/`once_item()`/`repeat()`/
  * `successors()`/`empty()` are exactly such classes, provided so most
  * generating iterators never need a hand-written one at all.
  */
@@ -1031,7 +1031,7 @@ private:
 template <typename F> [[nodiscard]] auto from_fn(F f) noexcept { return from_fn_iterator<F>(std::move(f)); }
 
 /**
- * @brief Rust `std::iter::once()`: a source iterator yielding exactly one
+ * @brief Rust `std::iter::once()` (named `once_item` to avoid clashing with `reloco::once`): a source iterator yielding exactly one
  * item (a move of @p value), then stopping.
  */
 template <typename T> class once_iterator : public iterator_adaptor<once_iterator<T>, T> {
@@ -1053,7 +1053,7 @@ private:
 };
 
 /** @copydoc once_iterator */
-template <typename T> [[nodiscard]] once_iterator<std::decay_t<T>> once(T value) noexcept {
+template <typename T> [[nodiscard]] once_iterator<std::decay_t<T>> once_item(T value) noexcept {
   return once_iterator<std::decay_t<T>>(std::move(value));
 }
 

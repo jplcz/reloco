@@ -55,6 +55,53 @@ struct move_only {
 
 } // namespace
 
+TEST(InlineVectorTest, InsertSpanEraseRangeSwapRemoveRespectCapacity) {
+  inline_vector<int, 6> v;
+  for (int i : {1, 2, 6}) ASSERT_TRUE(v.try_push_back(i));
+  const int mid[] = {3, 4, 5};
+  ASSERT_TRUE(v.try_insert_span(2, reloco::span<const int>(mid, 3)));
+  ASSERT_EQ(v.size(), 6u);
+  EXPECT_EQ(v[2], 3);
+  EXPECT_EQ(v[5], 6);
+  // Full: fails atomically.
+  EXPECT_EQ(v.try_insert_span(0, reloco::span<const int>(mid, 1)).error(), error::capacity_exceeded);
+  EXPECT_EQ(v.size(), 6u);
+  ASSERT_TRUE(v.try_erase_range(1, 4));
+  ASSERT_EQ(v.size(), 2u);
+  EXPECT_EQ(v[1], 6);
+  ASSERT_TRUE(v.try_swap_remove(0));
+  ASSERT_EQ(v.size(), 1u);
+  EXPECT_EQ(v[0], 6);
+}
+
+TEST(InlineVectorTest, TryCreateFromCopiesAndRespectsCapacity) {
+  const int src[] = {1, 2, 3, 4, 5};
+  auto fits = inline_vector<int, 8>::try_create_from(reloco::span<const int>(src, 5));
+  ASSERT_TRUE(fits);
+  EXPECT_EQ(fits->size(), 5u);
+  auto too_big = inline_vector<int, 4>::try_create_from(reloco::span<const int>(src, 5));
+  ASSERT_FALSE(too_big);
+  auto v = reloco::span<const int>(src, 3).try_to_vector<inline_vector<int, 4>>();
+  ASSERT_TRUE(v);
+  EXPECT_EQ((*v)[2], 3);
+}
+
+TEST(InlineVectorTest, TryAppendSpanFailsAtomicallyWhenFull) {
+  inline_vector<int, 3> v;
+  const int src[] = {1, 2, 3, 4};
+  ASSERT_TRUE(v.try_push_back(9));
+  EXPECT_FALSE(v.try_append(reloco::span<const int>(src, 3)));
+  EXPECT_EQ(v.size(), 1u); // unchanged
+  ASSERT_TRUE(v.try_append(reloco::span<const int>(src, 2)));
+  EXPECT_EQ(v.size(), 3u);
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+  ASSERT_TRUE(v.try_assign(reloco::span<const int>(v.data() + 1, 2)));
+  RELOCO_END_UNSAFE_BUFFER_USAGE
+  ASSERT_EQ(v.size(), 2u);
+  EXPECT_EQ(v[0], 1);
+  EXPECT_EQ(v[1], 2);
+}
+
 TEST(InlineVectorTest, DefaultConstructedIsEmpty) {
   inline_vector<int, 4> v;
   EXPECT_TRUE(v.empty());

@@ -7,6 +7,15 @@
 
 using namespace reloco;
 
+TEST(InlineVecDequeTest, TryCreateFromRespectsCapacity) {
+  const int src[] = {1, 2, 3, 4};
+  auto ok = inline_vec_deque<int, 4>::try_create_from(span<const int>(src, 4));
+  ASSERT_TRUE(ok);
+  EXPECT_EQ(ok->size(), 4u);
+  auto too_big = inline_vec_deque<int, 3>::try_create_from(span<const int>(src, 4));
+  EXPECT_EQ(too_big.error(), error::capacity_exceeded);
+}
+
 TEST(InlineVecDequeTest, BasicPushAndPop) {
   inline_vec_deque<int, 4> d;
 

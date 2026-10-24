@@ -7,6 +7,7 @@
 /** @file span.hpp
  * @brief Hardened C++17-compatible non-owning contiguous view. */
 
+#include "byte_like.hpp"
 #include "contiguous_iterator.hpp"
 #include "detail/assert.hpp"
 #include "detail/compat.hpp"
@@ -19,6 +20,7 @@
 #include "rvalue_safety.hpp"
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <iterator>
 #include <type_traits>
@@ -29,6 +31,8 @@
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
 namespace reloco {
+
+template <typename T> class vector; // complete type needed only where try_to_vector() is called (include vector.hpp)
 
 /**
  * @brief A lightweight, dynamic-extent view over a contiguous element range.
@@ -646,6 +650,127 @@ public:
   [[nodiscard]] span<const std::byte> as_bytes() const & noexcept RELOCO_LIFETIMEBOUND {
     // NOLINTNEXTLINE(reloco-banned-construct): byte view of the elements, within the span bounds.
     return span<const std::byte>(reinterpret_cast<const std::byte *>(m_ptr), size_bytes());
+  }
+
+  /**
+   * @brief Reinterprets the elements as a smaller (or equal) unit @p U: `span<uint32_t>` to `span<uint8_t>`,
+   * `span<char>` to `span<uint8_t>`, `span<const Foo>` to `span<const char>`.
+   *
+   * Compile-time requirements: `sizeof(U)` divides `sizeof(T)`, `alignof(U) <= alignof(T)`, `T` is trivially
+   * copyable, const is never dropped, and @p U is byte-like (see `is_byte_like_v`) or the same type as `T` modulo
+   * cv (anything else would be a strict-aliasing violation; use `unsafe_cast_to` if you really mean it). The
+   * result has `size() * sizeof(T) / sizeof(U)` elements.
+   */
+  template <typename U> [[nodiscard]] span<U> cast_to() const & noexcept RELOCO_LIFETIMEBOUND {
+    static_assert(is_byte_like_v<U> || std::is_same_v<std::remove_cv_t<U>, std::remove_cv_t<T>>,
+                  "cast_to<U> only views memory as a byte-like type; use unsafe_cast_to for other types");
+    return unsafe_cast_to<U>();
+  }
+
+  /**
+   * @brief Like `cast_to` but without the byte-like restriction on @p U: any trivially copyable `U` for which
+   * `sizeof(U)` divides `sizeof(T)` and `alignof(U) <= alignof(T)`. Reading through the result can violate strict
+   * aliasing (e.g. `uint64_t` as `uint32_t`), so it is a deliberate opt-in.
+   */
+  template <typename U> [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE span<U> unsafe_cast_to() const & noexcept
+      RELOCO_LIFETIMEBOUND {
+    using From = std::remove_cv_t<T>;
+    using To = std::remove_cv_t<U>;
+    static_assert(!std::is_const_v<T> || std::is_const_v<U>, "cast_to cannot drop const");
+    static_assert(std::is_trivially_copyable_v<From> && std::is_trivially_copyable_v<To>,
+                  "cast_to requires trivially copyable element types");
+    static_assert(sizeof(From) % sizeof(To) == 0, "sizeof(U) must divide sizeof(T)");
+    static_assert(alignof(To) <= alignof(From), "U must not be more strictly aligned than T");
+    // NOLINTNEXTLINE(reloco-banned-construct): same bytes, smaller unit, count scaled accordingly.
+    return span<U>(reinterpret_cast<U *>(m_ptr), m_size * (sizeof(From) / sizeof(To)));
+  }
+
+  /// `char` view of the same memory (`span<const char>` for const `T`).
+  [[nodiscard]] auto as_chars() const & noexcept RELOCO_LIFETIMEBOUND {
+    return cast_to<std::conditional_t<std::is_const_v<T>, const char, char>>();
+  }
+
+  /// `uint8_t` view of the same memory (`span<const uint8_t>` for const `T`).
+  [[nodiscard]] auto as_uint8() const & noexcept RELOCO_LIFETIMEBOUND {
+    return cast_to<std::conditional_t<std::is_const_v<T>, const unsigned char, unsigned char>>();
+  }
+
+  /// Writable `std::byte` view (requires non-const `T`).
+  [[nodiscard]] span<std::byte> as_writable_bytes() const & noexcept RELOCO_LIFETIMEBOUND {
+    static_assert(!std::is_const_v<T>, "as_writable_bytes requires a non-const span");
+    return cast_to<std::byte>();
+  }
+
+  /**
+   * @brief Checked "upcast" for parsing: views a byte-like span as `U` elements. Fails with
+   * `error::invalid_argument` if the data is not aligned for `U` or the byte count is not a multiple of
+   * `sizeof(U)`. `T` must be byte-like and `U` trivially copyable (const is preserved).
+   */
+  template <typename U> [[nodiscard]] result<span<U>> try_cast_to() const noexcept {
+    static_assert(is_byte_like_v<T>, "try_cast_to is for byte-like spans; use cast_to to go the other way");
+    static_assert(std::is_trivially_copyable_v<std::remove_cv_t<U>>, "try_cast_to requires a trivially copyable U");
+    static_assert(!std::is_const_v<T> || std::is_const_v<U>, "try_cast_to cannot drop const");
+    if (m_size % sizeof(U) != 0) {
+      return unexpected(error::invalid_argument);
+    }
+    // NOLINTNEXTLINE(reloco-banned-construct): alignment check on the address value.
+    if (m_size != 0 && reinterpret_cast<std::uintptr_t>(m_ptr) % alignof(U) != 0) {
+      return unexpected(error::invalid_argument);
+    }
+    // NOLINTNEXTLINE(reloco-banned-construct): validated above; U is trivially copyable.
+    return span<U>(reinterpret_cast<U *>(m_ptr), m_size / sizeof(U));
+  }
+
+  /**
+   * @brief Copies the elements into a new owning `vector` (default allocator). Include `vector.hpp` where this is
+   * called; `Vec` defaults to `vector<remove_const_t<T>>`, so the element type must be copy-constructible.
+   */
+  template <typename Vec = vector<std::remove_const_t<T>>>
+  [[nodiscard]] result<Vec> try_to_vector() const noexcept {
+    return Vec::try_create_from(span<const std::remove_const_t<T>>(m_ptr, m_size));
+  }
+
+  /// `try_to_vector()` with an explicit `allocator_ref`.
+  template <typename Alloc, typename Vec = vector<std::remove_const_t<T>>>
+  [[nodiscard]] result<Vec> try_to_vector(Alloc alloc) const noexcept {
+    return Vec::try_allocate_from(alloc, span<const std::remove_const_t<T>>(m_ptr, m_size));
+  }
+
+  /**
+   * @brief Index of the first element equal to @p value, or `nullopt`.
+   */
+  [[nodiscard]] optional<std::size_t> position(const T &value) const noexcept {
+    return position_if([&value](const T &item) noexcept { return item == value; });
+  }
+
+  /**
+   * @brief Index of the first element for which `pred(element)` is true, or `nullopt`.
+   */
+  template <typename Pred> [[nodiscard]] optional<std::size_t> position_if(Pred &&pred) const noexcept {
+    for (std::size_t i = 0; i < m_size; ++i) {
+      if (pred(m_ptr[i]))
+        return i;
+    }
+    return nullopt;
+  }
+
+  /**
+   * @brief Maps every element through `fn` into a new owning `Vec` (default: `vector` of the mapped type) with a
+   * single up-front reservation. Include `vector.hpp` where this is called. Fails with the allocation error; the
+   * partial result is dropped.
+   */
+  template <typename F, typename Vec = vector<std::decay_t<std::invoke_result_t<F &, const std::remove_const_t<T> &>>>>
+  [[nodiscard]] result<Vec> try_map_to(F &&fn) const noexcept {
+    auto out = Vec::try_create();
+    if (!out)
+      return out;
+    if (auto r = out->try_reserve(m_size); !r)
+      return unexpected(r.error());
+    for (std::size_t i = 0; i < m_size; ++i) {
+      if (auto r = out->try_push_back(fn(m_ptr[i])); !r)
+        return unexpected(r.error());
+    }
+    return out;
   }
 
 private:

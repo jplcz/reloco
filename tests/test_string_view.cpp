@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 #include <gtest/gtest.h>
+#include <reloco/span.hpp>
 #include <reloco/string_view.hpp>
 
 #include <string>
@@ -43,4 +44,24 @@ TEST(StringViewTest, ProvidesExplicitlyUnsafeAccessors) {
   EXPECT_EQ(view.unsafe_substr(1, 3), "alu");
   EXPECT_EQ(view.unsafe_data(), view.data());
   RELOCO_END_UNSAFE_BUFFER_USAGE
+}
+
+TEST(StringViewSpanInteropTest, ConvertsBothWays) {
+  reloco::string_view sv("hello");
+  reloco::span<const char> sp = sv; // implicit string_view -> span
+  ASSERT_EQ(sp.size(), 5u);
+  EXPECT_EQ(sp[1], 'e');
+  reloco::string_view back = sp; // implicit span -> string_view
+  EXPECT_EQ(back, sv);
+
+  char buf[] = {'a', 'b'};
+  reloco::string_view from_mut = reloco::span<char>(buf, 2);
+  EXPECT_EQ(from_mut, reloco::string_view("ab"));
+
+  const unsigned char raw[] = {'h', 'i'};
+  auto text = reloco::string_view::from_bytes(reloco::span<const unsigned char>(raw, 2));
+  EXPECT_EQ(text, reloco::string_view("hi"));
+  EXPECT_EQ(sv.as_bytes().size(), 5u);
+  const auto u8 = sv.as_uint8();
+  EXPECT_EQ(u8[0], static_cast<unsigned char>('h'));
 }

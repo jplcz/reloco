@@ -332,6 +332,19 @@ public:
 
   [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE const_pointer unsafe_c_str() const && = delete;
 
+  /**
+   * @brief Copies the contents into a new string type @p Other (e.g. `string`, `sso_string<N>`,
+   * `inline_string<N>`) via its `try_create(view)`.
+   */
+  template <typename Other> [[nodiscard]] result<Other> try_convert_to() const noexcept {
+    return Other::try_create(view());
+  }
+
+  /// `try_convert_to` with an explicit allocator (`Other::try_allocate`); not available for `inline_string`.
+  template <typename Other> [[nodiscard]] result<Other> try_convert_to(allocator_ref alloc) const noexcept {
+    return Other::try_allocate(alloc, view());
+  }
+
   [[nodiscard]] view_type view() const & noexcept RELOCO_LIFETIMEBOUND { return view_type(data_, size_); }
 
   // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::string: implicit conversion to a string view.

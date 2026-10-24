@@ -157,6 +157,70 @@ public:
   }
 
   /**
+   * @brief Fallible factory for a vector holding exactly @p count value-initialized elements (zeros for arithmetic
+   * `T`), using the given allocator. Unlike `try_allocate`, which only reserves capacity, the result has
+   * `size() == count`, so it can be filled in place (e.g. by a C API writing into `data()`). `T` must be
+   * default-constructible.
+   */
+  [[nodiscard]] static result<vector> try_allocate_sized(allocator_ref alloc, size_type count) noexcept {
+    auto vec = try_allocate(alloc, count);
+    if (!vec) {
+      return vec;
+    }
+    if (auto res = vec->try_resize(count); !res) {
+      return unexpected(res.error());
+    }
+    return vec;
+  }
+
+  /**
+   * @brief `try_allocate_sized` using the default allocator.
+   */
+  [[nodiscard]] static result<vector> try_create_sized(size_type count) noexcept {
+    return try_allocate_sized(default_allocator(), count);
+  }
+
+  /**
+   * @brief Fallible factory that copies every element of @p items into a new vector (`T` must be
+   * copy-constructible). The result owns its elements; @p items may point anywhere, including into another vector.
+   */
+  [[nodiscard]] static result<vector> try_allocate_from(allocator_ref alloc, span<const T> items) noexcept {
+    static_assert(std::is_copy_constructible_v<T>, "copying from a span requires a copy-constructible element type");
+    auto vec = try_allocate(alloc, items.size());
+    if (!vec) {
+      return vec;
+    }
+    for (const T &item : items) {
+      if (auto res = vec->try_push_back(item); !res) {
+        return unexpected(res.error());
+      }
+    }
+    return vec;
+  }
+
+  /**
+   * @brief `try_allocate_from` using the default allocator.
+   */
+  [[nodiscard]] static result<vector> try_create_from(span<const T> items) noexcept {
+    return try_allocate_from(default_allocator(), items);
+  }
+
+  /**
+   * @brief Moves the elements from @p at onward into a new vector (same allocator) and truncates this one to
+   * @p at elements (Rust `Vec::split_off`). Requires copy-constructible `T`; on failure nothing changes.
+   * `error::out_of_bounds` if @p at > size().
+   */
+  [[nodiscard]] result<vector> try_split_off(size_type at) & noexcept {
+    if (at > this->size_)
+      return unexpected(error::out_of_bounds);
+    auto tail = try_allocate_from(this->get_allocator(), span<const T>(this->data() + at, this->size_ - at));
+    if (!tail)
+      return tail;
+    this->truncate(at);
+    return tail;
+  }
+
+  /**
    * @brief Fallible deep copy clone using a given allocator.
    */
   [[nodiscard]] result<vector> try_clone(allocator_ref alloc) const noexcept {

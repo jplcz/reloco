@@ -34,6 +34,51 @@ inherit from a common base or register itself anywhere.
 | `source.try_clone(reloco::allocator_ref)` / `source.try_clone()` | `has_try_clone_v<T>` | An existing instance needs an independent, fallible copy |
 | `T::try_clone_at(reloco::allocator_ref, T *storage, const T &source)` | `has_try_clone_at_v<T>` | An optimized in-place clone into caller-owned storage |
 
+`vector<T>` and `string` follow the protocol with these extra factories, which are not part of the detected set:
+`vector<T>::try_create(cap)` only *reserves* capacity (`size() == 0`, and `data()` asserts on an empty vector), while
+`vector<T>::try_create_sized(count)` / `try_allocate_sized(alloc, count)` return `count` value-initialized elements,
+ready to be filled in place (for example by a C API writing into `data()`):
+
+```cpp
+// A buffer of exactly `n` zeroed bytes for a C read function to fill in; fails with an error instead of throwing.
+auto buffer = reloco::vector<std::byte>::try_create_sized(n);
+if (!buffer) { return reloco::unexpected(buffer.error()); }
+read_into(buffer->data(), buffer->size()); // n == 0 would trip data()'s non-empty assertion, so check it first
+```
+
+### Converting between views and owners
+
+Borrowed types convert to their owning counterparts with a fallible copy. The conversion is a member of the *view*, but
+it is only instantiated where you call it, so the owner's header must be included there (the view headers only
+forward-declare the owner, which keeps them free of include cycles):
+
+| From | To | Call | Include |
+|---|---|---|---|
+| `string_view` | `string` | `sv.try_to_string()` / `sv.try_to_string(alloc)` | `string.hpp` |
+| `span<T>` / `span<const T>` | `vector<T>` | `sp.try_to_vector()` / `sp.try_to_vector(alloc)` | `vector.hpp` |
+| `span<const T>` | any existing `vector`, `sso_vector`, `inline_vector`, `outline_vector` | `v.try_append(sp)`, `v.try_assign(sp)` | the container's header |
+| `span<const T>` | new `vector`, `sso_vector`, `inline_vector`, `secure_vector`, `boxed_slice` | `C::try_create_from(sp)` / `C::try_allocate_from(alloc, sp)` (`inline_vector` has no allocator: only `try_create_from`) | the container's header |
+| `span<T>` | any of the above | `sp.try_to_vector<C>()` (e.g. `sp.try_to_vector<reloco::inline_vector<int, 8>>()`) | the container's header |
+| `inline_vector` / `inline_string` | heap `vector` / `string` | `v.try_to_vector()`, `s.try_to_string()` | (already existed) |
+
+```cpp
+#include <reloco/string.hpp>
+#include <reloco/vector.hpp>
+
+// Own a copy of a borrowed name so it outlives the buffer it was parsed from.
+reloco::result<reloco::string> keep(reloco::string_view name) noexcept { return name.try_to_string(); }
+
+// Append bytes received from a C API. The span may even point into `buf` itself; that case is handled.
+reloco::result<void> add(reloco::vector<std::byte> &buf, reloco::span<const std::byte> chunk) noexcept {
+  return buf.try_append(chunk); // on allocation failure `buf` is unchanged
+}
+```
+
+`try_append` reserves capacity first, so on failure (allocation failure, or `error::capacity_exceeded` for
+`inline_vector`/`outline_vector`) the container is unchanged; `try_assign` does the same. Both accept a span aliasing the
+container's own elements, even across an `sso_vector` spilling from inline to heap storage. They require a
+copy-constructible element type. The deque family (`vec_deque` and friends) does not have these yet.
+
 This is a convention, not an interface: implement whichever of the five
 functions make sense for a given type (most types only need one or two), and
 generic code that wants to work with any of them checks for each function
@@ -265,3 +310,75 @@ works with `unique_ptr<T>` or the other helpers above works with
 `fallible_singleton`/`atomic_fallible_singleton` too, with no dedicated
 protocol or key type needed. As above, the allocator parameter is a
 `reloco::allocator_ref` rather than a `fallible_allocator &`.
+
+## Building strings from parts
+
+```cpp
+// One allocation for the whole result; on failure nothing is leaked and the error says why.
+auto path = reloco::string::try_concat(dir, "/", name);            // "dir/name"
+auto csv  = reloco::string::try_join(fields, ",");                 // any range of string_view-convertibles
+// Append several parts to an existing string; it grows at most once and is unchanged on failure.
+// Views that alias the string itself (s.view()) are allowed.
+auto ok   = path->try_append_all("/", ext);
+// Explicit allocator: reloco::string::try_allocate_concat(alloc, a, b, ...)
+```
+
+## More sequence helpers
+
+```cpp
+reloco::vector<int> v = /* 1 2 5 */;
+// Insert a range before index 2 (reserves first: unchanged on failure). The span may alias v itself.
+auto ok = v.try_insert_span(2, reloco::span<const int>(mid, 2));
+// Remove `count` elements starting at `first` in one pass.
+ok = v.try_erase_range(1, 3);
+// O(1) unordered removal: the last element takes the removed one's place.
+ok = v.try_swap_remove(0);
+v.truncate(2);                                   // shorten; no-op if already shorter
+auto tail = v.try_split_off(1);                  // vector<int> with the elements from index 1; v keeps the first 1
+// On a span: first index matching a value or predicate, and a fallible map into an owner.
+auto at   = sp.position(8);                      // optional<size_t>
+auto big  = sp.position_if([](int x) { return x > 10; });
+auto twice = sp.try_map_to([](int x) { return x * 2; });   // result<vector<int>>
+// Convert between owner flavours (copies; fails with capacity_exceeded for fixed-capacity targets).
+auto small = v.try_convert_to<reloco::sso_vector<int, 8>>();
+auto text  = reloco::string::try_create("x")->try_convert_to<reloco::sso_string<16>>();
+```
+
+`vec_deque`, `sso_vec_deque` and `inline_vec_deque` also have `try_create_from(span)`, `try_append(span)` and
+`try_assign(span)`. Unlike the vectors they **reject** a span that points into the deque's own ring storage with
+`error::invalid_argument` (the ring can wrap and reallocate, so supporting aliasing would be fragile); clone first.
+
+## Spans, string views and byte reinterpretation
+
+```cpp
+#include <reloco/span.hpp>
+#include <reloco/string_view.hpp>   // string_view.hpp only forward-declares span; include span.hpp where you convert
+
+// string_view <-> span<const char>, both implicit.
+reloco::string_view sv = "hello";
+reloco::span<const char> chars = sv;
+reloco::string_view again = chars;                 // also from span<char>
+auto text = reloco::string_view::from_bytes(reloco::span<const uint8_t>(raw, n));   // bytes as text, no validation
+
+// "Downcast" to a smaller unit. sizeof(U) must divide sizeof(T), alignof(U) <= alignof(T), const is preserved,
+// and U must be byte-like (char, signed/unsigned char, uint8_t, char8_t, std::byte) so strict aliasing holds.
+reloco::span<uint32_t> words = /* ... */;
+reloco::span<uint8_t> u8 = words.cast_to<uint8_t>();   // 4x the elements
+auto c  = words.as_chars();                            // span<char>      (span<const char> for const T)
+auto u  = words.as_uint8();                            // span<uint8_t>
+auto wb = words.as_writable_bytes();                   // span<std::byte> (non-const only)
+auto s8 = sv.as_uint8();                               // also on string_view; sv.as_bytes() -> span<const std::byte>
+// char <-> uint8_t is the identity-size case: span<char>::as_uint8() just retypes the span.
+
+// Any other trivially copyable U (e.g. uint64_t -> uint32_t) needs the explicit opt-in, because it can violate
+// strict aliasing:
+auto halves = words64.unsafe_cast_to<uint32_t>();
+
+// The checked direction for parsing: bytes -> typed records. Fails (invalid_argument) if misaligned or the byte
+// count is not a multiple of sizeof(U).
+auto records = packet_bytes.try_cast_to<const Header>();
+```
+
+Header layout: `byte_like.hpp` (the `is_byte_like_v` trait) has no dependencies; `string_view.hpp` depends on it and
+forward-declares `span`, while `span.hpp` never includes `string_view.hpp`, so there is no include cycle (and
+`string.hpp` does not pull in `span.hpp`'s iterator machinery).

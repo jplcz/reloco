@@ -124,6 +124,17 @@ public:
 
   constexpr inline_vector() noexcept : base_t(this->storage_bytes_, Capacity) {}
 
+  /**
+   * @brief Copies @p items into a new inline_vector; `error::capacity_exceeded` if more than `Capacity` elements
+   * (nothing is allocated either way). `T` must be copy-constructible.
+   */
+  [[nodiscard]] static result<inline_vector> try_create_from(span<const T> items) noexcept {
+    inline_vector vec;
+    if (auto res = vec.try_append(items); !res)
+      return unexpected(res.error());
+    return vec;
+  }
+
   inline_vector(const inline_vector &) = delete;
   inline_vector &operator=(const inline_vector &) = delete;
 

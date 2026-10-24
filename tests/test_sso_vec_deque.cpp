@@ -7,6 +7,17 @@
 
 using namespace reloco;
 
+TEST(SsoVecDequeTest, TryCreateFromSpills) {
+  const int src[] = {1, 2, 3, 4, 5};
+  auto small = sso_vec_deque<int, 4>::try_create_from(span<const int>(src, 3));
+  ASSERT_TRUE(small);
+  EXPECT_EQ(small->size(), 3u);
+  auto big = sso_vec_deque<int, 4>::try_create_from(span<const int>(src, 5));
+  ASSERT_TRUE(big);
+  EXPECT_EQ(big->size(), 5u);
+  EXPECT_EQ((*big)[4], 5);
+}
+
 TEST(SsoVecDequeTest, StaysInlineUntilCapacityExceeded) {
   sso_vec_deque<int, 4> d;
   EXPECT_TRUE(d.is_inline());

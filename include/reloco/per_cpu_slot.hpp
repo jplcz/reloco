@@ -66,10 +66,10 @@ public:
   /** @brief True after `init()`. */
   [[nodiscard]] bool is_ready() const noexcept { return ready_ != 0; }
 
-  /** @brief Builds the object with `init`; a second call is a no-op (CPU bring-up may be retried). */
-  void init(init_fn init) & noexcept {
+  /** @brief Builds the object with `make`; a second call is a no-op (CPU bring-up may be retried). */
+  void init(init_fn make) & noexcept {
     if (ready_ == 0) {
-      ::new (static_cast<void *>(storage_)) T(init());
+      ::new (static_cast<void *>(storage_)) T(make());
       ready_ = 1;
     }
   }

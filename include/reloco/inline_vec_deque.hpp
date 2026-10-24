@@ -93,6 +93,13 @@ public:
 
   constexpr inline_vec_deque() noexcept : base_t(this->storage_bytes_, Capacity) {}
 
+  /// Copies @p items; `error::capacity_exceeded` if more than `Capacity` elements (`T` must be copy-constructible).
+  [[nodiscard]] static result<inline_vec_deque> try_create_from(span<const T> items) noexcept {
+    inline_vec_deque deque;
+    if (auto res = deque.try_append(items); !res)
+      return unexpected(res.error());
+    return deque;
+  }
   inline_vec_deque(const inline_vec_deque &) = delete;
   inline_vec_deque &operator=(const inline_vec_deque &) = delete;
 

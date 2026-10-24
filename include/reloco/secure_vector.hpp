@@ -128,6 +128,25 @@ public:
     return try_allocate(default_allocator(), initial_cap);
   }
 
+  /** @brief Copies @p items into a new secure buffer; any partial buffer is wiped if a later element fails. */
+  [[nodiscard]] static result<secure_vector> try_allocate_from(allocator_ref alloc, span<const T> items) noexcept {
+    auto vec = try_allocate(alloc, items.size());
+    if (!vec) {
+      return vec;
+    }
+    for (const T &item : items) {
+      if (auto res = vec->try_push_back(item); !res) {
+        return unexpected(res.error());
+      }
+    }
+    return vec;
+  }
+
+  /** @brief `try_allocate_from` using the default allocator. */
+  [[nodiscard]] static result<secure_vector> try_create_from(span<const T> items) noexcept {
+    return try_allocate_from(default_allocator(), items);
+  }
+
   /** @brief Fallible deep copy into a new secure buffer from @p alloc. */
   [[nodiscard]] result<secure_vector> try_clone(allocator_ref alloc) const noexcept {
     secure_vector clone(alloc);

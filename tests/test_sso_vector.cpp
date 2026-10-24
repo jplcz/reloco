@@ -54,6 +54,22 @@ struct move_only {
 
 } // namespace
 
+TEST(SsoVectorTest, TryCreateFromStaysInlineThenSpills) {
+  const int src[] = {1, 2, 3, 4, 5, 6};
+  auto small = sso_vector<int, 4>::try_create_from(reloco::span<const int>(src, 3));
+  ASSERT_TRUE(small);
+  EXPECT_EQ(small->size(), 3u);
+  auto big = sso_vector<int, 4>::try_create_from(reloco::span<const int>(src, 6));
+  ASSERT_TRUE(big);
+  ASSERT_EQ(big->size(), 6u);
+  EXPECT_EQ((*big)[5], 6);
+  // Appending a span of its own elements across the inline->heap spill must not read moved-from storage.
+  ASSERT_TRUE(small->try_append(reloco::span<const int>(small->data(), 3)));
+  ASSERT_TRUE(small->try_append(reloco::span<const int>(small->data(), 6)));
+  ASSERT_EQ(small->size(), 12u);
+  EXPECT_EQ((*small)[11], 3);
+}
+
 TEST(SsoVectorTest, DefaultConstructedIsEmptyAndInline) {
   sso_vector<int, 4> v;
   EXPECT_TRUE(v.empty());

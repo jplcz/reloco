@@ -6,9 +6,12 @@
 #include <reloco/allocator.hpp>
 #include <reloco/default_allocator.hpp>
 #include <reloco/heap_allocator.hpp>
+#include <reloco/inline_string.hpp>
+#include <reloco/sso_string.hpp>
 #include <reloco/string.hpp>
 #include <reloco/unique_ptr.hpp>
 
+#include <array>
 #include <cstddef>
 #include <string>
 #include <utility>
@@ -17,12 +20,58 @@ using reloco::error;
 using reloco::string;
 using reloco::string_view;
 
+TEST(StringTest, TryConvertToOtherOwners) {
+  auto s = reloco::string::try_create(reloco::string_view("hello"));
+  ASSERT_TRUE(s);
+  auto sso = s->try_convert_to<reloco::sso_string>();
+  ASSERT_TRUE(sso);
+  EXPECT_EQ(sso->view(), reloco::string_view("hello"));
+  auto back = sso->try_convert_to<reloco::string>();
+  ASSERT_TRUE(back);
+  EXPECT_EQ(back->view(), reloco::string_view("hello"));
+  auto fixed = back->try_convert_to<reloco::inline_string<8>>();
+  ASSERT_TRUE(fixed);
+  EXPECT_EQ(fixed->view(), reloco::string_view("hello"));
+  auto tiny = back->try_convert_to<reloco::inline_string<3>>();
+  EXPECT_FALSE(tiny);
+}
+
+TEST(StringTest, TryConcatJoinsPartsWithOneAllocation) {
+  auto s = reloco::string::try_concat(reloco::string_view("dir"), reloco::string_view("/"), reloco::string_view("file"));
+  ASSERT_TRUE(s);
+  EXPECT_EQ(s->view(), reloco::string_view("dir/file"));
+}
+
+TEST(StringTest, TryAppendAllHandlesAliasingViews) {
+  auto s = reloco::string::try_create(reloco::string_view("ab"));
+  ASSERT_TRUE(s);
+  ASSERT_TRUE(s->try_append_all(s->view(), reloco::string_view("-"), s->view()));
+  EXPECT_EQ(s->view(), reloco::string_view("abab-ab"));
+}
+
+TEST(StringTest, TryJoinInsertsSeparatorsBetweenItems) {
+  const reloco::string_view parts[] = {"a", "b", "c"};
+  auto s = reloco::string::try_join(parts, ", ");
+  ASSERT_TRUE(s);
+  EXPECT_EQ(s->view(), reloco::string_view("a, b, c"));
+  auto empty = reloco::string::try_join(std::array<reloco::string_view, 0>{}, ",");
+  ASSERT_TRUE(empty);
+  EXPECT_TRUE(empty->empty());
+}
+
 TEST(StringTest, DefaultConstructedIsEmpty) {
   string s;
   EXPECT_TRUE(s.empty());
   EXPECT_EQ(s.size(), 0u);
   EXPECT_EQ(s.capacity(), 0u);
   EXPECT_STREQ(s.data(), "");
+}
+
+TEST(StringTest, StringViewTryToStringCopies) {
+  const reloco::string_view sv("hello");
+  auto s = sv.try_to_string();
+  ASSERT_TRUE(s);
+  EXPECT_EQ(s->view(), "hello");
 }
 
 TEST(StringTest, TryCreateFromView) {

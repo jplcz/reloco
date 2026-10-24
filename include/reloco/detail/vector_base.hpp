@@ -80,11 +80,13 @@
 
 #include "../lifetime.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstring>
 #include <functional>
 #include <iterator>
 #include <limits>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 
@@ -591,6 +593,21 @@ protected:
 
   ~typed_vector_base() noexcept = default;
 
+  static constexpr std::size_t not_aliased = static_cast<std::size_t>(-1);
+
+  /// Index of `items.data()` within this vector's elements, or `not_aliased` if the span points elsewhere.
+  [[nodiscard]] std::size_t own_offset_of(span<const T> items) const noexcept {
+    if (this->empty()) {
+      return not_aliased;
+    }
+    const std::less<const T *> before;
+    const T *first = this->data();
+    if (before(items.data(), first) || !before(items.data(), first + this->size())) {
+      return not_aliased;
+    }
+    return static_cast<std::size_t>(items.data() - first);
+  }
+
 public:
   /**
    * @brief Ensures storage for at least @p new_cap elements, growing the
@@ -650,6 +667,137 @@ public:
   [[nodiscard]] result<void> try_push_back(T &&value) & noexcept {
     auto res = try_emplace_back(std::move(value));
     return res ? result<void>{} : unexpected(res.error());
+  }
+
+  /**
+   * @brief Copies the elements into a new container of type @p Other (e.g. `vector<T>`, `sso_vector<T, N>`,
+   * `boxed_slice<T>`) via its `try_create_from`. `T` must be copy-constructible.
+   */
+  template <typename Other> [[nodiscard]] result<Other> try_convert_to() const noexcept {
+    return Other::try_create_from(span<const T>(static_cast<const T *>(this->data_), this->size()));
+  }
+
+  /// `try_convert_to` using an explicit allocator (`Other::try_allocate_from`).
+  template <typename Other> [[nodiscard]] result<Other> try_convert_to(allocator_ref alloc) const noexcept {
+    return Other::try_allocate_from(alloc, span<const T>(static_cast<const T *>(this->data_), this->size()));
+  }
+
+  /**
+   * @brief Appends copies of every element of @p items (`T` must be copy-constructible). Capacity is reserved up
+   * front, so on allocation failure (or `error::capacity_exceeded` for fixed-capacity vectors) the vector is
+   * unchanged. @p items may alias this vector's own elements: its position is re-derived after the reserve moves
+   * the storage, so no temporary copy is needed.
+   */
+  [[nodiscard]] result<void> try_append(span<const T> items) & noexcept {
+    static_assert(std::is_copy_constructible_v<T>, "appending a span requires a copy-constructible element type");
+    if (items.empty()) {
+      return {};
+    }
+    const std::size_t offset = own_offset_of(items);
+    if (auto res = this->try_reserve(this->size() + items.size()); !res) {
+      return res;
+    }
+    const T *source = offset == not_aliased ? items.data() : this->data() + offset;
+    for (std::size_t i = 0; i < items.size(); ++i) {
+      // Reserved above, so this cannot fail to allocate; `source` stays valid because the storage no longer moves.
+      if (auto res = try_push_back(source[i]); !res) {
+        return res;
+      }
+    }
+    return {};
+  }
+
+  /**
+   * @brief Replaces the contents with copies of @p items. Capacity is reserved first, so allocation failure leaves
+   * the vector unchanged. @p items may alias this vector (e.g. keeping only a sub-range of itself).
+   */
+  [[nodiscard]] result<void> try_assign(span<const T> items) & noexcept {
+    static_assert(std::is_copy_constructible_v<T>, "assigning a span requires a copy-constructible element type");
+    if (items.empty()) {
+      this->clear();
+      return {};
+    }
+    const std::size_t offset = own_offset_of(items);
+    if (offset == not_aliased) {
+      if (auto res = this->try_reserve(items.size()); !res) {
+        return res;
+      }
+      this->clear();
+      return try_append(items);
+    }
+    // Keep only the sub-range: drop what follows it, then what precedes it.
+    while (this->size() > offset + items.size()) {
+      std::ignore = try_pop_back();
+    }
+    for (std::size_t i = 0; i < offset; ++i) {
+      if (auto res = try_erase_at(0); !res) {
+        return res;
+      }
+    }
+    return {};
+  }
+
+  /**
+   * @brief Inserts copies of @p items before @p index. Capacity is reserved first, so on failure the vector is
+   * unchanged (`error::out_of_bounds` if @p index > size()). @p items may alias this vector.
+   */
+  [[nodiscard]] result<void> try_insert_span(size_type index, span<const T> items) & noexcept {
+    static_assert(std::is_nothrow_move_assignable_v<T> && std::is_nothrow_swappable_v<T>,
+                  "inserting a span rotates elements and requires nothrow move-assignment and swap");
+    if (index > this->size()) {
+      return unexpected(error::out_of_bounds);
+    }
+    const size_type old_size = this->size();
+    if (auto res = try_append(items); !res) {
+      return res;
+    }
+    // The copies landed at the back; rotate them down to `index`.
+    T *first = static_cast<T *>(this->data_) + index;
+    std::rotate(first, static_cast<T *>(this->data_) + old_size, static_cast<T *>(this->data_) + this->size());
+    return {};
+  }
+
+  /**
+   * @brief Removes `count` elements starting at @p first in one pass (`error::out_of_bounds` if the range does not
+   * fit). Surviving elements keep their relative order.
+   */
+  [[nodiscard]] result<void> try_erase_range(size_type first, size_type count) & noexcept {
+    if (first > this->size() || count > this->size() - first) {
+      return unexpected(error::out_of_bounds);
+    }
+    if (count == 0) {
+      return {};
+    }
+    size_type position = 0;
+    this->retain([&position, first, count](const T &) noexcept {
+      const size_type here = position++;
+      return here < first || here >= first + count;
+    });
+    return {};
+  }
+
+  /**
+   * @brief Removes the element at @p index in O(1) by moving the last element into its place (order is not
+   * preserved; Rust `Vec::swap_remove`). `error::out_of_bounds` if @p index is invalid.
+   */
+  [[nodiscard]] result<void> try_swap_remove(size_type index) & noexcept {
+    static_assert(std::is_nothrow_swappable_v<T>, "swap_remove requires nothrow swap");
+    if (index >= this->size()) {
+      return unexpected(error::out_of_bounds);
+    }
+    T *items = static_cast<T *>(this->data_);
+    if (index + 1 != this->size()) {
+      using std::swap;
+      swap(items[index], items[this->size() - 1]);
+    }
+    return try_pop_back();
+  }
+
+  /** @brief Shortens the vector to @p new_length elements; no-op if it is already that short. */
+  void truncate(size_type new_length) & noexcept {
+    while (this->size() > new_length) {
+      std::ignore = try_pop_back();
+    }
   }
 
   /**
@@ -774,9 +922,9 @@ public:
    * Flattened: delegates compaction, shifting, and destruction to `retain_base`.
    */
   template <typename Pred> void retain(Pred &&pred) & noexcept {
-    // Type-erase the predicate into a function_ref taking `const void*`
-    function_ref<bool(const void *)> erased_pred(
-        [&pred](const void *elem_ptr) noexcept { return pred(*static_cast<const T *>(elem_ptr)); });
+    // Type-erase the predicate into a function_ref taking `const void*` (the lambda must outlive the ref, so name it)
+    auto thunk = [&pred](const void *elem_ptr) noexcept { return pred(*static_cast<const T *>(elem_ptr)); };
+    function_ref<bool(const void *)> erased_pred(thunk);
 
     this->retain_base(detail::get_operations_for<T>(), detail::metadata_for<T>, erased_pred);
   }
@@ -791,9 +939,10 @@ public:
       return;
 
     // Type-erase the binary predicate into a function_ref taking two `const void*` pointers
-    function_ref<bool(const void *, const void *)> erased_same([&same](const void *a_ptr, const void *b_ptr) noexcept {
+    auto thunk = [&same](const void *a_ptr, const void *b_ptr) noexcept {
       return same(*static_cast<const T *>(a_ptr), *static_cast<const T *>(b_ptr));
-    });
+    };
+    function_ref<bool(const void *, const void *)> erased_same(thunk);
 
     this->dedup_by_base(detail::get_operations_for<T>(), detail::metadata_for<T>, erased_same);
   }
@@ -1213,6 +1362,16 @@ protected:
 
   ~typed_deque_base() noexcept = default;
 
+  /// True if @p items overlaps this deque's ring storage (live or spare slots).
+  [[nodiscard]] bool overlaps_storage(span<const T> items) const noexcept {
+    if (items.empty() || this->data_ == nullptr || this->cap_ == 0) {
+      return false;
+    }
+    const std::less<const T *> before;
+    const T *first = static_cast<const T *>(this->data_);
+    return !(before(items.data() + items.size() - 1, first) || !before(items.data(), first + this->cap_));
+  }
+
 public:
   [[nodiscard]] result<void> try_reserve(size_type new_cap) & noexcept {
     return Base::try_reserve_base(detail::get_operations_for<T>(), Base::get_allocator(), metadata_for<T>, new_cap,
@@ -1464,6 +1623,47 @@ public:
       // Safe to ignore result since we just checked length
       std::ignore = try_pop_back();
     }
+  }
+
+  /**
+   * @brief Appends copies of every element of @p items. Capacity is reserved first, so on failure the deque is
+   * unchanged. A span that points into this deque's own ring storage is rejected with `error::invalid_argument`
+   * (the ring may wrap or reallocate, so supporting it would be fragile; copy via `try_clone` first).
+   */
+  [[nodiscard]] result<void> try_append(span<const T> items) & noexcept {
+    static_assert(std::is_copy_constructible_v<T>, "appending a span requires a copy-constructible element type");
+    if (items.empty()) {
+      return {};
+    }
+    if (overlaps_storage(items)) {
+      return unexpected(error::invalid_argument);
+    }
+    if (auto res = this->try_reserve(this->len_ + items.size()); !res) {
+      return res;
+    }
+    for (const T &item : items) {
+      // Reserved above, so this cannot fail to allocate.
+      if (auto res = try_push_back(item); !res) {
+        return res;
+      }
+    }
+    return {};
+  }
+
+  /**
+   * @brief Replaces the contents with copies of @p items; allocation failure leaves the deque unchanged.
+   * Aliasing spans are rejected as in `try_append`.
+   */
+  [[nodiscard]] result<void> try_assign(span<const T> items) & noexcept {
+    static_assert(std::is_copy_constructible_v<T>, "assigning a span requires a copy-constructible element type");
+    if (overlaps_storage(items)) {
+      return unexpected(error::invalid_argument);
+    }
+    if (auto res = this->try_reserve(items.size()); !res) {
+      return res;
+    }
+    this->clear();
+    return try_append(items);
   }
 
   template <typename OtherBase>

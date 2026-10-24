@@ -231,7 +231,7 @@ TEST(IteratorTest, FromFnDrivesGeneratorFromAClosure) {
 }
 
 TEST(IteratorTest, OnceYieldsExactlyOneItem) {
-  auto o = reloco::once(std::string("hi"));
+  auto o = reloco::once_item(std::string("hi"));
   auto first = o.next();
   ASSERT_TRUE(first.has_value());
   EXPECT_EQ(*first, "hi");

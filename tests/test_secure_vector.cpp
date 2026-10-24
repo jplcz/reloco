@@ -120,6 +120,13 @@ static_assert(!std::is_convertible_v<reloco::vector<std::uint8_t>, secure_vector
 
 // ---- secure_vector: the wipe ------------------------------------------------
 
+TEST(SecureVectorFromSpanTest, TryCreateFromCopiesSpan) {
+  const std::uint8_t src[] = {1, 2, 3};
+  auto v = secure_vector<std::uint8_t>::try_create_from(reloco::span<const std::uint8_t>(src, 3));
+  ASSERT_TRUE(v);
+  EXPECT_EQ(v->size(), 3u);
+}
+
 TEST_F(spy_fixture, PlainVectorFreesSecretsUnwiped) {
   // Control: proves the spy detects an unwiped free.
   {

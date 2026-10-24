@@ -3,6 +3,28 @@
 
 using namespace reloco;
 
+TEST(VecDequeTest, SpanFactoriesAppendAssignAndRejectAliasing) {
+  const int src[] = {1, 2, 3};
+  auto d = vec_deque<int>::try_create_from(span<const int>(src, 3));
+  ASSERT_TRUE(d);
+  ASSERT_EQ(d->size(), 3u);
+  ASSERT_TRUE(d->try_append(span<const int>(src, 2)));
+  EXPECT_EQ(d->size(), 5u);
+  EXPECT_EQ((*d)[4], 2);
+  ASSERT_TRUE(d->try_assign(span<const int>(src, 1)));
+  ASSERT_EQ(d->size(), 1u);
+  // Wrap the ring, then verify a span into its storage is refused and the deque is untouched.
+  ASSERT_TRUE(d->try_pop_front());
+  for (int i = 0; i < 3; ++i) ASSERT_TRUE(d->try_push_back(i));
+  auto slices = std::as_const(*d).as_slices();
+  EXPECT_EQ(d->try_append(slices.first).error(), error::invalid_argument);
+  EXPECT_EQ(d->try_assign(slices.first).error(), error::invalid_argument);
+  EXPECT_EQ(d->size(), 3u);
+  auto from_span = span<const int>(src, 3).try_to_vector<vec_deque<int>>();
+  ASSERT_TRUE(from_span);
+  EXPECT_EQ(from_span->size(), 3u);
+}
+
 TEST(VecDequeTest, BasicPushAndPop) {
   auto deque_res = vec_deque<int>::try_create(4);
   ASSERT_TRUE(deque_res.has_value());

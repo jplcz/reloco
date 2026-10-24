@@ -50,6 +50,7 @@
  */
 
 #include "allocator.hpp"
+#include "array.hpp"
 #include "default_allocator.hpp"
 #include "detail/assert.hpp"
 #include "error.hpp"
@@ -284,6 +285,88 @@ public:
 
   [[nodiscard]] result<void> try_push_back(CharT ch) & noexcept { return try_append(view_type(&ch, 1)); }
 
+  /**
+   * @brief Appends every view in order, growing at most once. On failure the string is unchanged.
+   * @note Views aliasing this string are safe (they are first gathered into a temporary).
+   */
+  template <class... Vs>
+  [[nodiscard]] result<void> try_append_all(const Vs &...parts) & noexcept {
+    static_assert(sizeof...(Vs) > 0 && (std::is_convertible_v<const Vs &, view_type> && ...),
+                  "every part must be convertible to the string view type");
+    const array<view_type, sizeof...(Vs)> views{{static_cast<view_type>(parts)...}};
+    size_type total = 0;
+    for (const view_type v : views) {
+      if (v.size() > static_cast<size_type>(-1) - 1 - total)
+        return unexpected(error::capacity_exceeded);
+      total += v.size();
+    }
+    bool any_alias = false;
+    for (const view_type v : views)
+      any_alias = any_alias || aliases(v);
+    if (any_alias) {
+      auto joined = try_allocate(alloc_, view_type());
+      if (!joined)
+        return unexpected(joined.error());
+      if (auto r = joined->try_reserve(total); !r)
+        return r;
+      for (const view_type v : views)
+        if (auto r = joined->try_append(v); !r)
+          return r;
+      return try_append(joined->view());
+    }
+    if (size_ + total > cap_)
+      if (auto r = try_reserve(size_ + total); !r)
+        return r;
+    for (const view_type v : views)
+      TraitsT::copy(data_ + size_, v.data(), v.size()), size_ += v.size();
+    data_[size_] = CharT();
+    return {};
+  }
+
+  /** @brief Builds a new string from the concatenation of @p parts (one allocation). */
+  template <class... Vs>
+  [[nodiscard]] static result<basic_string> try_concat(const Vs &...parts) noexcept {
+    static_assert(sizeof...(Vs) > 0 && (std::is_convertible_v<const Vs &, view_type> && ...),
+                  "every part must be convertible to the string view type");
+    auto out = try_create(view_type());
+    if (!out)
+      return out;
+    if (auto r = out->try_append_all(parts...); !r)
+      return unexpected(r.error());
+    return out;
+  }
+
+  /** @brief `try_concat` with an explicit allocator. */
+  template <class... Vs>
+  [[nodiscard]] static result<basic_string> try_allocate_concat(allocator_ref alloc, const Vs &...parts) noexcept {
+    static_assert(sizeof...(Vs) > 0 && (std::is_convertible_v<const Vs &, view_type> && ...),
+                  "every part must be convertible to the string view type");
+    auto out = try_allocate(alloc, view_type());
+    if (!out)
+      return out;
+    if (auto r = out->try_append_all(parts...); !r)
+      return unexpected(r.error());
+    return out;
+  }
+
+  /** @brief Joins @p items with @p separator between each (no trailing separator); empty input gives an empty string. */
+  template <class Range>
+  [[nodiscard]] static result<basic_string> try_join(const Range &items, view_type separator) noexcept {
+    auto out = try_create(view_type());
+    if (!out)
+      return out;
+    bool first = true;
+    for (const auto &item : items) {
+      if (!first)
+        if (auto r = out->try_append(separator); !r)
+          return unexpected(r.error());
+      first = false;
+      if (auto r = out->try_append(static_cast<view_type>(item)); !r)
+        return unexpected(r.error());
+    }
+    return out;
+  }
+
   void pop_back() & noexcept {
     RELOCO_ASSERT(!empty(), "pop_back() called on empty string");
     --size_;
@@ -485,6 +568,19 @@ public:
   }
 
   [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE const_pointer unsafe_c_str() const && = delete;
+
+  /**
+   * @brief Copies the contents into a new string type @p Other (e.g. `string`, `sso_string<N>`,
+   * `inline_string<N>`) via its `try_create(view)`.
+   */
+  template <typename Other> [[nodiscard]] result<Other> try_convert_to() const noexcept {
+    return Other::try_create(view());
+  }
+
+  /// `try_convert_to` with an explicit allocator (`Other::try_allocate`); not available for `inline_string`.
+  template <typename Other> [[nodiscard]] result<Other> try_convert_to(allocator_ref alloc) const noexcept {
+    return Other::try_allocate(alloc, view());
+  }
 
   [[nodiscard]] view_type view() const & noexcept RELOCO_LIFETIMEBOUND { return view_type(data(), size_); }
 

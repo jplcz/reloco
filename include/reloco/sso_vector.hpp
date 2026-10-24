@@ -162,6 +162,24 @@ public:
   }
 
   /**
+   * @brief Copies @p items into a new sso_vector, using the given allocator. Stays inline when
+   * `items.size() <= InlineCapacity`. `T` must be copy-constructible.
+   */
+  [[nodiscard]] static result<sso_vector> try_allocate_from(allocator_ref alloc, span<const T> items) noexcept {
+    auto vec = try_allocate(alloc, items.size());
+    if (!vec)
+      return vec;
+    if (auto res = vec->try_append(items); !res)
+      return unexpected(res.error());
+    return vec;
+  }
+
+  /** @brief `try_allocate_from` using the default allocator. */
+  [[nodiscard]] static result<sso_vector> try_create_from(span<const T> items) noexcept {
+    return try_allocate_from(default_allocator(), items);
+  }
+
+  /**
    * @brief Fallible deep copy using a caller-chosen allocator.
    *
    * Uses a single `std::memcpy` when `T` is trivially copyable and does

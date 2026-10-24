@@ -4,6 +4,9 @@
 
 #include <gtest/gtest.h>
 #include <reloco/allocator.hpp>
+#include <reloco/boxed_slice.hpp>
+#include <reloco/inline_vector.hpp>
+#include <reloco/sso_vector.hpp>
 #include <reloco/default_allocator.hpp>
 #include <reloco/heap_allocator.hpp>
 #include <reloco/relocatable.hpp>
@@ -66,6 +69,70 @@ TEST(VectorTest, TryCreateReservesCapacity) {
   ASSERT_TRUE(v);
   EXPECT_TRUE(v->empty());
   EXPECT_GE(v->capacity(), 8u);
+}
+
+TEST(VectorTest, TryCreateSizedValueInitializesElements) {
+  auto v = vector<int>::try_create_sized(5);
+  ASSERT_TRUE(v);
+  EXPECT_EQ(v->size(), 5u);
+  for (const int x : *v) {
+    EXPECT_EQ(x, 0);
+  }
+  auto empty = vector<int>::try_create_sized(0);
+  ASSERT_TRUE(empty);
+  EXPECT_TRUE(empty->empty());
+}
+
+TEST(VectorTest, TryAllocateSizedUsesExplicitAllocator) {
+  reloco::allocator_ref heap = reloco::allocator<reloco::heap_allocator_tag>::ref();
+  auto v = vector<int>::try_allocate_sized(heap, 3);
+  ASSERT_TRUE(v);
+  EXPECT_EQ(v->size(), 3u);
+}
+
+TEST(VectorTest, TryCreateFromCopiesSpan) {
+  const int src[] = {1, 2, 3};
+  auto v = vector<int>::try_create_from(reloco::span<const int>(src, 3));
+  ASSERT_TRUE(v);
+  ASSERT_EQ(v->size(), 3u);
+  EXPECT_EQ((*v)[2], 3);
+}
+
+TEST(VectorTest, SpanTryToVectorCopies) {
+  const int src[] = {4, 5};
+  auto v = reloco::span<const int>(src, 2).try_to_vector();
+  ASSERT_TRUE(v);
+  EXPECT_EQ(v->size(), 2u);
+  EXPECT_EQ((*v)[0], 4);
+}
+
+TEST(VectorTest, TryAppendSpanAndAssign) {
+  auto v = vector<int>::try_create();
+  ASSERT_TRUE(v);
+  const int src[] = {1, 2, 3};
+  ASSERT_TRUE(v->try_append(reloco::span<const int>(src, 3)));
+  ASSERT_TRUE(v->try_append(reloco::span<const int>(src, 2)));
+  EXPECT_EQ(v->size(), 5u);
+  EXPECT_EQ((*v)[3], 1);
+  ASSERT_TRUE(v->try_assign(reloco::span<const int>(src, 1)));
+  EXPECT_EQ(v->size(), 1u);
+}
+
+TEST(VectorTest, TryAppendAndAssignFromOwnStorage) {
+  auto v = vector<int>::try_create(1); // tiny capacity so appending must reallocate
+  ASSERT_TRUE(v);
+  ASSERT_TRUE(v->try_push_back(7));
+  ASSERT_TRUE(v->try_push_back(8));
+  ASSERT_TRUE(v->try_append(reloco::span<const int>(v->data(), v->size())));
+  ASSERT_EQ(v->size(), 4u);
+  EXPECT_EQ((*v)[2], 7);
+  EXPECT_EQ((*v)[3], 8);
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+  ASSERT_TRUE(v->try_assign(reloco::span<const int>(v->data() + 1, 2)));
+  RELOCO_END_UNSAFE_BUFFER_USAGE
+  ASSERT_EQ(v->size(), 2u);
+  EXPECT_EQ((*v)[0], 8);
+  EXPECT_EQ((*v)[1], 7);
 }
 
 TEST(VectorTest, TryAllocateUsesExplicitAllocator) {
@@ -493,6 +560,93 @@ TEST(VectorTest, TryResizeToSameSizeIsNoop) {
   EXPECT_EQ(v->size(), 2u);
   EXPECT_EQ((*v)[0], 1);
   EXPECT_EQ((*v)[1], 2);
+}
+
+TEST(VectorTest, TryConvertToOtherVectorFlavors) {
+  vector<int> v;
+  for (int i : {1, 2, 3}) ASSERT_TRUE(v.try_push_back(i));
+  auto sso = v.try_convert_to<reloco::sso_vector<int, 2>>();
+  ASSERT_TRUE(sso);
+  EXPECT_EQ(sso->size(), 3u);
+  auto fixed = v.try_convert_to<reloco::inline_vector<int, 3>>();
+  ASSERT_TRUE(fixed);
+  auto tiny = v.try_convert_to<reloco::inline_vector<int, 2>>();
+  EXPECT_EQ(tiny.error(), error::capacity_exceeded);
+  auto boxed = fixed->try_convert_to<reloco::boxed_slice<int>>();
+  ASSERT_TRUE(boxed);
+  auto again = boxed->try_convert_to<vector<int>>();
+  ASSERT_TRUE(again);
+  EXPECT_EQ((*again)[2], 3);
+}
+
+TEST(VectorTest, RetainAndDedupCompileAndWork) {
+  vector<int> v;
+  for (int i : {1, 1, 2, 3, 3, 3, 4, 5, 6}) ASSERT_TRUE(v.try_push_back(i));
+  v.dedup();
+  ASSERT_EQ(v.size(), 6u);
+  v.retain([](const int &x) { return x % 2 == 0; });
+  ASSERT_EQ(v.size(), 3u);
+  EXPECT_EQ(v[0], 2);
+  EXPECT_EQ(v[2], 6);
+  v.dedup_by([](const int &a, const int &b) { return b - a == 2; });
+  EXPECT_EQ(v.size(), 2u); // {2,4,6}: 4 is 2 apart from 2 (dropped), 6 is 4 apart from 2 (kept)
+}
+
+TEST(VectorTest, TryInsertSpanInsertsInMiddleAndHandlesAliasing) {
+  vector<int> v;
+  for (int i : {1, 2, 5}) ASSERT_TRUE(v.try_push_back(i));
+  const int mid[] = {3, 4};
+  ASSERT_TRUE(v.try_insert_span(2, reloco::span<const int>(mid, 2)));
+  ASSERT_EQ(v.size(), 5u);
+  for (std::size_t i = 0; i < 5; ++i) EXPECT_EQ(v[i], static_cast<int>(i) + 1);
+  // Alias own storage: insert [1,2] at the front (storage reallocates during the reserve).
+  ASSERT_TRUE(v.try_insert_span(0, reloco::span<const int>(v.data(), 2)));
+  ASSERT_EQ(v.size(), 7u);
+  EXPECT_EQ(v[0], 1);
+  EXPECT_EQ(v[1], 2);
+  EXPECT_EQ(v[2], 1);
+  EXPECT_EQ(v[6], 5);
+  EXPECT_EQ(v.try_insert_span(99, reloco::span<const int>(mid, 2)).error(), error::out_of_bounds);
+}
+
+TEST(VectorTest, TryEraseRangeSwapRemoveTruncate) {
+  vector<int> v;
+  for (int i = 0; i < 8; ++i) ASSERT_TRUE(v.try_push_back(i));
+  ASSERT_TRUE(v.try_erase_range(2, 3)); // 0 1 5 6 7
+  ASSERT_EQ(v.size(), 5u);
+  EXPECT_EQ(v[2], 5);
+  EXPECT_EQ(v.try_erase_range(4, 2).error(), error::out_of_bounds);
+  ASSERT_TRUE(v.try_swap_remove(0)); // 7 1 5 6
+  ASSERT_EQ(v.size(), 4u);
+  EXPECT_EQ(v[0], 7);
+  EXPECT_EQ(v.try_swap_remove(4).error(), error::out_of_bounds);
+  v.truncate(2);
+  ASSERT_EQ(v.size(), 2u);
+  v.truncate(10);
+  EXPECT_EQ(v.size(), 2u);
+}
+
+TEST(VectorTest, TrySplitOffMovesTail) {
+  vector<int> v;
+  for (int i = 0; i < 5; ++i) ASSERT_TRUE(v.try_push_back(i));
+  auto tail = v.try_split_off(3);
+  ASSERT_TRUE(tail);
+  EXPECT_EQ(v.size(), 3u);
+  ASSERT_EQ(tail->size(), 2u);
+  EXPECT_EQ((*tail)[0], 3);
+  EXPECT_EQ(v.try_split_off(9).error(), error::out_of_bounds);
+}
+
+TEST(VectorTest, SpanPositionAndTryMapTo) {
+  const int a[] = {4, 8, 15};
+  reloco::span<const int> sp(a, 3);
+  EXPECT_EQ(sp.position(8), 1u);
+  EXPECT_FALSE(sp.position(99).has_value());
+  EXPECT_EQ(sp.position_if([](int x) { return x > 10; }), 2u);
+  auto doubled = sp.try_map_to([](int x) { return x * 2; });
+  ASSERT_TRUE(doubled);
+  ASSERT_EQ(doubled->size(), 3u);
+  EXPECT_EQ((*doubled)[2], 30);
 }
 
 TEST(VectorTest, MapVector) {

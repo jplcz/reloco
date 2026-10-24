@@ -8,6 +8,7 @@
 #include "error.hpp"
 #include "expected.hpp"
 #include "optional.hpp"
+#include "byte_like.hpp"
 #include "type_id.hpp"
 #include <algorithm>
 #include <cstddef>
@@ -22,6 +23,9 @@
 RELOCO_BEGIN_UNSAFE_CODE
 
 namespace reloco {
+
+template <typename T> class span; // complete type needed only where the span interop is used (include span.hpp)
+template <typename CharT, typename TraitsT> class basic_string; // complete type needed only where try_to_string() is called
 
 // All of the below classes contain checked pointer arithmetic
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
@@ -73,6 +77,45 @@ public:
   // std-interop-end
 
   constexpr basic_string_view(std::nullptr_t) noexcept {}
+
+  /**
+   * @brief Views the characters of a `span<CharT>`/`span<const CharT>` (implicit, mirroring the implicit
+   * `string_view` -> `span<const CharT>` conversion below). Not lifetimebound: the view borrows what the span
+   * views, not the span object.
+   */
+  template <typename U, std::enable_if_t<std::is_same_v<std::remove_cv_t<U>, CharT>, int> = 0>
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
+  constexpr basic_string_view(const span<U>& chars) noexcept : data_(chars.data()), size_(chars.size()) {}
+
+  // Dependent on CharT so `span` only has to be complete where the interop members are used.
+  template <typename E> using dependent_span_t = span<std::conditional_t<sizeof(CharT) != 0, E, CharT>>;
+
+  /**
+   * @brief Views a byte span (`span<const char>`, `span<const uint8_t>`, `span<const std::byte>` ...) as text.
+   * Only for one-byte `CharT`; the bytes are taken as-is (no validation).
+   */
+  template <typename U, std::enable_if_t<is_byte_like_v<U> && sizeof(CharT) == 1, int> = 0>
+  [[nodiscard]] static basic_string_view from_bytes(const span<U> &bytes) noexcept {
+    return basic_string_view(bytes.template cast_to<const CharT>());
+  }
+
+  /// The characters as a `span<const CharT>` (include `span.hpp` where used).
+  [[nodiscard]] constexpr auto as_span() const noexcept { return span<const CharT>(data_, size_); }
+
+  // string_view -> span<const CharT> is implicit through span's own container constructor.
+
+  /// The characters as raw bytes (`std::byte`).
+  [[nodiscard]] dependent_span_t<const std::byte> as_bytes() const noexcept {
+    // NOLINTNEXTLINE(reloco-banned-construct): byte view of the characters, within the view bounds.
+    return dependent_span_t<const std::byte>(reinterpret_cast<const std::byte *>(data_), size_ * sizeof(CharT));
+  }
+
+  /// The characters as `uint8_t` (one-byte `CharT` only; `cast_to` rejects other sizes at compile time).
+  [[nodiscard]] dependent_span_t<const unsigned char> as_uint8() const noexcept {
+    static_assert(sizeof(CharT) == 1, "as_uint8 requires a one-byte character type");
+    // NOLINTNEXTLINE(reloco-banned-construct): byte view of the characters, within the view bounds.
+    return dependent_span_t<const unsigned char>(reinterpret_cast<const unsigned char *>(data_), size_);
+  }
 
   constexpr basic_string_view(const CharT *str RELOCO_LIFETIMEBOUND RELOCO_LIFETIME_CAPTURE_BY_THIS,
                               size_type len) noexcept
@@ -164,6 +207,21 @@ public:
   }
 
   [[nodiscard]] constexpr base to_std() const noexcept RELOCO_LIFETIMEBOUND { return base(data_, size_); }
+
+  /**
+   * @brief Copies the characters into a new owning `basic_string` (default allocator). Include `string.hpp` where
+   * this is called.
+   */
+  template <typename Str = basic_string<CharT, TraitsT>>
+  [[nodiscard]] result<Str> try_to_string() const noexcept {
+    return Str::try_create(*this);
+  }
+
+  /// `try_to_string()` with an explicit `allocator_ref`.
+  template <typename Alloc, typename Str = basic_string<CharT, TraitsT>>
+  [[nodiscard]] result<Str> try_to_string(Alloc alloc) const noexcept {
+    return Str::try_allocate(alloc, *this);
+  }
   [[nodiscard]] constexpr operator base() const noexcept RELOCO_LIFETIMEBOUND { return base(data_, size_); }
 
   constexpr void remove_prefix(size_type n) & noexcept {
