@@ -86,6 +86,17 @@ RELOCO_BEGIN_UNSAFE_CODE
 namespace reloco::detail {
 
 /**
+ * @brief `constexpr` unless a sanitizer is enabled. Use on functions that call (un)poison_memory_region: those are
+ * not constexpr under ASan/Valgrind, and GCC < 14 rejects a constexpr function that can never be constant evaluated
+ * (-Winvalid-constexpr, an error with -Werror).
+ */
+#if (!RELOCO_ASAN_ENABLED && !RELOCO_VALGRIND_ENABLED)
+#define RELOCO_SANITIZER_CONSTEXPR constexpr
+#else
+#define RELOCO_SANITIZER_CONSTEXPR
+#endif
+
+/**
  * @brief Marks `[addr, addr + size)` as inaccessible to whichever of
  * ASan/Valgrind is enabled (both, either, or neither -- see the file-level
  * comment). A no-op when neither is enabled. The caller must own this

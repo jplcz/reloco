@@ -70,10 +70,10 @@ template <typename T> class optional {
 public:
   using value_type = T;
 
-  constexpr optional() noexcept : has_value_(false) { detail::poison_memory_region(std::addressof(value_), sizeof(T)); }
+  RELOCO_SANITIZER_CONSTEXPR optional() noexcept : has_value_(false) { detail::poison_memory_region(std::addressof(value_), sizeof(T)); }
   // mirrors std::expected/std::optional: implicit construction from a value or error is the API.
   // NOLINTNEXTLINE(reloco-explicit-conversion)
-  constexpr optional(nullopt_t) noexcept : has_value_(false) {
+  RELOCO_SANITIZER_CONSTEXPR optional(nullopt_t) noexcept : has_value_(false) {
     detail::poison_memory_region(std::addressof(value_), sizeof(T));
   }
 

@@ -41,7 +41,7 @@ struct RELOCO_EXPORT RELOCO_POINTER stack_allocator_context {
   std::size_t capacity;
   std::size_t offset = 0;
 
-  constexpr stack_allocator_context(void *ptr RELOCO_LIFETIME_CAPTURE_BY_THIS RELOCO_LT(buffer),
+  RELOCO_SANITIZER_CONSTEXPR stack_allocator_context(void *ptr RELOCO_LIFETIME_CAPTURE_BY_THIS RELOCO_LT(buffer),
                                     std::size_t size) noexcept
       : buffer(static_cast<std::byte *>(ptr)), capacity(size) {
     detail::poison_memory_region(buffer, capacity);
@@ -51,7 +51,7 @@ struct RELOCO_EXPORT RELOCO_POINTER stack_allocator_context {
    * @brief Resets the allocator back to the beginning of the buffer.
    * All previously allocated blocks are invalidated.
    */
-  constexpr void reset() noexcept {
+  RELOCO_SANITIZER_CONSTEXPR void reset() noexcept {
     detail::poison_memory_region(buffer, offset);
     offset = 0;
   }
