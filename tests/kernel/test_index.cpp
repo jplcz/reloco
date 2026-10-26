@@ -243,6 +243,13 @@ TEST(KernelIndexDeathTest, DereferencingEndAssertsWhenChecksAreEnabled) {
 }
 #endif
 
+TEST(KernelIndexTest, SubBlocksSplitABlockInOrder) {
+  std::vector<std::size_t> bases;
+  for (auto blk : kernel::blocks<6>(13)) // blocks at 0 and 6
+    blk.for_each_sub<3>([&](auto sub) { bases.push_back(sub.base()); });
+  EXPECT_EQ(bases, (std::vector<std::size_t>{0, 3, 6, 9}));
+}
+
 } // namespace
 
 RELOCO_END_UNSAFE_BUFFER_USAGE

@@ -4,6 +4,7 @@
 
 ### Added
 
+- Kernel `block::for_each_sub<B2>`: split a proven block into narrower proven blocks. See `docs/kernel/index.md`.
 - Kernel projections `permute`, `diagonal`, `try_reshape`, `try_broadcast` (`project/permute.hpp`, `project/reshape.hpp`). See `docs/kernel/projections.md`.
 - Kernel `bound::try_blockwise<B>` and `block_span`: per-block tables (`n / B` entries) indexed by the blocks of a binding. See `docs/kernel/bind.md`.
 - Kernel examples: `demos/kernel/example_kernels.hpp` (rescale, rotate_pairs, row_dots, moving_sum) with scalar twins and audit tests; guide `docs/kernel/examples.md`.

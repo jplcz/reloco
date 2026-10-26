@@ -7,6 +7,7 @@
 #include <reloco/span.hpp>
 
 #include <cstddef>
+#include <numeric>
 #include <vector>
 
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
@@ -113,6 +114,21 @@ TEST(KernelBindTest, BlocksAndTailCoverEverything) {
   for (auto blk : k.blocks<4>())
     dst.store(blk, src.load(blk));
   for (auto i : k.tail<4>())
+    dst(i) = src(i);
+  EXPECT_EQ(out, in);
+}
+
+TEST(KernelBindTest, SubBlocksCoverTheirBlockInOrder) {
+  std::vector<int> in(20);
+  std::iota(in.begin(), in.end(), 0);
+  std::vector<int> out(20, -1);
+  auto r = kernel::try_bind<brand_b>(20, reloco::span<int>(out), reloco::span<const int>(in));
+  ASSERT_TRUE(r.has_value());
+  auto dst = r->view<0>();
+  auto src = r->view<1>();
+  for (auto blk : r->blocks<8>()) // two blocks of 8, split into pairs
+    blk.for_each_sub<2>([&](auto pair) { dst.store(pair, src.load(pair)); });
+  for (auto i : r->tail<8>())
     dst(i) = src(i);
   EXPECT_EQ(out, in);
 }

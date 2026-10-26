@@ -74,7 +74,7 @@ auto chunks = k::blocks<4>(10);
 for (auto blk : chunks) {
   // blk.base() + 4 <= 10 is guaranteed by the domain, not by a comment.
 
-  // for_each_lane calls the function once per lane, fully unrolled at compile time.
+  // for_each_lane calls the function once per lane, fully a counted loop the optimizer may unroll.
   // Each lane `i` is a proven index.
   blk.for_each_lane([&](auto i) { sum += i.value(); });
 
@@ -93,6 +93,22 @@ for (auto i : chunks.tail())
 
 If `n < B` there are no blocks and everything lands in the tail. `k::tail<B>(n)` gives only the tail when you do
 not need the blocks.
+
+#### Blocks inside blocks: `for_each_sub<B2>`
+
+Data often has two levels of grouping: for example 32 values that share one scale, stored as 16 packed byte pairs.
+A wide block can be split into narrower ones that are still proven in range, so you never compute the inner offsets
+by hand. `B2` must divide `B` (a compile-time error otherwise).
+
+```cpp
+// Groups of 32 elements; inside each group, 16 pairs. Both `grp` and `pair` are proven blocks.
+for (auto grp : k::blocks<32>(n)) {
+  grp.for_each_sub<2>([&](auto pair) {
+    // pair.base() is grp.base() + 2 * j for j = 0 .. 15, a counted loop the optimizer may unroll.
+    use(pair.lane<0>(), pair.lane<1>());
+  });
+}
+```
 
 ### `pairs(n)`: adjacent pairs
 

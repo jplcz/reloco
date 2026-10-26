@@ -50,6 +50,19 @@ public:
     }(std::make_index_sequence<B>{});
   }
 
+  /**
+   * @brief Calls `f(block<B2, Tag>)` for each of the `B / B2` consecutive narrower blocks inside this one, unrolled.
+   * @details Every sub-block lies inside this block, so it is inside the extent too. `B2` must divide `B`.
+   */
+  template <std::size_t B2, class F>
+  RELOCO_ALWAYS_INLINE constexpr void for_each_sub(F &&f) const
+      noexcept(std::is_nothrow_invocable_v<F &, block<B2, Tag>>) {
+    static_assert(B2 > 0 && B % B2 == 0, "block::for_each_sub: the sub-block width must divide the block width");
+    // A plain counted loop (not a fold over indexes) so the optimizer can unroll or vectorize it as it sees fit.
+    for (std::size_t j = 0; j < B / B2; ++j)
+      f(block<B2, Tag>(detail::index_access::key(), base_ + j * B2, extent_));
+  }
+
   /** @brief The `B` lane indexes as a runtime-iterable range. */
   [[nodiscard]] constexpr index_range<Tag> lanes() const noexcept {
     return index_range<Tag>(detail::index_access::key(), base_, base_ + B, extent_);
