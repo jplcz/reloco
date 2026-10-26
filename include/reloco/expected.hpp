@@ -347,6 +347,21 @@ public:
   RELOCO_CHECKED constexpr T &operator*() & noexcept RELOCO_LIFETIMEBOUND { return value(); }
   RELOCO_CHECKED constexpr const T &operator*() const & noexcept RELOCO_LIFETIMEBOUND { return value(); }
 
+  /**
+   * @brief Value access with no check, for hot loops whose caller already tested `has_value()` outside the loop.
+   * @pre `has_value()`; violating it is undefined behavior. Rvalues are deleted so no reference outlives the object.
+   */
+  [[nodiscard]] constexpr T &unchecked_value() & noexcept RELOCO_LIFETIMEBOUND { return m_value; }
+  [[nodiscard]] constexpr const T &unchecked_value() const & noexcept RELOCO_LIFETIMEBOUND { return m_value; }
+  T &unchecked_value() && = delete;
+  const T &unchecked_value() const && = delete;
+
+  /** @brief Error access with no check. @pre `!has_value()`. */
+  [[nodiscard]] constexpr E &unchecked_error() & noexcept RELOCO_LIFETIMEBOUND { return m_error; }
+  [[nodiscard]] constexpr const E &unchecked_error() const & noexcept RELOCO_LIFETIMEBOUND { return m_error; }
+  E &unchecked_error() && = delete;
+  const E &unchecked_error() const && = delete;
+
   RELOCO_BLOCK_RVALUE_ACCESS(T);
 
   constexpr bool operator==(const expected &other) const noexcept {

@@ -280,4 +280,15 @@ TEST(ErrorTest, CheckRelocoTry) {
   ASSERT_EQ(res.error(), reloco::error::already_exists);
 }
 
+TEST(ExpectedTest, UncheckedAccessAfterOutsideCheck) {
+  reloco::result<int> ok = 7;
+  reloco::result<int> bad = reloco::unexpected(reloco::error::out_of_range);
+  ASSERT_TRUE(ok.has_value());
+  EXPECT_EQ(ok.unchecked_value(), 7);
+  ASSERT_FALSE(bad.has_value());
+  EXPECT_EQ(bad.unchecked_error(), reloco::error::out_of_range);
+  const auto &cok = ok;
+  EXPECT_EQ(cok.unchecked_value(), 7);
+}
+
 #endif

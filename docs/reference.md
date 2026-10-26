@@ -159,6 +159,10 @@ methods `transform`/`map`, `map_err`, `and_then`, `or_else`, both
 `expected<T, E>` and the `expected<void, E>` specialization also provide
 Rust `Result<T, E>`-parity methods:
 
+- `unchecked_value()`/`unchecked_error()` — access with no check at all,
+  for hot loops: test `has_value()` once outside the loop, then read inside
+  without the per-access assert. Undefined behavior on the wrong state;
+  rvalue overloads are deleted so no reference can dangle.
 - `is_ok()`/`is_err()` — boolean queries, aliases of `has_value()`/`!has_value()`.
 - `unwrap()`/`unwrap_err()` — like `value()`/`error()`, but named to match
   Rust; asserts (traps) on the wrong state.
