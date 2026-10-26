@@ -1,4 +1,4 @@
-# Projections: rows, columns, tiles and transposes
+# Projections: rows, columns, tiles, transposes, reshapes and broadcasts
 
 `#include <reloco/kernel/kernel.hpp>` (C++20 and newer). Everything lives in `reloco::kernel`.
 
@@ -25,6 +25,10 @@ the parent's elements, so writes through it cannot collide with each other.
 | `try_row(v, r)` / `try_column(v, c)` | `try_index<0>` / `try_index<R-1>`. | `out_of_bounds` |
 | `try_tile(v, origin, extents)` | Same rank; a rectangular block. | `out_of_bounds` |
 | `transpose(v)` / `transpose<A, B>(v)` | Same rank; two dimensions swapped (default: the last two). | never |
+| `permute<P...>(v)` | Same rank; dimension `d` is the parent's dimension `P[d]`. `P...` must be a permutation (compile-time check). | never |
+| `diagonal<A, B>(v)` | Rank - 1; dimensions `A` and `B` merged into one that walks both together, placed last. | never |
+| `try_reshape<N>(v, extents)` | Rank `N`; same elements in the same order. Needs a dense row-major view and an equal element count. | `invalid_argument` |
+| `try_broadcast<N>(v, extents)` | Rank `N`, **read-only**; repeats size-1 and new leading dimensions (NumPy rules, stride 0). | `invalid_argument` |
 
 Results always have runtime strides (`dynamic_strides`). A zero-size result is legal and empty.
 
@@ -67,4 +71,45 @@ if (band) auto c0 = k::try_column(*band, 0);
 - A projection is a pointer-like handle: the element references it gives stay valid as long as the *storage* lives.
 - `storage()` of a projection is the parent's storage starting at the projection's first element, so do not compare
   it with the parent's `storage()`.
-- Not provided yet: `reshape`, `permute` (general), `broadcast`. `transpose<A, B>` covers swapping two dimensions.
+- `try_broadcast` returns a `const` view on purpose: every repeated element is the same memory, so a write through the
+  view would change several "different" elements at once. A mutable view with overlapping strides is rejected by
+  `try_make_tensor` for the same reason.
+- `try_reshape` refuses padded or transposed views, because their elements are not one contiguous run; it would have
+  to copy. Make the data dense first, or work on rows.
+- Not provided: `reverse`. Strides are unsigned (a view walks forward through memory), so a backwards walk cannot be
+  expressed; iterate with `n - 1 - i` over a proven domain instead.
+
+## Why these four
+
+### permute and diagonal
+Reordering dimensions or reading a diagonal only changes how indexes turn into offsets. They reach a subset of the
+parent's elements, so they cannot fail and keep write access.
+
+```cpp
+// A 2x3x4 block of data, dense. permute<2, 0, 1> makes dimension 0 of the result the parent's dimension 2.
+auto cube = k::try_make_contiguous_tensor<int, 3>(storage, {2, 3, 4}).value();
+auto moved = k::permute<2, 0, 1>(cube);   // shape {4, 2, 3}; moved.at(i, j, k) is cube.at(j, k, i)
+
+// The main diagonal of a matrix: diag.at(i) is m.at(i, i); extent is min(rows, cols).
+auto diag = k::diagonal<0, 1>(m);
+```
+
+### reshape
+Treat the same run of elements as another shape, for example flattening a matrix into a vector to reuse a 1-D
+algorithm. It is checked once: the view must be dense and the element counts must match.
+
+```cpp
+// 12 elements seen as a 3x4 matrix, then as a flat vector of 12.
+auto mat = k::try_make_contiguous_tensor<int, 2>(storage, {3, 4}).value();
+auto flat = k::try_reshape<1>(mat, {12});   // out: invalid_argument if the count differs or mat is padded
+```
+
+### broadcast
+Use one small tensor where a bigger one is expected, for example the same row for every row of a matrix, without
+copying it. Shapes are aligned from the last dimension; each source extent must equal the target or be 1.
+
+```cpp
+// One row of 3 values repeated as 4 rows: rows.at(r, c) is row.at(c) for every r. The result is read-only.
+auto row = k::try_make_contiguous_tensor<int, 1>(storage, {3}).value();
+auto rows = k::try_broadcast<2>(row, {4, 3});
+```

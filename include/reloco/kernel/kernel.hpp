@@ -22,6 +22,8 @@
 #include "index/range.hpp"
 #include "index/strided.hpp"
 #include "index/windows.hpp"
+#include "project/permute.hpp"
+#include "project/reshape.hpp"
 #include "project/slice.hpp"
 #include "project/transpose.hpp"
 #include "view/lane_traits.hpp"

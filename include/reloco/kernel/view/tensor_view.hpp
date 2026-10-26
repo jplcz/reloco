@@ -246,7 +246,7 @@ template <class T, std::size_t Rank>
       return unexpected(next.error());
     running = *next;
   }
-  return try_make_tensor<T, Rank>(storage, extents, dynamic_strides<Rank>(str));
+  return try_make_tensor<T, Rank>(storage, shape<Rank>(extents), dynamic_strides<Rank>(str));
 }
 
 RELOCO_KERNEL_END

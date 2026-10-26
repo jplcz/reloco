@@ -606,6 +606,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
             tests/kernel/test_bind.cpp
             tests/kernel/test_bind_fault.cpp
             tests/kernel/test_project.cpp
+            tests/kernel/test_project_more.cpp
             tests/kernel/test_algo.cpp
             tests/kernel/test_example_kernels.cpp)
         target_link_libraries(${KERNEL_TESTS_TARGET} PRIVATE

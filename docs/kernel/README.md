@@ -30,7 +30,7 @@ This framework replaces the comment with **types and one-time checks**:
 | [bind.md](bind.md) | `try_bind`, `with_bound`, `bound`, `bound_span`, `allow_alias`: prove once that several spans are long enough and do not alias, then index them without checks. |
 | [benchmarks.md](benchmarks.md) | The codegen contract (`scripts/check-kernel-codegen.sh`) and the timing benchmark: the bound loop compiles like the hand-written unchecked one. |
 | [algorithms.md](algorithms.md) | `fill`, `try_copy`, `try_transform`, `try_zip_transform`, `reduce`, `try_sum`, `try_dot`, `try_min`/`try_max`, `try_argmin`/`try_argmax`, scans: checked once, no per-element checks. |
-| [projections.md](projections.md) | `try_slice`, `try_index`, `try_row`, `try_column`, `try_tile`, `transpose`: zero-copy sub-views of a `tensor_view`. |
+| [projections.md](projections.md) | `try_slice`, `try_index`, `try_row`, `try_column`, `try_tile`, `transpose`, `permute`, `diagonal`, `try_reshape`, `try_broadcast`: zero-copy sub-views of a `tensor_view`. |
 | [views.md](views.md) | `shape`, `strides`, `tensor_view`, `try_make_tensor`, `lane_traits`: validate a buffer's layout once, then access it. |
 | [examples.md](examples.md) | Four worked kernels (`rescale`, `rotate_pairs`, `row_dots`, `moving_sum`) with scalar twins. |
 | [checks.md](checks.md) | `RELOCO_KERNEL_CHECKS`: when the inner loop is verified, and why mixing levels is safe. |
