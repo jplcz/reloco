@@ -57,7 +57,7 @@ RELOCO_KERNEL_BEGIN
  * @details Trivially copyable, one `std::size_t`; the size never depends on `RELOCO_KERNEL_CHECKS`. There is no
  * implicit conversion to an integer, and arithmetic on `value()` yields a plain unproven integer.
  */
-template <class Tag> class proven_index {
+template <class Tag> class RELOCO_COPYABLE proven_index {
 public:
   using tag_type = Tag;
 
