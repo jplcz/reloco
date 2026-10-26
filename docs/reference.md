@@ -51,6 +51,8 @@ where, not a tutorial.
 | `unique_ptr.hpp` | `unique_ptr<T>` | Move-only, allocator-backed smart pointer with fallible construction |
 | `shared_ptr.hpp` | `shared_ptr<T>`, `weak_ptr<T>`, `enable_shared_from_this<T>` | Reference-counted, allocator-backed smart pointer with fallible construction |
 | `rc.hpp` | `rc<T>`, `weak_rc<T>`, `enable_rc_from_this<T>` | Single-threaded (non-atomic) reference-counted smart pointer, matching Rust's `Rc<T>`/`Weak<T>` |
+| `endian.hpp` | `byte_order`, `native_byte_order`, `byteswap`, `to_byte_order`/`from_byte_order`, `try_load`/`try_store` | Byte order tags and shift-based integer <-> byte conversions (no `memcpy`, no float); see [Endian](endian.md) |
+| `byte_cursor.hpp` | `byte_reader`, `byte_writer` | Bounds-checked, all-or-nothing sequential binary parser/serializer over a caller-owned buffer, with explicit byte order, `try_split` for length-prefixed records, reserve/patch, C strings and LEB128; see [Byte cursors](byte-cursor.md) |
 | `intrusive_ptr.hpp` | `intrusive_ptr<T>`, `intrusive_ref_counted<Derived, Counter>`, `atomic_refcount`, `local_refcount`, `intrusive_ptr_traits<T>` | Reference-counted smart pointer whose count lives inside the pointee (one word, no control block, no weak pointers), with a customizable retain/release protocol; see [Intrusive pointers](intrusive-ptr.md) |
 | `bytes.hpp` | `bytes`, `bytes_mut` | Immutable, reference-counted, cheaply-cloneable byte buffer and its growable, exclusively-owned mutable counterpart, matching Rust's `bytes::Bytes`/`bytes::BytesMut` |
 | `masked_byte_region.hpp` | `masked_byte_region<Size, NoncePolicy>`, `security::inline_nonce_storage` | Fixed-size byte region stored behind a nonce-based masking policy |
@@ -2472,6 +2474,19 @@ Pick `rc<T>` over `shared_ptr<T>` purely for performance, whenever the
 shared object only ever lives on one thread; switch to `shared_ptr<T>` the
 moment it might cross a thread boundary. The two are unrelated types with
 independent control blocks and cannot share ownership of the same object.
+
+## `byte_reader` / `byte_writer` / `endian.hpp`
+
+`include/reloco/byte_cursor.hpp`, `include/reloco/endian.hpp`
+
+Sequential, bounds-checked binary parsing and serialization. `byte_reader`
+reads integers (`try_read_le<T>()`/`try_read_be<T>()`), byte views, C strings
+(`try_read_until`), LEB128 varints and length-prefixed sub-records
+(`try_split`); `byte_writer` writes the same into a fixed buffer, with
+`try_reserve`/`try_patch` for back-patched length fields. Every operation is
+all-or-nothing and fails with `error::out_of_bounds` instead of overrunning.
+Integers and enums only (no floating point). Guides: [Byte cursors](byte-cursor.md),
+[Endian](endian.md).
 
 ## `intrusive_ptr<T>` / `intrusive_ref_counted<Derived, Counter>`
 

@@ -7,6 +7,10 @@
 - `intrusive_ptr.hpp`: `intrusive_ptr<T>`, `intrusive_ref_counted<Derived, Counter>`, `atomic_refcount`,
   `local_refcount`, `intrusive_ptr_traits<T>`, `try_allocate_intrusive`/`try_create_intrusive`. See
   `docs/intrusive-ptr.md`.
+- `byte_cursor.hpp`: `byte_reader` / `byte_writer`, bounds-checked sequential binary parser and serializer. See
+  `docs/byte-cursor.md`.
+- `endian.hpp`: `byte_order`, `byteswap`, `to_byte_order`/`from_byte_order`, `try_load`/`try_store`. See
+  `docs/endian.md`.
 
 ## v0.4.5
 

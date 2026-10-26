@@ -13,6 +13,7 @@
 #include <reloco/barrier.hpp>
 #include <reloco/bucket_allocator.hpp>
 #include <reloco/bucket_growth.hpp>
+#include <reloco/byte_cursor.hpp>
 #include <reloco/bytes.hpp>
 #include <reloco/call_location.hpp>
 #include <reloco/channel.hpp>
@@ -29,6 +30,7 @@
 #include <reloco/default_allocator.hpp>
 #include <reloco/digraph.hpp>
 #include <reloco/duration.hpp>
+#include <reloco/endian.hpp>
 #include <reloco/epoch.hpp>
 #include <reloco/error.hpp>
 #include <reloco/error_std.hpp>
