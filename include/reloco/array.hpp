@@ -75,6 +75,16 @@ template <typename T, std::size_t N> struct RELOCO_OWNER RELOCO_COPYABLE array {
     return data_[index];
   }
 
+  /** @brief Element access with no check at all, in any build mode; see `span::unchecked_at`. Out of range is UB. */
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr T &unchecked_at(size_type index) & noexcept RELOCO_LIFETIMEBOUND {
+    return data_[index];
+  }
+
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr const T &
+  unchecked_at(size_type index) const & noexcept RELOCO_LIFETIMEBOUND {
+    return data_[index];
+  }
+
   [[nodiscard]] constexpr T &front() & noexcept RELOCO_LIFETIMEBOUND { return data_[0]; }
   [[nodiscard]] constexpr const T &front() const & noexcept RELOCO_LIFETIMEBOUND { return data_[0]; }
   [[nodiscard]] constexpr T &back() & noexcept RELOCO_LIFETIMEBOUND { return data_[N - 1]; }
@@ -269,6 +279,15 @@ template <typename T> struct RELOCO_COPYABLE array<T, 0> {
   [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr const T &
   unsafe_at(size_type) const & noexcept RELOCO_LIFETIMEBOUND {
     RELOCO_DEBUG_ASSERT(false, "array index out of bounds");
+    return *static_cast<const T *>(nullptr);
+  }
+
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr T &unchecked_at(size_type) & noexcept RELOCO_LIFETIMEBOUND {
+    return *static_cast<T *>(nullptr);
+  }
+
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr const T &
+  unchecked_at(size_type) const & noexcept RELOCO_LIFETIMEBOUND {
     return *static_cast<const T *>(nullptr);
   }
 

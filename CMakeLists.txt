@@ -33,6 +33,8 @@ option(JPLCZ_RELOCO_BUILD_TIDY
     "Build the reloco-tidy clang-tidy plugin (tools/tidy) and the jplcz_reloco_tidy target that checks the \
 public headers with it (needs libclang-N-dev / llvm-N-dev matching clang-tidy-N)"
     OFF)
+option(JPLCZ_RELOCO_BUILD_BENCHMARKS
+       "Build the kernel framework benchmarks (benchmarks/kernel, C++20)" OFF)
 option(JPLCZ_RELOCO_BUILD_DEMOS
     "Build demos/ (small standalone example programs)" ${JPLCZ_RELOCO_DEVELOPMENT_DEFAULT})
 option(JPLCZ_RELOCO_INSTALL
@@ -593,6 +595,36 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
     gtest_discover_tests(jplcz_reloco_coroutine_tests TEST_PREFIX "Coroutine.")
 
+    # Bounds-proven kernel framework (C++20+). The same sources are built at each RELOCO_KERNEL_CHECKS level, so the
+    # unchecked (level 0) path is proven to behave identically to the checked one.
+    foreach(KERNEL_CHECKS_LEVEL 0 1)
+        set(KERNEL_TESTS_TARGET jplcz_reloco_kernel_tests_checks${KERNEL_CHECKS_LEVEL})
+        add_executable(${KERNEL_TESTS_TARGET}
+            tests/kernel/test_index.cpp
+            tests/kernel/test_view.cpp
+            tests/kernel/test_view_fault.cpp
+            tests/kernel/test_bind.cpp
+            tests/kernel/test_bind_fault.cpp
+            tests/kernel/test_project.cpp
+            tests/kernel/test_algo.cpp
+            tests/kernel/test_example_kernels.cpp)
+        target_link_libraries(${KERNEL_TESTS_TARGET} PRIVATE
+            jplcz_reloco GTest::gtest_main)
+        jplcz_reloco_enable_warnings(${KERNEL_TESTS_TARGET})
+        target_compile_definitions(${KERNEL_TESTS_TARGET} PRIVATE
+            RELOCO_KERNEL_CHECKS=${KERNEL_CHECKS_LEVEL})
+        set_target_properties(${KERNEL_TESTS_TARGET} PROPERTIES
+            CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+        gtest_discover_tests(${KERNEL_TESTS_TARGET}
+            TEST_PREFIX "KernelChecks${KERNEL_CHECKS_LEVEL}.")
+    endforeach()
+
+    # Codegen contract of the kernel framework (docs/kernel/benchmarks.md): the bound loop must compile like the
+    # hand-written unchecked one.
+    add_test(NAME KernelCodegen
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-kernel-codegen.sh)
+    set_tests_properties(KernelCodegen PROPERTIES SKIP_RETURN_CODE 77)
+
     # RELOCO_IMPLICIT_TYPEID is defined only for this translation unit (see
     # that file), so it never affects type_id::name() anywhere else in the
     # suite.
@@ -939,4 +971,15 @@ if(JPLCZ_RELOCO_BUILD_TIDY)
     reloco_tidy_add_target(jplcz_reloco_tidy
         FILES "${CMAKE_CURRENT_SOURCE_DIR}/tests/compile_all_headers.cpp"
         EXTRA_ARGS -std=c++20 "-I${CMAKE_CURRENT_SOURCE_DIR}/include")
+endif()
+
+if(JPLCZ_RELOCO_BUILD_BENCHMARKS)
+    add_executable(jplcz_reloco_kernel_bench
+        benchmarks/kernel/bench_kernels.cpp
+        benchmarks/kernel/codegen_kernels.cpp)
+    target_link_libraries(jplcz_reloco_kernel_bench PRIVATE jplcz_reloco)
+    target_compile_definitions(jplcz_reloco_kernel_bench PRIVATE RELOCO_KERNEL_CHECKS=0)
+    target_compile_options(jplcz_reloco_kernel_bench PRIVATE -O2)
+    set_target_properties(jplcz_reloco_kernel_bench PROPERTIES
+        CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 endif()

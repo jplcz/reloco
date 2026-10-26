@@ -347,8 +347,8 @@ public:
    * span).
    * @return A new `reloco::span` view.
    */
-  [[nodiscard]] constexpr span<T>
-  subspan(std::size_t offset, std::size_t count = static_cast<std::size_t>(-1)) const & noexcept {
+  [[nodiscard]] constexpr span<T> subspan(std::size_t offset,
+                                          std::size_t count = static_cast<std::size_t>(-1)) const & noexcept {
     RELOCO_ASSERT(offset <= m_size, "subspan offset exceeds span size");
     const std::size_t rem = m_size - offset;
     const std::size_t actual_count = count == static_cast<std::size_t>(-1) ? rem : count;
@@ -361,8 +361,7 @@ public:
    * @tparam Count Exact number of elements requested.
    * @param offset Zero-based index at which the subspan begins.
    */
-  template <std::size_t Count>
-  [[nodiscard]] constexpr span<T> subspan(std::size_t offset) const & noexcept {
+  template <std::size_t Count> [[nodiscard]] constexpr span<T> subspan(std::size_t offset) const & noexcept {
     RELOCO_ASSERT(offset <= m_size, "subspan offset exceeds span size");
     const std::size_t rem = m_size - offset;
     RELOCO_ASSERT(Count <= rem, "subspan count exceeds remaining span size");
@@ -375,9 +374,8 @@ public:
    * @param count Requested number of elements, or all remaining elements.
    * @return The requested span or @ref error::out_of_bounds.
    */
-  [[nodiscard]] result<span<T>>
-  try_subspan(std::size_t offset,
-              std::size_t count = static_cast<std::size_t>(-1)) const & noexcept {
+  [[nodiscard]] result<span<T>> try_subspan(std::size_t offset,
+                                            std::size_t count = static_cast<std::size_t>(-1)) const & noexcept {
     if (offset > m_size)
       return unexpected(error::out_of_bounds);
     const std::size_t rem = m_size - offset;
@@ -391,13 +389,21 @@ public:
    * @brief Creates a subspan with debug-only precondition checks.
    */
   [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr span<T>
-  unsafe_subspan(std::size_t offset,
-                 std::size_t count = static_cast<std::size_t>(-1)) const & noexcept {
+  unsafe_subspan(std::size_t offset, std::size_t count = static_cast<std::size_t>(-1)) const & noexcept {
     RELOCO_DEBUG_ASSERT(offset <= m_size, "subspan offset exceeds span size");
     const std::size_t rem = m_size - offset;
     const std::size_t actual_count = count == static_cast<std::size_t>(-1) ? rem : count;
     RELOCO_DEBUG_ASSERT(actual_count <= rem, "subspan count exceeds remaining span size");
     return span<T>(pointer_at(offset), actual_count);
+  }
+
+  /**
+   * @brief Subspan `[offset, offset + count)` with no check at all, in any build mode; see `unchecked_at`.
+   * @details For loops whose range was proven once, outside the loop. An out-of-range request is undefined behavior.
+   */
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr span<T>
+  unchecked_subspan(std::size_t offset, std::size_t count) const & noexcept {
+    return span<T>(pointer_at(offset), count);
   }
 
   /**
@@ -575,6 +581,18 @@ public:
     return m_ptr[idx];
   }
 
+  /**
+   * @brief Accesses an element with no check at all, in any build mode.
+   * @details For hot loops whose index range was proven once, outside the loop (for example by the kernel framework's
+   * proven indexes). Unlike `unsafe_at`, which asserts in debug builds and lets the optimizer assume the index is in
+   * range in release builds, this call never emits a check or an assumption. An out-of-range @p idx is undefined
+   * behavior.
+   */
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr T &
+  unchecked_at(std::size_t idx) const & noexcept RELOCO_LIFETIMEBOUND {
+    return m_ptr[idx];
+  }
+
   [[nodiscard]] result<std::reference_wrapper<T>> try_front() const & noexcept RELOCO_LIFETIMEBOUND {
     if (empty())
       return unexpected(error::container_empty);
@@ -633,14 +651,12 @@ public:
     return span<T>(pointer_at(m_size - count), count);
   }
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr span<T>
-  unsafe_first(std::size_t count) const & noexcept {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr span<T> unsafe_first(std::size_t count) const & noexcept {
     RELOCO_DEBUG_ASSERT(count <= m_size, "first count exceeds span size");
     return span<T>(m_ptr, count);
   }
 
-  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr span<T>
-  unsafe_last(std::size_t count) const & noexcept {
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE constexpr span<T> unsafe_last(std::size_t count) const & noexcept {
     RELOCO_DEBUG_ASSERT(count <= m_size, "last count exceeds span size");
     return span<T>(pointer_at(m_size - count), count);
   }
@@ -673,8 +689,8 @@ public:
    * `sizeof(U)` divides `sizeof(T)` and `alignof(U) <= alignof(T)`. Reading through the result can violate strict
    * aliasing (e.g. `uint64_t` as `uint32_t`), so it is a deliberate opt-in.
    */
-  template <typename U> [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE span<U> unsafe_cast_to() const & noexcept
-      RELOCO_LIFETIMEBOUND {
+  template <typename U>
+  [[nodiscard]] RELOCO_UNSAFE_BUFFER_USAGE span<U> unsafe_cast_to() const & noexcept RELOCO_LIFETIMEBOUND {
     using From = std::remove_cv_t<T>;
     using To = std::remove_cv_t<U>;
     static_assert(!std::is_const_v<T> || std::is_const_v<U>, "cast_to cannot drop const");
@@ -726,8 +742,7 @@ public:
    * @brief Copies the elements into a new owning `vector` (default allocator). Include `vector.hpp` where this is
    * called; `Vec` defaults to `vector<remove_const_t<T>>`, so the element type must be copy-constructible.
    */
-  template <typename Vec = vector<std::remove_const_t<T>>>
-  [[nodiscard]] result<Vec> try_to_vector() const noexcept {
+  template <typename Vec = vector<std::remove_const_t<T>>> [[nodiscard]] result<Vec> try_to_vector() const noexcept {
     return Vec::try_create_from(span<const std::remove_const_t<T>>(m_ptr, m_size));
   }
 

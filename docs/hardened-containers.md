@@ -142,6 +142,14 @@ active alternative.
 | Checked | `operator[]`, `front()`, `back()`, `subspan()`, `first()`, `last()` |
 | Non-trapping | `try_at()`, `try_front()`, `try_back()`, `try_subspan()`, `try_first()`, `try_last()` |
 | Explicitly unsafe | `unsafe_at()`, `unsafe_front()`, `unsafe_back()`, `unsafe_subspan()`, `unsafe_first()`, `unsafe_last()` |
+| Unchecked (hot loops) | `unchecked_at()` |
+
+`unsafe_at()` asserts in debug builds and, in release builds, lets the optimizer assume the index is in range.
+`unchecked_at()` (on `span` and `array`) never checks or assumes anything in any build mode: it is a plain
+element access for loops whose index range was proven once, outside the loop (for example the indexes of the
+kernel framework, `docs/kernel/README.md`). An out-of-range index is undefined behavior, so reach for it only when
+a proof exists; otherwise use `operator[]`. `span::unchecked_subspan(offset, count)` is the same idea for
+sub-ranges.
 
 Fallible span operations return `reloco::result` (`reloco::expected<T, reloco::error>`).
 `as_bytes()` creates a read-only byte view without copying the represented

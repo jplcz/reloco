@@ -188,3 +188,8 @@
 #ifndef _MSC_VER
 #include <reloco/speculation_defense.hpp>
 #endif
+
+// The kernel framework requires C++20 or newer.
+#if __cplusplus >= 202002L
+#include <reloco/kernel/kernel.hpp>
+#endif

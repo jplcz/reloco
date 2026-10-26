@@ -29,6 +29,7 @@ namespace reloco {
   auto at(std::size_t) const && = delete;                                                                              \
   auto try_at(std::size_t) const && = delete;                                                                          \
   auto unsafe_at(std::size_t) const && = delete;                                                                       \
+  auto unchecked_at(std::size_t) const && = delete;                                                                    \
   auto data() const && = delete;                                                                                       \
   auto try_data() const && = delete;                                                                                   \
   auto unsafe_data() const && = delete;                                                                                \

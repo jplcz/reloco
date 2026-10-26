@@ -68,6 +68,17 @@ TEST(ArrayTest, SupportsAggregateAccessAndStructuredBindings) {
   EXPECT_EQ(third, 3);
 }
 
+TEST(ArrayTest, UncheckedAtReadsAndWritesWithoutChecks) {
+  reloco::array<int, 3> values{1, 2, 3};
+  const auto &const_values = values;
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+  values.unchecked_at(2) = 30;
+  EXPECT_EQ(const_values.unchecked_at(2), 30);
+  EXPECT_EQ(values.unchecked_at(0), 1);
+  RELOCO_END_UNSAFE_BUFFER_USAGE
+  static_assert(std::is_same_v<decltype(std::declval<reloco::array<int, 0> &>().unchecked_at(0)), int &>);
+}
+
 TEST(ArrayTest, ProvidesSpanSubviewsAndMapping) {
   reloco::array<int, 4> values{1, 2, 3, 4};
 

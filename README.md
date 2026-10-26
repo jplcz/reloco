@@ -50,6 +50,7 @@ Start with the guide that matches what you are building:
 | [Trivial relocation](docs/relocatable.md) | `is_trivially_relocatable<T>`: which types may be moved by copying bytes and abandoning the source, and why |
 | [Thread-transfer/-sharing safety](docs/send-sync.md) | `is_send<T>`/`is_sync<T>`: which types are sound to hand to another thread or share concurrently, matching Rust's `Send`/`Sync` |
 | [Byte cursors](docs/byte-cursor.md) | `byte_reader`/`byte_writer`: bounds-checked, all-or-nothing binary parsing and serialization with explicit byte order, length-prefixed records and LEB128 |
+| [Kernel framework](docs/kernel/README.md) | C++20+. Bounds-proven loop domains (`domain`, `blocks`, `windows`, `strided`) and the `RELOCO_KERNEL_CHECKS` levels for compute kernels |
 | [Endian](docs/endian.md) | `byte_order`, `byteswap`, `try_load`/`try_store`: shift-based integer <-> byte conversions |
 | [Intrusive pointers](docs/intrusive-ptr.md) | `intrusive_ptr<T>` and `intrusive_ref_counted`: one-word reference-counted pointer with the count stored in the object, plus a customizable retain/release protocol |
 | [Reflection support](docs/reflection.md) | Experimental P2996/`-freflection` (GCC 16+ trunk): automatic `is_send`/`is_sync`/`is_trivially_relocatable` composition for types without an explicit specialization |

@@ -4,6 +4,8 @@
 
 ### Added
 
+- Kernel `bound::try_blockwise<B>` and `block_span`: per-block tables (`n / B` entries) indexed by the blocks of a binding. See `docs/kernel/bind.md`.
+- Kernel examples: `demos/kernel/example_kernels.hpp` (rescale, rotate_pairs, row_dots, moving_sum) with scalar twins and audit tests; guide `docs/kernel/examples.md`.
 - `intrusive_ptr.hpp`: `intrusive_ptr<T>`, `intrusive_ref_counted<Derived, Counter>`, `atomic_refcount`,
   `local_refcount`, `intrusive_ptr_traits<T>`, `try_allocate_intrusive`/`try_create_intrusive`. See
   `docs/intrusive-ptr.md`.
@@ -11,6 +13,25 @@
   `docs/byte-cursor.md`.
 - `endian.hpp`: `byte_order`, `byteswap`, `to_byte_order`/`from_byte_order`, `try_load`/`try_store`. See
   `docs/endian.md`.
+- `kernel/` (C++20 and newer): bounds-proven loop domains (`proven_index`, `domain`, `blocks`/`tail`, `pairs`,
+  `windows`, `strided`) and the opt-in `RELOCO_KERNEL_CHECKS` inner-loop verification levels, with per-level inline
+  namespaces. See `docs/kernel/README.md`.
+- `kernel/view/`: rank-N `tensor_view` with dynamic/static strides, `try_make_tensor` (overflow-checked, rejects
+  aliasing mutable views), `try_make_contiguous_tensor`, `lane_traits`. See `docs/kernel/views.md`.
+- `reloco::kernel` binding layer (C++20+): `try_bind`, `RELOCO_KERNEL_BIND`, `with_bound`, `bound`, `bound_span` and
+  `allow_alias` prove once that several spans are long enough and do not alias, so hot loops index them without
+  checks. Also `span::unchecked_subspan`. See `docs/kernel/bind.md`.
+- `benchmarks/kernel/`, `scripts/check-kernel-codegen.sh` (ctest `KernelCodegen`) and the opt-in
+  `JPLCZ_RELOCO_BUILD_BENCHMARKS`: assembly check and timings showing the bound loop matches the unchecked one. See
+  `docs/kernel/benchmarks.md`.
+- `kernel/algo/`: core algorithms with one-time length and aliasing checks: `fill`, `try_copy`, `try_transform`,
+  `transform_in_place`, `try_zip_transform`, `reduce`, `try_sum`, `try_dot`, `try_min`/`try_max`,
+  `try_argmin`/`try_argmax`, `try_inclusive_scan`/`try_exclusive_scan`. Each has a fully checked scalar twin in `kernel::reference` for audits. See
+  `docs/kernel/algorithms.md`.
+- `kernel/project/`: zero-allocation `try_slice`, `try_index`, `try_row`, `try_column`, `try_tile` and `transpose` of a
+  `tensor_view`. See `docs/kernel/projections.md`.
+- `span::unchecked_at` / `array::unchecked_at`: element access with no check in any build mode, for loops whose
+  index range was proven once. See `docs/hardened-containers.md`.
 
 ## v0.4.5
 

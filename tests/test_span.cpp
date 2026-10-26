@@ -85,8 +85,8 @@ TEST(SpanTest, UnsafeCastToNonByteUnitsAndTryCastUp) {
   ASSERT_TRUE(ints);
   ASSERT_EQ(ints->size(), 2u);
   EXPECT_EQ((*ints)[1], 2u);
-  EXPECT_FALSE(bytes.subspan(0, 7).try_cast_to<const std::uint32_t>());  // not a multiple of 4
-  EXPECT_FALSE(bytes.subspan(1, 4).try_cast_to<const std::uint32_t>());  // misaligned
+  EXPECT_FALSE(bytes.subspan(0, 7).try_cast_to<const std::uint32_t>()); // not a multiple of 4
+  EXPECT_FALSE(bytes.subspan(1, 4).try_cast_to<const std::uint32_t>()); // misaligned
 }
 
 TEST(SpanTest, FromEmptyRelocoContainerDoesNotTripDataAssert) {
@@ -140,6 +140,16 @@ TEST(SpanTest, ArrayDeductionAndIterators) {
   *const_view.begin() = 11;
   EXPECT_EQ(nums[0], 11);
   EXPECT_EQ(*const_view.cbegin(), 11);
+}
+
+TEST(SpanTest, UncheckedAtReadsAndWritesWithoutChecks) {
+  int values[] = {10, 20, 30, 40};
+  reloco::span<int> view(values);
+  RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+  view.unchecked_at(3) = 41;
+  EXPECT_EQ(view.unchecked_at(3), 41);
+  EXPECT_EQ(view.unchecked_at(0), 10);
+  RELOCO_END_UNSAFE_BUFFER_USAGE
 }
 
 TEST(SpanTest, ProvidesCheckedAndFallibleAccess) {
