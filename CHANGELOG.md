@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `intrusive_ptr.hpp`: `intrusive_ptr<T>`, `intrusive_ref_counted<Derived, Counter>`, `atomic_refcount`,
+  `local_refcount`, `intrusive_ptr_traits<T>`, `try_allocate_intrusive`/`try_create_intrusive`. See
+  `docs/intrusive-ptr.md`.
+
 ## v0.4.5
 
 ### Breaking

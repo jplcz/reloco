@@ -51,6 +51,7 @@ where, not a tutorial.
 | `unique_ptr.hpp` | `unique_ptr<T>` | Move-only, allocator-backed smart pointer with fallible construction |
 | `shared_ptr.hpp` | `shared_ptr<T>`, `weak_ptr<T>`, `enable_shared_from_this<T>` | Reference-counted, allocator-backed smart pointer with fallible construction |
 | `rc.hpp` | `rc<T>`, `weak_rc<T>`, `enable_rc_from_this<T>` | Single-threaded (non-atomic) reference-counted smart pointer, matching Rust's `Rc<T>`/`Weak<T>` |
+| `intrusive_ptr.hpp` | `intrusive_ptr<T>`, `intrusive_ref_counted<Derived, Counter>`, `atomic_refcount`, `local_refcount`, `intrusive_ptr_traits<T>` | Reference-counted smart pointer whose count lives inside the pointee (one word, no control block, no weak pointers), with a customizable retain/release protocol; see [Intrusive pointers](intrusive-ptr.md) |
 | `bytes.hpp` | `bytes`, `bytes_mut` | Immutable, reference-counted, cheaply-cloneable byte buffer and its growable, exclusively-owned mutable counterpart, matching Rust's `bytes::Bytes`/`bytes::BytesMut` |
 | `masked_byte_region.hpp` | `masked_byte_region<Size, NoncePolicy>`, `security::inline_nonce_storage` | Fixed-size byte region stored behind a nonce-based masking policy |
 | `tamper.hpp` | `masked_integral<T>`, `tamper_proof_state<EnumT>`, `tamper_bool_impl` | Tamper-detecting integral, enum-state, and boolean storage wrappers |
@@ -2471,6 +2472,19 @@ Pick `rc<T>` over `shared_ptr<T>` purely for performance, whenever the
 shared object only ever lives on one thread; switch to `shared_ptr<T>` the
 moment it might cross a thread boundary. The two are unrelated types with
 independent control blocks and cannot share ownership of the same object.
+
+## `intrusive_ptr<T>` / `intrusive_ref_counted<Derived, Counter>`
+
+`include/reloco/intrusive_ptr.hpp`
+
+Reference-counted pointer whose refcount is stored in the object itself.
+`intrusive_ptr<T>` is one word, `intrusive_ref_counted<Derived, Counter>` is
+the ready-made CRTP base (atomic by default, `local_refcount` for
+single-threaded use), and `intrusive_ptr_traits<T>` lets legacy types with
+their own retain/release be managed too. Create objects with
+`try_create_intrusive<T>(args...)`/`try_allocate_intrusive<T>(alloc, args...)`.
+There is no weak pointer; `intrusive_from_this()` re-creates an owning
+pointer from inside the object. Full guide: [Intrusive pointers](intrusive-ptr.md).
 
 ## `bytes` / `bytes_mut`
 

@@ -152,6 +152,7 @@
 #include <reloco/outline_vec_deque.hpp>
 #include <reloco/outline_vector.hpp>
 #include <reloco/packed_header.hpp>
+#include <reloco/intrusive_ptr.hpp>
 #include <reloco/rc.hpp>
 #include <reloco/relocatable_std.hpp>
 #include <reloco/reloco_config.hpp>
