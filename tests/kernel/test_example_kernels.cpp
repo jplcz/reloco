@@ -31,7 +31,7 @@ TEST(KernelExamplesTest, RescaleMatchesScalar) {
     const std::size_t out_n = rng() % 4 == 0 ? rng() % 40 : in.size();
     const std::vector<std::int8_t> init(out_n, 5);
     const auto mult = static_cast<std::int32_t>(rng() % 100000);
-    const unsigned shift = rng() % 70; // includes invalid shifts
+    const auto shift = static_cast<unsigned>(rng() % 70); // includes invalid shifts
     audit::expect_same(
         init,
         [&](std::vector<std::int8_t> &o) {
