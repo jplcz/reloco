@@ -3,6 +3,9 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 #include <gtest/gtest.h>
+#ifdef _MSC_VER
+#include <malloc.h>
+#endif
 #include <reloco/allocator.hpp>
 #include <reloco/relocatable.hpp>
 #include <reloco/secure_vector.hpp>
@@ -27,6 +30,17 @@ struct spy_context {
 
 struct spy_allocator_tag {};
 
+// MSVC has no std::aligned_alloc; its aligned blocks must be released with _aligned_free.
+#ifdef _MSC_VER
+void *spy_aligned_alloc(std::size_t alignment, std::size_t bytes) noexcept { return _aligned_malloc(bytes, alignment); }
+void spy_aligned_free(void *ptr) noexcept { _aligned_free(ptr); }
+#else
+void *spy_aligned_alloc(std::size_t alignment, std::size_t bytes) noexcept {
+  return std::aligned_alloc(alignment, bytes);
+}
+void spy_aligned_free(void *ptr) noexcept { std::free(ptr); }
+#endif
+
 } // namespace
 
 template <> struct reloco::allocator_traits<spy_allocator_tag> {
@@ -37,7 +51,7 @@ template <> struct reloco::allocator_traits<spy_allocator_tag> {
     if (alignment < alignof(void *))
       alignment = alignof(void *);
     const std::size_t rounded = (bytes + alignment - 1) / alignment * alignment;
-    void *ptr = std::aligned_alloc(alignment, rounded);
+    void *ptr = spy_aligned_alloc(alignment, rounded);
     if (ptr == nullptr)
       return reloco::unexpected(reloco::error::allocation_failed);
     ++ctx->allocations;
@@ -56,7 +70,7 @@ template <> struct reloco::allocator_traits<spy_allocator_tag> {
     ++ctx->frees;
     if (!zero)
       ++ctx->frees_not_zero;
-    std::free(ptr);
+    spy_aligned_free(ptr);
   }
 };
 

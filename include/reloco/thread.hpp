@@ -96,9 +96,9 @@
  * caller-supplied storage.
  */
 
+#include "atomic_context.hpp"
 #include "default_allocator.hpp"
 #include "detail/assert.hpp"
-#include "atomic_context.hpp"
 #include "detail/compat.hpp"
 #include "error.hpp"
 #include "expected.hpp"
@@ -597,7 +597,7 @@ template <typename R> struct is_sync<join_handle<R>> : std::true_type {};
  */
 class thread_builder {
 public:
-  constexpr thread_builder() noexcept = default;
+  thread_builder() noexcept = default; // not constexpr: `optional` is not under sanitizers
 
   /**
    * @brief Requests @p requested_name for the spawned thread, truncated

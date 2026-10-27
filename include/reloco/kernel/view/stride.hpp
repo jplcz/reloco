@@ -53,7 +53,7 @@ template <std::size_t N> inline constexpr bool is_stride_marker_v<static_stride<
 template <std::size_t I, class... S> [[nodiscard]] consteval std::size_t dynamic_before() noexcept {
   std::size_t k = 0;
   std::size_t count = 0;
-  ((count += (k++ < I && is_dynamic_stride_v<S>) ? 1 : 0), ...);
+  ((count += (k++ < I && is_dynamic_stride_v<S>) ? std::size_t{1} : std::size_t{0}), ...);
   return count;
 }
 
