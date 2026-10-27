@@ -156,6 +156,67 @@ hash `&word` across a small table of such locks, exactly like
 `futex_std.ipp`'s userspace "parking lot", rather than a single global
 one.)
 
+Alternatively, the same backend can be built directly on the kernel's
+`sleepq(9)` sleep queues (what `msleep(9)`/`wakeup(9)` are implemented
+with). This needs no global `mtx`: `sleepq_lock(&word)` takes the
+per-chain lock the kernel already hashes `&word` into, and re-checking
+the word under that lock before `sleepq_add` is what prevents lost
+wakeups (a waker needs the same lock for `sleepq_signal`). Full
+scaffold: `detail/porting/futex_freebsd_kernel.template.hpp`.
+
+```cpp
+// include/reloco/detail/porting/futex.hpp. Documentation only: not
+// compiled by this repository; check sleepq_* signatures against your
+// FreeBSD version (sys/sleepqueue.h).
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/proc.h>
+#include <sys/sleepqueue.h>
+
+namespace reloco {
+
+using futex_word = std::atomic<std::uint32_t>;
+
+inline void futex_wait(const futex_word &word, std::uint32_t expected) noexcept {
+  const void *wchan = &word;  // wait channel: the word's address
+  sleepq_lock(wchan);         // per-chain lock; our "interlock"
+  if (word.load(std::memory_order_acquire) != expected) {
+    sleepq_release(wchan);    // value already changed: do not sleep
+    return;
+  }
+  // SLEEPQ_SLEEP: plain sleep; nullptr: no extra interlock; 0: queue id.
+  sleepq_add(wchan, nullptr, "rlfutex", SLEEPQ_SLEEP, 0);
+  sleepq_wait(wchan, PPAUSE); // drops the chain lock and sleeps atomically
+}
+
+inline bool futex_wait_timeout(const futex_word &word, std::uint32_t expected, duration timeout) noexcept {
+  const void *wchan = &word;
+  sbintime_t sbt = /* 32.32 fixed-point relative timeout, see template */ 0;
+  sleepq_lock(wchan);
+  if (word.load(std::memory_order_acquire) != expected) {
+    sleepq_release(wchan);
+    return true;
+  }
+  sleepq_add(wchan, nullptr, "rlfutex", SLEEPQ_SLEEP, 0);
+  sleepq_set_timeout_sbt(wchan, sbt, 0, 0); // after add, before wait
+  return sleepq_timedwait(wchan, PPAUSE) != EWOULDBLOCK; // EWOULDBLOCK == timed out
+}
+
+inline void futex_wake_one(futex_word &word) noexcept {
+  sleepq_lock(&word);
+  sleepq_signal(&word, SLEEPQ_SLEEP, 0, 0); // wakes the best waiter
+  sleepq_release(&word);
+}
+
+inline void futex_wake_all(futex_word &word) noexcept {
+  sleepq_lock(&word);
+  sleepq_broadcast(&word, SLEEPQ_SLEEP, 0, 0);
+  sleepq_release(&word);
+}
+
+} // namespace reloco
+```
+
 - **None defined -- default on any other target (not Linux/FreeBSD, or
   `RELOCO_FUTEX_BACKEND_STD` was defined)**: a portable "parking lot"
   fallback -- implemented in `futex_std.ipp` entirely on top of

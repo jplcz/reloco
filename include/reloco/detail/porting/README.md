@@ -12,6 +12,7 @@ doc comment and `reloco_config.hpp` for the full rationale):
 | `RELOCO_TLS_MODEL_OS`               | `detail/porting/tls_provider.hpp`     | `tls_provider.template.hpp`    |
 | `RELOCO_PER_CPU_MODEL_OS`           | `detail/porting/per_cpu_provider.hpp` | `per_cpu_provider.template.hpp` |
 | `RELOCO_FUTEX_BACKEND_CUSTOM`       | `detail/porting/futex.hpp`            | `futex.template.hpp`           |
+|                                     |                                       | `futex_freebsd_kernel.template.hpp` (`sleepq(9)` variant) |
 
 Only the `*.template.hpp` files above ship in this repository -- they are
 documentation-only scaffolds (each one sketches, loosely, what a FreeBSD
