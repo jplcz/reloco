@@ -622,9 +622,12 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
 
     # Codegen contract of the kernel framework (docs/kernel/benchmarks.md): the bound loop must compile like the
     # hand-written unchecked one.
-    add_test(NAME KernelCodegen
-        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-kernel-codegen.sh)
-    set_tests_properties(KernelCodegen PROPERTIES SKIP_RETURN_CODE 77)
+    # The checker is a POSIX shell script, so it is not registered on Windows.
+    if(NOT WIN32)
+        add_test(NAME KernelCodegen
+            COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-kernel-codegen.sh)
+        set_tests_properties(KernelCodegen PROPERTIES SKIP_RETURN_CODE 77)
+    endif()
 
     # RELOCO_IMPLICIT_TYPEID is defined only for this translation unit (see
     # that file), so it never affects type_id::name() anywhere else in the
