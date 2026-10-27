@@ -51,10 +51,9 @@ template <std::size_t N> inline constexpr bool is_stride_marker_v<static_stride<
 
 /** @brief Number of dynamic markers among `S[0..I)`: where the I-th stride's runtime value sits in the input list. */
 template <std::size_t I, class... S> [[nodiscard]] consteval std::size_t dynamic_before() noexcept {
-  constexpr bool dynamic_flags[] = {is_dynamic_stride_v<S>...};
+  std::size_t k = 0;
   std::size_t count = 0;
-  for (std::size_t k = 0; k < I; ++k)
-    count += dynamic_flags[k] ? 1 : 0;
+  ((count += (k++ < I && is_dynamic_stride_v<S>) ? 1 : 0), ...);
   return count;
 }
 

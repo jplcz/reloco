@@ -68,7 +68,7 @@ public:
   using element_type = T;
   using value_type = std::remove_const_t<T>;
   using reference = T &;
-  using shape_type = shape<Rank>;
+  using shape_type = kernel::shape<Rank>;
   using strides_type = Strides;
   static constexpr std::size_t rank = Rank;
 

@@ -105,8 +105,9 @@ TEST(SecureWipeTest, NullAndEmptyAreNoOps) {
   reloco::secure_wipe(nullptr, 8);
   reloco::secure_wipe(buf, 0);
   RELOCO_END_UNSAFE_BUFFER_USAGE
-  EXPECT_EQ(buf[0], 1);
-  EXPECT_EQ(buf[3], 4);
+  const reloco::span<const unsigned char> kept(buf);
+  EXPECT_EQ(kept[0], 1);
+  EXPECT_EQ(kept[3], 4);
 }
 
 // ---- secure_vector: contract ----------------------------------------------
@@ -221,7 +222,7 @@ TEST_F(spy_fixture, WipeErasesTheSpareCapacityToo) {
   ASSERT_TRUE(v.try_reserve(32));
   for (int i = 0; i < 20; ++i)
     ASSERT_TRUE(v.try_push_back(0x33));
-  ASSERT_TRUE(v.try_resize(4)); // slots 4..19 wiped by the shrink
+  ASSERT_TRUE(v.try_resize(4));  // slots 4..19 wiped by the shrink
   ASSERT_TRUE(v.try_resize(20)); // default-constructs the new elements
   RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
   const std::uint8_t *raw = v.unsafe_data();
@@ -346,7 +347,8 @@ TEST_F(spy_fixture, TrivialStructElementsAreWiped) {
     secure_vector<key_block> v(alloc);
     ASSERT_TRUE(v.try_push_back(key_block{{1, 2, 3, 4}}));
     ASSERT_TRUE(v.try_push_back(key_block{{5, 6, 7, 8}}));
-    EXPECT_EQ(v[1].words[3], 8u);
+    const reloco::span<const std::uint32_t> words(v[1].words);
+    EXPECT_EQ(words[3], 8u);
   }
   EXPECT_EQ(ctx.frees_not_zero, 0u);
 }

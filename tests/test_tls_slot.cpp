@@ -36,7 +36,7 @@ reloco::result<tracked> make_counting() noexcept {
 } // namespace
 
 TEST(TlsSlotTest, AllZeroBytesIsTheEmptyState) {
-  reloco::tls_slot<tracked> slot;
+  reloco::tls_slot<tracked> slot{};
   const reloco::span<const decltype(slot)> whole(&slot, 1);
   const auto bytes = whole.as_bytes();
   EXPECT_TRUE(std::all_of(bytes.begin(), bytes.end(), [](std::byte b) { return b == std::byte{0}; }));
@@ -136,8 +136,10 @@ TEST(TlsSlotTest, ComplexObjectsThatAllocateWorkInASlot) {
   reloco::tls_slot<vec> slot;
   auto make = []() noexcept -> reloco::result<vec> {
     vec v;
-    RELOCO_TRY(v.try_push_back(1));
-    RELOCO_TRY(v.try_push_back(2));
+    if (auto r = v.try_push_back(1); !r)
+      return reloco::unexpected(r.error());
+    if (auto r = v.try_push_back(2); !r)
+      return reloco::unexpected(r.error());
     return v;
   };
   auto n = slot.try_with_mut(+make, [](vec &v) { return v.size(); });
