@@ -21,8 +21,9 @@ template <class R> void expect_same_result(const R &optimized, const R &referenc
     EXPECT_EQ(optimized.error(), reference.error());
     return;
   }
-  if constexpr (!std::is_void_v<typename R::value_type>)
+  if constexpr (!std::is_void_v<typename R::value_type>) {
     EXPECT_EQ(optimized.value(), reference.value());
+  }
 }
 
 // Runs `kernel(out)` on two copies of `initial_out`, once with each variant, and compares results and buffers.
@@ -34,8 +35,9 @@ void expect_same(const std::vector<T> &initial_out, Opt optimized, Ref reference
   auto r_opt = optimized(out_opt);
   auto r_ref = reference(out_ref);
   expect_same_result(r_opt, r_ref);
-  if (r_opt.has_value())
+  if (r_opt.has_value()) {
     EXPECT_EQ(out_opt, out_ref); // after an error the output is unspecified
+  }
 }
 
 } // namespace audit

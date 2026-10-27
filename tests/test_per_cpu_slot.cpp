@@ -34,7 +34,7 @@ struct other_tag {};
 } // namespace
 
 TEST(PerCpuSlotTest, AllZeroBytesIsTheEmptyState) {
-  reloco::per_cpu_slot<counters> slot;
+  reloco::per_cpu_slot<counters> slot{};
   EXPECT_FALSE(slot.is_ready());
   const reloco::span<const decltype(slot)> whole(&slot, 1);
   const auto bytes = whole.as_bytes();
