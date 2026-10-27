@@ -51,6 +51,10 @@ template <> struct reloco::allocator_traits<spy_allocator_tag> {
     if (alignment < alignof(void *))
       alignment = alignof(void *);
     const std::size_t rounded = (bytes + alignment - 1) / alignment * alignment;
+    // Sanitizer allocators abort on absurd sizes instead of returning null, so refuse them here like a real heap would.
+    constexpr std::size_t max_request = std::size_t{1} << 30;
+    if (rounded > max_request)
+      return reloco::unexpected(reloco::error::allocation_failed);
     void *ptr = spy_aligned_alloc(alignment, rounded);
     if (ptr == nullptr)
       return reloco::unexpected(reloco::error::allocation_failed);
