@@ -23,6 +23,7 @@
  */
 
 #include "detail/compat.hpp"
+#include "detail/string_ops_base.hpp"
 #include "lifetime.hpp"
 #include "string.hpp"
 #include <cstddef>
@@ -32,7 +33,8 @@ namespace reloco {
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
 template <std::size_t Capacity, typename CharT = char, typename TraitsT = std::char_traits<CharT>>
-class RELOCO_OWNER basic_inline_string {
+class RELOCO_OWNER basic_inline_string
+    : public detail::string_ops_base<basic_inline_string<Capacity, CharT, TraitsT>, CharT, TraitsT> {
 public:
   using view_type = basic_string_view<CharT, TraitsT>;
   using traits_type = TraitsT;
@@ -345,6 +347,14 @@ public:
     return Other::try_allocate(alloc, view());
   }
 
+  /// Creates a new string of the same kind holding a copy of @p sv (used by `try_split_off` / `try_drain`).
+  [[nodiscard]] result<basic_inline_string> try_create_like(view_type sv) const noexcept { return try_create(sv); }
+
+  /// Succeeds when @p new_cap fits the fixed capacity (there is nothing to allocate).
+  [[nodiscard]] result<void> try_reserve(size_type new_cap) & noexcept {
+    return new_cap <= Capacity ? result<void>{} : result<void>(unexpected(error::out_of_bounds));
+  }
+
   [[nodiscard]] view_type view() const & noexcept RELOCO_LIFETIMEBOUND { return view_type(data_, size_); }
 
   // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::string: implicit conversion to a string view.
@@ -380,12 +390,6 @@ public:
   [[nodiscard]] const_reverse_iterator rend() const & noexcept RELOCO_LIFETIMEBOUND {
     return const_reverse_iterator(begin());
   }
-
-  [[nodiscard]] size_type find(view_type sv, size_type pos = 0) const noexcept { return view().find(sv, pos); }
-  [[nodiscard]] size_type find(CharT ch, size_type pos = 0) const noexcept { return view().find(ch, pos); }
-  [[nodiscard]] bool contains(view_type sv) const noexcept { return view().find(sv) != npos; }
-  [[nodiscard]] bool starts_with(view_type sv) const noexcept { return view().starts_with(sv); }
-  [[nodiscard]] bool starts_with(CharT ch) const noexcept { return view().starts_with(ch); }
 
   friend bool operator==(const basic_inline_string &lhs, const basic_inline_string &rhs) noexcept {
     return lhs.view() == rhs.view();

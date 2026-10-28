@@ -198,3 +198,5 @@ if (!copy)
 | Parse | `try_parse<Int>`, `try_consume_int<Int>`, `try_parse_bool` |
 | UTF-8 | `is_valid_utf8`, `try_char_count`, `utf8_chars` |
 | Allocating | `try_replace`, `try_to_ascii_uppercase`, `try_to_ascii_lowercase`, `try_repeat` |
+
+The owning strings (`string`, `sso_string`, `inline_string`) share all of these, plus in-place editing and encoders: see [string-ops.md](string-ops.md).

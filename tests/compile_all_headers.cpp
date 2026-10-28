@@ -181,6 +181,7 @@
 #include <reloco/detail/assert.hpp>
 #include <reloco/detail/compat.hpp>
 #include <reloco/detail/flat_container_base.hpp>
+#include <reloco/detail/string_ops_base.hpp>
 #include <reloco/detail/flat_hash_base.hpp>
 #include <reloco/detail/intrusive_bst_base.hpp>
 #include <reloco/detail/lock_location_traits.hpp>

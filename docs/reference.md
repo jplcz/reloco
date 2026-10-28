@@ -21,8 +21,8 @@ where, not a tutorial.
 | `span.hpp` | `span<T>` | Non-owning, checked view over a contiguous range (Rust-style slice ops: `docs/span-slice-ops.md`) |
 | `array.hpp` | `array<T, N>` | Fixed-size owning array with hardened element access |
 | `string_view.hpp` | `basic_string_view<CharT, TraitsT>` (`string_view`, `wstring_view`) | Non-owning, checked view over character data (Rust-style text ops: `docs/string-view-ops.md`) |
-| `string.hpp` | `basic_string<CharT, TraitsT>` (`string`, `wstring`) | Move-only, allocator-backed, growable character buffer |
-| `inline_string.hpp` | `basic_inline_string<Capacity, CharT, TraitsT>` | Fixed-capacity, trivially-copyable, allocation-free character buffer |
+| `string.hpp` | `basic_string<CharT, TraitsT>` (`string`, `wstring`) | Move-only, allocator-backed, growable character buffer (shared editing/encoding ops for all mutable strings: `docs/string-ops.md`) |
+| `inline_string.hpp` | `basic_inline_string<Capacity, CharT, TraitsT>` | Fixed-capacity, trivially-copyable, allocation-free character buffer (same shared ops, see `docs/string-ops.md`) |
 | `vector.hpp` | `vector<T>` | Move-only, allocator-backed, growable dynamic array |
 | `secure_wipe.hpp` | `secure_wipe(void*, size_t)`, `secure_wipe(T&)` | Non-elidable erase of live storage; `RELOCO_SECURE_WIPE_IMPL` port hook (see [secure-wipe.md](secure-wipe.md)) |
 | `secure_vector.hpp` | `secure_vector<T>` | Move-only growable buffer of trivial `T` that wipes every block it releases (see [secure-wipe.md](secure-wipe.md)) |

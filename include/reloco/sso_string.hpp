@@ -55,6 +55,7 @@
 #include "contiguous_iterator.hpp"
 #include "default_allocator.hpp"
 #include "detail/assert.hpp"
+#include "detail/string_ops_base.hpp"
 #include "error.hpp"
 #include "expected.hpp"
 #include "iterator.hpp"
@@ -82,7 +83,8 @@ RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
 namespace reloco {
 
-template <typename CharT, typename TraitsT = std::char_traits<CharT>> class RELOCO_OWNER basic_sso_string {
+template <typename CharT, typename TraitsT = std::char_traits<CharT>>
+class RELOCO_OWNER basic_sso_string : public detail::string_ops_base<basic_sso_string<CharT, TraitsT>, CharT, TraitsT> {
 public:
   using view_type = basic_string_view<CharT, TraitsT>;
   using traits_type = TraitsT;
@@ -542,6 +544,11 @@ public:
     return Other::try_allocate(alloc, view());
   }
 
+  /// Creates a new string of the same kind holding a copy of @p sv (used by `try_split_off` / `try_drain`).
+  [[nodiscard]] result<basic_sso_string> try_create_like(view_type sv) const noexcept {
+    return try_allocate(alloc_, sv);
+  }
+
   [[nodiscard]] view_type view() const & noexcept RELOCO_LIFETIMEBOUND { return view_type(data(), size_); }
 
   // Implicit by design: part of the documented value-like API.
@@ -566,12 +573,6 @@ public:
   // std-interop-end
 
   // ---- searching ----
-
-  [[nodiscard]] size_type find(view_type sv, size_type pos = 0) const noexcept { return view().find(sv, pos); }
-  [[nodiscard]] size_type find(CharT ch, size_type pos = 0) const noexcept { return view().find(ch, pos); }
-  [[nodiscard]] bool contains(view_type sv) const noexcept { return view().find(sv) != npos; }
-  [[nodiscard]] bool starts_with(view_type sv) const noexcept { return view().starts_with(sv); }
-  [[nodiscard]] bool starts_with(CharT ch) const noexcept { return view().starts_with(ch); }
 
   // ---- comparison ----
 

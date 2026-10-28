@@ -53,6 +53,7 @@
 #include "array.hpp"
 #include "default_allocator.hpp"
 #include "detail/assert.hpp"
+#include "detail/string_ops_base.hpp"
 #include "error.hpp"
 #include "expected.hpp"
 #include "lifetime.hpp"
@@ -75,7 +76,8 @@ RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
 namespace reloco {
 
-template <typename CharT, typename TraitsT = std::char_traits<CharT>> class RELOCO_OWNER basic_string {
+template <typename CharT, typename TraitsT = std::char_traits<CharT>>
+class RELOCO_OWNER basic_string : public detail::string_ops_base<basic_string<CharT, TraitsT>, CharT, TraitsT> {
 public:
   using view_type = basic_string_view<CharT, TraitsT>;
   using traits_type = TraitsT;
@@ -289,8 +291,7 @@ public:
    * @brief Appends every view in order, growing at most once. On failure the string is unchanged.
    * @note Views aliasing this string are safe (they are first gathered into a temporary).
    */
-  template <class... Vs>
-  [[nodiscard]] result<void> try_append_all(const Vs &...parts) & noexcept {
+  template <class... Vs> [[nodiscard]] result<void> try_append_all(const Vs &...parts) & noexcept {
     static_assert(sizeof...(Vs) > 0 && (std::is_convertible_v<const Vs &, view_type> && ...),
                   "every part must be convertible to the string view type");
     const array<view_type, sizeof...(Vs)> views{{static_cast<view_type>(parts)...}};
@@ -324,8 +325,7 @@ public:
   }
 
   /** @brief Builds a new string from the concatenation of @p parts (one allocation). */
-  template <class... Vs>
-  [[nodiscard]] static result<basic_string> try_concat(const Vs &...parts) noexcept {
+  template <class... Vs> [[nodiscard]] static result<basic_string> try_concat(const Vs &...parts) noexcept {
     static_assert(sizeof...(Vs) > 0 && (std::is_convertible_v<const Vs &, view_type> && ...),
                   "every part must be convertible to the string view type");
     auto out = try_create(view_type());
@@ -349,7 +349,8 @@ public:
     return out;
   }
 
-  /** @brief Joins @p items with @p separator between each (no trailing separator); empty input gives an empty string. */
+  /** @brief Joins @p items with @p separator between each (no trailing separator); empty input gives an empty string.
+   */
   template <class Range>
   [[nodiscard]] static result<basic_string> try_join(const Range &items, view_type separator) noexcept {
     auto out = try_create(view_type());
@@ -582,6 +583,9 @@ public:
     return Other::try_allocate(alloc, view());
   }
 
+  /// Creates a new string of the same kind holding a copy of @p sv (used by `try_split_off` / `try_drain`).
+  [[nodiscard]] result<basic_string> try_create_like(view_type sv) const noexcept { return try_allocate(alloc_, sv); }
+
   [[nodiscard]] view_type view() const & noexcept RELOCO_LIFETIMEBOUND { return view_type(data(), size_); }
 
   // NOLINTNEXTLINE(reloco-explicit-conversion): mirrors std::string: implicit conversion to a string view.
@@ -619,12 +623,6 @@ public:
   }
 
   // ---- searching ----
-
-  [[nodiscard]] size_type find(view_type sv, size_type pos = 0) const noexcept { return view().find(sv, pos); }
-  [[nodiscard]] size_type find(CharT ch, size_type pos = 0) const noexcept { return view().find(ch, pos); }
-  [[nodiscard]] bool contains(view_type sv) const noexcept { return view().find(sv) != npos; }
-  [[nodiscard]] bool starts_with(view_type sv) const noexcept { return view().starts_with(sv); }
-  [[nodiscard]] bool starts_with(CharT ch) const noexcept { return view().starts_with(ch); }
 
   // ---- comparison ----
 
