@@ -4,6 +4,7 @@
 
 ### Added
 
+- Rust-`str`-style `string_view` operations: lazy `split`/`rsplit`/`splitn`/`rsplitn`/`split_terminator`/`split_inclusive`/`split_whitespace`/`lines`, `split_once`/`split_at`, `contains`/`count`/`matches`/`match_indices`/`rfind*`/`find_*_of`, `trim_*_matches`, ASCII case-insensitive comparison, integer parsing (`try_parse`, `try_consume_int`, `try_parse_bool`), UTF-8 validation and iteration, and allocating `try_replace`/`try_to_ascii_*case`/`try_repeat`. Patterns are a character, a predicate or a string. See `docs/string-view-ops.md`.
 - Rust-slice-style `span` operations: `split_first/last`, `split_off_*`, `chunks_exact`, `rchunks`, `split/splitn/rsplit`, `starts_with/ends_with`, `strip_prefix/suffix`, `partition_point`, binary search bounds, `try_find/try_max/try_min*`, `any/all/count`, `is_sorted*`, `select_nth_unstable`, `reverse`, `rotate_*`, `fill*`, `swap_*`, `copy_from/copy_within`, `partition`, `fold`, ASCII helpers. See `docs/span-slice-ops.md`.
 - `reloco::tuple<Ts...>`: a `std::tuple` with Rust-like `map`/`zip`/`append`/`prepend`/`concat`/`for_each`/`first`/`last`, runtime `visit_at` returning `result<R>`, and hardened rvalue access. See `docs/tuple.md`.
 - Owning linked containers `tailq`, `stailq`, `slist`, `list` and `circular_list` (one allocator-backed node per element,

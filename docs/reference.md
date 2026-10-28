@@ -20,7 +20,7 @@ where, not a tutorial.
 | `error_errno.hpp` | `to_errno(error)`, `from_errno(int)` | Opt-in, allocation-free `reloco::error` -> POSIX `errno` mapping (no `<system_error>`) |
 | `span.hpp` | `span<T>` | Non-owning, checked view over a contiguous range (Rust-style slice ops: `docs/span-slice-ops.md`) |
 | `array.hpp` | `array<T, N>` | Fixed-size owning array with hardened element access |
-| `string_view.hpp` | `basic_string_view<CharT, TraitsT>` (`string_view`, `wstring_view`) | Non-owning, checked view over character data |
+| `string_view.hpp` | `basic_string_view<CharT, TraitsT>` (`string_view`, `wstring_view`) | Non-owning, checked view over character data (Rust-style text ops: `docs/string-view-ops.md`) |
 | `string.hpp` | `basic_string<CharT, TraitsT>` (`string`, `wstring`) | Move-only, allocator-backed, growable character buffer |
 | `inline_string.hpp` | `basic_inline_string<Capacity, CharT, TraitsT>` | Fixed-capacity, trivially-copyable, allocation-free character buffer |
 | `vector.hpp` | `vector<T>` | Move-only, allocator-backed, growable dynamic array |
