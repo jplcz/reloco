@@ -35,6 +35,7 @@ where, not a tutorial.
 | `flat_hash_set.hpp` | `flat_hash_set<T, Hash, KeyEqual>` | Unordered, unique-element set backed by an open-addressing `vector<optional<T>>` hash table, with fallible insertion |
 | `flat_hash_map.hpp` | `flat_hash_map<Key, Mapped, Hash, KeyEqual>` | Unordered, unique-key map backed by an open-addressing `vector<optional<std::pair<Key, Mapped>>>` hash table, with fallible insertion |
 | `optional.hpp` | `optional<T>`, `nullopt_t`, `nullopt` | Zero-allocation, conditionally-present value wrapper with tri-tier access |
+| `tuple.hpp` | `tuple<Ts...>`, `make_tuple`, `tie`, `forward_as_tuple` | `std::tuple` with Rust-style `map`/`zip`/`append`/`concat`, runtime `visit_at` and hardened rvalue access (see [tuple.md](tuple.md)) |
 | `variant.hpp` | `variant<Ts...>`, `overloaded<Fs...>` | `std::variant<Ts...>` with Rust-style `match()` and tri-tier access on top |
 | `function_ref.hpp` | `function_ref<R(Args...)>` | Non-owning, zero-allocation borrow of any callable |
 | `inplace_function.hpp` | `inplace_function<Signature, Capacity>` | Zero-allocation, fixed-capacity callable wrapper |

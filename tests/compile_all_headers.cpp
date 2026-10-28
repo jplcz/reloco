@@ -106,6 +106,7 @@
 #include <reloco/tls_slot_vector.hpp>
 #include <reloco/tree_map.hpp>
 #include <reloco/tree_set.hpp>
+#include <reloco/tuple.hpp>
 #include <reloco/type_id.hpp>
 #include <reloco/uninit.hpp>
 #include <reloco/unique_ptr.hpp>

@@ -4,6 +4,7 @@
 
 ### Added
 
+- `reloco::tuple<Ts...>`: a `std::tuple` with Rust-like `map`/`zip`/`append`/`prepend`/`concat`/`for_each`/`first`/`last`, runtime `visit_at` returning `result<R>`, and hardened rvalue access. See `docs/tuple.md`.
 - Owning linked containers `tailq`, `stailq`, `slist`, `list` and `circular_list` (one allocator-backed node per element,
   linking delegated to the `c_*` intrusive containers), plus `c_tailq::back()`, `c_stailq::back()`/`remove_after()`,
   `c_list_head::insert_after()`/`insert_before()` and `allocator_ref::operator==`. Includes `try_prepend`, `try_splice` and `try_splice_after` (same allocator required unless the
