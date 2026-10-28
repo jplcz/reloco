@@ -441,6 +441,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_atomic_ops.cpp
         tests/test_array.cpp
         tests/test_span.cpp
+        tests/test_span_slice_ops.cpp
         tests/test_string_view.cpp
         tests/test_expected.cpp
         tests/test_error_std.cpp

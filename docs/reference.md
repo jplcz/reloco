@@ -18,7 +18,7 @@ where, not a tutorial.
 | `error.hpp` | `error`, `result<T>` | The one error enum every fallible reloco operation returns, and its `expected<T, error>` alias |
 | `error_std.hpp` | `error_category()`, `make_error_code(error)`, `make_error_condition(error)` | Opt-in `<system_error>` binding: makes `reloco::error` convert to `std::error_code`/`std::error_condition` |
 | `error_errno.hpp` | `to_errno(error)`, `from_errno(int)` | Opt-in, allocation-free `reloco::error` -> POSIX `errno` mapping (no `<system_error>`) |
-| `span.hpp` | `span<T>` | Non-owning, checked view over a contiguous range |
+| `span.hpp` | `span<T>` | Non-owning, checked view over a contiguous range (Rust-style slice ops: `docs/span-slice-ops.md`) |
 | `array.hpp` | `array<T, N>` | Fixed-size owning array with hardened element access |
 | `string_view.hpp` | `basic_string_view<CharT, TraitsT>` (`string_view`, `wstring_view`) | Non-owning, checked view over character data |
 | `string.hpp` | `basic_string<CharT, TraitsT>` (`string`, `wstring`) | Move-only, allocator-backed, growable character buffer |
