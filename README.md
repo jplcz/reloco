@@ -58,6 +58,7 @@ Start with the guide that matches what you are building:
 | [Fault injection](docs/fault-injection.md) | `RELOCO_FAULT_POINT`/`RELOCO_FAULT_POINT_ARGS`/`fault_injector<Tag, Args...>`: deterministically reproducing concurrency races and other "impossible timing" bugs in single-threaded tests, opt-in via `RELOCO_ENABLE_FAULT_INJECTION` |
 | [Over-alignment](docs/alignment.md) | `alignment_of<T>`: requesting SIMD-friendly over-aligned container storage without redeclaring `T` |
 | [Lifetime safety](docs/lifetime-safety.md) | Borrowed values and pointers, lifetime annotations, consumed-value tracking, and compiler diagnostics |
+| [Safety coding standards](CODING_STANDARDS.md) | The single checklist of safety rules for projects built on reloco, microfmt and structo, including the toolchain rules (build `reloco-tidy` with Clang; unsupported safety flags only warn) |
 | [Secure wipe](docs/secure-wipe.md) | `secure_wipe` (non-elidable erase, `RELOCO_SECURE_WIPE_IMPL` port hook) and `secure_vector<T>`: a trivial-element buffer that wipes everything it releases |
 | [Container contract](docs/container-contract.md) | Copy-paste template and checklist for lifetime annotations, rvalue protection, and the tri-tier accessor convention on a new container |
 | [Type-erased base containers](docs/type-erased-base-containers.md) | How `vector`/`inline_vector`/`sso_vector`/`outline_vector` share one type-erased storage engine (`detail::vector_base.hpp`), and how to add a new vector flavor |

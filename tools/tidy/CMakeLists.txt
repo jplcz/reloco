@@ -9,6 +9,12 @@
 cmake_minimum_required(VERSION 3.20)
 project(reloco_tidy LANGUAGES CXX)
 
+# The plugin is loaded into clang-tidy, which is built with Clang/LLVM: it must share its C++ ABI and RTTI settings.
+if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  message(FATAL_ERROR "reloco-tidy must be compiled with Clang, not ${CMAKE_CXX_COMPILER_ID}. "
+                      "Configure with -DCMAKE_CXX_COMPILER=clang++-N (N = the clang-tidy major version).")
+endif()
+
 set(RELOCO_TIDY_LLVM_VERSION "" CACHE STRING
     "LLVM major version to build against (empty = newest installed with clang-tidy development headers)")
 set(RELOCO_TIDY_LLVM_ROOT "" CACHE PATH "Explicit LLVM install prefix (overrides version search)")

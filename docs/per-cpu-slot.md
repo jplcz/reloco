@@ -76,6 +76,52 @@ void on_rx() noexcept RELOCO_ATOMIC_ONLY {                 // caller did critica
   (KIFP182/186).
 - Cross-CPU reads of another CPU's data are the caller's responsibility; use atomics for anything read remotely.
 
+- **FreeBSD `dpcpu(9)` variant.** `DPCPU_DEFINE` needs a literal identifier, so it cannot be stamped out from
+  `per_cpu_provider<T, Tag>`; instead each pair is opted in with macros (scaffold:
+  `detail/porting/per_cpu_provider_dpcpu.template.hpp`). No allocation, but the DPCPU area is small, so keep `T` small:
+
+  ```cpp
+  // net_stats.hpp: visible in every TU that uses the provider.
+  struct net_stats { std::uint64_t rx; };
+  struct net_tag {};                                 // Tag: plain identifier, pasted into the variable name
+  RELOCO_DECLARE_DPCPU_PER_CPU(net_stats, net_tag)   // specializes per_cpu_provider + DPCPU_DECLARE
+
+  // net_stats.cpp: exactly one TU (a header would give each TU its own copy).
+  RELOCO_DEFINE_DPCPU_PER_CPU_TRIVIAL(net_stats, net_tag)  // DPCPU_DEFINE: zero-filled storage
+
+  // Use: atomic context only, so the CPU cannot change under the reference.
+  critical_enter();
+  per_cpu_provider<net_stats, net_tag>::get().rx++;
+  critical_exit();
+  ```
+
+  A `T` with a non-trivial ctor needs no special handling: the macros choose the stored type at compile time. A
+  trivially default-constructible `T` is stored as-is. Anything else is stored as raw aligned bytes, and
+  `RELOCO_DEFINE_DPCPU_PER_CPU_NONTRIVIAL` (use `_TRIVIAL` for the first case; a `static_assert` rejects the wrong one) also emits a `SYSINIT` (at `SI_SUB_SMP`) that constructs `T` on every CPU and a
+  `SYSUNINIT` that destroys them, so `get()` stays a branch-free pointer computation and returns `T &` either way.
+  Using the provider before that `SYSINIT` has run is invalid, and the ctor must be `noexcept` and non-sleeping:
+
+  ```cpp
+  struct widget { widget() noexcept : ready(true) {} bool ready; void poke() noexcept; };  // non-trivial ctor
+  struct widget_tag {};
+  RELOCO_DECLARE_DPCPU_PER_CPU(widget, widget_tag)   // header
+  RELOCO_DEFINE_DPCPU_PER_CPU_NONTRIVIAL(widget, widget_tag)  // exactly one .cpp: storage + per-CPU init/uninit SYSINITs
+
+  critical_enter();
+  per_cpu_provider<widget, widget_tag>::get().poke();   // already constructed on every CPU
+  critical_exit();
+  ```
+
+  How it is built: all provider logic (`get()`, `get_cpu()`, `cpu_count()`, `init_all()`/`fini_all()`, and the
+  `sysinit`/`sysuninit` entry points passed to `SYSINIT`/`SYSUNINIT`) lives once in the template
+  `detail::per_cpu_provider_base<T, Derived>`. A template cannot name a `DPCPU_DEFINE`d variable (it needs a literal
+  identifier), so `RELOCO_DECLARE_DPCPU_PER_CPU` generates only a `Derived` that supplies two accessors, `local()`
+  (`DPCPU_PTR`) and `of(cpu)` (`DPCPU_ID_PTR`). To hook the init into a different `SYSINIT` order or your own
+  module-load path, call `per_cpu_provider<T, Tag>::init_all()` yourself instead of using `_NONTRIVIAL`'s `SYSINIT`
+  and define the storage by hand with
+  `DPCPU_DEFINE(reloco::detail::dpcpu_storage_t<T>, reloco_dpcpu_<Tag>)` (the `_TRIVIAL` macro's `static_assert`
+  would reject a non-trivial `T`).
+
 ## Tests
 
 `tests/test_per_cpu_slot.cpp`, built once per hosted model (`jplcz_reloco_per_cpu_single_tests`,
