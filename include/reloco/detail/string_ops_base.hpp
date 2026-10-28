@@ -22,6 +22,7 @@
 #include "../byte_like.hpp"
 #include "../error.hpp"
 #include "../expected.hpp"
+#include "../fmt.hpp"
 #include "../lifetime.hpp"
 #include "../optional.hpp"
 #include "../span.hpp"
@@ -532,6 +533,119 @@ public:
     return {};
   }
 
+  // ---- escaping and Display bridge ----------------------------------------------------------------------------
+
+  /// Appends @p sv with C-style escapes: `\n \r \t \0 \\ \" \'`, other control characters (and DEL) as `\xNN`.
+  /// Bytes >= 0x80 pass through unchanged, so UTF-8 text stays readable.
+  [[nodiscard]] result<void> try_append_escaped(view_type sv) & noexcept {
+    const size_type old = self().size();
+    for (size_type i = 0; i < sv.size(); ++i) {
+      const auto c = static_cast<unsigned>(sv[i]) & 0xFFu;
+      char letter = 0;
+      switch (c) {
+      case '\n':
+        letter = 'n';
+        break;
+      case '\r':
+        letter = 'r';
+        break;
+      case '\t':
+        letter = 't';
+        break;
+      case 0:
+        letter = '0';
+        break;
+      case '\\':
+        letter = '\\';
+        break;
+      case '"':
+        letter = '"';
+        break;
+      case '\'':
+        letter = '\'';
+        break;
+      default:
+        break;
+      }
+      result<void> r{};
+      if (letter != 0) {
+        const reloco::array<CharT, 2> esc{static_cast<CharT>('\\'), static_cast<CharT>(letter)};
+        r = self().try_append(view_type(esc.data(), 2));
+      } else if (c < 0x20u || c == 0x7Fu) {
+        const char *RELOCO_STATIC_STR digits = "0123456789abcdef";
+        const reloco::array<CharT, 4> esc{static_cast<CharT>('\\'), static_cast<CharT>('x'),
+                                          static_cast<CharT>(digits[c >> 4]), static_cast<CharT>(digits[c & 0xF])};
+        r = self().try_append(view_type(esc.data(), 4));
+      } else {
+        r = self().try_push_back(sv[i]);
+      }
+      if (!r)
+        return rollback(old, r);
+    }
+    return {};
+  }
+
+  /// Appends @p sv with the escapes of `try_append_escaped` decoded. Unknown or truncated escapes are
+  /// `invalid_argument`.
+  [[nodiscard]] result<void> try_append_unescaped(view_type sv) & noexcept {
+    const size_type old = self().size();
+    for (size_type i = 0; i < sv.size(); ++i) {
+      CharT out = sv[i];
+      if (TraitsT::eq(out, static_cast<CharT>('\\'))) {
+        if (++i >= sv.size())
+          return rollback(old, result<void>(unexpected(error::invalid_argument)));
+        switch (static_cast<unsigned>(sv[i])) {
+        case 'n':
+          out = static_cast<CharT>('\n');
+          break;
+        case 'r':
+          out = static_cast<CharT>('\r');
+          break;
+        case 't':
+          out = static_cast<CharT>('\t');
+          break;
+        case '0':
+          out = static_cast<CharT>('\0');
+          break;
+        case '\\':
+        case '"':
+        case '\'':
+          out = sv[i];
+          break;
+        case 'x': {
+          if (i + 2 >= sv.size())
+            return rollback(old, result<void>(unexpected(error::invalid_argument)));
+          const int hi = hex_value(sv[i + 1]);
+          const int lo = hex_value(sv[i + 2]);
+          if (hi < 0 || lo < 0)
+            return rollback(old, result<void>(unexpected(error::invalid_argument)));
+          out = static_cast<CharT>(hi * 16 + lo);
+          i += 2;
+          break;
+        }
+        default:
+          return rollback(old, result<void>(unexpected(error::invalid_argument)));
+        }
+      }
+      if (auto r = self().try_push_back(out); !r)
+        return rollback(old, r);
+    }
+    return {};
+  }
+
+  /// Appends `Display<T>` output (see fmt.hpp). Allocation failure during formatting is detected and the string is
+  /// restored; the first error is returned.
+  template <typename T> [[nodiscard]] result<void> try_append_display(const T &value) & noexcept {
+    static_assert(has_display_v<T>, "T needs a reloco::Display<T> specialization");
+    return append_via_sink([&value](const sink &out) noexcept { Display<T>::format(value, out); });
+  }
+
+  /// Appends `Debug<T>` output (see fmt.hpp); same failure behavior as `try_append_display`.
+  template <typename T> [[nodiscard]] result<void> try_append_debug(const T &value) & noexcept {
+    static_assert(has_debug_v<T>, "T needs a reloco::Debug<T> specialization");
+    return append_via_sink([&value](const sink &out) noexcept { Debug<T>::format(value, out); });
+  }
+
   // ---- Unicode ------------------------------------------------------------------------------------------------
 
   /// Appends one Unicode scalar value, encoded as UTF-8 / UTF-16 / UTF-32 depending on `sizeof(CharT)`.
@@ -672,6 +786,30 @@ private:
     const auto self_view = view_of();
     return !sv.empty() && !self_view.empty() && sv.data() >= self_view.data() &&
            sv.data() < self_view.data() + self_view.size();
+  }
+
+  template <typename F> result<void> append_via_sink(F &&emit) & noexcept {
+    static_assert(std::is_same_v<CharT, char>, "Display/Debug sinks write `char` text");
+    struct state {
+      Derived *str;
+      error err;
+      bool failed;
+    };
+    state st{&self(), error::invalid_state, false};
+    const sink out{&st, [](void *ctx, reloco::string_view piece) noexcept {
+                     auto *stp = static_cast<state *>(ctx); // NOLINT(reloco-no-raw-pointer): sink ctx is type-erased
+                     if (stp->failed)
+                       return;
+                     if (auto r = stp->str->try_append(typename Derived::view_type(piece.data(), piece.size())); !r) {
+                       stp->failed = true;
+                       stp->err = r.error();
+                     }
+                   }};
+    const size_type old = self().size();
+    emit(out);
+    if (st.failed)
+      return rollback(old, result<void>(unexpected(st.err)));
+    return {};
   }
 
   result<void> rollback(size_type old_size, const result<void> &failure) noexcept {

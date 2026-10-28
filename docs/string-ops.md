@@ -30,6 +30,7 @@ Three rules keep the code predictable:
 | Case | `make_ascii_uppercase`, `make_ascii_lowercase`, `make_ascii_titlecase` |
 | Building | `try_assign_repeat(ch, n)`, `try_append_repeat(sv, n)`, `try_extend_from(range)`, `try_pad_left/right(width, ch)`, `try_center(width, ch)` |
 | Encoders / decoders | `try_append_int<Int>(v, base, upper)`, `try_append_hex`, `try_append_from_hex`, `try_append_base64`, `try_append_from_base64`, `try_append_url_encoded`, `try_append_url_decoded` |
+| Escaping / Display | `try_append_escaped`, `try_append_unescaped`, `try_append_display<T>`, `try_append_debug<T>` |
 | Unicode | `try_append_char32`, `try_append_utf8`, `try_append_utf8_lossy`, `try_append_utf16`, `try_to_utf16_into`, `try_utf16_length` |
 
 `inline_string` additionally gained `try_reserve(n)`, which succeeds when `n <= Capacity`.
@@ -168,10 +169,27 @@ reloco::result<void> unicode(reloco::string &s, reloco::span<const char16_t> wid
 }
 ```
 
+## Example 7 — escaping and Display
+
+```cpp
+#include <reloco/string.hpp>
+
+// Builds a log line: the raw text is escaped so control characters can't break the line.
+reloco::result<void> log_line(reloco::string &out, reloco::string_view raw, const MyType &value) noexcept {
+  // Newline -> \n, tab -> \t, quotes/backslash escaped, other control bytes -> \xNN. UTF-8 passes through.
+  if (auto r = out.try_append_escaped(raw); !r)
+    return r;
+  // Runs reloco::Display<MyType>::format into this string (needs a Display specialization; char strings only).
+  // If an append fails mid-way the string is restored and the first error returned.
+  return out.try_append_display(value);
+}
+// try_append_unescaped(text) is the inverse; unknown escapes give error::invalid_argument.
+```
+
 ## Integration notes
 
 - **Adding a new string type:** inherit `detail::string_ops_base<Derived, CharT, Traits>` and provide `view()`,
   `data()` (`&`), `size()`, `try_insert`, `try_erase`, `try_resize`, `try_append`, `try_push_back`, `try_reserve` and
   `try_create_like(view)` (a new string of the same kind holding a copy, used by `try_split_off`/`try_drain`).
-- **Display / formatting:** `fmt.hpp` only declares the customization points (`sink`, `Display<T>`); a formatting
-  library can bridge to any of these strings through a `sink` whose write function calls `try_append`.
+- **Display / formatting:** `try_append_display`/`try_append_debug` bridge `fmt.hpp`'s `Display<T>`/`Debug<T>` to any of
+  these strings through a `sink`; sink writes cannot report errors, so failures are recorded and surfaced afterwards.

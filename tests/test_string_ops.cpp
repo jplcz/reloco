@@ -273,6 +273,36 @@ TYPED_TEST(StringOps, Unicode) {
   EXPECT_EQ(w.try_to_utf16_into(reloco::span<char16_t>(out.data(), 2)).error(), error::out_of_bounds);
 }
 
+namespace {
+struct point {
+  int x;
+  int y;
+};
+} // namespace
+
+template <> struct reloco::Display<point> {
+  static void format(const point &p, const reloco::sink &out) noexcept {
+    out.write("(1,2)");
+    (void)p;
+  }
+};
+
+TYPED_TEST(StringOps, EscapeAndDisplay) {
+  auto s = make<TypeParam>("");
+  ASSERT_TRUE(s.try_append_escaped(reloco::string_view("a\tb\n\"q\"\\'\x01\x7f\xC3\xA9", 13)));
+  EXPECT_EQ(str(s), "a\\tb\\n\\\"q\\\"\\\\\\'\\x01\\x7f\xC3\xA9");
+  auto u = make<TypeParam>("");
+  ASSERT_TRUE(u.try_append_unescaped(s.view()));
+  EXPECT_EQ(str(u), std::string("a\tb\n\"q\"\\'\x01\x7f\xC3\xA9"));
+  EXPECT_EQ(u.try_append_unescaped("bad\\").error(), error::invalid_argument);
+  EXPECT_EQ(u.try_append_unescaped("\\q").error(), error::invalid_argument);
+  EXPECT_EQ(u.try_append_unescaped("\\x4").error(), error::invalid_argument);
+  EXPECT_EQ(str(u), std::string("a\tb\n\"q\"\\'\x01\x7f\xC3\xA9"));
+  auto d = make<TypeParam>("p=");
+  ASSERT_TRUE(d.try_append_display(point{1, 2}));
+  EXPECT_EQ(str(d), "p=(1,2)");
+}
+
 TEST(StringOpsLimits, InlineCapacityIsReportedAndRolledBack) {
   auto s = reloco::inline_string<8>::try_create("abcd");
   ASSERT_TRUE(s);
@@ -283,6 +313,8 @@ TEST(StringOpsLimits, InlineCapacityIsReportedAndRolledBack) {
   EXPECT_FALSE(s->try_pad_left(9));
   EXPECT_EQ(s->view(), reloco::string_view("abcd"));
   const std::array<std::uint8_t, 3> three{1, 2, 3};
+  EXPECT_FALSE(s->try_append_display(point{1, 2}));
+  EXPECT_EQ(s->view(), reloco::string_view("abcd"));
   EXPECT_FALSE(s->try_append_hex(bytes_of(three.data(), three.size())));
   EXPECT_EQ(s->view(), reloco::string_view("abcd"));
 }
