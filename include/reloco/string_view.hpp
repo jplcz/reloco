@@ -999,21 +999,21 @@ public:
   // ---- Parsing (no allocation, no locale, no floating point) ---------------------------------------------------
 
   /**
-   * @brief Parses the whole view as an integer in @p base (2..36), with an optional leading `+` (or `-` for signed
+   * @brief Parses the whole view as an integer in @p radix (2..36), with an optional leading `+` (or `-` for signed
    * types). Fails with `invalid_argument` (empty, stray characters) or `out_of_range` (does not fit `Int`).
    */
-  template <typename Int> [[nodiscard]] result<Int> try_parse(unsigned base = 10) const noexcept {
+  template <typename Int> [[nodiscard]] result<Int> try_parse(unsigned radix = 10) const noexcept {
     size_type used = 0;
-    auto value = parse_prefix<Int>(base, used);
+    auto value = parse_prefix<Int>(radix, used);
     if (value && used != size_)
       return unexpected(error::invalid_argument);
     return value;
   }
 
   /// Parses an integer at the start of the view and removes the consumed characters (for tokenizers).
-  template <typename Int> [[nodiscard]] result<Int> try_consume_int(unsigned base = 10) & noexcept {
+  template <typename Int> [[nodiscard]] result<Int> try_consume_int(unsigned radix = 10) & noexcept {
     size_type used = 0;
-    auto value = parse_prefix<Int>(base, used);
+    auto value = parse_prefix<Int>(radix, used);
     if (value)
       remove_prefix(used);
     return value;
@@ -1234,9 +1234,9 @@ private:
   }
 
   // Parses `[+-]digits` at the start; `used` receives the number of characters consumed on success.
-  template <typename Int> [[nodiscard]] result<Int> parse_prefix(unsigned base, size_type &used) const noexcept {
+  template <typename Int> [[nodiscard]] result<Int> parse_prefix(unsigned radix, size_type &used) const noexcept {
     static_assert(std::is_integral_v<Int> && !std::is_same_v<Int, bool>, "try_parse requires an integer type");
-    RELOCO_ASSERT(base >= 2 && base <= 36, "integer base must be in [2, 36]");
+    RELOCO_ASSERT(radix >= 2 && radix <= 36, "integer base must be in [2, 36]");
     using U = std::make_unsigned_t<Int>;
     size_type i = 0;
     bool negative = false;
@@ -1267,10 +1267,10 @@ private:
         digit = static_cast<unsigned>(c - CharT('A')) + 10u;
       else
         break;
-      if (digit >= base)
+      if (digit >= radix)
         break;
       if (!overflow) {
-        const U b = static_cast<U>(base);
+        const U b = static_cast<U>(radix);
         const U d = static_cast<U>(digit);
         if (acc > static_cast<U>(limit / b) || (acc == static_cast<U>(limit / b) && d > static_cast<U>(limit % b)))
           overflow = true;
