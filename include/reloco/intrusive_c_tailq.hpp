@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "container_of.hpp"
 #include "detail/assert.hpp"
 #include "detail/compat.hpp"
 #include <cstddef>
@@ -165,6 +166,23 @@ public:
 
   // NOLINTNEXTLINE(reloco-lifetime-annotations): returns a caller-owned node, not storage of the list itself.
   [[nodiscard]] T *front() const && = delete;
+
+  /** @brief O(1) access to the last node, or `nullptr` when empty. */
+  // NOLINTNEXTLINE(reloco-lifetime-annotations): returns a caller-owned node, not storage of the list itself.
+  [[nodiscard]] T *back() const & noexcept {
+    if (first_ == nullptr) {
+      return nullptr;
+    }
+    using hook_type = container_of_member_t<Hook>;
+    RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+    // `last_ptr_` addresses the last node's `next` slot, which is the first member of its hook.
+    // NOLINTNEXTLINE(reloco-banned-construct)
+    return container_of<Hook>(reinterpret_cast<hook_type *>(last_ptr_));
+    RELOCO_END_UNSAFE_BUFFER_USAGE
+  }
+
+  // NOLINTNEXTLINE(reloco-lifetime-annotations): returns a caller-owned node, not storage of the list itself.
+  [[nodiscard]] T *back() const && = delete;
 
   /** @brief TAILQ_INSERT_HEAD: O(1) insertion at the front. */
   void push_front(T &node) & noexcept {

@@ -4,6 +4,10 @@
 
 ### Added
 
+- Owning linked containers `tailq`, `stailq`, `slist`, `list` and `circular_list` (one allocator-backed node per element,
+  linking delegated to the `c_*` intrusive containers), plus `c_tailq::back()`, `c_stailq::back()`/`remove_after()`,
+  `c_list_head::insert_after()`/`insert_before()` and `allocator_ref::operator==`. Includes `try_prepend`, `try_splice` and `try_splice_after` (same allocator required unless the
+  destination is empty). See `docs/linked-containers.md`.
 - `expected::unchecked_value()` / `unchecked_error()`: unasserted accessors for hot loops that test `has_value()` outside the loop (rvalues deleted).
 - Kernel `block::for_each_sub<B2>`: split a proven block into narrower proven blocks. See `docs/kernel/index.md`.
 - Kernel projections `permute`, `diagonal`, `try_reshape`, `try_broadcast` (`project/permute.hpp`, `project/reshape.hpp`). See `docs/kernel/projections.md`.

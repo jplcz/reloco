@@ -215,6 +215,18 @@ public:
     insert_between(detail::c_linux_hook_access<T, Hook>::get(&node), root_.prev, &root_);
   }
 
+  /** @brief list_add (after a known node): O(1) insertion after @p pos. */
+  void insert_after(T &pos, T &node) & noexcept {
+    detail::c_list_head_node *p = detail::c_linux_hook_access<T, Hook>::get(&pos);
+    insert_between(detail::c_linux_hook_access<T, Hook>::get(&node), p, p->next);
+  }
+
+  /** @brief list_add_tail (before a known node): O(1) insertion before @p pos. */
+  void insert_before(T &pos, T &node) & noexcept {
+    detail::c_list_head_node *p = detail::c_linux_hook_access<T, Hook>::get(&pos);
+    insert_between(detail::c_linux_hook_access<T, Hook>::get(&node), p->prev, p);
+  }
+
   /** @brief O(1) removal from the front. Returns the removed node. */
   T *pop_front() & noexcept {
     if (empty())

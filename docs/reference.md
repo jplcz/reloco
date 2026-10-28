@@ -69,6 +69,11 @@ where, not a tutorial.
 | `intrusive_c_slist.hpp` | `c_slist_hook_access<T, Hook>`, `c_slist_iterator<T, Hook, IsConst>`, `c_slist<T, Hook>` | Intrusive adapter for a singly linked C list |
 | `intrusive_c_stailq.hpp` | `c_stailq_hook_access<T, Hook>`, `c_stailq_iterator<T, Hook, IsConst>`, `c_stailq<T, Hook>` | Intrusive adapter for a singly linked tail queue |
 | `intrusive_c_tailq.hpp` | `c_tailq_hook_layout<T>`, `c_tailq_hook_access<T, Hook>`, `c_tailq_iterator<T, Hook, IsConst>`, `c_tailq<T, Hook>` | Intrusive adapter for a doubly linked tail queue |
+| `tailq.hpp` | `tailq<T>` | Owning doubly linked list with tail operations, built on `c_tailq` (see `linked-containers.md`) |
+| `stailq.hpp` | `stailq<T>` | Owning singly linked FIFO queue, built on `c_stailq` |
+| `slist.hpp` | `slist<T>` | Owning singly linked list, built on `c_slist` |
+| `list.hpp` | `list<T>` | Owning head-only doubly linked list, built on `c_list` |
+| `circular_list.hpp` | `circular_list<T>` | Owning circular doubly linked list with bidirectional iterators, built on `c_list_head` |
 | `contiguous_iterator.hpp` | `static_bounds_policy<T>`, `dynamic_bounds_policy<Container, T>`, `contiguous_iterator<T, BoundsPolicy>` | Bounds-aware random-access iterator over contiguous storage |
 | `boxed_slice.hpp` | `boxed_slice<T>` | Fixed-size, allocator-backed owned array with no spare capacity, matching Rust's `Box<[T]>` |
 | `cow.hpp` | `cow<T>`, `cow_traits<T>` | Clone-on-write wrapper matching Rust's `Cow<'a, T>`, with a user-specializable clone customization point |

@@ -561,6 +561,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_intrusive_c_list.cpp
         tests/test_intrusive_c_stailq.cpp
         tests/test_intrusive_c_tailq.cpp
+        tests/test_owning_lists.cpp
         tests/test_intrusive_c_list_head.cpp
         tests/test_packed_bits.cpp
     )

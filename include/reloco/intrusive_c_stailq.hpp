@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "container_of.hpp"
 #include "detail/assert.hpp"
 #include "detail/compat.hpp"
 #include <cstddef>
@@ -150,6 +151,23 @@ public:
   // NOLINTNEXTLINE(reloco-lifetime-annotations): returns a caller-owned node, not storage of the list itself.
   [[nodiscard]] T *front() const && = delete;
 
+  /** @brief O(1) access to the last node, or `nullptr` when empty. */
+  // NOLINTNEXTLINE(reloco-lifetime-annotations): returns a caller-owned node, not storage of the list itself.
+  [[nodiscard]] T *back() const & noexcept {
+    if (first_ == nullptr) {
+      return nullptr;
+    }
+    using hook_type = container_of_member_t<Hook>;
+    RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+    // `last_ptr_` addresses the last node's `next` slot, which is the first member of its hook.
+    // NOLINTNEXTLINE(reloco-banned-construct)
+    return container_of<Hook>(reinterpret_cast<hook_type *>(last_ptr_));
+    RELOCO_END_UNSAFE_BUFFER_USAGE
+  }
+
+  // NOLINTNEXTLINE(reloco-lifetime-annotations): returns a caller-owned node, not storage of the list itself.
+  [[nodiscard]] T *back() const && = delete;
+
   /** @brief STAILQ_INSERT_HEAD: O(1) insertion at the front. */
   void push_front(T &node) & noexcept {
     T *&next = detail::c_stailq_hook_access<T, Hook>::next(&node);
@@ -193,6 +211,21 @@ public:
       // If we inserted after the last node, update last_ptr_
       last_ptr_ = &node_next;
     }
+  }
+
+  /** @brief STAILQ_REMOVE_AFTER: O(1) removal of the node following @p pos. Returns it, or `nullptr` if none. */
+  // NOLINTNEXTLINE(reloco-lifetime-annotations): returns a caller-owned node, not storage of the list itself.
+  T *remove_after(T &pos) & noexcept {
+    T *&pos_next = detail::c_stailq_hook_access<T, Hook>::next(&pos);
+    T *node = pos_next;
+    if (node != nullptr) {
+      pos_next = detail::c_stailq_hook_access<T, Hook>::next(node);
+      detail::c_stailq_hook_access<T, Hook>::next(node) = nullptr;
+      if (pos_next == nullptr) {
+        last_ptr_ = &pos_next;
+      }
+    }
+    return node;
   }
 
   /** @brief STAILQ_REMOVE: O(n) removal of an arbitrary node. */

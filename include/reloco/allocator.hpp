@@ -264,6 +264,18 @@ public:
   }
 
   /**
+   * @brief True when both handles dispatch to the same backend and context, i.e. memory allocated through one
+   * may be released through the other.
+   */
+  [[nodiscard]] friend bool operator==(const allocator_ref &lhs, const allocator_ref &rhs) noexcept {
+    return lhs.vtbl_ == rhs.vtbl_ && lhs.ctx_.get() == rhs.ctx_.get();
+  }
+
+  [[nodiscard]] friend bool operator!=(const allocator_ref &lhs, const allocator_ref &rhs) noexcept {
+    return !(lhs == rhs);
+  }
+
+  /**
    * @brief Releases a block previously returned by `allocate`/`reallocate`.
    * See @ref allocate for why this is `RELOCO_UNSAFE_BUFFER_USAGE`.
    */

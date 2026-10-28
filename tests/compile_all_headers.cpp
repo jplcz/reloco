@@ -25,6 +25,7 @@
 #include <reloco/construction_helpers.hpp>
 #include <reloco/container_ref.hpp>
 #include <reloco/container_ref_std.hpp>
+#include <reloco/circular_list.hpp>
 #include <reloco/coroutine.hpp>
 #include <reloco/def_function_ref.hpp>
 #include <reloco/default_allocator.hpp>
@@ -68,6 +69,7 @@
 #include <reloco/keyed_intrusive_registry.hpp>
 #include <reloco/lazy_lock.hpp>
 #include <reloco/lifetime.hpp>
+#include <reloco/list.hpp>
 #include <reloco/lru_cache.hpp>
 #include <reloco/malloc_allocator.hpp>
 #include <reloco/masked_byte_region.hpp>
@@ -88,10 +90,13 @@
 #include <reloco/seqlock.hpp>
 #include <reloco/shared_ptr.hpp>
 #include <reloco/span.hpp>
+#include <reloco/slist.hpp>
 #include <reloco/spin_lock.hpp>
 #include <reloco/stack_allocator.hpp>
+#include <reloco/stailq.hpp>
 #include <reloco/string.hpp>
 #include <reloco/string_view.hpp>
+#include <reloco/tailq.hpp>
 #include <reloco/tamper.hpp>
 #include <reloco/thread.hpp>
 #include <reloco/per_cpu_provider.hpp>
