@@ -154,7 +154,8 @@ template <typename T, typename = void> struct clone_one_resolver {
   static constexpr auto get() noexcept {
     if constexpr (std::is_trivially_copyable_v<T>) {
       return &trivial_type_operations::clone_one;
-    } else if constexpr (is_try_cloneable_v<T>) {
+    } else if constexpr (is_try_cloneable_v<T> && std::is_nothrow_move_constructible_v<T>) {
+      // try_clone_at relocates the clone into place, so pinned types are not cloneable here.
       return [](const type_metadata &, allocator_ref alloc, void *dest, const void *src) noexcept -> result<void> {
         return construction_helpers::try_clone_at(alloc, static_cast<T *>(dest), *static_cast<const T *>(src));
       };
@@ -196,6 +197,9 @@ template <typename T> struct relocate_one_resolver {
   static constexpr auto get() noexcept {
     if constexpr (is_trivially_relocatable_v<T>) {
       return &trivial_type_operations::relocate_one;
+    } else if constexpr (!std::is_move_constructible_v<T>) {
+      // Pinned types (non-movable) cannot be relocated; callers report unsupported_operation.
+      return static_cast<decltype(&trivial_type_operations::relocate_one)>(nullptr);
     } else {
       return [](const type_metadata &, void *to, const void *from) noexcept {
         T *d = static_cast<T *>(to);

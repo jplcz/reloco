@@ -80,6 +80,8 @@ RELOCO_API result<void> unowned_vector_base::try_reserve_base(const vector_opera
         return {};
       }
       // We have to relocate to heap world
+      if (size_ > 0 && !can_relocate(operations, type))
+        return unexpected(error::unsupported_operation);
       auto res = alloc.allocate(required_bytes, type.element_alignment);
       if (!res)
         return unexpected(res.error());
@@ -115,6 +117,8 @@ RELOCO_API result<void> unowned_vector_base::try_reserve_base(const vector_opera
     data_ = res->ptr;
     cap_ = res->size / elem_size;
   } else {
+    if (size_ > 0 && !can_relocate(operations, type))
+      return unexpected(error::unsupported_operation);
     auto res = alloc.allocate(required_bytes, type.element_alignment);
     if (!res)
       return unexpected(res.error());
@@ -179,6 +183,8 @@ RELOCO_API result<void> unowned_vector_base::shrink_to_fit_base(const vector_ope
 
     // We might need to migrate to inline storage
     if (size_ <= max_inline) {
+      if (size_ > 0 && !can_relocate(operations, type))
+        return unexpected(error::unsupported_operation);
       if (size_ > 0) {
         operations->move_range(type, inline_storage, data_, size_);
       }
@@ -217,6 +223,8 @@ RELOCO_API result<void> unowned_vector_base::shrink_to_fit_base(const vector_ope
     data_ = res->ptr;
     cap_ = res->size / elem_size;
   } else {
+    if (!can_relocate(operations, type))
+      return unexpected(error::unsupported_operation);
     auto res = alloc.allocate(target_bytes, type.element_alignment);
     if (!res)
       return unexpected(res.error());
@@ -250,6 +258,9 @@ RELOCO_API result<void> unowned_vector_base::try_erase_at_base(const vector_oper
                                                                const type_metadata &type, std::size_t index) noexcept {
   if (index >= size_)
     return unexpected(error::out_of_bounds);
+
+  if (index + 1 < size_ && !can_relocate(operations, type))
+    return unexpected(error::unsupported_operation);
 
   char *byte_data = static_cast<char *>(data_);
   const std::size_t elem_size = type.element_size;
@@ -362,6 +373,9 @@ RELOCO_API result<void *> unowned_vector_base::try_insert_at_base(const vector_o
 
   if (index > size_)
     return unexpected(error::out_of_bounds);
+
+  if (index < size_ && !can_relocate(operations, type))
+    return unexpected(error::unsupported_operation);
 
   // Ensure capacity first
   if (size_ == cap_) {
@@ -584,6 +598,8 @@ RELOCO_API result<void> unowned_deque_base::try_reserve_base(const vector_operat
       }
 
       // Promote from inline to heap
+      if (len_ > 0 && !can_relocate(ops, type))
+        return unexpected(error::unsupported_operation);
       auto res = alloc.allocate(required_bytes, type.element_alignment);
       if (!res)
         return unexpected(res.error());
@@ -605,8 +621,11 @@ RELOCO_API result<void> unowned_deque_base::try_reserve_base(const vector_operat
     }
   }
 
+  // Pinned types can only expand in place while the ring is not wrapped (no shifting required).
+  const bool can_expand_in_place = can_relocate(ops, type) || !(len_ > 0 && head_ + len_ > cap_);
+
   // Try zero-cost in-place expansion first
-  if (data_) {
+  if (data_ && can_expand_in_place) {
     if (auto res = alloc.expand_in_place(data_, cap_ * elem_size, required_bytes); res) {
       const std::size_t newly_allocated_cap = *res / elem_size;
 
@@ -629,6 +648,9 @@ RELOCO_API result<void> unowned_deque_base::try_reserve_base(const vector_operat
   }
 
   // Fallback: Allocate or Reallocate
+  if (len_ > 0 && !can_relocate(ops, type))
+    return unexpected(error::unsupported_operation);
+
   auto res = data_ && type.is_trivially_relocatable()
                  ? alloc.reallocate(data_, cap_ * elem_size, required_bytes, type.element_alignment)
                  : alloc.allocate(required_bytes, type.element_alignment);
@@ -773,6 +795,9 @@ RELOCO_API result<void> unowned_deque_base::try_make_contiguous_base(const vecto
   if (tail <= cap_)
     return {};
 
+  if (!can_relocate(ops, type))
+    return unexpected(error::unsupported_operation);
+
   const std::size_t elem_size = type.element_size;
   char *byte_data = static_cast<char *>(data_);
 
@@ -893,6 +918,10 @@ RELOCO_API result<void> unowned_deque_base::try_erase_at_base(const vector_opera
                                                               std::size_t index) noexcept {
   if (index >= len_)
     return unexpected(error::out_of_bounds);
+
+  // Pinned types can only erase when no element has to be shifted.
+  if (index != 0 && index != len_ - 1 && !can_relocate(ops, type))
+    return unexpected(error::unsupported_operation);
 
   char *byte_data = static_cast<char *>(data_);
   const std::size_t elem_size = type.element_size;

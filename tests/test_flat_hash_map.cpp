@@ -299,3 +299,18 @@ TEST(FlatHashMapTest, ManyEntriesRoundTrip) {
     EXPECT_EQ(found->get(), k * 10);
   }
 }
+
+namespace {
+struct pinned_mapped {
+  int v = 0;
+  pinned_mapped() = default;
+  ~pinned_mapped() {}
+  pinned_mapped(const pinned_mapped &) = delete;
+  pinned_mapped &operator=(const pinned_mapped &) = delete;
+};
+} // namespace
+
+TEST(FlatHashMapTest, PinnedMappedTypeCompiles) {
+  reloco::flat_hash_map<int, pinned_mapped> map;
+  EXPECT_EQ(map.size(), 0u);
+}

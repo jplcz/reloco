@@ -5,11 +5,11 @@
 #include <gtest/gtest.h>
 #include <reloco/allocator.hpp>
 #include <reloco/boxed_slice.hpp>
-#include <reloco/inline_vector.hpp>
-#include <reloco/sso_vector.hpp>
 #include <reloco/default_allocator.hpp>
 #include <reloco/heap_allocator.hpp>
+#include <reloco/inline_vector.hpp>
 #include <reloco/relocatable.hpp>
+#include <reloco/sso_vector.hpp>
 #include <reloco/string.hpp>
 #include <reloco/string_view.hpp>
 #include <reloco/vector.hpp>
@@ -564,7 +564,8 @@ TEST(VectorTest, TryResizeToSameSizeIsNoop) {
 
 TEST(VectorTest, TryConvertToOtherVectorFlavors) {
   vector<int> v;
-  for (int i : {1, 2, 3}) ASSERT_TRUE(v.try_push_back(i));
+  for (int i : {1, 2, 3})
+    ASSERT_TRUE(v.try_push_back(i));
   auto sso = v.try_convert_to<reloco::sso_vector<int, 2>>();
   ASSERT_TRUE(sso);
   EXPECT_EQ(sso->size(), 3u);
@@ -581,7 +582,8 @@ TEST(VectorTest, TryConvertToOtherVectorFlavors) {
 
 TEST(VectorTest, RetainAndDedupCompileAndWork) {
   vector<int> v;
-  for (int i : {1, 1, 2, 3, 3, 3, 4, 5, 6}) ASSERT_TRUE(v.try_push_back(i));
+  for (int i : {1, 1, 2, 3, 3, 3, 4, 5, 6})
+    ASSERT_TRUE(v.try_push_back(i));
   v.dedup();
   ASSERT_EQ(v.size(), 6u);
   v.retain([](const int &x) { return x % 2 == 0; });
@@ -594,11 +596,13 @@ TEST(VectorTest, RetainAndDedupCompileAndWork) {
 
 TEST(VectorTest, TryInsertSpanInsertsInMiddleAndHandlesAliasing) {
   vector<int> v;
-  for (int i : {1, 2, 5}) ASSERT_TRUE(v.try_push_back(i));
+  for (int i : {1, 2, 5})
+    ASSERT_TRUE(v.try_push_back(i));
   const int mid[] = {3, 4};
   ASSERT_TRUE(v.try_insert_span(2, reloco::span<const int>(mid, 2)));
   ASSERT_EQ(v.size(), 5u);
-  for (std::size_t i = 0; i < 5; ++i) EXPECT_EQ(v[i], static_cast<int>(i) + 1);
+  for (std::size_t i = 0; i < 5; ++i)
+    EXPECT_EQ(v[i], static_cast<int>(i) + 1);
   // Alias own storage: insert [1,2] at the front (storage reallocates during the reserve).
   ASSERT_TRUE(v.try_insert_span(0, reloco::span<const int>(v.data(), 2)));
   ASSERT_EQ(v.size(), 7u);
@@ -611,7 +615,8 @@ TEST(VectorTest, TryInsertSpanInsertsInMiddleAndHandlesAliasing) {
 
 TEST(VectorTest, TryEraseRangeSwapRemoveTruncate) {
   vector<int> v;
-  for (int i = 0; i < 8; ++i) ASSERT_TRUE(v.try_push_back(i));
+  for (int i = 0; i < 8; ++i)
+    ASSERT_TRUE(v.try_push_back(i));
   ASSERT_TRUE(v.try_erase_range(2, 3)); // 0 1 5 6 7
   ASSERT_EQ(v.size(), 5u);
   EXPECT_EQ(v[2], 5);
@@ -628,7 +633,8 @@ TEST(VectorTest, TryEraseRangeSwapRemoveTruncate) {
 
 TEST(VectorTest, TrySplitOffMovesTail) {
   vector<int> v;
-  for (int i = 0; i < 5; ++i) ASSERT_TRUE(v.try_push_back(i));
+  for (int i = 0; i < 5; ++i)
+    ASSERT_TRUE(v.try_push_back(i));
   auto tail = v.try_split_off(3);
   ASSERT_TRUE(tail);
   EXPECT_EQ(v.size(), 3u);
@@ -661,4 +667,25 @@ TEST(VectorTest, MapVector) {
   ASSERT_EQ(result.next().unwrap(), 6);
   ASSERT_EQ(result.next().unwrap(), 8);
   ASSERT_FALSE(result.next().has_value());
+}
+
+namespace {
+struct pinned_item {
+  int value = 0;
+  pinned_item() = default;
+  ~pinned_item() {}
+  pinned_item(const pinned_item &) = delete;
+  pinned_item &operator=(const pinned_item &) = delete;
+};
+} // namespace
+
+TEST(VectorTest, PinnedElementsCompileAndReportUnsupportedRelocation) {
+  auto v = vector<pinned_item>::try_create_sized(2);
+  ASSERT_TRUE(v.has_value());
+  (*v)[1].value = 5;
+  EXPECT_EQ((*v)[1].value, 5);
+
+  EXPECT_EQ(v->try_erase_at(0).error(), error::unsupported_operation);
+  EXPECT_TRUE(v->try_erase_at(1).has_value());
+  EXPECT_EQ(v->size(), 1u);
 }

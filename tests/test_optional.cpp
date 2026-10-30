@@ -6,6 +6,7 @@
 #include "reloco/expected.hpp"
 #include "reloco/optional.hpp"
 #include <gtest/gtest.h>
+#include <memory>
 
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
@@ -440,3 +441,20 @@ static_assert(is_trivially_relocatable<optional<TrivialRelocMock>>::value,
               "optional<T> must propagate relocatability trait");
 
 RELOCO_END_UNSAFE_BUFFER_USAGE
+
+namespace {
+struct pinned_value {
+  int v = 0;
+  pinned_value() = default;
+  pinned_value(const pinned_value &) = delete;
+  pinned_value &operator=(const pinned_value &) = delete;
+};
+} // namespace
+
+static_assert(!std::is_copy_constructible_v<optional<pinned_value>>);
+static_assert(!std::is_move_constructible_v<optional<pinned_value>>);
+static_assert(!std::is_copy_assignable_v<optional<pinned_value>>);
+static_assert(!std::is_move_assignable_v<optional<pinned_value>>);
+static_assert(std::is_copy_constructible_v<optional<int>>);
+static_assert(std::is_move_constructible_v<optional<std::unique_ptr<int>>>);
+static_assert(!std::is_copy_constructible_v<optional<std::unique_ptr<int>>>);

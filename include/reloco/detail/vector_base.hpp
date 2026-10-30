@@ -141,6 +141,16 @@ inline constexpr vector_operations operations_for_trivial = {
     &trivial_operator_set::move_range_up,
 };
 
+/**
+ * @brief Whether elements described by `type`/`operations` can be relocated
+ * (memcpy-relocatable or move-constructible). `false` for pinned types, whose
+ * `move_range`/`move_range_up` are null; growth, insertion and erase-shifts
+ * on them report `error::unsupported_operation`.
+ */
+[[nodiscard]] inline bool can_relocate(const vector_operations *operations, const type_metadata &type) noexcept {
+  return type.is_trivially_relocatable() || (operations->move_range && operations->move_range_up);
+}
+
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
 // The four non-trivial range resolvers below all loop over
@@ -249,6 +259,9 @@ template <typename T> struct move_range_resolver {
   static constexpr auto get() noexcept {
     if constexpr (is_trivially_relocatable_v<T>) {
       return &trivial_operator_set::move_range;
+    } else if constexpr (!std::is_move_constructible_v<T>) {
+      // Pinned types cannot be relocated; callers report unsupported_operation.
+      return static_cast<decltype(&trivial_operator_set::move_range)>(nullptr);
     } else {
       return [](const type_metadata &type, void *to, const void *from, std::size_t count) noexcept {
         constexpr const type_operations *ops = get_type_operations_for<T>();
@@ -267,6 +280,9 @@ template <typename T> struct move_range_up_resolver {
   static constexpr auto get() noexcept {
     if constexpr (is_trivially_relocatable_v<T>) {
       return &trivial_operator_set::move_range_up;
+    } else if constexpr (!std::is_move_constructible_v<T>) {
+      // Pinned types cannot be relocated; callers report unsupported_operation.
+      return static_cast<decltype(&trivial_operator_set::move_range_up)>(nullptr);
     } else {
       return [](const type_metadata &type, void *to, const void *from, std::size_t count) noexcept {
         constexpr const type_operations *ops = get_type_operations_for<T>();
@@ -922,6 +938,8 @@ public:
    * Flattened: delegates compaction, shifting, and destruction to `retain_base`.
    */
   template <typename Pred> void retain(Pred &&pred) & noexcept {
+    static_assert(std::is_move_constructible_v<T> || is_trivially_relocatable_v<T>,
+                  "retain compacts elements and needs a relocatable (movable) T");
     // Type-erase the predicate into a function_ref taking `const void*` (the lambda must outlive the ref, so name it)
     auto thunk = [&pred](const void *elem_ptr) noexcept { return pred(*static_cast<const T *>(elem_ptr)); };
     function_ref<bool(const void *)> erased_pred(thunk);
@@ -935,6 +953,8 @@ public:
    * Flattened: delegates to `dedup_by_base`.
    */
   template <typename BinPred> void dedup_by(BinPred &&same) & noexcept {
+    static_assert(std::is_move_constructible_v<T> || is_trivially_relocatable_v<T>,
+                  "dedup_by compacts elements and needs a relocatable (movable) T");
     if (this->size_ < 2)
       return;
 
@@ -1596,6 +1616,8 @@ public:
    * Runs in O(min(mid, len - mid)) element moves, with 0 allocations.
    */
   void rotate_left(size_type mid) & noexcept {
+    static_assert(std::is_move_constructible_v<T> || is_trivially_relocatable_v<T>,
+                  "rotate_left relocates elements and needs a relocatable (movable) T");
     if (this->len_ <= 1)
       return;
     mid %= this->len_;
@@ -1610,6 +1632,8 @@ public:
    * Equivalent to `rotate_left(size() - (k % size()))`.
    */
   void rotate_right(size_type k) & noexcept {
+    static_assert(std::is_move_constructible_v<T> || is_trivially_relocatable_v<T>,
+                  "rotate_right relocates elements and needs a relocatable (movable) T");
     if (this->len_ <= 1)
       return;
     k %= this->len_;

@@ -66,30 +66,24 @@ struct RELOCO_EXPORT nullopt_t {
 
 inline constexpr nullopt_t nullopt{nullopt_t::init{}};
 
-template <typename T> class optional {
-public:
-  using value_type = T;
+namespace detail {
 
-  RELOCO_SANITIZER_CONSTEXPR optional() noexcept : has_value_(false) { detail::poison_memory_region(std::addressof(value_), sizeof(T)); }
-  // mirrors std::expected/std::optional: implicit construction from a value or error is the API.
-  // NOLINTNEXTLINE(reloco-explicit-conversion)
-  RELOCO_SANITIZER_CONSTEXPR optional(nullopt_t) noexcept : has_value_(false) {
+/**
+ * @brief Storage and special-member logic of `optional<T>`. Kept in a base so
+ * `optional` can default its copy/move operations and have them deleted
+ * (via the gates below) when `T` is not copyable/movable.
+ */
+template <typename T> class optional_storage {
+public:
+  RELOCO_SANITIZER_CONSTEXPR optional_storage() noexcept : has_value_(false) {
+    detail::poison_memory_region(std::addressof(value_), sizeof(T));
+  }
+  RELOCO_SANITIZER_CONSTEXPR optional_storage(nullopt_t) noexcept : has_value_(false) {
     detail::poison_memory_region(std::addressof(value_), sizeof(T));
   }
 
-  // mirrors std::expected/std::optional: implicit construction from a value or error is the API.
-  // NOLINTNEXTLINE(reloco-explicit-conversion)
-  constexpr optional(const T &value) noexcept(std::is_nothrow_copy_constructible_v<T>) : has_value_(false) {
-    construct(value);
-  }
-
-  // mirrors std::expected/std::optional: implicit construction from a value or error is the API.
-  // NOLINTNEXTLINE(reloco-explicit-conversion)
-  constexpr optional(T &&value) noexcept(std::is_nothrow_move_constructible_v<T>) : has_value_(false) {
-    construct(std::move(value));
-  }
-
-  optional(const optional &other) noexcept(std::is_nothrow_copy_constructible_v<T>) : has_value_(false) {
+  optional_storage(const optional_storage &other) noexcept(std::is_nothrow_copy_constructible_v<T>)
+      : has_value_(false) {
     if (other.has_value_) {
       construct(other.value_);
     }
@@ -106,7 +100,7 @@ public:
    * where a moved-from value looks perfectly ordinary instead of
    * obviously-moved-from).
    */
-  optional(optional &&other) noexcept(std::is_nothrow_move_constructible_v<T>) : has_value_(false) {
+  optional_storage(optional_storage &&other) noexcept(std::is_nothrow_move_constructible_v<T>) : has_value_(false) {
     if (other.has_value_) {
       construct(std::move(other.value_));
       other.destroy();
@@ -114,21 +108,17 @@ public:
   }
 
   template <typename... Args>
-  constexpr explicit optional(std::in_place_t, Args &&...args) noexcept(std::is_nothrow_constructible_v<T, Args...>)
+  constexpr explicit optional_storage(std::in_place_t,
+                                      Args &&...args) noexcept(std::is_nothrow_constructible_v<T, Args...>)
 
       : has_value_(false) {
     construct(std::forward<Args>(args)...);
   }
 
-  RELOCO_CONSTEXPR20 ~optional() { destroy(); }
+  RELOCO_CONSTEXPR20 ~optional_storage() { destroy(); }
 
-  optional &operator=(nullopt_t) & noexcept {
-    reset();
-    return *this;
-  }
-
-  optional &operator=(const optional &other) noexcept(std::is_nothrow_copy_assignable_v<T> &&
-                                                      std::is_nothrow_copy_constructible_v<T>) {
+  optional_storage &operator=(const optional_storage &other) noexcept(std::is_nothrow_copy_assignable_v<T> &&
+                                                                      std::is_nothrow_copy_constructible_v<T>) {
     if (this != &other) {
       if (other.has_value_) {
         if (has_value_)
@@ -142,10 +132,10 @@ public:
     return *this;
   }
 
-  /** @copydoc optional(optional &&) -- same Rust-`Option`-style semantics:
+  /** @copydoc optional_storage(optional_storage &&) -- same Rust-`Option`-style semantics:
    * @p other always ends up empty, whether or not it held a value. */
-  optional &operator=(optional &&other) noexcept(std::is_nothrow_move_assignable_v<T> &&
-                                                 std::is_nothrow_move_constructible_v<T>) {
+  optional_storage &operator=(optional_storage &&other) noexcept(std::is_nothrow_move_assignable_v<T> &&
+                                                                 std::is_nothrow_move_constructible_v<T>) {
     if (this != &other) {
       if (other.has_value_) {
         if (has_value_)
@@ -159,6 +149,123 @@ public:
     }
     return *this;
   }
+
+protected:
+  RELOCO_CONSTEXPR20 void destroy() noexcept {
+    if (has_value_) {
+      if constexpr (!std::is_trivially_destructible_v<T>) {
+        value_.~T();
+      }
+      has_value_ = false;
+      detail::poison_memory_region(std::addressof(value_), sizeof(T));
+    }
+  }
+
+  template <typename... Args> void construct(Args &&...args) noexcept(std::is_nothrow_constructible_v<T, Args...>) {
+    detail::unpoison_memory_region(std::addressof(value_), sizeof(T));
+    new (std::addressof(value_)) T(std::forward<Args>(args)...);
+    has_value_ = true;
+  }
+
+  // discriminated by the engaged flag; storage for the active alternative only, never type-punned.
+  // NOLINTNEXTLINE(reloco-banned-low-level)
+  union {
+    char dummy_;
+    T value_;
+  };
+  bool has_value_;
+};
+
+// Empty bases that conditionally delete a special member of the deriving class.
+template <bool Enabled> struct optional_copy_ctor_gate {};
+template <> struct optional_copy_ctor_gate<false> {
+  optional_copy_ctor_gate() = default;
+  optional_copy_ctor_gate(const optional_copy_ctor_gate &) = delete;
+  optional_copy_ctor_gate(optional_copy_ctor_gate &&) = default;
+  optional_copy_ctor_gate &operator=(const optional_copy_ctor_gate &) = default;
+  optional_copy_ctor_gate &operator=(optional_copy_ctor_gate &&) = default;
+};
+template <bool Enabled> struct optional_move_ctor_gate {};
+template <> struct optional_move_ctor_gate<false> {
+  optional_move_ctor_gate() = default;
+  optional_move_ctor_gate(const optional_move_ctor_gate &) = default;
+  optional_move_ctor_gate(optional_move_ctor_gate &&) = delete;
+  optional_move_ctor_gate &operator=(const optional_move_ctor_gate &) = default;
+  optional_move_ctor_gate &operator=(optional_move_ctor_gate &&) = default;
+};
+template <bool Enabled> struct optional_copy_assign_gate {};
+template <> struct optional_copy_assign_gate<false> {
+  optional_copy_assign_gate() = default;
+  optional_copy_assign_gate(const optional_copy_assign_gate &) = default;
+  optional_copy_assign_gate(optional_copy_assign_gate &&) = default;
+  optional_copy_assign_gate &operator=(const optional_copy_assign_gate &) = delete;
+  optional_copy_assign_gate &operator=(optional_copy_assign_gate &&) = default;
+};
+template <bool Enabled> struct optional_move_assign_gate {};
+template <> struct optional_move_assign_gate<false> {
+  optional_move_assign_gate() = default;
+  optional_move_assign_gate(const optional_move_assign_gate &) = default;
+  optional_move_assign_gate(optional_move_assign_gate &&) = default;
+  optional_move_assign_gate &operator=(const optional_move_assign_gate &) = default;
+  optional_move_assign_gate &operator=(optional_move_assign_gate &&) = delete;
+};
+
+} // namespace detail
+
+template <typename T>
+class optional
+    : private detail::optional_storage<T>,
+      private detail::optional_copy_ctor_gate<std::is_copy_constructible_v<T>>,
+      private detail::optional_move_ctor_gate<std::is_move_constructible_v<T>>,
+      private detail::optional_copy_assign_gate<std::is_copy_constructible_v<T> && std::is_copy_assignable_v<T>>,
+      private detail::optional_move_assign_gate<std::is_move_constructible_v<T> && std::is_move_assignable_v<T>> {
+  using storage = detail::optional_storage<T>;
+
+public:
+  using value_type = T;
+
+  RELOCO_SANITIZER_CONSTEXPR optional() noexcept : storage() {}
+  // mirrors std::expected/std::optional: implicit construction from a value or error is the API.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
+  RELOCO_SANITIZER_CONSTEXPR optional(nullopt_t) noexcept : storage() {}
+
+  // mirrors std::expected/std::optional: implicit construction from a value or error is the API.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
+  constexpr optional(const T &value) noexcept(std::is_nothrow_copy_constructible_v<T>)
+      : storage(std::in_place, value) {}
+
+  // mirrors std::expected/std::optional: implicit construction from a value or error is the API.
+  // NOLINTNEXTLINE(reloco-explicit-conversion)
+  constexpr optional(T &&value) noexcept(std::is_nothrow_move_constructible_v<T>)
+      : storage(std::in_place, std::move(value)) {}
+
+  /** @brief Copies the engaged value, if any; deleted when `T` is not copy constructible. */
+  optional(const optional &) = default;
+
+  /**
+   * @brief Rust `Option<T>` move semantics, not `std::optional<T>`'s:
+   * moving out of the source always empties it (`has_value()` becomes
+   * `false`), exactly like a plain Rust move does at compile time or
+   * `Option::take()` does at runtime. Deleted when `T` is not move
+   * constructible.
+   */
+  optional(optional &&) = default;
+
+  template <typename... Args>
+  constexpr explicit optional(std::in_place_t, Args &&...args) noexcept(std::is_nothrow_constructible_v<T, Args...>)
+      : storage(std::in_place, std::forward<Args>(args)...) {}
+
+  ~optional() = default;
+
+  optional &operator=(nullopt_t) & noexcept {
+    reset();
+    return *this;
+  }
+
+  optional &operator=(const optional &) = default;
+
+  /** @brief Same Rust-`Option`-style semantics as the move constructor: the source always ends up empty. */
+  optional &operator=(optional &&) = default;
 
   template <typename U = T>
   std::enable_if_t<std::is_constructible_v<T, U &&> && std::is_assignable_v<T &, U &&>, optional &>
@@ -561,29 +668,10 @@ public:
   }
 
 private:
-  RELOCO_CONSTEXPR20 void destroy() noexcept {
-    if (has_value_) {
-      if constexpr (!std::is_trivially_destructible_v<T>) {
-        value_.~T();
-      }
-      has_value_ = false;
-      detail::poison_memory_region(std::addressof(value_), sizeof(T));
-    }
-  }
-
-  template <typename... Args> void construct(Args &&...args) noexcept(std::is_nothrow_constructible_v<T, Args...>) {
-    detail::unpoison_memory_region(std::addressof(value_), sizeof(T));
-    new (std::addressof(value_)) T(std::forward<Args>(args)...);
-    has_value_ = true;
-  }
-
-  // discriminated by the engaged flag; storage for the active alternative only, never type-punned.
-  // NOLINTNEXTLINE(reloco-banned-low-level)
-  union {
-    char dummy_;
-    T value_;
-  };
-  bool has_value_;
+  using storage::construct;
+  using storage::destroy;
+  using storage::has_value_;
+  using storage::value_;
 };
 
 /**
