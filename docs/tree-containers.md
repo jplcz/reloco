@@ -27,10 +27,13 @@ Every tree node is one `allocator_ref`-owned allocation, laid out as
 
 ```cpp
 struct node_header {
-  node_header *parent = nullptr;
   node_header *left = nullptr;
   node_header *right = nullptr;
-  unsigned char aux = 0; // reserved for a future balancing policy
+  node_header *parent() const noexcept;   // the parent link, low bit masked off
+  void set_parent(node_header *) noexcept; // keeps the aux bit
+  unsigned char aux() const noexcept;      // one reserved bit (red-black colour), packed into the parent pointer
+  void set_aux(unsigned char) noexcept;    // keeps the parent link
+  // (the parent pointer and the aux bit share one word, so the header is 24 bytes, not 32)
 };
 
 class node_base {
@@ -142,10 +145,10 @@ tree, which a naive recursive post-order destroy would not.
 
 Worst case (e.g. inserting already-sorted input) degenerates to a linked
 list: `O(n)` `try_insert`/`try_find`/`try_remove` instead of `O(log n)`.
-`node_header::aux` exists precisely so a balancing policy (a red-black
-colour bit, an AVL balance factor, ...) can be layered onto this same node
-layout later without changing it again -- this engine does not implement
-one yet.
+`node_header::aux()` (one bit) exists so a balancing policy can be layered
+onto this same node layout without changing it; the balanced `set`/`map`
+(see [Balanced containers](balanced-containers.md)) do exactly that with a
+red-black colour.
 
 ## Layer 3: `tree_set`/`tree_map`
 
@@ -237,7 +240,7 @@ dominate.
 
 ## Adding a balancing policy
 
-`node_header::aux` and the `bst_*` free functions in `tree_base.hpp` are
+`node_header::aux()` and the `bst_*` free functions in `tree_base.hpp` are
 the extension points: a red-black/AVL variant would reuse `node_base`
 unchanged, keep the same `[header][payload]` layout and `bst_leftmost`/
 `bst_successor`/`bst_predecessor`/`bst_transplant` navigation helpers

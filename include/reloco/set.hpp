@@ -1,0 +1,159 @@
+// SPDX-FileCopyrightText: 2026 Jarosław Pelczar <jarek@jpelczar.com>
+//
+// SPDX-License-Identifier: BSD-2-Clause
+
+#pragma once
+
+/** @file set.hpp
+ * @brief Unique-element set backed by a balanced (red-black),
+ * allocator-owned binary search tree: `O(log n)` worst-case insert, erase and
+ * lookup even on sorted input, and stable references across other inserts/
+ * erases. This is the general-purpose ordered container; `tree_set` is the
+ * simpler unbalanced variant.
+ *
+ * `set<T, Compare>` is a thin derived class of `detail::rbtree_base<T,
+ * Compare, detail::identity_key_of>` (see `detail/rbtree_base.hpp`, i.e. `tree_base` with the red-black policy): the
+ * base already implements `try_insert`/`contains`/`try_find`/`try_remove`/ iteration/cloning, keyed by
+ * `identity_key_of` since a set's element *is* its own key. This file only adds the factory wrappers
+ * (`try_allocate`/`try_create`) and re-wraps the base's `try_clone` results
+ * back into `set` itself -- exactly like `flat_set` does over
+ * `flat_container_base`.
+ *
+ * Unlike `flat_set<T, Compare>` (backed by a sorted `vector<T>`), `set`
+ * has no `capacity()`/`reserve()` concept and no random-access
+ * `operator[]`/`data()`: every element lives in its own node-based
+ * allocation (see `detail/node_base.hpp`), so there is nothing to
+ * pre-reserve and no contiguous buffer to index into or point at. Insertion
+ * never invalidates existing references/pointers to other elements (unlike
+ * `flat_set`, where inserting can reallocate the whole backing `vector<T>`)
+ * -- only `try_remove`ing the specific element you are pointing at does.
+ *
+ * Because the tree is always kept in ascending `Compare` order, `set`
+ * also inherits `rbtree_base`'s Rust `BTreeSet`-flavored
+ * `try_first`/`try_last`/`try_pop_first`/`try_pop_last`, none of which have
+ * a `flat_set` counterpart today. It likewise inherits `retain` (Rust
+ * `Vec`/`BTreeSet::retain`), `append` (Rust `BTreeSet::append`: moves every
+ * element of another `set` into `*this` by relinking existing nodes,
+ * never reallocating), and the merge-walk set-comparison predicates
+ * `is_subset`/`is_superset`/`is_disjoint`.
+ */
+
+#include "container_ref.hpp"
+#include "default_allocator.hpp"
+#include "detail/rbtree_base.hpp"
+#include "relocatable.hpp"
+
+namespace reloco {
+
+template <typename T, typename Compare = std::less<T>>
+class RELOCO_OWNER set : public detail::rbtree_base<T, Compare, detail::identity_key_of> {
+  using base = detail::rbtree_base<T, Compare, detail::identity_key_of>;
+
+public:
+  using base::append;
+  using base::base;
+  using base::is_disjoint;
+  using base::is_subset;
+  using base::is_superset;
+  using base::retain;
+  using base::try_first;
+  using base::try_insert;
+  using base::try_last;
+  using base::try_pop_first;
+  using base::try_pop_last;
+  using typename base::size_type;
+  using typename base::value_type;
+
+  [[nodiscard]] static result<set> try_allocate(allocator_ref alloc) noexcept {
+    auto res = base::try_allocate(alloc);
+    if (!res)
+      return unexpected(res.error());
+    return set(std::move(*res));
+  }
+
+  [[nodiscard]] static result<set> try_create() noexcept { return try_allocate(default_allocator()); }
+
+  /**
+   * @brief Performs a deep copy of the set using a specific allocator.
+   */
+  [[nodiscard]] result<set> try_clone(allocator_ref alloc) const noexcept {
+    auto res = base::try_clone(alloc);
+    if (!res)
+      return unexpected(res.error());
+    return set(std::move(*res));
+  }
+
+  [[nodiscard]] result<set> try_clone() const noexcept {
+    auto res = base::try_clone();
+    if (!res)
+      return unexpected(res.error());
+    return set(std::move(*res));
+  }
+
+private:
+  explicit set(base &&b) noexcept : base(std::move(b)) {}
+};
+
+/**
+ * @brief Adapts `reloco::set<T, Compare>` for `mutable_container_ref`.
+ *
+ * Configured as an associative container where `key_type` and
+ * `element_type` are both `T`, exactly like `container_ref_traits<flat_set<
+ * T, Compare>>`.
+ */
+template <typename T, typename Compare> struct container_ref_traits<set<T, Compare>> {
+  static constexpr bool is_associative = true;
+
+  using element_type = T;
+  using key_type = T;
+  using container_type = set<T, Compare>;
+
+  static std::size_t size(const container_type &c) noexcept { return c.size(); }
+
+  static bool empty(const container_type &c) noexcept { return c.empty(); }
+
+  static void clear(container_type &c) noexcept { c.clear(); }
+
+  static result<void> try_insert_at(container_type &c, key_type &&key, element_type &&value) noexcept {
+    if (key != value) {
+      return unexpected(error::invalid_argument);
+    }
+    auto res = c.try_insert(std::move(value));
+    if (!res) {
+      return unexpected(res.error());
+    }
+    return {};
+  }
+
+  static result<void> try_erase(container_type &c, const key_type &key) noexcept { return c.try_remove(key); }
+
+  static element_type *find(container_type &c, const key_type &key) noexcept {
+    auto found_res = c.try_find(key);
+    if (!found_res) {
+      return nullptr;
+    }
+    // elements are stored const to protect the key; the mapped value is mutable by the API contract.
+    // NOLINTNEXTLINE(reloco-banned-construct)
+    return const_cast<element_type *>(&found_res->get());
+  }
+
+  // NOLINTNEXTLINE(reloco-no-raw-pointer): type-erased visitor context handed back to the visitor unchanged.
+  static void for_each(container_type &c, void *visitor_ctx,
+                       void (*visit)(void *, const key_type &, element_type &) noexcept) noexcept {
+    // elements are stored const to protect the key; the mapped value is mutable by the API contract.
+    // NOLINTNEXTLINE(reloco-banned-construct)
+    c.for_each([visitor_ctx, visit](const T &val) noexcept { visit(visitor_ctx, val, const_cast<T &>(val)); });
+  }
+};
+
+/**
+ * @brief `set<T, Compare>` is trivially relocatable exactly when
+ * `Compare` is: its own members (a node pointer, a size, an `allocator_ref`,
+ * and `Compare` itself) never point into `*this`, so relocating its bytes
+ * is safe regardless of `T` -- `T` values live in separately allocated
+ * nodes that a byte-copy of the `set` itself never touches.
+ */
+template <typename T, typename Compare>
+struct is_trivially_relocatable<set<T, Compare>> : is_trivially_relocatable<Compare> {};
+
+} // namespace reloco

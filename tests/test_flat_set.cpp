@@ -165,3 +165,17 @@ TEST(FlatSetTest, MutableContainerRefIntegration) {
   EXPECT_EQ(cref.size(), 1);
   EXPECT_FALSE(set.contains(25));
 }
+
+TEST(FlatSetTest, ReserveAndShrink) {
+  auto set_res = reloco::flat_set<int>::try_create();
+  ASSERT_TRUE(set_res.has_value());
+  auto &set = *set_res;
+
+  ASSERT_TRUE(set.try_reserve(64).has_value());
+  EXPECT_GE(set.capacity(), 64);
+  EXPECT_EQ(set.size(), 0);
+
+  ASSERT_TRUE(set.try_insert(1).has_value());
+  ASSERT_TRUE(set.shrink_to_fit().has_value());
+  EXPECT_TRUE(set.contains(1));
+}

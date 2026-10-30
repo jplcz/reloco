@@ -507,6 +507,8 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_tree_base.cpp
         tests/test_tree_set.cpp
         tests/test_tree_map.cpp
+        tests/test_set.cpp
+        tests/test_map.cpp
         tests/test_flat_hash_base.cpp
         tests/test_flat_hash_set.cpp
         tests/test_flat_hash_map.cpp
@@ -990,5 +992,11 @@ if(JPLCZ_RELOCO_BUILD_BENCHMARKS)
     target_compile_definitions(jplcz_reloco_kernel_bench PRIVATE RELOCO_KERNEL_CHECKS=0)
     target_compile_options(jplcz_reloco_kernel_bench PRIVATE -O2)
     set_target_properties(jplcz_reloco_kernel_bench PROPERTIES
+        CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+
+    add_executable(jplcz_reloco_container_bench benchmarks/containers/bench_ordered_sets.cpp)
+    target_link_libraries(jplcz_reloco_container_bench PRIVATE jplcz_reloco)
+    target_compile_options(jplcz_reloco_container_bench PRIVATE -O2)
+    set_target_properties(jplcz_reloco_container_bench PROPERTIES
         CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 endif()

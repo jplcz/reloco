@@ -101,10 +101,10 @@ namespace reloco::detail {
     return nullptr;
   if (node->right)
     return bst_leftmost(node->right);
-  const node_header *parent = node->parent;
+  const node_header *parent = node->parent();
   while (parent && node == parent->right) {
     node = parent;
-    parent = parent->parent;
+    parent = parent->parent();
   }
   return parent;
 }
@@ -118,10 +118,10 @@ namespace reloco::detail {
     return nullptr;
   if (node->left)
     return bst_rightmost(node->left);
-  const node_header *parent = node->parent;
+  const node_header *parent = node->parent();
   while (parent && node == parent->left) {
     node = parent;
-    parent = parent->parent;
+    parent = parent->parent();
   }
   return parent;
 }
@@ -136,14 +136,14 @@ namespace reloco::detail {
 /// had no parent. Only relinks `parent`/`left`/`right`; never touches a
 /// payload, so it is entirely `T`-independent.
 inline void bst_transplant(node_header *&root, node_header *target, node_header *replacement) noexcept {
-  if (!target->parent)
+  if (!target->parent())
     root = replacement;
-  else if (target == target->parent->left)
-    target->parent->left = replacement;
+  else if (target == target->parent()->left)
+    target->parent()->left = replacement;
   else
-    target->parent->right = replacement;
+    target->parent()->right = replacement;
   if (replacement)
-    replacement->parent = target->parent;
+    replacement->set_parent(target->parent());
 }
 
 /**
@@ -242,11 +242,66 @@ private:
 };
 
 /**
+ * @brief Balancing policy of the plain, unbalanced BST: linking a node needs
+ * no rebalancing and unlinking is the bare CLRS deletion (`bst_unlink`).
+ * Other policies (see `rbtree_base.hpp`'s `rb_policy`) provide the same two
+ * static hooks and may use `node_header::aux` for their own bookkeeping.
+ */
+struct unbalanced_policy {
+  /// @brief Called after @p node was linked as a leaf under its parent.
+  static void after_insert(node_header *&, node_header *) noexcept {}
+
+  /// @brief Unlinks @p node from the tree rooted at @p root.
+  static void unlink(node_header *&root, node_header *node) noexcept { bst_unlink(root, node); }
+};
+
+/**
+ * @brief Height (node count of the longest root-to-leaf path) of the tree
+ * rooted at @p root, or 0 when empty. Iterative (parent-link walk), so it is
+ * safe on degenerate trees. Diagnostic/testing aid; `O(n)`.
+ */
+[[nodiscard]] inline std::size_t bst_height(const node_header *root) noexcept {
+  std::size_t best = 0;
+  std::size_t depth = 1;
+  const node_header *prev = nullptr;
+  const node_header *cur = root;
+  while (cur) {
+    if (depth > best)
+      best = depth;
+    if (prev == cur->parent()) {
+      if (cur->left) {
+        prev = cur;
+        cur = cur->left;
+        ++depth;
+      } else if (cur->right) {
+        prev = cur;
+        cur = cur->right;
+        ++depth;
+      } else {
+        prev = cur;
+        cur = cur->parent();
+        --depth;
+      }
+    } else if (prev == cur->left && cur->right) {
+      prev = cur;
+      cur = cur->right;
+      ++depth;
+    } else {
+      prev = cur;
+      cur = cur->parent();
+      --depth;
+    }
+  }
+  return best;
+}
+
+/**
  * @brief A basic, unbalanced, allocator-managed binary search tree over
  * `T`, keyed by `KeyOf{}(value)` and ordered by `Compare`. See the
  * file-level comment for the layout/erasure/deletion design.
  */
-template <typename T, typename Compare, typename KeyOf> class RELOCO_EXPORT tree_base {
+template <typename T, typename Compare, typename KeyOf, typename Balance = unbalanced_policy>
+class RELOCO_EXPORT tree_base {
   using header = node_header;
 
 public:
@@ -267,12 +322,15 @@ public:
   tree_base &operator=(const tree_base &) = delete;
 
   tree_base(tree_base &&other) noexcept
-      : root_(std::exchange(other.root_, nullptr)), size_(std::exchange(other.size_, 0)), alloc_(other.alloc_) {}
+      : root_(std::exchange(other.root_, nullptr)), first_(std::exchange(other.first_, nullptr)),
+        last_(std::exchange(other.last_, nullptr)), size_(std::exchange(other.size_, 0)), alloc_(other.alloc_) {}
 
   tree_base &operator=(tree_base &&other) noexcept {
     if (this != &other) {
       clear();
       root_ = std::exchange(other.root_, nullptr);
+      first_ = std::exchange(other.first_, nullptr);
+      last_ = std::exchange(other.last_, nullptr);
       size_ = std::exchange(other.size_, 0);
       alloc_ = other.alloc_;
     }
@@ -283,23 +341,54 @@ public:
   [[nodiscard]] static result<tree_base> try_create() noexcept { return try_allocate(default_allocator()); }
 
   /**
-   * @brief Performs a deep copy using a specific allocator. Reinserts every
-   * element in ascending order rather than replicating the source's exact
-   * node layout, so the clone's shape only matches the source's by
-   * coincidence -- both are valid BSTs over the same elements either way.
+   * @brief Performs a deep copy using a specific allocator. Replicates the
+   * source's exact node layout (shape and `node_header::aux` bits) in `O(n)`
+   * with no comparisons, instead of reinserting every element: a copy of a
+   * valid tree under a given balancing policy is itself valid under that
+   * policy. On any failure the partially built clone is destroyed and the
+   * error returned.
    */
   [[nodiscard]] result<tree_base> try_clone(allocator_ref alloc) const noexcept {
     auto cloned = try_allocate(alloc);
     if (!cloned)
       return unexpected(cloned.error());
-    for (const auto &value : *this) {
-      auto value_copy = construction_helpers::try_clone(alloc, value);
-      if (!value_copy)
-        return unexpected(value_copy.error());
-      auto insert_res = cloned->try_insert(std::move(*value_copy));
-      if (!insert_res)
-        return unexpected(insert_res.error());
+    if (!root_)
+      return std::move(*cloned);
+
+    auto root_copy = try_clone_node(alloc, root_);
+    if (!root_copy)
+      return unexpected(root_copy.error());
+    cloned->root_ = *root_copy;
+
+    // Walk the source and the copy in lockstep (parent links, no recursion), copying each missing child in turn.
+    const header *src = root_;
+    header *dst = cloned->root_;
+    while (src) {
+      const header *src_child = nullptr;
+      header **dst_slot = nullptr;
+      if (src->left && !dst->left) {
+        src_child = src->left;
+        dst_slot = &dst->left;
+      } else if (src->right && !dst->right) {
+        src_child = src->right;
+        dst_slot = &dst->right;
+      }
+      if (!src_child) {
+        src = src->parent();
+        dst = dst->parent();
+        continue;
+      }
+      auto child_copy = try_clone_node(alloc, src_child);
+      if (!child_copy)
+        return unexpected(child_copy.error()); // `cloned` (partial, left/right-consistent) is torn down by its dtor
+      *dst_slot = *child_copy;
+      (*child_copy)->set_parent(dst);
+      src = src_child;
+      dst = *child_copy;
     }
+    cloned->first_ = bst_leftmost(cloned->root_);
+    cloned->last_ = bst_rightmost(cloned->root_);
+    cloned->size_ = size_;
     return std::move(*cloned);
   }
 
@@ -310,8 +399,12 @@ public:
   [[nodiscard]] size_type size() const noexcept { return size_; }
   [[nodiscard]] bool empty() const noexcept { return size_ == 0; }
 
+  /// @brief Height of the tree (longest root-to-leaf node count, 0 when empty); `O(n)` diagnostic.
+  [[nodiscard]] size_type height() const noexcept { return bst_height(root_); }
+
   void clear() noexcept {
     bst_clear(root_, alloc_, metadata_for<T>, *get_type_operations_for<T>());
+    first_ = last_ = nullptr;
     size_ = 0;
   }
 
@@ -336,6 +429,7 @@ public:
     header *current = root_;
     bool insert_left = false;
     while (current) {
+      prefetch_children(current);
       const key_type &current_key = key_of(value_of(current));
       if (comp_(key, current_key)) {
         parent = current;
@@ -364,13 +458,15 @@ public:
       return unexpected(ctor_res.error());
     }
 
-    node->parent = parent;
+    node->set_parent(parent);
     if (!parent)
       root_ = node;
     else if (insert_left)
       parent->left = node;
     else
       parent->right = node;
+    note_inserted(node, parent, insert_left);
+    Balance::after_insert(root_, node);
     ++size_;
 
     return std::ref(value_of(node));
@@ -393,7 +489,7 @@ public:
     header *node = find_node(key);
     if (!node)
       return unexpected(error::not_found);
-    bst_unlink(root_, node);
+    unlink_node(node);
     bst_destroy_node(alloc_, metadata_for<T>, *get_type_operations_for<T>(), node);
     --size_;
     return {};
@@ -405,7 +501,7 @@ public:
    * Fails with `error::container_empty` if the tree is empty.
    */
   [[nodiscard]] result<std::reference_wrapper<const value_type>> try_first() const & noexcept RELOCO_LIFETIMEBOUND {
-    header *node = bst_leftmost(root_);
+    header *node = first_;
     if (!node)
       return unexpected(error::container_empty);
     return std::cref(value_of(node));
@@ -417,7 +513,7 @@ public:
    * Fails with `error::container_empty` if the tree is empty.
    */
   [[nodiscard]] result<std::reference_wrapper<const value_type>> try_last() const & noexcept RELOCO_LIFETIMEBOUND {
-    header *node = bst_rightmost(root_);
+    header *node = last_;
     if (!node)
       return unexpected(error::container_empty);
     return std::cref(value_of(node));
@@ -435,7 +531,7 @@ public:
    * `try_remove`'s CLRS "transplant" deletion never reassigning `T`.
    */
   [[nodiscard]] result<value_type> try_pop_first() & noexcept {
-    header *node = bst_leftmost(root_);
+    header *node = first_;
     if (!node)
       return unexpected(error::container_empty);
     return pop_node(node);
@@ -447,15 +543,13 @@ public:
    * `error::container_empty` if the tree is empty.
    */
   [[nodiscard]] result<value_type> try_pop_last() & noexcept {
-    header *node = bst_rightmost(root_);
+    header *node = last_;
     if (!node)
       return unexpected(error::container_empty);
     return pop_node(node);
   }
 
-  [[nodiscard]] const_iterator begin() const & noexcept RELOCO_LIFETIMEBOUND {
-    return const_iterator(bst_leftmost(root_), root_);
-  }
+  [[nodiscard]] const_iterator begin() const & noexcept RELOCO_LIFETIMEBOUND { return const_iterator(first_, root_); }
   [[nodiscard]] const_iterator end() const & noexcept RELOCO_LIFETIMEBOUND { return const_iterator(nullptr, root_); }
   [[nodiscard]] const_iterator cbegin() const & noexcept RELOCO_LIFETIMEBOUND { return begin(); }
   [[nodiscard]] const_iterator cend() const & noexcept RELOCO_LIFETIMEBOUND { return end(); }
@@ -480,11 +574,11 @@ public:
    * `parent`/`left`/`right` links but never those of nodes visited later.
    */
   template <typename Pred> void retain(Pred &&pred) & noexcept {
-    header *node = bst_leftmost(root_);
+    header *node = first_;
     while (node) {
       header *next = bst_successor(node);
       if (!pred(std::as_const(value_of(node)))) {
-        bst_unlink(root_, node);
+        unlink_node(node);
         bst_destroy_node(alloc_, metadata_for<T>, *get_type_operations_for<T>(), node);
         --size_;
       }
@@ -503,10 +597,10 @@ public:
    * on a collision, destroys/deallocates the one node being replaced).
    */
   void append(tree_base &other) & noexcept {
-    header *node = bst_leftmost(other.root_);
+    header *node = other.first_;
     while (node) {
       header *next = bst_successor(node);
-      bst_unlink(other.root_, node);
+      other.unlink_node(node);
       --other.size_;
       insert_node(node);
       node = next;
@@ -562,6 +656,58 @@ public:
   }
 
 private:
+  /// Starts loading both children of @p node while its own key is being compared: a descent is a chain of
+  /// dependent cache misses, and the next node is known before the comparison finishes.
+  static void prefetch_children(const header *node) noexcept {
+#if defined(__GNUC__) || defined(__clang__)
+    __builtin_prefetch(node->left);
+    __builtin_prefetch(node->right);
+#else
+    (void)node;
+#endif
+  }
+
+  /// Links the freshly inserted @p node's position into the cached `first_`/`last_` ends.
+  void note_inserted(header *node, const header *parent, bool inserted_left) noexcept {
+    if (!parent) {
+      first_ = last_ = node;
+    } else if (inserted_left && parent == first_) {
+      first_ = node;
+    } else if (!inserted_left && parent == last_) {
+      last_ = node;
+    }
+  }
+
+  /// Unlinks @p node from this tree, keeping the cached `first_`/`last_` ends valid.
+  void unlink_node(header *node) noexcept {
+    if (node == first_)
+      first_ = bst_successor(node);
+    if (node == last_)
+      last_ = bst_predecessor(node);
+    Balance::unlink(root_, node);
+  }
+
+  /// @brief Allocates one unlinked node holding a clone of @p src's payload, with @p src's `aux` bit.
+  [[nodiscard]] static result<header *> try_clone_node(allocator_ref alloc, const header *src) noexcept {
+    auto value_copy = construction_helpers::try_clone(alloc, value_of(src));
+    if (!value_copy)
+      return unexpected(value_copy.error());
+    auto node_res = node_base::try_allocate_node(alloc, metadata_for<T>);
+    if (!node_res)
+      return unexpected(node_res.error());
+    header *node = *node_res;
+    RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
+    auto ctor_res = construction_helpers::try_construct<T>(
+        alloc, static_cast<T *>(node_base::payload_of(node, metadata_for<T>)), std::move(*value_copy));
+    RELOCO_END_UNSAFE_BUFFER_USAGE
+    if (!ctor_res) {
+      node_base::deallocate_node(alloc, node, metadata_for<T>);
+      return unexpected(ctor_res.error());
+    }
+    node->set_aux(src->aux());
+    return node;
+  }
+
   [[nodiscard]] static T &value_of(header *node) noexcept {
     return *std::launder(static_cast<T *>(node_base::payload_of(node, metadata_for<T>)));
   }
@@ -571,7 +717,7 @@ private:
 
   [[nodiscard]] value_type pop_node(header *node) noexcept {
     value_type value(std::move(value_of(node)));
-    bst_unlink(root_, node);
+    unlink_node(node);
     bst_destroy_node(alloc_, metadata_for<T>, *get_type_operations_for<T>(), node);
     --size_;
     return value;
@@ -604,7 +750,7 @@ private:
         current = current->right;
         insert_left = false;
       } else {
-        bst_unlink(root_, current);
+        unlink_node(current);
         bst_destroy_node(alloc_, metadata_for<T>, *get_type_operations_for<T>(), current);
         --size_;
         insert_node(node);
@@ -612,7 +758,7 @@ private:
       }
     }
 
-    node->parent = parent;
+    node->set_parent(parent);
     node->left = nullptr;
     node->right = nullptr;
     if (!parent)
@@ -621,6 +767,8 @@ private:
       parent->left = node;
     else
       parent->right = node;
+    note_inserted(node, parent, insert_left);
+    Balance::after_insert(root_, node);
     ++size_;
   }
 
@@ -628,6 +776,7 @@ private:
     const KeyOf key_of{};
     header *current = root_;
     while (current) {
+      prefetch_children(current);
       const key_type &current_key = key_of(value_of(current));
       if (comp_(key, current_key))
         current = current->left;
@@ -640,6 +789,8 @@ private:
   }
 
   header *root_ = nullptr;
+  header *first_ = nullptr; // cached in-order minimum (`nullptr` when empty)
+  header *last_ = nullptr;  // cached in-order maximum
   size_type size_ = 0;
   allocator_ref alloc_ = default_allocator();
   Compare comp_{};

@@ -170,6 +170,21 @@ public:
   [[nodiscard]] size_type capacity() const noexcept { return data_.capacity(); }
   [[nodiscard]] bool empty() const noexcept { return data_.empty(); }
 
+  /**
+   * @brief Ensures storage for at least @p new_cap elements so later inserts
+   * up to that count don't allocate. Fails with whatever
+   * `Storage::try_reserve` fails with (allocation failure, or
+   * `error::capacity_exceeded` for fixed-capacity storage); the container is
+   * unchanged on failure.
+   */
+  [[nodiscard]] result<void> try_reserve(size_type new_cap) & noexcept { return data_.try_reserve(new_cap); }
+
+  /**
+   * @brief Releases unused capacity back to the allocator, if the storage
+   * supports it.
+   */
+  [[nodiscard]] result<void> shrink_to_fit() & noexcept { return data_.shrink_to_fit(); }
+
   void clear() noexcept { data_.clear(); }
 
   /**

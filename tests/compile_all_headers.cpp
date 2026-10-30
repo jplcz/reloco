@@ -104,6 +104,8 @@
 #include <reloco/tls_provider.hpp>
 #include <reloco/tls_slot.hpp>
 #include <reloco/tls_slot_vector.hpp>
+#include <reloco/map.hpp>
+#include <reloco/set.hpp>
 #include <reloco/tree_map.hpp>
 #include <reloco/tree_set.hpp>
 #include <reloco/tuple.hpp>
@@ -187,6 +189,7 @@
 #include <reloco/detail/lock_location_traits.hpp>
 #include <reloco/detail/node_base.hpp>
 #include <reloco/detail/sanitizer.hpp>
+#include <reloco/detail/rbtree_base.hpp>
 #include <reloco/detail/tree_base.hpp>
 #include <reloco/detail/type_metadata.hpp>
 #include <reloco/detail/type_operations.hpp>

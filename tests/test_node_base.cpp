@@ -55,10 +55,10 @@ TEST(NodeBaseTest, FreshlyAllocatedHeaderHasNullLinks) {
   const type_metadata &type = metadata_for<int>;
   auto node = node_base::try_allocate_node(heap(), type);
   ASSERT_TRUE(node);
-  EXPECT_EQ((*node)->parent, nullptr);
+  EXPECT_EQ((*node)->parent(), nullptr);
   EXPECT_EQ((*node)->left, nullptr);
   EXPECT_EQ((*node)->right, nullptr);
-  EXPECT_EQ((*node)->aux, 0);
+  EXPECT_EQ((*node)->aux(), 0);
   node_base::deallocate_node(heap(), *node, type);
 }
 

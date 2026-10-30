@@ -26,6 +26,8 @@ where, not a tutorial.
 | `vector.hpp` | `vector<T>` | Move-only, allocator-backed, growable dynamic array |
 | `secure_wipe.hpp` | `secure_wipe(void*, size_t)`, `secure_wipe(T&)` | Non-elidable erase of live storage; `RELOCO_SECURE_WIPE_IMPL` port hook (see [secure-wipe.md](secure-wipe.md)) |
 | `secure_vector.hpp` | `secure_vector<T>` | Move-only growable buffer of trivial `T` that wipes every block it releases (see [secure-wipe.md](secure-wipe.md)) |
+| `set.hpp` | `set<T, Compare>` | Balanced (red-black) ordered set, `O(log n)` worst case; see [Balanced containers](balanced-containers.md) |
+| `map.hpp` | `map<Key, Mapped, Compare>` | Balanced (red-black) ordered map, `O(log n)` worst case; see [Balanced containers](balanced-containers.md) |
 | `flat_set.hpp` | `flat_set<T, Compare>` | Sorted, unique-element set backed by `vector<T>`, with fallible insertion |
 | `flat_map.hpp` | `flat_map<Key, Mapped, Compare>` | Sorted, unique-key map backed by `vector<std::pair<Key, Mapped>>`, with fallible insertion |
 | `inline_flat_set.hpp` | `inline_flat_set<T, Capacity, Compare>` | Allocation-free counterpart of `flat_set<T, Compare>`, backed by `inline_vector<T, Capacity>` |
@@ -1122,6 +1124,11 @@ than a node-based tree. `try_insert`/`try_remove` are the only mutators and
 return `reloco::result<...>`; `contains`/`try_find` do not allocate or
 mutate. `begin()`/`end()`/`cbegin()`/`cend()` are read-only (mutating
 through an iterator would break the sort invariant).
+
+`try_reserve(n)` pre-allocates room for `n` elements so a bulk load does
+not reallocate repeatedly (fixed-capacity `inline_flat_set` fails with
+`error::capacity_exceeded` if `n` is too large); `shrink_to_fit()` returns
+unused capacity afterwards. Both are available on every flat container.
 
 ```cpp
 auto s = reloco::flat_set<int>::try_create();

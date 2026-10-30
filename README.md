@@ -65,6 +65,7 @@ Start with the guide that matches what you are building:
 | [Deque containers](docs/deque-containers.md) | `vec_deque`'s ring-buffer engine (`detail::vector_base.hpp`'s `*_deque_base` policies), wrap-around handling, and how `try_insert_at`/`rotate_left`/`rotate_right` compose |
 | [Ring buffers](docs/ring-buffer.md) | `ring_buffer`'s byte/POD-oriented streaming engine, zero-copy scatter-gather I/O, and the `try_consume_frame`/`try_write_frame_evicting` framing protocol |
 | [Lock-free SPSC ring buffers](docs/atomic-ring-buffer.md) | `spsc_ring_buffer`'s cache-line-split, allocation-free, single-producer/single-consumer queue and its demand-driven cache-refresh strategy |
+| [Balanced containers](docs/balanced-containers.md) | `set`/`map`: red-black, `O(log n)` worst-case ordered containers (`detail::rbtree_base`), and when to pick them over `tree_*`/`flat_*` |
 | [Tree containers](docs/tree-containers.md) | `tree_set`/`tree_map`'s node layout (`detail::node_base.hpp`), the unbalanced BST engine (`detail::tree_base.hpp`), and how they compare to `flat_set`/`flat_map` |
 | [Flat hash containers](docs/flat-hash-containers.md) | `flat_hash_set`/`flat_hash_map`'s open-addressing engine (`detail::flat_hash_base.hpp`), backward-shift deletion, and how they compare to `tree_set`/`tree_map`/`flat_set`/`flat_map` |
 | [Extending reloco](docs/extending.md) | The tag + `*_traits<Tag>` + `context_type` provider pattern used by `allocator_ref` and future pluggable backends |

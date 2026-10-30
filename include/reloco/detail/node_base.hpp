@@ -11,9 +11,9 @@
  *
  * Each node is one allocator block laid out as `[header][payload]`, header
  * first: `node_header` is the node's structural bookkeeping (`parent`/
- * `left`/`right` links, plus one reserved byte for a balancing policy's own
- * use -- a red-black colour bit, an AVL balance factor, ... -- unused by a
- * plain, unbalanced binary search tree). Unlike `std::allocate_shared`'s
+ * `left`/`right` links, plus one reserved bit, packed into the parent
+ * pointer, for a balancing policy's own use -- the red-black colour -- unused
+ * by a plain, unbalanced binary search tree). Unlike `std::allocate_shared`'s
  * control block, `node_header`'s own alignment is *not* boosted to match
  * the payload's -- it stays a plain, fixed-size, fixed-alignment struct, and
  * `node_base` computes the header-to-payload offset itself from a runtime
@@ -50,6 +50,7 @@
 #include "../lifetime.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <new>
 
 // Unsafe by design: node allocation hands out raw storage that the typed containers wrap; pointers never escape the
@@ -61,16 +62,40 @@ namespace reloco::detail {
 
 /**
  * @brief One node's structural bookkeeping: links to its parent and both
- * children, plus one reserved byte a balancing policy (red-black colour,
- * AVL balance factor, ...) can use for its own purposes -- unused by a
- * plain, unbalanced binary search tree.
+ * children, plus one reserved bit (`aux`) a balancing policy can use for
+ * its own purposes (red-black colour, ...) -- always 0 for a plain,
+ * unbalanced binary search tree.
+ *
+ * The `aux` bit is packed into the low bit of the `parent` pointer (nodes
+ * are at least pointer-aligned, so that bit is always free), which keeps
+ * the header at three words (24 bytes on LP64) instead of three words plus
+ * a padded byte (32 bytes): smaller nodes mean more of them per cache line.
+ * Use `parent()`/`set_parent()`/`aux()`/`set_aux()`; `set_parent` preserves
+ * `aux` and vice versa.
  */
 struct node_header {
-  node_header *parent = nullptr;
   node_header *left = nullptr;
   node_header *right = nullptr;
-  unsigned char aux = 0;
+
+  [[nodiscard]] node_header *parent() const noexcept {
+    return reinterpret_cast<node_header *>(parent_aux_ & ~aux_mask);
+  }
+  void set_parent(node_header *parent) noexcept {
+    parent_aux_ = reinterpret_cast<std::uintptr_t>(parent) | (parent_aux_ & aux_mask);
+  }
+
+  /// @brief The reserved balancing bit (0 or 1).
+  [[nodiscard]] unsigned char aux() const noexcept { return static_cast<unsigned char>(parent_aux_ & aux_mask); }
+  void set_aux(unsigned char value) noexcept {
+    parent_aux_ = (parent_aux_ & ~aux_mask) | (static_cast<std::uintptr_t>(value) & aux_mask);
+  }
+
+private:
+  static constexpr std::uintptr_t aux_mask = 1;
+  std::uintptr_t parent_aux_ = 0;
 };
+
+static_assert(alignof(node_header) >= 2, "the low parent bit must be free to hold `aux`");
 
 /**
  * @brief Computes the single-allocation `[header][payload]` node layout

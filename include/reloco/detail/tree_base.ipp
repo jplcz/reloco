@@ -20,14 +20,14 @@ RELOCO_API void bst_unlink(node_header *&root, node_header *node) noexcept {
     bst_transplant(root, node, node->left);
   } else {
     node_header *successor = bst_leftmost(node->right);
-    if (successor->parent != node) {
+    if (successor->parent() != node) {
       bst_transplant(root, successor, successor->right);
       successor->right = node->right;
-      successor->right->parent = successor;
+      successor->right->set_parent(successor);
     }
     bst_transplant(root, node, successor);
     successor->left = node->left;
-    successor->left->parent = successor;
+    successor->left->set_parent(successor);
   }
 }
 
