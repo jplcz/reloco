@@ -20,6 +20,11 @@
  * for whatever `T` is instantiated with -- `unique_ptr` itself only owns
  * the box allocation around that.
  *
+ * The handle is deliberately minimal (pointer + allocator, exact `T` only,
+ * freed with `sizeof(T)`). To own a derived object through a base handle, or
+ * to adopt an existing block, use `unique_polymorphic_ptr<Base>` (see
+ * `unique_polymorphic_ptr.hpp`).
+ *
  * Every fallible entry point returns `reloco::result<T>` (see `error.hpp`),
  * the one error type every fallible reloco operation returns. The box
  * allocation itself can only fail with a `reloco::error`; if `T`'s own
@@ -167,6 +172,8 @@ public:
   }
 
 private:
+  template <typename> friend class unique_polymorphic_ptr;
+
   constexpr unique_ptr(T *ptr, allocator_ref alloc) noexcept : ptr_(ptr), alloc_(alloc) {}
 
   T *ptr_{nullptr};

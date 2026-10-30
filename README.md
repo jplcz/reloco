@@ -47,6 +47,7 @@ Start with the guide that matches what you are building:
 | [Safety checker](docs/safety-checker.md) | `reloco-tidy`: the clang-tidy plugin, its full rule set, exemptions, opt-in regions and the `RELOCO_*` annotation macros |
 | [Hardened containers](docs/hardened-containers.md) | Checked views and results, non-trapping access, assertion handling, and explicit security opt-out |
 | [Fallible construction](docs/fallible-construction.md) | The `try_create`/`try_allocate`/`try_construct`/`try_clone`/`try_clone_at` protocol and its `has_try_*` detection traits/concepts |
+| [Unique pointer](docs/unique-ptr.md) | `unique_ptr` (minimal, exact `T`) and `unique_polymorphic_ptr` (derived objects through a base handle, adoption) |
 | [Trivial relocation](docs/relocatable.md) | `is_trivially_relocatable<T>`: which types may be moved by copying bytes and abandoning the source, and why |
 | [Thread-transfer/-sharing safety](docs/send-sync.md) | `is_send<T>`/`is_sync<T>`: which types are sound to hand to another thread or share concurrently, matching Rust's `Send`/`Sync` |
 | [Byte cursors](docs/byte-cursor.md) | `byte_reader`/`byte_writer`: bounds-checked, all-or-nothing binary parsing and serialization with explicit byte order, length-prefixed records and LEB128 |

@@ -452,6 +452,7 @@ if(JPLCZ_RELOCO_BUILD_TESTS)
         tests/test_concepts.cpp
         tests/test_construction_helpers.cpp
         tests/test_unique_ptr.cpp
+        tests/test_unique_polymorphic_ptr.cpp
         tests/test_string.cpp
         tests/test_relocatable.cpp
         tests/test_relocatable_std.cpp
