@@ -73,7 +73,7 @@ public:
    * `reloco::error`, like every fallible reloco operation -- is forwarded
    * as-is.
    */
-  template <typename... Args>
+  template <typename... Args, typename = std::enable_if_t<is_try_constructible_v<T, Args...>>>
   [[nodiscard]] static result<unique_ptr> try_allocate(allocator_ref alloc, Args &&...args) noexcept {
     auto block = alloc.allocate(sizeof(T), alignof(T));
     if (!block)
@@ -91,7 +91,8 @@ public:
    * @brief Allocates and constructs a `T` using the process-wide default
    * allocator (see `default_allocator()`).
    */
-  template <typename... Args> [[nodiscard]] static result<unique_ptr> try_create(Args &&...args) noexcept {
+  template <typename... Args, typename = std::enable_if_t<is_try_constructible_v<T, Args...>>>
+  [[nodiscard]] static result<unique_ptr> try_create(Args &&...args) noexcept {
     return try_allocate(default_allocator(), std::forward<Args>(args)...);
   }
 

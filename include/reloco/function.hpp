@@ -90,7 +90,8 @@ public:
    * storage strategy available for its (decayed) type: a bare function
    * pointer, the inline SOO buffer, or a single heap allocation.
    */
-  template <typename F> [[nodiscard]] static result<function> try_allocate(allocator_ref alloc, F &&func) noexcept {
+  template <typename F, std::enable_if_t<!std::is_same_v<std::decay_t<F>, function>, int> = 0>
+  [[nodiscard]] static result<function> try_allocate(allocator_ref alloc, F &&func) noexcept {
     using decayed_f = std::decay_t<F>;
     static_assert(std::is_invocable_r_v<R, decayed_f &, Args...>,
                   "function<R(Args...)>: F must be invocable as R(Args...)");
@@ -119,7 +120,8 @@ public:
    * @brief `try_allocate` using the process-wide default allocator (see
    * `default_allocator()`).
    */
-  template <typename F> [[nodiscard]] static result<function> try_create(F &&func) noexcept {
+  template <typename F, std::enable_if_t<!std::is_same_v<std::decay_t<F>, function>, int> = 0>
+  [[nodiscard]] static result<function> try_create(F &&func) noexcept {
     return try_allocate(default_allocator(), std::forward<F>(func));
   }
 

@@ -166,3 +166,17 @@ TEST(UniquePtrTest, UnsafeGetSkipsTheNullCheck) {
   EXPECT_EQ(ptr->unsafe_get()->value, 5);
   RELOCO_END_UNSAFE_BUFFER_USAGE
 }
+
+namespace {
+static_assert(!reloco::has_try_allocate_v<reloco::unique_ptr<plain_widget>, reloco::unique_ptr<plain_widget>>,
+              "unique_ptr::try_allocate must not claim to build T from a unique_ptr<T>");
+}
+
+TEST(UniquePtrTest, TryConstructMovesUniquePtrInsteadOfUsingFactory) {
+  reloco::allocator_ref heap = reloco::allocator<reloco::heap_allocator_tag>::ref();
+  auto src = reloco::unique_ptr<plain_widget>::try_allocate(heap, 9);
+  ASSERT_TRUE(src.has_value());
+  auto moved = reloco::construction_helpers::try_allocate<reloco::unique_ptr<plain_widget>>(heap, std::move(*src));
+  ASSERT_TRUE(moved.has_value());
+  EXPECT_EQ((*moved)->value, 9);
+}

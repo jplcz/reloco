@@ -138,7 +138,12 @@ std::enable_if_t<has_try_construct_v<T, Args...> || has_try_allocate_v<T, Args..
                      std::is_constructible_v<T, Args...>,
                  result<void>>
 construction_helpers::try_construct(allocator_ref alloc, T *storage, Args &&...args) noexcept {
-  if constexpr (has_try_construct_v<T, Args...>) {
+  // Same-type argument means move/copy; never route it through factory traits.
+  if constexpr (sizeof...(Args) == 1 && (std::is_same_v<std::remove_cv_t<std::remove_reference_t<Args>>, T> && ...) &&
+                std::is_constructible_v<T, Args...> && !has_try_construct_v<T, Args...>) {
+    new (storage) T(std::forward<Args>(args)...);
+    return {};
+  } else if constexpr (has_try_construct_v<T, Args...>) {
     static_assert(std::is_nothrow_default_constructible_v<T>,
                   "Two-phase construction requires a noexcept default constructor for the shell.");
     new (storage) T();
@@ -197,7 +202,10 @@ std::enable_if_t<has_try_allocate_v<T, Args...> || has_try_create_v<T, Args...> 
                      std::is_constructible_v<T, Args...>,
                  result<T>>
 construction_helpers::try_allocate(allocator_ref alloc, Args &&...args) noexcept {
-  if constexpr (has_try_allocate_v<T, Args...>) {
+  if constexpr (sizeof...(Args) == 1 && (std::is_same_v<std::remove_cv_t<std::remove_reference_t<Args>>, T> && ...) &&
+                std::is_constructible_v<T, Args...> && !has_try_construct_v<T, Args...>) {
+    return result<T>(T(std::forward<Args>(args)...));
+  } else if constexpr (has_try_allocate_v<T, Args...>) {
     return T::try_allocate(alloc, std::forward<Args>(args)...);
   } else if constexpr (has_try_create_v<T, Args...>) {
     return T::try_create(std::forward<Args>(args)...);

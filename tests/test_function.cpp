@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 #include <reloco/allocator.hpp>
+#include <reloco/concepts.hpp>
 #include <reloco/default_allocator.hpp>
 #include <reloco/function.hpp>
 #include <reloco/heap_allocator.hpp>
@@ -264,3 +265,6 @@ TEST(FunctionTest, TryCloneFailsOnNonCopyableCapture) {
 TEST(FunctionTest, IsNotTriviallyRelocatable) {
   static_assert(!reloco::is_trivially_relocatable_v<reloco::function<int(int)>>);
 }
+
+static_assert(!reloco::has_try_allocate_v<reloco::function<int()>, reloco::function<int()>>,
+              "function's factory must not claim to wrap another function");
