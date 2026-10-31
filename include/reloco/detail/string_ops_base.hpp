@@ -40,9 +40,17 @@ namespace detail {
 
 RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
 
+// Clang 18 crashes (CheckParameterPacksForExpansion) when a variadic member template carries the implicit-object
+// lifetimebound attribute together with a trailing return type; the annotation is only dropped there.
+#if defined(__clang__) && __clang_major__ < 19
+#define RELOCO_STRING_FORWARD_LIFETIMEBOUND_
+#else
+#define RELOCO_STRING_FORWARD_LIFETIMEBOUND_ RELOCO_LIFETIMEBOUND
+#endif
+
 #define RELOCO_STRING_FORWARD_(name)                                                                                   \
   template <typename... Args>                                                                                          \
-  [[nodiscard]] auto name(Args &&...args) const & noexcept RELOCO_LIFETIMEBOUND                                        \
+  [[nodiscard]] auto name(Args &&...args) const & noexcept RELOCO_STRING_FORWARD_LIFETIMEBOUND_                        \
       -> decltype(std::declval<view_type>().name(std::forward<Args>(args)...)) {                                       \
     return view_of().name(std::forward<Args>(args)...);                                                                \
   }                                                                                                                    \
@@ -859,6 +867,7 @@ private:
 };
 
 #undef RELOCO_STRING_FORWARD_
+#undef RELOCO_STRING_FORWARD_LIFETIMEBOUND_
 
 RELOCO_END_UNSAFE_BUFFER_USAGE
 

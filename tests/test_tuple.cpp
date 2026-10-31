@@ -42,9 +42,11 @@ TEST(TupleTest, AccessAndStructuredBindings) {
   auto &[n, s] = t;
   n = 9;
   EXPECT_EQ(t.get<0>(), 9);
-  auto [n2, s2] = std::move(t); // rvalue get() moves the elements out
-  EXPECT_EQ(n2, 9);
-  EXPECT_EQ(s2, "seven");
+  { // own scope: GCC 15 ICEs (cp_finish_decl) on a decomposition of an rvalue after a gtest assertion in the same scope
+    auto [n2, s2] = std::move(t); // rvalue get() moves the elements out
+    EXPECT_EQ(n2, 9);
+    EXPECT_EQ(s2, "seven");
+  }
 
   static_assert(std::is_same_v<decltype(std::declval<reloco::tuple<std::string> &&>().get<0>()), std::string>,
                 "rvalue get returns by value so it cannot dangle");
