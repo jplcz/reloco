@@ -26,7 +26,7 @@ concurrency:
 jobs:
   changes:
     name: Detect sanitizer changes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     outputs:
       build: ${{ steps.filter.outputs.build }}
@@ -55,7 +55,7 @@ jobs:
       (github.event_name != 'pull_request' ||
        github.event.pull_request.draft == false)
     name: AddressSanitizer and UndefinedBehaviorSanitizer
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7

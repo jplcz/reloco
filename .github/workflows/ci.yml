@@ -26,7 +26,7 @@ concurrency:
 jobs:
   changes:
     name: Detect build changes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     outputs:
       build: ${{ steps.filter.outputs.build }}
@@ -62,10 +62,10 @@ jobs:
       matrix:
         include:
           - name: Linux GCC
-            os: ubuntu-latest
+            os: ubuntu-26.04
             compiler: g++
           - name: Linux Clang
-            os: ubuntu-latest
+            os: ubuntu-26.04
             compiler: clang++
           - name: macOS AppleClang
             os: macos-latest
