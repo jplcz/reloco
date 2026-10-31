@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.6.0
+
 ### Added
 
 - `shared_ptr` custom deleters: `try_adopt_shared` (adopt an externally allocated object; failure leaves ownership with the caller) and `try_allocate_shared_with_deleter` (construct plus a finalizer that runs before destruction). Deleters must be `noexcept`. See `docs/reference.md`.
