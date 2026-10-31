@@ -125,7 +125,7 @@ TEST(SpanSliceOps, Searching) {
   EXPECT_EQ(lv(s.try_find(5))->get(), 5);
   EXPECT_EQ(s.try_find(7).error(), reloco::error::not_found);
   lv(s.try_find_if([](int v) { return v > 4; }))->get() = 50; // reference into the data
-  EXPECT_EQ(sorted[4], 50);
+  EXPECT_EQ(s[4], 50);
 
   EXPECT_TRUE(s.any([](int v) { return v == 8; }));
   EXPECT_FALSE(s.all([](int v) { return v < 8; }));
@@ -150,8 +150,8 @@ TEST(SpanSliceOps, MinMaxFamily) {
   int values[] = {4, 9, 2, 9, 2};
   reloco::span<int> v(values);
   EXPECT_EQ(lv(v.try_max())->get(), 9);
-  EXPECT_EQ(&lv(v.try_max())->get(), &values[3]);
-  EXPECT_EQ(&lv(v.try_min())->get(), &values[2]);
+  EXPECT_EQ(&lv(v.try_max())->get(), &v[3]);
+  EXPECT_EQ(&lv(v.try_min())->get(), &v[2]);
   auto mm = v.try_minmax();
   ASSERT_TRUE(mm.has_value());
   EXPECT_EQ(mm->first.get(), 2);
@@ -197,8 +197,8 @@ TEST(SpanSliceOps, ReverseRotateFillSwap) {
   EXPECT_TRUE(s.try_rotate_left(5).has_value());
 
   s.swap_at(0, 4);
-  EXPECT_EQ(data[0], 5);
-  EXPECT_EQ(data[4], 4);
+  EXPECT_EQ(s[0], 5);
+  EXPECT_EQ(s[4], 4);
   EXPECT_EQ(s.try_swap_at(0, 5).error(), reloco::error::out_of_bounds);
 
   s.fill(7);
@@ -215,7 +215,7 @@ TEST(SpanSliceOps, CopyAndSwapSpans) {
   reloco::span<int> sb(b);
   sa.swap_with_span(sb);
   EXPECT_EQ(a[0], 7);
-  EXPECT_EQ(b[2], 3);
+  EXPECT_EQ(sb[2], 3);
   sa.copy_from(reloco::span<const int>(b));
   EXPECT_EQ(vec(reloco::span<int>(a)), (ints{1, 2, 3}));
 

@@ -391,7 +391,8 @@ TEST(CircularListTest, BidirectionalIteration) {
   ASSERT_TRUE(l.try_insert(l.cend(), tracked(4)).has_value());
   ASSERT_TRUE(l.try_insert(std::next(l.cbegin()), tracked(7)).has_value());
   EXPECT_EQ(values(l), (std::vector<int>{1, 7, 2, 3, 4}));
-  EXPECT_EQ(l.erase(std::next(l.cbegin())), std::next(l.begin()));
+  const auto after_erased = l.erase(std::next(l.cbegin())); // sequenced: the comparison must not race the erase
+  EXPECT_EQ(after_erased, std::next(l.begin()));
   EXPECT_EQ(l.pop_back().value, 4);
 }
 

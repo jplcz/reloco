@@ -30,13 +30,24 @@ namespace detail {
 template <typename T> struct is_reloco_tuple : std::false_type {};
 template <typename... Ts> struct is_reloco_tuple<tuple<Ts...>> : std::true_type {};
 
-// Result type of `visit_at`: every element must yield the same type, otherwise a runtime index could not name it.
-template <typename F, typename... Es> struct visit_result {
-  static_assert(sizeof...(Es) > 0, "visit_at needs a non-empty tuple");
-  using type = std::invoke_result_t<F &, std::tuple_element_t<0, std::tuple<Es...>>>;
-  static_assert((std::is_same_v<type, std::invoke_result_t<F &, Es>> && ...),
-                "visit_at: the callable must return the same type for every element");
+// First element type of a pack; ill-formed (SFINAE-friendly) for an empty pack.
+template <typename E, typename...> struct first_of_impl {
+  using type = E;
 };
+template <typename... Es> using first_of = typename first_of_impl<Es...>::type;
+
+// Result type of `visit_at`: every element must yield the same type, otherwise a runtime index could not name it.
+// Deliberately SFINAE-friendly: `visit_at` has one overload per value category, and the ones that are not selected
+// must drop out quietly (e.g. a `[](auto &)` callable is not invocable with the rvalue elements of the `&&` overload).
+template <typename Void, typename F, typename... Es> struct visit_result_impl {};
+template <typename F, typename... Es>
+struct visit_result_impl<
+    std::enable_if_t<(std::is_same_v<std::invoke_result_t<F &, first_of<Es...>>, std::invoke_result_t<F &, Es>> &&
+                      ...)>,
+    F, Es...> {
+  using type = std::invoke_result_t<F &, first_of<Es...>>;
+};
+template <typename F, typename... Es> using visit_result = visit_result_impl<void, F, Es...>;
 
 } // namespace detail
 
