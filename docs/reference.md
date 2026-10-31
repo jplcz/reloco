@@ -2455,6 +2455,42 @@ auto ptr = reloco::try_create_combined_shared<widget>(arg1, arg2);
 auto ptr2 = reloco::try_create_shared<widget>(arg1, arg2);
 ```
 
+### Custom deleters
+
+Why: sometimes the object is not yours to `delete` -- it came from a C API, a pool or an arena, or tearing it down
+needs more than a destructor (unregister, flush, close a handle). A custom deleter lets `shared_ptr` own such an
+object and still release it exactly once, when the last owner goes away. Deleters are type-erased in the control
+block, so the `shared_ptr<T>` type does not change and deleter-owned pointers mix freely with every other `shared_ptr<T>`.
+
+```cpp
+// Adoption: wrap an object that something else allocated. The deleter is the ONLY cleanup that runs, so it must
+// destroy the object and release its storage. Only the control block is allocated (from the default allocator here).
+// Arguments: the object, then the deleter (a lambda, functor or function pointer; nothrow, nothrow-movable).
+widget *raw = pool_acquire();
+auto ptr = reloco::try_adopt_shared(raw, [](widget *w) noexcept { pool_release(w); });
+if (!ptr) {
+  // Control-block allocation failed (or raw was null). `raw` was NOT adopted and the deleter did NOT run:
+  // you still own `raw` and must release it yourself.
+  pool_release(raw);
+  return;
+}
+
+// Explicit allocator for the control block: same call with an allocator_ref first.
+auto ptr2 = reloco::try_adopt_shared(my_allocator, raw2, [](widget *w) noexcept { pool_release(w); });
+
+// Construct-with-deleter: reloco allocates and constructs the object (like try_allocate_shared), and the deleter runs
+// as a finalizer when the last owner releases it -- BEFORE ~widget() and before the storage is freed. Use it for
+// side effects tied to the object's end of life (unregister, log, flush), not to free the memory.
+// Arguments: the allocator, the deleter, then the constructor arguments of widget.
+auto ptr3 = reloco::try_allocate_shared_with_deleter<widget>(
+    my_allocator, [](widget *w) noexcept { registry_remove(w); }, 42);
+```
+
+The deleter must be nothrow move-constructible and callable as `noexcept` `deleter(T *)` (enforced with
+`static_assert`). An empty, non-final functor such as a captureless lambda adds no space to the control block. The
+deleter may run on whichever thread drops the last reference, so its thread-safety is the caller's responsibility.
+It stays alive across aliasing constructors and `*_pointer_cast`s, and `weak_ptr` observers do not delay it.
+
 `try_allocate_shared`/`try_allocate_combined_shared` take an explicit
 `allocator_ref`; `try_create_shared`/`try_create_combined_shared` use
 `default_allocator()`. `static_pointer_cast`/`dynamic_pointer_cast`/

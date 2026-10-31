@@ -8,6 +8,7 @@
 #include <reloco/heap_allocator.hpp>
 #include <reloco/shared_ptr.hpp>
 
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -324,4 +325,131 @@ TEST(SharedPtrTest, VectorOfSharedPtrsIsRelocatableFriendly) {
   for (int i = 0; i < 4; ++i) {
     EXPECT_EQ(ptrs[static_cast<std::size_t>(i)]->value, i);
   }
+}
+
+TEST(SharedPtrTest, AdoptRunsTheDeleterOnceOnLastRelease) {
+  int calls = 0;
+  auto *raw = new widget(5);
+  {
+    auto ptr = reloco::try_adopt_shared(raw, [&calls](widget *w) noexcept {
+      ++calls;
+      delete w;
+    });
+    ASSERT_TRUE(ptr);
+    auto copy = *ptr;
+    ptr->reset();
+    EXPECT_EQ(calls, 0);
+    EXPECT_EQ(copy->value, 5);
+  }
+  EXPECT_EQ(calls, 1);
+  EXPECT_EQ(widget::live_count, 0);
+}
+
+TEST(SharedPtrTest, AdoptRunsTheDeleterBeforeWeakPtrsExpire) {
+  int calls = 0;
+  reloco::weak_ptr<widget> weak;
+  {
+    auto ptr = reloco::try_adopt_shared(new widget(1), [&calls](widget *w) noexcept {
+      ++calls;
+      delete w;
+    });
+    ASSERT_TRUE(ptr);
+    weak = *ptr;
+  }
+  EXPECT_EQ(calls, 1);
+  EXPECT_FALSE(weak.lock());
+}
+
+TEST(SharedPtrTest, AdoptWithAllocationFailureLeavesOwnershipWithCaller) {
+  reloco::allocator_ref exhausted = reloco::allocator<exhausted_allocator_tag>::ref();
+  int calls = 0;
+  auto *raw = new widget(2);
+  auto failed = reloco::try_adopt_shared(exhausted, raw, [&calls](widget *) noexcept { ++calls; });
+  ASSERT_FALSE(failed);
+  EXPECT_EQ(failed.error(), reloco::error::allocation_failed);
+  EXPECT_EQ(calls, 0);
+  delete raw;
+}
+
+TEST(SharedPtrTest, AdoptRejectsNull) {
+  auto failed = reloco::try_adopt_shared<widget>(nullptr, [](widget *) noexcept {});
+  ASSERT_FALSE(failed);
+  EXPECT_EQ(failed.error(), reloco::error::invalid_argument);
+}
+
+TEST(SharedPtrTest, AdoptAcceptsFunctionPointerAndMoveOnlyCapture) {
+  static int freed = 0;
+  auto ptr = reloco::try_adopt_shared(
+      new widget(3), +[](widget *w) noexcept {
+        ++freed;
+        delete w;
+      });
+  ASSERT_TRUE(ptr);
+  ptr->reset();
+  EXPECT_EQ(freed, 1);
+
+  int calls = 0;
+  auto token = std::make_unique<int>(9);
+  auto owned = reloco::try_adopt_shared(new widget(4), [&calls, token = std::move(token)](widget *w) noexcept {
+    calls += *token;
+    delete w;
+  });
+  ASSERT_TRUE(owned);
+  owned->reset();
+  EXPECT_EQ(calls, 9);
+}
+
+TEST(SharedPtrTest, AdoptedAliasAndCastKeepTheDeleterAlive) {
+  int calls = 0;
+  reloco::shared_ptr<base_widget> base;
+  {
+    auto derived = reloco::try_adopt_shared(new derived_widget(6), [&calls](derived_widget *w) noexcept {
+      ++calls;
+      delete w;
+    });
+    ASSERT_TRUE(derived);
+    base = *derived;
+  }
+  EXPECT_EQ(calls, 0);
+  EXPECT_EQ(base->tag(), 6);
+  base.reset();
+  EXPECT_EQ(calls, 1);
+}
+
+TEST(SharedPtrTest, AdoptedObjectSupportsSharedFromThis) {
+  auto ptr = reloco::try_adopt_shared(new self_aware_widget(8), [](self_aware_widget *w) noexcept { delete w; });
+  ASSERT_TRUE(ptr);
+  auto again = (*ptr)->shared_from_this();
+  ASSERT_TRUE(again);
+  EXPECT_EQ(again->get(), ptr->get());
+}
+
+TEST(SharedPtrTest, WithDeleterRunsFinalizerThenDestroysAndFrees) {
+  reloco::allocator_ref heap = reloco::allocator<reloco::heap_allocator_tag>::ref();
+  int seen = 0;
+  {
+    auto ptr =
+        reloco::try_allocate_shared_with_deleter<widget>(heap, [&seen](widget *w) noexcept { seen = w->value; }, 12);
+    ASSERT_TRUE(ptr);
+    EXPECT_EQ(widget::live_count, 1);
+    EXPECT_EQ(seen, 0);
+  }
+  EXPECT_EQ(seen, 12);
+  EXPECT_EQ(widget::live_count, 0);
+}
+
+TEST(SharedPtrTest, WithDeleterReportsAllocationAndConstructionFailure) {
+  reloco::allocator_ref exhausted = reloco::allocator<exhausted_allocator_tag>::ref();
+  int calls = 0;
+  auto count = [&calls](creatable_widget *) noexcept { ++calls; };
+  auto no_memory =
+      reloco::try_allocate_shared_with_deleter<widget>(exhausted, [&calls](widget *) noexcept { ++calls; }, 1);
+  ASSERT_FALSE(no_memory);
+  EXPECT_EQ(no_memory.error(), reloco::error::allocation_failed);
+
+  reloco::allocator_ref heap = reloco::allocator<reloco::heap_allocator_tag>::ref();
+  auto bad = reloco::try_allocate_shared_with_deleter<creatable_widget>(heap, count, -1);
+  ASSERT_FALSE(bad);
+  EXPECT_EQ(bad.error(), reloco::error::invalid_argument);
+  EXPECT_EQ(calls, 0);
 }

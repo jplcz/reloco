@@ -32,6 +32,11 @@
  *   freed as soon as the last `shared_ptr` releases it; only the small
  *   control block itself waits on outstanding `weak_ptr`s.
  *
+ * - @ref try_adopt_shared / @ref try_allocate_shared_with_deleter: custom
+ *   deleters. Adoption wraps an object allocated elsewhere (the deleter is
+ *   its only cleanup); the second form runs the deleter as a finalizer
+ *   before the object is destroyed and freed.
+ *
  * Building the `T` inside either layout is delegated to
  * `construction_helpers::try_construct` (see `construction_helpers.hpp`),
  * exactly like `unique_ptr::try_allocate`, so the same tiered
@@ -157,6 +162,48 @@ template <typename T> struct sp_control_block_combined final : sp_control_block 
   void destroy_self() noexcept override {
     allocator_ref alloc = alloc_;
     this->~sp_control_block_combined();
+    alloc.deallocate(this, sizeof(*this));
+  }
+};
+
+// Holds the user's deleter; an empty, non-final functor (typically a captureless lambda) costs no space.
+template <typename D, bool = std::is_empty_v<D> && !std::is_final_v<D>> class sp_deleter_storage : private D {
+public:
+  explicit sp_deleter_storage(D &&deleter) noexcept : D(std::move(deleter)) {}
+  D &get() & noexcept RELOCO_LIFETIMEBOUND { return *this; }
+};
+template <typename D> class sp_deleter_storage<D, false> {
+public:
+  explicit sp_deleter_storage(D &&deleter) noexcept : deleter_(std::move(deleter)) {}
+  D &get() & noexcept RELOCO_LIFETIMEBOUND { return deleter_; }
+
+private:
+  D deleter_;
+};
+
+// Separate control block with a user deleter. `AllocatedByUs == false` is adoption: the deleter alone releases the
+// object. `AllocatedByUs == true` is construct-with-deleter: the deleter runs first as a finalizer, then the object is
+// destroyed and its storage is returned to the allocator it came from.
+// NOLINTNEXTLINE(reloco-pointer-annotation): control blocks reference their object/allocator by design.
+template <typename T, typename D, bool AllocatedByUs> struct sp_control_block_deleter final : sp_control_block {
+  T *ptr_;
+  sp_deleter_storage<D> deleter_;
+  allocator_ref alloc_;
+
+  sp_control_block_deleter(T *ptr, D &&deleter, allocator_ref alloc) noexcept
+      : ptr_(ptr), deleter_(std::move(deleter)), alloc_(alloc) {}
+
+  void destroy_object() noexcept override {
+    deleter_.get()(ptr_);
+    if constexpr (AllocatedByUs) {
+      ptr_->~T();
+      alloc_.deallocate(ptr_, sizeof(T));
+    }
+  }
+
+  void destroy_self() noexcept override {
+    allocator_ref alloc = alloc_;
+    this->~sp_control_block_deleter();
     alloc.deallocate(this, sizeof(*this));
   }
 };
@@ -320,6 +367,11 @@ private:
 
   template <typename Tp, typename... Args>
   friend result<shared_ptr<Tp>> try_allocate_combined_shared(allocator_ref alloc, Args &&...args) noexcept;
+
+  template <typename Tp, typename Dp> friend result<shared_ptr<Tp>> try_adopt_shared(allocator_ref, Tp *, Dp) noexcept;
+
+  template <typename Tp, typename Dp, typename... Args>
+  friend result<shared_ptr<Tp>> try_allocate_shared_with_deleter(allocator_ref, Dp, Args &&...) noexcept;
 };
 
 template <typename T> void swap(shared_ptr<T> &lhs, shared_ptr<T> &rhs) noexcept { lhs.swap(rhs); }
@@ -468,6 +520,11 @@ private:
 
   template <typename Tp, typename... Args>
   friend result<shared_ptr<Tp>> try_allocate_combined_shared(allocator_ref alloc, Args &&...args) noexcept;
+
+  template <typename Tp, typename Dp> friend result<shared_ptr<Tp>> try_adopt_shared(allocator_ref, Tp *, Dp) noexcept;
+
+  template <typename Tp, typename Dp, typename... Args>
+  friend result<shared_ptr<Tp>> try_allocate_shared_with_deleter(allocator_ref, Dp, Args &&...) noexcept;
 };
 
 template <typename T> void swap(weak_ptr<T> &lhs, weak_ptr<T> &rhs) noexcept { lhs.swap(rhs); }
@@ -510,6 +567,11 @@ private:
 
   template <typename Tp, typename... Args>
   friend result<shared_ptr<Tp>> try_allocate_combined_shared(allocator_ref alloc, Args &&...args) noexcept;
+
+  template <typename Tp, typename Dp> friend result<shared_ptr<Tp>> try_adopt_shared(allocator_ref, Tp *, Dp) noexcept;
+
+  template <typename Tp, typename Dp, typename... Args>
+  friend result<shared_ptr<Tp>> try_allocate_shared_with_deleter(allocator_ref, Dp, Args &&...) noexcept;
 };
 
 /**
@@ -548,6 +610,90 @@ template <typename T, typename... Args>
     cb->weak_count_.fetch_add(1, std::memory_order_relaxed);
   }
 
+  return shared_ptr<T>(cb, raw_ptr);
+}
+
+namespace detail {
+
+template <typename T, typename D> constexpr void check_shared_deleter() noexcept {
+  static_assert(std::is_nothrow_move_constructible_v<D>, "a shared_ptr deleter must be nothrow move-constructible");
+  static_assert(std::is_nothrow_invocable_v<D &, T *>,
+                "a shared_ptr deleter must be callable as `noexcept` deleter(T *)");
+}
+
+} // namespace detail
+
+/**
+ * @brief Adopts an existing object: the last owner calls `deleter(ptr)` and nothing else, so the deleter must destroy
+ * the object and release its storage (a C API `free`-style function, a pool return, ...).
+ *
+ * Only the control block is allocated, from `alloc`. On failure `ptr` is **not** adopted and `deleter` is **not**
+ * invoked: ownership stays with the caller. A null `ptr` is rejected with `error::invalid_argument`.
+ *
+ * `deleter` must be nothrow move-constructible and invocable as `noexcept` `deleter(T *)`. Its thread-safety is the
+ * caller's responsibility: it may run on whichever thread releases the last reference.
+ */
+template <typename T, typename D>
+[[nodiscard]] result<shared_ptr<T>> try_adopt_shared(allocator_ref alloc, T *ptr, D deleter) noexcept {
+  detail::check_shared_deleter<T, D>();
+  if (ptr == nullptr)
+    return unexpected(error::invalid_argument);
+
+  using control_block_t = detail::sp_control_block_deleter<T, D, false>;
+  auto cb_block = alloc.allocate(sizeof(control_block_t), alignof(control_block_t));
+  if (!cb_block)
+    return unexpected(cb_block.error());
+  auto *cb = new (cb_block->ptr) control_block_t(ptr, std::move(deleter), alloc);
+  if constexpr (std::is_base_of_v<detail::enable_shared_from_this_base, T>) {
+    ptr->weak_this_.ptr_ = ptr;
+    ptr->weak_this_.block_ = cb;
+    cb->weak_count_.fetch_add(1, std::memory_order_relaxed);
+  }
+  return shared_ptr<T>(cb, ptr);
+}
+
+/** @brief `try_adopt_shared` using the process-wide default allocator for the control block. */
+template <typename T, typename D> [[nodiscard]] result<shared_ptr<T>> try_adopt_shared(T *ptr, D deleter) noexcept {
+  return try_adopt_shared<T>(default_allocator(), ptr, std::move(deleter));
+}
+
+/**
+ * @brief Like @ref try_allocate_shared (object and control block allocated separately from `alloc`), plus a custom
+ * `deleter` that runs as a finalizer.
+ *
+ * When the last `shared_ptr` releases the object, `deleter(ptr)` is called first (flush a buffer, unregister from a
+ * registry, close a handle the object owns, ...); then `~T()` runs and the storage is returned to `alloc`. Use
+ * @ref try_adopt_shared instead when the object was not allocated by reloco. Requirements on `deleter` are the same as
+ * for `try_adopt_shared`. On failure everything allocated so far is released and `deleter` is not invoked.
+ */
+template <typename T, typename D, typename... Args>
+[[nodiscard]] result<shared_ptr<T>> try_allocate_shared_with_deleter(allocator_ref alloc, D deleter,
+                                                                     Args &&...args) noexcept {
+  detail::check_shared_deleter<T, D>();
+  auto object_block = alloc.allocate(sizeof(T), alignof(T));
+  if (!object_block)
+    return unexpected(object_block.error());
+  auto *raw_ptr = static_cast<T *>(object_block->ptr);
+
+  auto ctor_res = construction_helpers::try_construct<T>(alloc, raw_ptr, std::forward<Args>(args)...);
+  if (!ctor_res) {
+    alloc.deallocate(object_block->ptr, object_block->size);
+    return unexpected(ctor_res.error());
+  }
+
+  using control_block_t = detail::sp_control_block_deleter<T, D, true>;
+  auto cb_block = alloc.allocate(sizeof(control_block_t), alignof(control_block_t));
+  if (!cb_block) {
+    raw_ptr->~T();
+    alloc.deallocate(object_block->ptr, object_block->size);
+    return unexpected(cb_block.error());
+  }
+  auto *cb = new (cb_block->ptr) control_block_t(raw_ptr, std::move(deleter), alloc);
+  if constexpr (std::is_base_of_v<detail::enable_shared_from_this_base, T>) {
+    raw_ptr->weak_this_.ptr_ = raw_ptr;
+    raw_ptr->weak_this_.block_ = cb;
+    cb->weak_count_.fetch_add(1, std::memory_order_relaxed);
+  }
   return shared_ptr<T>(cb, raw_ptr);
 }
 
