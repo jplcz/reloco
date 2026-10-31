@@ -37,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Bump version in CMakeLists.txt/conanfile.py/vcpkg.json
+      - name: Bump version in CMakeLists.txt/conanfile.py/vcpkg.json/CHANGELOG.md
         id: bump
         run: python3 scripts/bump-version.py --bump "${{ inputs.bump }}"
 

@@ -12,6 +12,8 @@ lock-step, so a single invocation keeps them all consistent:
     SSOT every other file below is derived from).
   - conanfile.py's `version = "X.Y.Z"` class attribute, if present.
   - packaging/vcpkg/ports/*/vcpkg.json's "version" field, if present.
+  - CHANGELOG.md, if present: the `## Unreleased` heading is renamed to
+    `## vX.Y.Z` and a fresh empty `## Unreleased` section is prepended.
 
 Usage:
   scripts/bump-version.py --bump patch|minor|major
@@ -32,6 +34,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 CMAKELISTS = ROOT / "CMakeLists.txt"
 CONANFILE = ROOT / "conanfile.py"
+CHANGELOG = ROOT / "CHANGELOG.md"
 
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 
@@ -99,6 +102,19 @@ def write_vcpkg_manifests(new_version: str) -> None:
         path.write_text(new_text, encoding="utf-8")
 
 
+def write_changelog(new_version: str) -> None:
+    if not CHANGELOG.exists():
+        return
+    text = CHANGELOG.read_text(encoding="utf-8")
+    new_text, count = re.subn(r"^## Unreleased[ \t]*$", f"## v{new_version}", text, count=1, flags=re.MULTILINE)
+    if count != 1:
+        sys.exit("error: CHANGELOG.md has no `## Unreleased` heading to release")
+    # Keep the fresh section directly above the released one, below any title.
+    heading = f"## v{new_version}"
+    head, sep, tail = new_text.partition(heading)
+    CHANGELOG.write_text(f"{head}## Unreleased\n\n{sep}{tail}", encoding="utf-8")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     group = parser.add_mutually_exclusive_group(required=True)
@@ -117,6 +133,7 @@ def main() -> None:
     write_cmakelists(new_version)
     write_conanfile(new_version)
     write_vcpkg_manifests(new_version)
+    write_changelog(new_version)
 
     old_version = ".".join(str(part) for part in current)
     print(f"Bumped version: {old_version} -> {new_version}")

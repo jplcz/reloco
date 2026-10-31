@@ -46,6 +46,12 @@
 - `span::unchecked_at` / `array::unchecked_at`: element access with no check in any build mode, for loops whose
   index range was proven once. See `docs/hardened-containers.md`.
 
+### Fixed
+
+- Clang 18 crash instantiating `string_ops_base`: `[[clang::lifetimebound]]` on its variadic member templates is now omitted on Clang older than 19.
+- MSVC: `detail::visit_result` in `tuple.hpp` is SFINAE-friendly.
+- `-Wattributes` when compiling `reloco_compile.hpp` with GCC: `basic_string_view<char>` is now explicitly instantiated before the headers that use it.
+
 ## v0.4.5
 
 ### Breaking
