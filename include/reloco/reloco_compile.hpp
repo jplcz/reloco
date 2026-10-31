@@ -81,8 +81,7 @@
 
 #include "reloco_extern.hpp"
 
-#include "sso_string.hpp"
-#include "string.hpp"
+#include "span.hpp"
 #include "string_view.hpp"
 
 // char-based only -- see this file's doc comment for why the wchar_t
@@ -104,6 +103,12 @@
 // in this translation unit ([-Wattributes] "type attributes ignored after
 // type is already defined").
 RELOCO_TYPE_INSTANCE(reloco::basic_string_view<char>);
+
+// Only now include the string headers: their inline code instantiates basic_string_view<char>, which must not
+// happen before the instantiation above.
+#include "sso_string.hpp"
+#include "string.hpp"
+
 RELOCO_TYPE_INSTANCE(reloco::basic_string<char>);
 RELOCO_TYPE_INSTANCE(reloco::basic_sso_string<char>);
 
