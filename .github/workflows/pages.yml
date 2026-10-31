@@ -45,7 +45,7 @@ jobs:
           find docs -name '*.md' ! -path docs/index.md -print0 | while IFS= read -r -d '' f; do
             { echo '{% raw %}'; cat "$f"; printf '\n{%% endraw %%}\n'; } > "$f.tmp" && mv "$f.tmp" "$f"
           done
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
       - uses: actions/jekyll-build-pages@v1
         with:
           source: ./docs
