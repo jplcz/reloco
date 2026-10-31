@@ -40,6 +40,10 @@ form an explicit, reviewable decision.
 
 ## Guides
 
+The guides are also published as a website on GitHub Pages (built from `docs/` by
+`.github/workflows/pages.yml`; enable it once under Settings → Pages → Source:
+"GitHub Actions").
+
 Start with the guide that matches what you are building:
 
 | Guide | Covers |

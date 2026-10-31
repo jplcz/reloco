@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2026 Jarosław Pelczar <jarek@jpelczar.com>
+#
+# SPDX-License-Identifier: BSD-2-Clause
+
+# Publishes the Markdown guides in docs/ as a Jekyll site on GitHub Pages
+# (no Doxygen). Enable once in Settings -> Pages -> Source: "GitHub Actions".
+name: Pages
+
+on:
+  push:
+    branches: [master]
+    paths: ['docs/**', 'assets/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stage logo assets next to the site source
+        run: cp -r assets docs/assets
+      - name: Point links that leave docs/ at the repository on GitHub
+        # Only the CI checkout is rewritten; the Markdown in git keeps its
+        # relative links so they still work when browsing the repo.
+        run: |
+          find docs -name '*.md' -print0 | while IFS= read -r -d '' f; do
+            up=$(dirname "$f" | sed -E 's|[^/]+|..|g; s|^\.\.$|../|')
+            # docs/x.md -> "../", docs/kernel/x.md -> "../../"
+            up=$(printf '%s' "$up" | sed -E 's|/?$|/|')
+            sed -i -E "s#\]\(${up//\//\\/}([^)]*)\)#](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/\1)#g" "$f"
+          done
+      - uses: actions/configure-pages@v5
+      - uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./docs
+          destination: ./_site
+      - uses: actions/upload-pages-artifact@v3
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

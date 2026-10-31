@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 Jarosław Pelczar <jarek@jpelczar.com>
+#
+# SPDX-License-Identifier: BSD-2-Clause
+
+# Jekyll configuration for the GitHub Pages site (built from docs/ by
+# .github/workflows/pages.yml). The existing Markdown guides are published as-is:
+# optional-front-matter renders files that have no YAML header, and
+# relative-links rewrites `foo.md` links to the generated pages.
+title: reloco
+description: Safety-by-default C++ containers and value-lifetime primitives
+theme: minima
+markdown: kramdown
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+plugins:
+  - jekyll-optional-front-matter
+  - jekyll-relative-links
+  - jekyll-default-layout
+  - jekyll-titles-from-headings
+  - jekyll-github-metadata
+relative_links:
+  enabled: true
+  collections: false
+optional_front_matter:
+  remove_originals: true
+titles_from_headings:
+  enabled: true
+  strip_title: false
+  collections: false
