@@ -162,4 +162,54 @@ TEST(CLinuxListTest, MoveSemantics) {
   EXPECT_EQ(l3.back(), &n2);
 }
 
+std::vector<int> splice_values(const test_linux_list &list) {
+  std::vector<int> out;
+  for (const auto &n : list) {
+    out.push_back(n.value);
+  }
+  return out;
+}
+
+TEST(CListHeadTest, SpliceRangesAndWholeLists) {
+  using values = std::vector<int>;
+  test_linux_list dst;
+  test_linux_list src;
+  test_node d1(1), d2(2), s1(10), s2(20), s3(30), s4(40);
+  dst.push_back(d1);
+  dst.push_back(d2);
+  for (test_node *n : {&s1, &s2, &s3, &s4}) {
+    src.push_back(*n);
+  }
+
+  dst.splice_after(d1, src, s2, s3);
+  EXPECT_EQ(splice_values(dst), (values{1, 20, 30, 2}));
+  EXPECT_EQ(splice_values(src), (values{10, 40}));
+
+  dst.splice_before(d1, src, s1, s1);
+  dst.splice_back(src, s4, s4);
+  EXPECT_TRUE(src.empty());
+  EXPECT_EQ(splice_values(dst), (values{10, 1, 20, 30, 2, 40}));
+  EXPECT_EQ(dst.back(), &s4);
+
+  // Move a range within the same list.
+  dst.splice_front(dst, s3, d2);
+  EXPECT_EQ(splice_values(dst), (values{30, 2, 10, 1, 20, 40}));
+
+  test_node o1(100), o2(200);
+  src.push_back(o1);
+  src.push_back(o2);
+  dst.splice_before(s4, src);
+  EXPECT_TRUE(src.empty());
+  EXPECT_EQ(splice_values(dst), (values{30, 2, 10, 1, 20, 100, 200, 40}));
+  test_node a1(300), a2(400), a3(500);
+  src.push_back(a1);
+  dst.splice_after(o1, src);
+  src.push_back(a2);
+  dst.splice_front(src);
+  src.push_back(a3);
+  dst.splice_back(src);
+  EXPECT_TRUE(src.empty());
+  EXPECT_EQ(splice_values(dst), (values{400, 30, 2, 10, 1, 20, 100, 300, 200, 40, 500}));
+}
+
 } // namespace

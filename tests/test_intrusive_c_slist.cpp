@@ -188,4 +188,54 @@ TEST(CSlistTest, MoveConstructAndAssign) {
   EXPECT_EQ(list3.front(), &n1);
 }
 
+std::vector<int> splice_values(const test_list &list) {
+  std::vector<int> out;
+  for (const auto &n : list) {
+    out.push_back(n.value);
+  }
+  return out;
+}
+
+TEST(CSlistTest, SpliceRanges) {
+  using values = std::vector<int>;
+  test_list dst;
+  test_list src;
+  test_node d1(1), d2(2), s1(10), s2(20), s3(30), s4(40);
+  dst.push_front(d2);
+  dst.push_front(d1);
+  for (test_node *n : {&s4, &s3, &s2, &s1}) {
+    src.push_front(*n);
+  }
+
+  dst.splice_after(d1, src, s1, s3); // nodes after s1 up to s3
+  EXPECT_EQ(splice_values(dst), (values{1, 20, 30, 2}));
+  EXPECT_EQ(splice_values(src), (values{10, 40}));
+
+  dst.splice_after(d2, src, s4); // from the head of src up to s4
+  EXPECT_TRUE(src.empty());
+  EXPECT_EQ(splice_values(dst), (values{1, 20, 30, 2, 10, 40}));
+}
+
+TEST(CSlistTest, SlowSpliceWholeLists) {
+  using values = std::vector<int>;
+  test_list dst;
+  test_list src;
+  test_node d1(1), s1(10), s2(20), o1(100), o2(200);
+  dst.push_front(d1);
+  src.push_front(s2);
+  src.push_front(s1);
+
+  dst.slow_splice_back(src);
+  EXPECT_TRUE(src.empty());
+  EXPECT_EQ(splice_values(dst), (values{1, 10, 20}));
+
+  src.push_front(o1);
+  dst.slow_splice_front(src);
+  EXPECT_EQ(splice_values(dst), (values{100, 1, 10, 20}));
+
+  src.push_front(o2);
+  dst.slow_splice_after(d1, src);
+  EXPECT_EQ(splice_values(dst), (values{100, 1, 200, 10, 20}));
+}
+
 } // namespace

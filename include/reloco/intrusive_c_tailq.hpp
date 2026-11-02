@@ -252,6 +252,67 @@ public:
     detail::c_tailq_hook_access<T, Hook>::prev(&node) = nullptr;
   }
 
+  /**
+   * @brief O(1) move of the inclusive node range [@p first, @p last] of @p other to just after @p pos.
+   *
+   * Walking `next` from @p first must reach @p last inside @p other, and @p pos must be linked in this list outside
+   * the range. Tail pointers of both lists are fixed up.
+   */
+  void splice_after(T &pos, c_tailq &other, T &first, T &last) & noexcept {
+    other.detach_range(first, last);
+    attach_after(pos, first, last);
+  }
+
+  /** @brief O(1) move of the inclusive node range [@p first, @p last] of @p other to just before @p pos. */
+  void splice_before(T &pos, c_tailq &other, T &first, T &last) & noexcept {
+    other.detach_range(first, last);
+    attach_before(pos, first, last);
+  }
+
+  /** @brief O(1) move of the inclusive node range [@p first, @p last] of @p other to the front of this list. */
+  void splice_front(c_tailq &other, T &first, T &last) & noexcept {
+    other.detach_range(first, last);
+    attach_front(first, last);
+  }
+
+  /** @brief O(1) move of the inclusive node range [@p first, @p last] of @p other to the back of this list. */
+  void splice_back(c_tailq &other, T &first, T &last) & noexcept {
+    other.detach_range(first, last);
+    attach_back(first, last);
+  }
+
+  /** @brief O(1) move of all nodes of @p other (which must be a different list) to just after @p pos. */
+  void splice_after(T &pos, c_tailq &other) & noexcept {
+    RELOCO_ASSERT(&other != this, "reloco::c_tailq: splicing a list into itself");
+    if (!other.empty()) {
+      splice_after(pos, other, *other.first_, *other.back());
+    }
+  }
+
+  /** @brief O(1) move of all nodes of @p other (which must be a different list) to just before @p pos. */
+  void splice_before(T &pos, c_tailq &other) & noexcept {
+    RELOCO_ASSERT(&other != this, "reloco::c_tailq: splicing a list into itself");
+    if (!other.empty()) {
+      splice_before(pos, other, *other.first_, *other.back());
+    }
+  }
+
+  /** @brief O(1) move of all nodes of @p other (which must be a different list) to the front of this list. */
+  void splice_front(c_tailq &other) & noexcept {
+    RELOCO_ASSERT(&other != this, "reloco::c_tailq: splicing a list into itself");
+    if (!other.empty()) {
+      splice_front(other, *other.first_, *other.back());
+    }
+  }
+
+  /** @brief O(1) move of all nodes of @p other (which must be a different list) to the back of this list. */
+  void splice_back(c_tailq &other) & noexcept {
+    RELOCO_ASSERT(&other != this, "reloco::c_tailq: splicing a list into itself");
+    if (!other.empty()) {
+      splice_back(other, *other.first_, *other.back());
+    }
+  }
+
   /** @brief Unlinks all nodes. */
   void clear() & noexcept {
     T *cur = first_;
@@ -266,6 +327,57 @@ public:
   }
 
 private:
+  // Unlinks [first, last] from this list, fixing the tail, and leaves the range's own hooks dangling.
+  void detach_range(T &first, T &last) noexcept {
+    T **prev_slot = detail::c_tailq_hook_access<T, Hook>::prev(&first);
+    T *after = detail::c_tailq_hook_access<T, Hook>::next(&last);
+    *prev_slot = after;
+    if (after != nullptr) {
+      detail::c_tailq_hook_access<T, Hook>::prev(after) = prev_slot;
+    } else {
+      last_ptr_ = prev_slot;
+    }
+  }
+
+  void attach_after(T &pos, T &first, T &last) noexcept {
+    T *after = detail::c_tailq_hook_access<T, Hook>::next(&pos);
+    detail::c_tailq_hook_access<T, Hook>::next(&last) = after;
+    if (after != nullptr) {
+      detail::c_tailq_hook_access<T, Hook>::prev(after) = &detail::c_tailq_hook_access<T, Hook>::next(&last);
+    } else {
+      last_ptr_ = &detail::c_tailq_hook_access<T, Hook>::next(&last);
+    }
+    detail::c_tailq_hook_access<T, Hook>::next(&pos) = &first;
+    detail::c_tailq_hook_access<T, Hook>::prev(&first) = &detail::c_tailq_hook_access<T, Hook>::next(&pos);
+  }
+
+  void attach_before(T &pos, T &first, T &last) noexcept {
+    T **prev_slot = detail::c_tailq_hook_access<T, Hook>::prev(&pos);
+    *prev_slot = &first;
+    detail::c_tailq_hook_access<T, Hook>::prev(&first) = prev_slot;
+    detail::c_tailq_hook_access<T, Hook>::next(&last) = &pos;
+    detail::c_tailq_hook_access<T, Hook>::prev(&pos) = &detail::c_tailq_hook_access<T, Hook>::next(&last);
+  }
+
+  void attach_front(T &first, T &last) noexcept {
+    T *after = first_;
+    detail::c_tailq_hook_access<T, Hook>::next(&last) = after;
+    if (after != nullptr) {
+      detail::c_tailq_hook_access<T, Hook>::prev(after) = &detail::c_tailq_hook_access<T, Hook>::next(&last);
+    } else {
+      last_ptr_ = &detail::c_tailq_hook_access<T, Hook>::next(&last);
+    }
+    first_ = &first;
+    detail::c_tailq_hook_access<T, Hook>::prev(&first) = &first_;
+  }
+
+  void attach_back(T &first, T &last) noexcept {
+    detail::c_tailq_hook_access<T, Hook>::next(&last) = nullptr;
+    detail::c_tailq_hook_access<T, Hook>::prev(&first) = last_ptr_;
+    *last_ptr_ = &first;
+    last_ptr_ = &detail::c_tailq_hook_access<T, Hook>::next(&last);
+  }
+
   T *first_ = nullptr;
   T **last_ptr_ = &first_;
 };

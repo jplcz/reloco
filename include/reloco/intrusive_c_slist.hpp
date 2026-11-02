@@ -179,6 +179,65 @@ public:
     }
   }
 
+  /**
+   * @brief O(1) move of the nodes following @p before_first up to and including @p last (all in @p other) to just
+   * after @p pos.
+   *
+   * A singly linked node cannot find its predecessor, so the range is named by the node *before* its first element,
+   * like `std::forward_list::splice_after`. @p last must be reachable from `next(before_first)`, and @p pos must be
+   * linked in this list outside the range.
+   */
+  // `other` is unnamed on purpose: without a tail pointer nothing in the source list needs fixing, so it is never
+  // consulted; it may even be this list (valid as long as the target lies outside the range).
+  void splice_after(T &pos, c_slist & /*other*/, T &before_first, T &last) & noexcept {
+    T *first = detach_range(&detail::c_slist_hook_access<T, Hook>::next(&before_first), last);
+    attach(&detail::c_slist_hook_access<T, Hook>::next(&pos), *first, last);
+  }
+
+  /** @brief O(1) move of the nodes from the head of @p other up to and including @p last to just after @p pos. */
+  void splice_after(T &pos, c_slist &other, T &last) & noexcept {
+    T *first = other.detach_range(&other.first_, last);
+    attach(&detail::c_slist_hook_access<T, Hook>::next(&pos), *first, last);
+  }
+
+  /** @brief O(1) move of the nodes after @p before_first up to and including @p last (in @p other) to the front. */
+  void splice_front(c_slist &other, T &before_first, T &last) & noexcept {
+    T *first = other.detach_range(&detail::c_slist_hook_access<T, Hook>::next(&before_first), last);
+    attach(&first_, *first, last);
+  }
+
+  /** @brief O(1) move of the nodes from the head of @p other up to and including @p last to the front. */
+  void splice_front(c_slist &other, T &last) & noexcept {
+    T *first = other.detach_range(&other.first_, last);
+    attach(&first_, *first, last);
+  }
+
+  /** @brief O(n) move of all nodes of @p other to just after @p pos; `n` is the length of @p other (tail unknown). */
+  void slow_splice_after(T &pos, c_slist &other) & noexcept {
+    RELOCO_ASSERT(&other != this, "reloco::c_slist: splicing a list into itself");
+    if (!other.empty()) {
+      splice_after(pos, other, *other.slow_last());
+    }
+  }
+
+  /** @brief O(n) move of all nodes of @p other to the front; `n` is the length of @p other (tail unknown). */
+  void slow_splice_front(c_slist &other) & noexcept {
+    RELOCO_ASSERT(&other != this, "reloco::c_slist: splicing a list into itself");
+    if (!other.empty()) {
+      splice_front(other, *other.slow_last());
+    }
+  }
+
+  /** @brief O(n) move of all nodes of @p other to the back; `n` is the length of both lists (tails unknown). */
+  void slow_splice_back(c_slist &other) & noexcept {
+    RELOCO_ASSERT(&other != this, "reloco::c_slist: splicing a list into itself");
+    if (first_ == nullptr) {
+      slow_splice_front(other);
+    } else {
+      slow_splice_after(*slow_last(), other);
+    }
+  }
+
   void clear() & noexcept {
     T *cur = first_;
     while (cur != nullptr) {
@@ -190,6 +249,28 @@ public:
   }
 
 private:
+  // NOLINTNEXTLINE(reloco-lifetime-annotations): returns a caller-owned node, not storage of the list itself.
+  [[nodiscard]] T *slow_last() const & noexcept {
+    T *cur = first_;
+    while (cur != nullptr && detail::c_slist_hook_access<T, Hook>::next(cur) != nullptr) {
+      cur = detail::c_slist_hook_access<T, Hook>::next(cur);
+    }
+    return cur;
+  }
+
+  // Unlinks the run starting at *slot and ending at @p last; returns its first node.
+  T *detach_range(T **slot, T &last) noexcept {
+    T *first = *slot;
+    *slot = detail::c_slist_hook_access<T, Hook>::next(&last);
+    return first;
+  }
+
+  // Links [first, last] into *slot, in front of whatever *slot currently points to.
+  void attach(T **slot, T &first, T &last) noexcept {
+    detail::c_slist_hook_access<T, Hook>::next(&last) = *slot;
+    *slot = &first;
+  }
+
   T *first_ = nullptr;
 };
 

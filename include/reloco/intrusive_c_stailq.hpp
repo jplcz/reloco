@@ -253,6 +253,73 @@ public:
     }
   }
 
+  /**
+   * @brief O(1) move of the nodes following @p before_first up to and including @p last (all in @p other) to just
+   * after @p pos.
+   *
+   * A singly linked node cannot find its predecessor, so the range is named by the node *before* its first element,
+   * like `std::forward_list::splice_after`. @p last must be reachable from `next(before_first)`, and @p pos must be
+   * linked in this list outside the range.
+   */
+  void splice_after(T &pos, c_stailq &other, T &before_first, T &last) & noexcept {
+    T *first = other.detach_range(&detail::c_stailq_hook_access<T, Hook>::next(&before_first), last);
+    attach(&detail::c_stailq_hook_access<T, Hook>::next(&pos), *first, last);
+  }
+
+  /** @brief O(1) move of the nodes from the head of @p other up to and including @p last to just after @p pos. */
+  void splice_after(T &pos, c_stailq &other, T &last) & noexcept {
+    T *first = other.detach_range(&other.first_, last);
+    attach(&detail::c_stailq_hook_access<T, Hook>::next(&pos), *first, last);
+  }
+
+  /** @brief O(1) move of the nodes after @p before_first up to and including @p last (in @p other) to the front. */
+  void splice_front(c_stailq &other, T &before_first, T &last) & noexcept {
+    T *first = other.detach_range(&detail::c_stailq_hook_access<T, Hook>::next(&before_first), last);
+    attach(&first_, *first, last);
+  }
+
+  /** @brief O(1) move of the nodes from the head of @p other up to and including @p last to the front. */
+  void splice_front(c_stailq &other, T &last) & noexcept {
+    T *first = other.detach_range(&other.first_, last);
+    attach(&first_, *first, last);
+  }
+
+  /** @brief O(1) move of the nodes after @p before_first up to and including @p last (in @p other) to the back. */
+  void splice_back(c_stailq &other, T &before_first, T &last) & noexcept {
+    T *first = other.detach_range(&detail::c_stailq_hook_access<T, Hook>::next(&before_first), last);
+    attach(last_ptr_, *first, last);
+  }
+
+  /** @brief O(1) move of the nodes from the head of @p other up to and including @p last to the back. */
+  void splice_back(c_stailq &other, T &last) & noexcept {
+    T *first = other.detach_range(&other.first_, last);
+    attach(last_ptr_, *first, last);
+  }
+
+  /** @brief O(1) move of all nodes of @p other (which must be a different list) to just after @p pos. */
+  void splice_after(T &pos, c_stailq &other) & noexcept {
+    RELOCO_ASSERT(&other != this, "reloco::c_stailq: splicing a list into itself");
+    if (!other.empty()) {
+      splice_after(pos, other, *other.back());
+    }
+  }
+
+  /** @brief O(1) move of all nodes of @p other (which must be a different list) to the front of this list. */
+  void splice_front(c_stailq &other) & noexcept {
+    RELOCO_ASSERT(&other != this, "reloco::c_stailq: splicing a list into itself");
+    if (!other.empty()) {
+      splice_front(other, *other.back());
+    }
+  }
+
+  /** @brief O(1) move of all nodes of @p other (which must be a different list) to the back of this list. */
+  void splice_back(c_stailq &other) & noexcept {
+    RELOCO_ASSERT(&other != this, "reloco::c_stailq: splicing a list into itself");
+    if (!other.empty()) {
+      splice_back(other, *other.back());
+    }
+  }
+
   /** @brief Unlinks all nodes. */
   void clear() & noexcept {
     T *cur = first_;
@@ -266,6 +333,25 @@ public:
   }
 
 private:
+  // Unlinks the run starting at *slot and ending at @p last; returns its first node. Fixes the tail.
+  T *detach_range(T **slot, T &last) noexcept {
+    T *first = *slot;
+    *slot = detail::c_stailq_hook_access<T, Hook>::next(&last);
+    if (*slot == nullptr) {
+      last_ptr_ = slot;
+    }
+    return first;
+  }
+
+  // Links [first, last] into *slot, in front of whatever *slot currently points to. Fixes the tail.
+  void attach(T **slot, T &first, T &last) noexcept {
+    detail::c_stailq_hook_access<T, Hook>::next(&last) = *slot;
+    if (detail::c_stailq_hook_access<T, Hook>::next(&last) == nullptr) {
+      last_ptr_ = &detail::c_stailq_hook_access<T, Hook>::next(&last);
+    }
+    *slot = &first;
+  }
+
   T *first_ = nullptr;
   T **last_ptr_ = &first_;
 };

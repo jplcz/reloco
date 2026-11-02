@@ -125,3 +125,51 @@ Notes you should know about:
 * **Intrusive layer**: the owning containers are thin; if you need nodes you allocate yourself, use the `c_*`
   containers directly. This work also added `back()` to `c_tailq`/`c_stailq`, `remove_after()` to `c_stailq`,
   `insert_after`/`insert_before` to `c_list_head`, and `operator==` to `allocator_ref`.
+
+## Splicing nodes between intrusive `c_*` lists
+
+**Why**: moving a run of nodes from one list to another (work stealing, handing a batch to a worker, merging queues)
+with a pop/push loop touches every node. Splicing only rewires the nodes at the boundaries, so it costs O(1) wherever
+the list can reach the ends of the run in constant time. Nothing is allocated and no node is constructed or destroyed;
+the moved nodes simply belong to the destination afterwards.
+
+**Which operations exist** (`slow_` marks anything that is not O(1)):
+
+| List | Range splice (O(1)) | Whole-list splice |
+|------|---------------------|-------------------|
+| `c_tailq`, `c_list_head` | `splice_after/before(pos, other, first, last)`, `splice_front/back(other, first, last)` — `[first, last]` inclusive | `splice_after/before(pos, other)`, `splice_front/back(other)` — all O(1) |
+| `c_list` | `splice_after/before(pos, other, first, last)`, `splice_front(other, first, last)` | `slow_splice_after/before/front/back(...)` — O(n): there is no tail pointer, so the last node is found by walking |
+| `c_stailq` | `splice_after(pos, other, before_first, last)`, `splice_after(pos, other, last)`, `splice_front/back(other, [before_first,] last)` | `splice_after(pos, other)`, `splice_front/back(other)` — O(1) |
+| `c_slist` | `splice_after(pos, other, before_first, last)`, `splice_after(pos, other, last)`, `splice_front(other, [before_first,] last)` | `slow_splice_after/front/back(...)` — O(n), same reason as `c_list` |
+
+Singly linked nodes cannot find their predecessor, so their ranges are named by the node *before* the first moved node
+(like `std::forward_list::splice_after`); the overloads without `before_first` start at the head of `other`.
+`splice_before` does not exist for singly linked lists for the same reason.
+
+```cpp
+struct job {
+  int id;
+  struct { // layout-compatible with sys/queue.h TAILQ_ENTRY(job)
+    job *next = nullptr;
+    job **prev = nullptr;
+  } link;
+};
+reloco::c_tailq<job, &job::link> ready;   // jobs waiting to run
+reloco::c_tailq<job, &job::link> stolen;  // another worker's queue we are taking work from
+
+// Take the jobs `first` .. `last` (inclusive) out of `stolen` and put them after `pos` in `ready`: O(1).
+ready.splice_after(pos, stolen, first, last);
+
+// Take everything `stolen` still has and append it to `ready`: O(1) because a tailq knows its tail.
+ready.splice_back(stolen);
+```
+
+**Rules**:
+* `first..last` must be linked in `other` (walking `next` from `first` reaches `last`); `pos` must be linked in the
+  destination and must not be inside the moved range. These are caller preconditions and are not checked (checking
+  would cost O(n)).
+* The range overloads take `other` mainly to make call sites read symmetrically and, for `c_tailq`/`c_stailq`, to fix
+  its tail. For `c_list`, `c_list_head` and `c_slist` the parameter is unused, because every node already knows what
+  surrounds it; consequently `other` may be the destination itself, which moves a range within one list.
+* The whole-list overloads require `other` to be a different list (checked with `RELOCO_ASSERT`); an empty `other` is a
+  no-op, and afterwards `other` is empty and reusable.

@@ -256,6 +256,85 @@ public:
     n->prev = nullptr;
   }
 
+  /**
+   * @brief O(1) move of the inclusive node range [@p first, @p last] of @p other to just after @p pos.
+   *
+   * Walking `next` from @p first must reach @p last inside @p other, and @p pos must be linked in this list outside
+   * the range. The circular layout means neither list needs any end fix-up.
+   */
+  // `other` is unnamed on purpose: the circular layout lets every node reach its neighbours, so the source list is
+  // never consulted; it may even be this list (moving a range within one list is valid as long as the target lies
+  // outside the range).
+  void splice_after(T &pos, c_list_head & /*other*/, T &first, T &last) & noexcept {
+    detail::c_list_head_node *p = detail::c_linux_hook_access<T, Hook>::get(&pos);
+    cut_range(detail::c_linux_hook_access<T, Hook>::get(&first), detail::c_linux_hook_access<T, Hook>::get(&last));
+    link_range(detail::c_linux_hook_access<T, Hook>::get(&first), detail::c_linux_hook_access<T, Hook>::get(&last), p,
+               p->next);
+  }
+
+  /** @brief O(1) move of the inclusive node range [@p first, @p last] of @p other to just before @p pos. */
+  // `other` is unnamed on purpose: the circular layout lets every node reach its neighbours, so the source list is
+  // never consulted; it may even be this list (moving a range within one list is valid as long as the target lies
+  // outside the range).
+  void splice_before(T &pos, c_list_head & /*other*/, T &first, T &last) & noexcept {
+    detail::c_list_head_node *p = detail::c_linux_hook_access<T, Hook>::get(&pos);
+    cut_range(detail::c_linux_hook_access<T, Hook>::get(&first), detail::c_linux_hook_access<T, Hook>::get(&last));
+    link_range(detail::c_linux_hook_access<T, Hook>::get(&first), detail::c_linux_hook_access<T, Hook>::get(&last),
+               p->prev, p);
+  }
+
+  /** @brief O(1) move of the inclusive node range [@p first, @p last] of @p other to the front of this list. */
+  // `other` is unnamed on purpose: the circular layout lets every node reach its neighbours, so the source list is
+  // never consulted; it may even be this list (moving a range within one list is valid as long as the target lies
+  // outside the range).
+  void splice_front(c_list_head & /*other*/, T &first, T &last) & noexcept {
+    cut_range(detail::c_linux_hook_access<T, Hook>::get(&first), detail::c_linux_hook_access<T, Hook>::get(&last));
+    link_range(detail::c_linux_hook_access<T, Hook>::get(&first), detail::c_linux_hook_access<T, Hook>::get(&last),
+               &root_, root_.next);
+  }
+
+  /** @brief O(1) move of the inclusive node range [@p first, @p last] of @p other to the back of this list. */
+  // `other` is unnamed on purpose: the circular layout lets every node reach its neighbours, so the source list is
+  // never consulted; it may even be this list (moving a range within one list is valid as long as the target lies
+  // outside the range).
+  void splice_back(c_list_head & /*other*/, T &first, T &last) & noexcept {
+    cut_range(detail::c_linux_hook_access<T, Hook>::get(&first), detail::c_linux_hook_access<T, Hook>::get(&last));
+    link_range(detail::c_linux_hook_access<T, Hook>::get(&first), detail::c_linux_hook_access<T, Hook>::get(&last),
+               root_.prev, &root_);
+  }
+
+  /** @brief O(1) move of all nodes of @p other (which must be a different list) to just after @p pos. */
+  void splice_after(T &pos, c_list_head &other) & noexcept {
+    RELOCO_ASSERT(&other != this, "reloco::c_list_head: splicing a list into itself");
+    if (!other.empty()) {
+      splice_after(pos, other, *other.front(), *other.back());
+    }
+  }
+
+  /** @brief O(1) move of all nodes of @p other (which must be a different list) to just before @p pos. */
+  void splice_before(T &pos, c_list_head &other) & noexcept {
+    RELOCO_ASSERT(&other != this, "reloco::c_list_head: splicing a list into itself");
+    if (!other.empty()) {
+      splice_before(pos, other, *other.front(), *other.back());
+    }
+  }
+
+  /** @brief O(1) move of all nodes of @p other (which must be a different list) to the front of this list. */
+  void splice_front(c_list_head &other) & noexcept {
+    RELOCO_ASSERT(&other != this, "reloco::c_list_head: splicing a list into itself");
+    if (!other.empty()) {
+      splice_front(other, *other.front(), *other.back());
+    }
+  }
+
+  /** @brief O(1) move of all nodes of @p other (which must be a different list) to the back of this list. */
+  void splice_back(c_list_head &other) & noexcept {
+    RELOCO_ASSERT(&other != this, "reloco::c_list_head: splicing a list into itself");
+    if (!other.empty()) {
+      splice_back(other, *other.front(), *other.back());
+    }
+  }
+
   /** @brief Unlinks all nodes. */
   void clear() & noexcept {
     detail::c_list_head_node *cur = root_.next;
@@ -270,6 +349,21 @@ public:
   }
 
 private:
+  // Cuts [first, last] out of its list; the range keeps its internal links.
+  static void cut_range(detail::c_list_head_node *first, detail::c_list_head_node *last) noexcept {
+    first->prev->next = last->next;
+    last->next->prev = first->prev;
+  }
+
+  // Links the cut range between the adjacent nodes @p prev and @p next (read after cutting).
+  static void link_range(detail::c_list_head_node *first, detail::c_list_head_node *last,
+                         detail::c_list_head_node *prev, detail::c_list_head_node *next) noexcept {
+    first->prev = prev;
+    prev->next = first;
+    last->next = next;
+    next->prev = last;
+  }
+
   void insert_between(detail::c_list_head_node *new_node, detail::c_list_head_node *prev,
                       detail::c_list_head_node *next) & noexcept {
     next->prev = new_node;

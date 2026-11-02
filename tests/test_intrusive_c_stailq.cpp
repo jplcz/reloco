@@ -193,4 +193,66 @@ TEST(CStailqTest, MoveConstructEmpty) {
   EXPECT_EQ(q2.front(), &n1);
 }
 
+std::vector<int> splice_values(const test_stailq &queue) {
+  std::vector<int> out;
+  for (const auto &n : queue) {
+    out.push_back(n.value);
+  }
+  return out;
+}
+
+TEST(CStailqTest, SpliceRangesFixBothTails) {
+  using values = std::vector<int>;
+  test_stailq dst;
+  test_stailq src;
+  test_node d1(1), d2(2), s1(10), s2(20), s3(30), s4(40);
+  dst.push_back(d1);
+  dst.push_back(d2);
+  for (test_node *n : {&s1, &s2, &s3, &s4}) {
+    src.push_back(*n);
+  }
+
+  dst.splice_after(d1, src, s1, s3); // middle run; source tail untouched
+  EXPECT_EQ(splice_values(dst), (values{1, 20, 30, 2}));
+  EXPECT_EQ(splice_values(src), (values{10, 40}));
+  EXPECT_EQ(src.back(), &s4);
+  EXPECT_EQ(dst.back(), &d2);
+
+  dst.splice_after(d2, src, s1, s4); // run ends at the source tail
+  EXPECT_EQ(dst.back(), &s4);
+  EXPECT_EQ(src.back(), &s1);
+  EXPECT_EQ(splice_values(dst), (values{1, 20, 30, 2, 40}));
+
+  dst.splice_back(src, s1);
+  EXPECT_TRUE(src.empty());
+  EXPECT_EQ(src.back(), nullptr);
+  EXPECT_EQ(dst.back(), &s1);
+  EXPECT_EQ(splice_values(dst), (values{1, 20, 30, 2, 40, 10}));
+}
+
+TEST(CStailqTest, SpliceWholeQueues) {
+  using values = std::vector<int>;
+  test_stailq dst;
+  test_stailq src;
+  test_node d1(1), s1(10), s2(20), o1(100);
+  dst.push_back(d1);
+  src.push_back(s1);
+  src.push_back(s2);
+
+  dst.splice_back(src);
+  EXPECT_TRUE(src.empty());
+  EXPECT_EQ(dst.back(), &s2);
+
+  src.push_back(o1);
+  dst.splice_front(src);
+  EXPECT_EQ(splice_values(dst), (values{100, 1, 10, 20}));
+  EXPECT_EQ(dst.back(), &s2);
+
+  test_node o2(200);
+  src.push_back(o2);
+  dst.splice_after(d1, src);
+  EXPECT_EQ(splice_values(dst), (values{100, 1, 200, 10, 20}));
+  EXPECT_EQ(dst.back(), &s2);
+}
+
 } // namespace

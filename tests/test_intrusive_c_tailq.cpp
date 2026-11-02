@@ -243,4 +243,73 @@ TEST(CTailqTest, MoveEmptyQueues) {
   EXPECT_EQ(q2.front(), &n1);
 }
 
+std::vector<int> splice_values(const test_tailq &queue) {
+  std::vector<int> out;
+  for (const auto &n : queue) {
+    out.push_back(n.value);
+  }
+  return out;
+}
+
+TEST(CTailqTest, SpliceRangesBetweenQueues) {
+  using values = std::vector<int>;
+  test_tailq dst;
+  test_tailq src;
+  test_node d1(1), d2(2), s1(10), s2(20), s3(30), s4(40);
+  dst.push_back(d1);
+  dst.push_back(d2);
+  for (test_node *n : {&s1, &s2, &s3, &s4}) {
+    src.push_back(*n);
+  }
+
+  dst.splice_after(d1, src, s2, s3);
+  EXPECT_EQ(splice_values(dst), (values{1, 20, 30, 2}));
+  EXPECT_EQ(splice_values(src), (values{10, 40}));
+
+  dst.splice_back(src, s4, s4); // range ends at the source tail
+  EXPECT_EQ(dst.back(), &s4);
+  EXPECT_EQ(src.back(), &s1);
+  EXPECT_EQ(splice_values(dst), (values{1, 20, 30, 2, 40}));
+
+  dst.splice_before(d1, src, s1, s1);
+  EXPECT_TRUE(src.empty());
+  EXPECT_EQ(src.back(), nullptr);
+  EXPECT_EQ(splice_values(dst), (values{10, 1, 20, 30, 2, 40}));
+
+  // Move a range within the same queue.
+  dst.splice_after(s4, dst, s1, d1);
+  EXPECT_EQ(splice_values(dst), (values{20, 30, 2, 40, 10, 1}));
+  EXPECT_EQ(dst.back(), &d1);
+}
+
+TEST(CTailqTest, SpliceWholeQueues) {
+  using values = std::vector<int>;
+  test_tailq dst;
+  test_tailq src;
+  test_node d1(1), s1(10), s2(20), s3(30);
+  dst.push_back(d1);
+  src.push_back(s1);
+  src.push_back(s2);
+
+  dst.splice_back(src);
+  EXPECT_TRUE(src.empty());
+  EXPECT_EQ(dst.back(), &s2);
+  EXPECT_EQ(splice_values(dst), (values{1, 10, 20}));
+
+  src.push_back(s3);
+  dst.splice_front(src);
+  EXPECT_EQ(splice_values(dst), (values{30, 1, 10, 20}));
+
+  dst.splice_back(src); // empty source is a no-op
+  EXPECT_EQ(dst.back(), &s2);
+
+  test_tailq other;
+  test_node o1(100);
+  other.push_back(o1);
+  dst.splice_after(s2, other);
+  EXPECT_TRUE(other.empty());
+  EXPECT_EQ(dst.back(), &o1);
+  EXPECT_EQ(splice_values(dst), (values{30, 1, 10, 20, 100}));
+}
+
 } // namespace

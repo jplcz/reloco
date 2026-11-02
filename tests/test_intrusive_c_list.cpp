@@ -236,4 +236,74 @@ TEST(CListTest, MoveAssignFixesHeadPointer) {
   EXPECT_EQ(*n1.link.prev, &n1); // Ensures pointer indirection was fixed up
 }
 
+std::vector<int> splice_values(const test_list &list) {
+  std::vector<int> out;
+  for (const auto &n : list) {
+    out.push_back(n.value);
+  }
+  return out;
+}
+
+TEST(CListTest, SpliceRanges) {
+  using values = std::vector<int>;
+  test_list dst;
+  test_list src;
+  test_node d1(1), d2(2), s1(10), s2(20), s3(30), s4(40);
+  dst.push_front(d2);
+  dst.push_front(d1);
+  for (test_node *n : {&s4, &s3, &s2, &s1}) {
+    src.push_front(*n);
+  }
+
+  dst.splice_after(d1, src, s2, s3);
+  EXPECT_EQ(splice_values(dst), (values{1, 20, 30, 2}));
+  EXPECT_EQ(splice_values(src), (values{10, 40}));
+
+  dst.splice_before(d1, src, s4, s4);
+  EXPECT_EQ(splice_values(dst), (values{40, 1, 20, 30, 2}));
+
+  dst.splice_front(src, s1, s1);
+  EXPECT_TRUE(src.empty());
+  EXPECT_EQ(splice_values(dst), (values{10, 40, 1, 20, 30, 2}));
+
+  // Move a range within the same list; back-links must stay valid for remove().
+  dst.splice_after(d2, dst, s1, s4);
+  EXPECT_EQ(splice_values(dst), (values{1, 20, 30, 2, 10, 40}));
+  dst.remove(s1);
+  dst.remove(d1);
+  EXPECT_EQ(splice_values(dst), (values{20, 30, 2, 40}));
+}
+
+TEST(CListTest, SlowSpliceWholeLists) {
+  using values = std::vector<int>;
+  test_list dst;
+  test_list src;
+  test_node d1(1), d2(2), s1(10), s2(20), s3(30);
+  dst.push_front(d2);
+  dst.push_front(d1);
+  src.push_front(s2);
+  src.push_front(s1);
+
+  dst.slow_splice_back(src);
+  EXPECT_TRUE(src.empty());
+  EXPECT_EQ(splice_values(dst), (values{1, 2, 10, 20}));
+
+  src.push_front(s3);
+  dst.slow_splice_front(src);
+  EXPECT_EQ(splice_values(dst), (values{30, 1, 2, 10, 20}));
+
+  test_node o1(100);
+  src.push_front(o1);
+  dst.slow_splice_before(d2, src);
+  EXPECT_EQ(splice_values(dst), (values{30, 1, 100, 2, 10, 20}));
+  test_node o2(200);
+  src.push_front(o2);
+  dst.slow_splice_after(d1, src);
+  EXPECT_EQ(splice_values(dst), (values{30, 1, 200, 100, 2, 10, 20}));
+  dst.slow_splice_back(src); // empty source is a no-op
+  dst.remove(o2);
+  dst.remove(d1);
+  EXPECT_EQ(splice_values(dst), (values{30, 100, 2, 10, 20}));
+}
+
 } // namespace
