@@ -4,9 +4,9 @@
 
 #pragma once
 
-#include "container_of.hpp"
 #include "detail/assert.hpp"
 #include "detail/compat.hpp"
+#include "owner_from_member.hpp"
 #include <cstddef>
 #include <iterator>
 #include <type_traits>
@@ -157,11 +157,11 @@ public:
     if (first_ == nullptr) {
       return nullptr;
     }
-    using hook_type = container_of_member_t<Hook>;
+    using hook_type = member_type_t<Hook>;
     RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
     // `last_ptr_` addresses the last node's `next` slot, which is the first member of its hook.
     // NOLINTNEXTLINE(reloco-banned-construct)
-    return container_of<Hook>(reinterpret_cast<hook_type *>(last_ptr_));
+    return owner_from_member<Hook>(reinterpret_cast<hook_type *>(last_ptr_));
     RELOCO_END_UNSAFE_BUFFER_USAGE
   }
 

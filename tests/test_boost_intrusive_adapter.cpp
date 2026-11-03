@@ -100,8 +100,8 @@ TEST(BoostIntrusiveAdapterTest, ExtractIfReleasesWithDefaultDeleteDisposer) {
 }
 
 // A foreign API that only ever hands back a `list_member_hook<>*` can
-// recover the owning object via `container_of<Member>` -- there is
-// nothing Boost-specific about it, see `container_of.hpp`.
+// recover the owning object via `owner_from_member<Member>` -- there is
+// nothing Boost-specific about it, see `owner_from_member.hpp`.
 TEST(BoostIntrusiveAdapterTest, ContainerOfRecoversOwnerFromMemberHook) {
   struct node {
     list_member_hook<> hook;
@@ -111,7 +111,7 @@ TEST(BoostIntrusiveAdapterTest, ContainerOfRecoversOwnerFromMemberHook) {
 
   node n(42);
   list_member_hook<> *hook_ptr = &n.hook;
-  node *owner = reloco::container_of<&node::hook>(hook_ptr);
+  node *owner = reloco::owner_from_member<&node::hook>(hook_ptr);
   EXPECT_EQ(owner, &n);
   EXPECT_EQ(owner->value, 42);
 }

@@ -11,8 +11,8 @@
  * to a first-class, reusable entry point instead of a hand-rolled
  * per-translation-unit helper, adds small `Inserter`/`Disposer` factories
  * for the most common `relink_to`/`release_to` routing idioms, and
- * documents how to recover a hook's owning object via `container_of`
- * (`container_of.hpp`).
+ * documents how to recover a hook's owning object via `owner_from_member`
+ * (`owner_from_member.hpp`).
  *
  * Nothing here actually `#include`s a `<boost/intrusive/...>` header --
  * every entry point is a plain template duck-typed against whatever
@@ -59,15 +59,15 @@
  * recovered from some lower-level callback, rather than the `T&` Boost's
  * own iterators would normally yield) can recover the owning `T*` the
  * same way reloco recovers the owner of any of its own hook members: via
- * `container_of<Member>()` (`container_of.hpp`). There is nothing
+ * `owner_from_member<Member>()` (`owner_from_member.hpp`). There is nothing
  * Boost-specific about that helper -- it only needs `Member` to actually
  * be a pointer-to-data-member of the hook subobject in question, which a
  * `boost::intrusive::list_member_hook<> T::*member` is -- so this file
  * does not re-wrap it under another name.
  */
 
-#include "container_of.hpp"
 #include "intrusive_iteration.hpp"
+#include "owner_from_member.hpp"
 
 namespace reloco {
 

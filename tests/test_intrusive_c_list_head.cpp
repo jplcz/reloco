@@ -9,7 +9,7 @@
 namespace {
 
 // Mimic Linux's `struct list_head` usage. Notice the link isn't necessarily
-// the first field! container_of() handles the offset gracefully.
+// the first field! the offset computation handles the offset gracefully.
 struct test_node {
   int padding; // Prove offset calculation works
   int value;

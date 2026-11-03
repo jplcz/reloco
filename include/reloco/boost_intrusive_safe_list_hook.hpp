@@ -36,7 +36,7 @@
  * };
  *
  * // Member-hook style: struct holds the hook as a plain data member --
- * // see `container_of<&owner::member_hook>()` (container_of.hpp) for
+ * // see `owner_from_member<&owner::member_hook>()` (owner_from_member.hpp) for
  * // recovering the owner from a foreign API that only ever hands back
  * // a pointer to the member hook itself.
  * struct job {

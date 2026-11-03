@@ -27,7 +27,7 @@ struct c_list_head_node {
   c_list_head_node *prev;
 };
 
-// Extracts the node and computes the `container_of` offset.
+// Extracts the node and computes the owner-from-member offset.
 /** @brief Accesses a Linux-style list-head hook in an object. */
 template <typename T, auto Hook> struct c_linux_hook_access {
   [[nodiscard]] static c_list_head_node *get(T *node) noexcept {
@@ -42,7 +42,7 @@ template <typename T, auto Hook> struct c_linux_hook_access {
     RELOCO_END_UNSAFE_BUFFER_USAGE
   }
 
-  // C++ equivalent of Linux's `container_of` macro
+  // C++ equivalent of recovering the owner from a member pointer
   [[nodiscard]] static T *container(c_list_head_node *node) noexcept {
     RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
     std::byte *addr = reinterpret_cast<std::byte *>(node);
